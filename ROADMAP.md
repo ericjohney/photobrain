@@ -67,22 +67,53 @@ These tasks are broken down into small, session-sized chunks that can each be co
 
 ---
 
-### Session 3: Async Processing Pipeline 🔄 **HIGH PRIORITY**
-**Goal:** Move image processing off the main thread to avoid blocking
+### Session 3: Async Processing Pipeline with Temporal 🔄 **HIGH PRIORITY**
+**Goal:** Move image processing off the main thread using Temporal workflows
 
 **Deliverables:**
-- [ ] Install `bullmq` or simple job queue library
-- [ ] Create jobs service in API (`src/services/jobs.ts`)
-- [ ] Define job types: `scan-directory`, `process-photo`, `generate-thumbnails`
-- [ ] Update scan endpoint to queue jobs instead of blocking
-- [ ] Add job status tracking in database
-- [ ] Create API endpoint: `GET /api/jobs/:id/status`
-- [ ] Add frontend polling for job progress
-- [ ] Display processing status in UI (scanning, processing, complete)
+- [ ] Install `@temporalio/worker` and `@temporalio/client` packages
+- [ ] Set up Temporal development server (local Docker or Temporal Cloud)
+- [ ] Create workflow definitions in `apps/api/src/workflows/`:
+  - `scanDirectoryWorkflow` - Orchestrates directory scanning
+  - `processPhotoWorkflow` - Processes individual photos (metadata + thumbnails + embeddings)
+  - `generateThumbnailsWorkflow` - Generate thumbnails for existing photos
+- [ ] Create activity functions in `apps/api/src/activities/`:
+  - `scanDirectory` - List files in directory
+  - `extractMetadata` - Call Rust NAPI for metadata/EXIF
+  - `generateThumbnails` - Call Rust NAPI for thumbnail generation
+  - `generateEmbeddings` - Call Rust NAPI for CLIP embeddings
+  - `saveToDatabase` - Persist photo data
+- [ ] Create Temporal worker service (`apps/api/src/temporal/worker.ts`)
+- [ ] Update scan endpoint to start Temporal workflows instead of blocking
+- [ ] Add workflow status endpoint: `GET /api/workflows/:id/status`
+- [ ] Add frontend polling for workflow progress with live updates
+- [ ] Display processing status in UI (queued, running, completed, failed)
+- [ ] Add workflow retry policies for resilience
 
-**Estimated time:** 2-3 hours
-**Files to create:** `apps/api/src/services/jobs.ts`
+**Temporal Benefits:**
+- Durable execution (survives server restarts)
+- Built-in retry logic with exponential backoff
+- Workflow versioning for safe updates
+- Observable execution with Temporal UI
+- Easy to add complex orchestration later (parallel processing, conditionals)
+
+**Estimated time:** 3-4 hours (includes Temporal setup)
+**Files to create:**
+- `apps/api/src/workflows/scanDirectory.ts`
+- `apps/api/src/workflows/processPhoto.ts`
+- `apps/api/src/activities/photoActivities.ts`
+- `apps/api/src/temporal/worker.ts`
+- `apps/api/src/temporal/client.ts`
+
 **Files to modify:** `apps/api/src/routes/scan.ts`, `apps/web/src/pages/Dashboard.tsx`
+
+**Setup:**
+```bash
+# Start Temporal dev server (in Docker)
+temporal server start-dev
+
+# Or use Temporal Cloud for production
+```
 
 ---
 
@@ -128,12 +159,15 @@ These tasks are broken down into small, session-sized chunks that can each be co
 - [ ] Use `std::process::Command` with timeout
 - [ ] Store converted JPEG alongside original RAW
 - [ ] Update database with `convertedPath` field
-- [ ] Add job queue task for RAW conversion
+- [ ] Create Temporal workflow: `convertRawWorkflow`
+- [ ] Create Temporal activity: `convertRawFile` (calls Rust function)
 - [ ] Serve converted JPEG for RAW files in API
-- [ ] Add "Reprocess RAW" button in UI
+- [ ] Add "Reprocess RAW" button in UI (triggers workflow)
+- [ ] Track conversion progress in Temporal UI
 
 **Estimated time:** 2-3 hours
-**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/services/jobs.ts`
+**Files to create:** `apps/api/src/workflows/convertRaw.ts`
+**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/activities/photoActivities.ts`, `apps/api/src/routes/photos.ts`
 
 ---
 
