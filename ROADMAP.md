@@ -20,6 +20,187 @@ PhotoBrain aims to be a fast, AI-powered self-hosted photo management solution t
 
 ---
 
+## 🚀 Next Sessions: Bite-Sized Tasks
+
+These tasks are broken down into small, session-sized chunks that can each be completed in a single Claude Code session. Focus on delivering working, tested features incrementally.
+
+### Session 1: EXIF Data Extraction 📸 **HIGH PRIORITY**
+**Goal:** Extract and display camera metadata from existing photos
+
+**Deliverables:**
+- [ ] Add `kamadak-exif` crate to Rust image-processing package
+- [ ] Create `extract_exif()` function in Rust that returns JSON with:
+  - Camera make/model
+  - Lens information
+  - Exposure settings (ISO, aperture, shutter speed)
+  - Focal length
+  - Date taken
+  - GPS coordinates (latitude/longitude)
+- [ ] Update database schema with EXIF fields
+- [ ] Migrate existing photos to populate EXIF data
+- [ ] Update API to return EXIF data with photo metadata
+- [ ] Display EXIF in lightbox photo detail view
+
+**Estimated time:** 1-2 hours
+**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/db/schema.ts`, `apps/web/src/components/Lightbox.tsx`
+
+---
+
+### Session 2: Multi-Size Thumbnail Generation 🖼️ **HIGH PRIORITY**
+**Goal:** Generate and serve multiple thumbnail sizes for faster loading
+
+**Deliverables:**
+- [ ] Add `image` crate resizing to Rust NAPI module
+- [ ] Create `generate_thumbnails()` function that produces:
+  - Tiny: 150px (grid previews)
+  - Small: 400px (modal previews)
+  - Medium: 800px (lightbox)
+  - Large: 1600px (full view)
+- [ ] Store thumbnails in `/thumbnails/{size}/{photo-id}.jpg` structure
+- [ ] Update database to track thumbnail paths
+- [ ] Add API endpoints: `GET /api/photos/:id/thumbnail/:size`
+- [ ] Update frontend to use appropriate thumbnail size based on context
+- [ ] Add lazy loading with lower quality placeholder
+
+**Estimated time:** 2-3 hours
+**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/routes/photos.ts`, `apps/web/src/components/PhotoGrid.tsx`
+
+---
+
+### Session 3: Async Processing Pipeline 🔄 **HIGH PRIORITY**
+**Goal:** Move image processing off the main thread to avoid blocking
+
+**Deliverables:**
+- [ ] Install `bullmq` or simple job queue library
+- [ ] Create jobs service in API (`src/services/jobs.ts`)
+- [ ] Define job types: `scan-directory`, `process-photo`, `generate-thumbnails`
+- [ ] Update scan endpoint to queue jobs instead of blocking
+- [ ] Add job status tracking in database
+- [ ] Create API endpoint: `GET /api/jobs/:id/status`
+- [ ] Add frontend polling for job progress
+- [ ] Display processing status in UI (scanning, processing, complete)
+
+**Estimated time:** 2-3 hours
+**Files to create:** `apps/api/src/services/jobs.ts`
+**Files to modify:** `apps/api/src/routes/scan.ts`, `apps/web/src/pages/Dashboard.tsx`
+
+---
+
+### Session 4: RAW Format Detection 📷
+**Goal:** Identify RAW files without processing them yet
+
+**Deliverables:**
+- [ ] Add RAW format MIME type mapping in Rust
+- [ ] Detect common RAW extensions: `.cr2`, `.cr3`, `.nef`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`
+- [ ] Update database schema:
+  - Add `isRaw: boolean`
+  - Add `rawFormat: text` (e.g., "CR2", "NEF")
+- [ ] Add RAW badge in photo grid UI
+- [ ] Filter photos by type (all/jpeg/raw)
+- [ ] Show RAW file count in dashboard stats
+
+**Estimated time:** 1-2 hours
+**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/db/schema.ts`, `apps/web/src/components/PhotoGrid.tsx`
+
+---
+
+### Session 5: Basic RAW Thumbnail Extraction 🎨
+**Goal:** Extract embedded JPEG previews from RAW files without external tools
+
+**Deliverables:**
+- [ ] Use `rawler` or `imagepipe` crate to extract embedded preview
+- [ ] Fallback to placeholder if no preview exists
+- [ ] Store extracted preview as thumbnail
+- [ ] Display RAW previews in gallery
+- [ ] Add "Download Original RAW" button in lightbox
+
+**Estimated time:** 2-3 hours
+**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/routes/photos.ts`
+
+---
+
+### Session 6: RawTherapee CLI Integration 🎛️
+**Goal:** Convert RAW files to high-quality JPEG using RawTherapee
+
+**Deliverables:**
+- [ ] Add system dependency check for `rawtherapee-cli`
+- [ ] Create Rust function to invoke CLI: `convert_raw_to_jpeg()`
+- [ ] Use `std::process::Command` with timeout
+- [ ] Store converted JPEG alongside original RAW
+- [ ] Update database with `convertedPath` field
+- [ ] Add job queue task for RAW conversion
+- [ ] Serve converted JPEG for RAW files in API
+- [ ] Add "Reprocess RAW" button in UI
+
+**Estimated time:** 2-3 hours
+**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/services/jobs.ts`
+
+---
+
+### Session 7: EXIF-Based Filtering 🔍
+**Goal:** Filter photos by camera metadata
+
+**Deliverables:**
+- [ ] Add filter UI components (dropdowns for camera, lens, ISO range)
+- [ ] Create API endpoint: `GET /api/photos?camera=...&lens=...&isoMin=...&isoMax=...`
+- [ ] Add database query filters
+- [ ] Show unique cameras/lenses in filter options
+- [ ] Add date range picker
+- [ ] Combine filters with existing search
+
+**Estimated time:** 2-3 hours
+**Files to modify:** `apps/api/src/routes/photos.ts`, `apps/web/src/components/FilterPanel.tsx`
+
+---
+
+### Session 8: GPS Coordinate Extraction 🗺️
+**Goal:** Extract and display photo locations
+
+**Deliverables:**
+- [ ] Parse GPS EXIF data (latitude, longitude, altitude)
+- [ ] Add GPS fields to database
+- [ ] Display coordinates in photo detail
+- [ ] Add basic map view using Leaflet.js
+- [ ] Show photo markers on map
+- [ ] Click marker to view photo
+
+**Estimated time:** 2-3 hours
+**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/web/src/pages/Map.tsx`
+
+---
+
+### Session 9: Duplicate Detection UI 🔎
+**Goal:** Use existing pHash to find and manage duplicates
+
+**Deliverables:**
+- [ ] Create similarity search query using pHash
+- [ ] Add API endpoint: `GET /api/photos/:id/similar`
+- [ ] Build duplicates page showing groups of similar photos
+- [ ] Side-by-side comparison view
+- [ ] Batch delete functionality
+- [ ] Configurable similarity threshold slider
+
+**Estimated time:** 2-3 hours
+**Files to create:** `apps/web/src/pages/Duplicates.tsx`
+
+---
+
+### Session 10: Favorites & Starring ⭐
+**Goal:** Mark and filter favorite photos
+
+**Deliverables:**
+- [ ] Add `isFavorite: boolean` to database
+- [ ] Add star icon to photo grid items
+- [ ] Toggle favorite on click
+- [ ] Add favorites filter/view
+- [ ] Show favorite count in sidebar
+- [ ] Keyboard shortcut for starring (F key)
+
+**Estimated time:** 1-2 hours
+**Files to modify:** `apps/api/src/db/schema.ts`, `apps/web/src/components/PhotoGrid.tsx`
+
+---
+
 ## Phase 1: RAW Support & Image Processing 🎯 **IMMEDIATE PRIORITY**
 
 ### 1.1 RAW Image Support
