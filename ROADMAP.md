@@ -268,7 +268,7 @@ temporal server start-dev
 **Technical Notes:**
 - RawTherapee CLI: `rawtherapee-cli -c <input.raw> -o <output.jpg> -p <profile.pp3>`
 - Darktable CLI: `darktable-cli <input.raw> <xmp-file> <output.jpg>`
-- Process conversions asynchronously (job queue)
+- Process conversions asynchronously using Temporal workflows
 - Cache converted previews to avoid re-processing
 
 ### 1.2 Enhanced Image Metadata
@@ -451,7 +451,8 @@ temporal server start-dev
   - Query result caching
 - [ ] **Parallel processing**
   - Multi-threaded scanning
-  - Batch processing queue (BullMQ or similar)
+  - Temporal workflows for batch processing
+  - Parallel activity execution in workflows
 
 ### 7.2 Storage Management
 - [ ] **Storage analytics**
