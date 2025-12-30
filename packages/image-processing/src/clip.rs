@@ -1,7 +1,7 @@
 use fastembed::{
-  EmbeddingModel, ImageEmbedding, ImageEmbeddingModel, ImageInitOptions, InitOptions,
-  TextEmbedding,
+  EmbeddingModel, ImageEmbedding, ImageEmbeddingModel, ImageInitOptions, InitOptions, TextEmbedding,
 };
+use image::DynamicImage;
 use napi_derive::napi;
 
 fn create_clip_image_model() -> napi::Result<ImageEmbedding> {
@@ -16,22 +16,6 @@ fn create_clip_text_model() -> napi::Result<TextEmbedding> {
     InitOptions::new(EmbeddingModel::ClipVitB32).with_show_download_progress(false),
   )
   .map_err(|e| napi::Error::from_reason(format!("Failed to initialize CLIP text model: {}", e)))
-}
-
-#[napi]
-pub fn clip_embedding(file_path: String) -> napi::Result<Vec<f64>> {
-  let model = create_clip_image_model()?;
-
-  let embeddings = model
-    .embed(vec![file_path], None)
-    .map_err(|e| napi::Error::from_reason(format!("Failed to generate CLIP embedding: {}", e)))?;
-
-  let embedding = embeddings
-    .first()
-    .ok_or_else(|| napi::Error::from_reason("No embedding generated"))?;
-
-  // Convert f32 to f64 for JavaScript compatibility
-  Ok(embedding.iter().map(|&f| f as f64).collect())
 }
 
 #[napi]
@@ -50,9 +34,11 @@ pub fn clip_text_embedding(text: String) -> napi::Result<Vec<f64>> {
   Ok(embedding.iter().map(|&f| f as f64).collect())
 }
 
-pub fn generate_clip_embedding(file_path: &str) -> Option<Vec<f32>> {
+/// Generate CLIP embedding from a DynamicImage
+/// Takes ownership of the image to avoid cloning large raw image data
+pub fn generate_clip_embedding_from_image(img: DynamicImage) -> Option<Vec<f32>> {
   match create_clip_image_model() {
-    Ok(model) => match model.embed(vec![file_path.to_string()], None) {
+    Ok(model) => match model.embed_images(vec![img]) {
       Ok(embeddings) => {
         if let Some(embedding) = embeddings.first() {
           Some(embedding.clone())

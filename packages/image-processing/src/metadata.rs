@@ -3,8 +3,8 @@ use napi_derive::napi;
 use std::fs;
 use std::path::Path;
 
-use crate::clip::generate_clip_embedding;
-use crate::phash::generate_phash;
+use crate::clip::generate_clip_embedding_from_image;
+use crate::phash::generate_phash_from_image;
 
 #[napi(object)]
 pub struct PhotoMetadata {
@@ -64,27 +64,34 @@ pub fn extract_photo_metadata(
     .map(|d| d.as_millis() as f64)
     .unwrap_or_else(|| 0.0);
 
-  // Try to extract image dimensions and format
-  let (width, height, mime_type) = match ImageReader::open(&file_path) {
+  // Read and decode the image once for metadata, phash, and CLIP embedding
+  // Memory optimization: We read the image once and carefully manage ownership
+  // to avoid cloning large raw image data
+  let (width, height, mime_type, phash, clip_embedding) = match ImageReader::open(&file_path) {
     Ok(reader) => {
       let format = reader.format();
       match reader.decode() {
         Ok(img) => {
+          // Extract dimension info before moving ownership
+          let w = img.width();
+          let h = img.height();
           let mime = format.map(|f| format!("image/{}", format!("{:?}", f).to_lowercase()));
-          (Some(img.width()), Some(img.height()), mime)
+
+          // Generate perceptual hash (borrows img, no copy)
+          let hash = Some(generate_phash_from_image(&img));
+
+          // Generate CLIP embedding (moves img ownership, avoids clone)
+          // This must be last since it consumes the image
+          let embedding = generate_clip_embedding_from_image(img)
+            .map(|vec| vec.iter().map(|&f| f as f64).collect());
+
+          (Some(w), Some(h), mime, hash, embedding)
         }
-        Err(_) => (None, None, None),
+        Err(_) => (None, None, None, None, None),
       }
     }
-    Err(_) => (None, None, None),
+    Err(_) => (None, None, None, None, None),
   };
-
-  // Generate perceptual hash
-  let phash = generate_phash(&file_path);
-
-  // Generate CLIP embedding and convert f32 to f64
-  let clip_embedding = generate_clip_embedding(&file_path)
-    .map(|vec| vec.iter().map(|&f| f as f64).collect());
 
   Ok(PhotoMetadata {
     path: relative_path,

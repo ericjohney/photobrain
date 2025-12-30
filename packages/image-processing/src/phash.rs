@@ -1,4 +1,4 @@
-use image::ImageReader;
+use image::{DynamicImage, ImageReader};
 use image_hasher::{HashAlg, HasherConfig};
 use napi_derive::napi;
 
@@ -21,20 +21,12 @@ pub fn perceptual_hash(file_path: String) -> napi::Result<String> {
   Ok(hash.to_base64())
 }
 
-pub fn generate_phash(file_path: &str) -> Option<String> {
-  match ImageReader::open(file_path) {
-    Ok(reader) => match reader.decode() {
-      Ok(img) => {
-        let hasher = HasherConfig::new()
-          .hash_alg(HashAlg::DoubleGradient)
-          .hash_size(8, 8)
-          .to_hasher();
+pub fn generate_phash_from_image(img: &DynamicImage) -> String {
+  let hasher = HasherConfig::new()
+    .hash_alg(HashAlg::DoubleGradient)
+    .hash_size(8, 8)
+    .to_hasher();
 
-        let hash = hasher.hash_image(&img);
-        Some(hash.to_base64())
-      }
-      Err(_) => None,
-    },
-    Err(_) => None,
-  }
+  let hash = hasher.hash_image(img);
+  hash.to_base64()
 }
