@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+bun.lockb
+.turbo
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.envrc.local
+
+# Data directories
+data/
+processed/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp files
+*.tmp
+temp/
+
+# SQLite databases
+*.sqlite
+*.sqlite3
+
+# Docker
+.dockerignore
+
+# Runtime
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.nx/
+
+# Optional: Rust worker (future)
+rust-worker/target/
+rust-worker/Cargo.lock
+
+# Test photos
+/tmp/test-photos/
+temp-photos/
+</parameter>
+</write_to_file>
