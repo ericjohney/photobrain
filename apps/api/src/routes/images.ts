@@ -3,10 +3,9 @@ import { join } from "node:path";
 import { db } from "../db";
 import { photos } from "../db/schema";
 import { eq } from "drizzle-orm";
+import { config } from "../config";
 
 const router = new Hono();
-
-const PHOTO_DIRECTORY = process.env.PHOTO_DIRECTORY || "../../temp-photos";
 
 // Serve actual image files by ID
 router.get("/:id", async (c) => {
@@ -27,7 +26,7 @@ router.get("/:id", async (c) => {
 		}
 
 		// Resolve relative path to absolute path
-		const absolutePath = join(PHOTO_DIRECTORY, photo.path);
+		const absolutePath = join(config.PHOTO_DIRECTORY, photo.path);
 
 		// Read the file using Bun.file
 		const file = Bun.file(absolutePath);

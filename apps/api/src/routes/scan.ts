@@ -3,10 +3,9 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { photos } from "../db/schema";
 import { scanDirectory } from "../scanner";
+import { config } from "../config";
 
 const router = new Hono();
-
-const PHOTO_DIRECTORY = process.env.PHOTO_DIRECTORY || "../../temp-photos";
 
 // Scan directory and populate database
 router.post("/", async (c) => {
@@ -15,7 +14,7 @@ router.post("/", async (c) => {
 
 		// Scan the directory
 		const result = await scanDirectory({
-			directory: PHOTO_DIRECTORY,
+			directory: config.PHOTO_DIRECTORY,
 			recursive: true,
 		});
 
@@ -62,7 +61,7 @@ router.post("/", async (c) => {
 			skipped,
 			duration: totalTime,
 			scanDuration: result.duration,
-			directory: PHOTO_DIRECTORY,
+			directory: config.PHOTO_DIRECTORY,
 		});
 	} catch (error) {
 		console.error("Scan error:", error);

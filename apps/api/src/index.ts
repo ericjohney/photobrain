@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { config } from "./config";
 import healthRouter from "./routes/health";
 import photosRouter from "./routes/photos";
 import imagesRouter from "./routes/images";
@@ -16,14 +17,11 @@ app.route("/api/photos", photosRouter);
 app.route("/api/image", imagesRouter);
 app.route("/api/scan", scanRouter);
 
-const PORT = process.env.PORT || 3000;
-const PHOTO_DIRECTORY = process.env.PHOTO_DIRECTORY || "../../temp-photos";
-
-console.log(`🚀 PhotoBrain API starting on port ${PORT}`);
-console.log(`📸 Photo directory: ${PHOTO_DIRECTORY}`);
+console.log(`🚀 PhotoBrain API starting on port ${config.PORT}`);
+console.log(`📸 Photo directory: ${config.PHOTO_DIRECTORY}`);
 
 // Use Bun.serve for better performance
 Bun.serve({
-	port: Number(PORT),
+	port: config.PORT,
 	fetch: app.fetch,
 });
