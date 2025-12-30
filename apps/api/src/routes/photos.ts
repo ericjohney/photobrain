@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { like } from "drizzle-orm";
-import { db } from "../db";
-import { photos as photosTable } from "../db/schema";
-import { searchPhotosByText } from "../db/vector-search";
+import { db } from "@/db";
+import { photos as photosTable } from "@/db/schema";
+import { searchPhotosByText } from "@/db/vector-search";
 
 const router = new Hono();
 

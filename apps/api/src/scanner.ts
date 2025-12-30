@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join, extname } from "node:path";
-import type { NewPhoto } from "./db/schema";
+import type { NewPhoto } from "@/db/schema";
 import { extractPhotoMetadata } from "@photobrain/image-processing";
 
 export interface ScanOptions {

@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { config } from "./config";
-import healthRouter from "./routes/health";
-import photosRouter from "./routes/photos";
-import imagesRouter from "./routes/images";
-import scanRouter from "./routes/scan";
+import { config } from "@/config";
+import healthRouter from "@/routes/health";
+import photosRouter from "@/routes/photos";
+import imagesRouter from "@/routes/images";
+import scanRouter from "@/routes/scan";
 
 const app = new Hono();
 

@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { join } from "node:path";
-import { db } from "../db";
-import { photos } from "../db/schema";
+import { db } from "@/db";
+import { photos } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { config } from "../config";
+import { config } from "@/config";
 
 const router = new Hono();
 
