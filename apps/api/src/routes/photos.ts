@@ -1,8 +1,9 @@
 import { Hono } from "hono";
-import { like } from "drizzle-orm";
+import { join } from "node:path";
 import { db } from "@/db";
 import { photos as photosTable } from "@/db/schema";
-import { searchPhotosByText } from "@/db/vector-search";
+import { searchPhotosByText } from "@/services/vector-search";
+import { config } from "@/config";
 
 const router = new Hono();
 
@@ -36,24 +37,10 @@ router.get("/search", async (c) => {
 	}
 });
 
-// Get all photos (with optional name search)
+// Get all photos
 router.get("/", async (c) => {
-	const query = c.req.query("q");
-
 	try {
-		let photosList;
-
-		if (query) {
-			// Search by name
-			photosList = await db
-				.select()
-				.from(photosTable)
-				.where(like(photosTable.name, `%${query}%`))
-				.all();
-		} else {
-			// Get all photos
-			photosList = await db.select().from(photosTable).all();
-		}
+		const photosList = await db.select().from(photosTable).all();
 
 		return c.json({
 			photos: photosList,
@@ -71,7 +58,7 @@ router.get("/", async (c) => {
 	}
 });
 
-// Get single photo by ID
+// Get single photo metadata by ID
 router.get("/:id", async (c) => {
 	const id = Number.parseInt(c.req.param("id"), 10);
 
@@ -98,6 +85,52 @@ router.get("/:id", async (c) => {
 			},
 			500,
 		);
+	}
+});
+
+// Serve actual image file by ID
+router.get("/:id/file", async (c) => {
+	const id = Number.parseInt(c.req.param("id"), 10);
+
+	if (Number.isNaN(id)) {
+		return c.json({ error: "Invalid photo ID" }, 400);
+	}
+
+	try {
+		// Get photo from database
+		const photo = await db.query.photos.findFirst({
+			where: (photos, { eq }) => eq(photos.id, id),
+		});
+
+		if (!photo) {
+			return c.json({ error: "Photo not found in database" }, 404);
+		}
+
+		// Resolve relative path to absolute path
+		const absolutePath = join(config.PHOTO_DIRECTORY, photo.path);
+
+		// Read the file using Bun.file
+		const file = Bun.file(absolutePath);
+
+		// Check if file exists
+		if (!(await file.exists())) {
+			return c.json({ error: "Image file not found" }, 404);
+		}
+
+		// Stream the file
+		const stream = file.stream();
+
+		return new Response(stream, {
+			status: 200,
+			headers: {
+				"Content-Type": photo.mimeType || "application/octet-stream",
+				"Cache-Control": "public, max-age=3600",
+				"Content-Length": file.size.toString(),
+			},
+		});
+	} catch (error) {
+		console.error("Error serving image:", error);
+		return c.json({ error: "Failed to serve image" }, 500);
 	}
 });
 

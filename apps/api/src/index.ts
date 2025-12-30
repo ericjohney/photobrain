@@ -3,7 +3,6 @@ import { cors } from "hono/cors";
 import { config } from "@/config";
 import healthRouter from "@/routes/health";
 import photosRouter from "@/routes/photos";
-import imagesRouter from "@/routes/images";
 import scanRouter from "@/routes/scan";
 
 const app = new Hono();
@@ -14,7 +13,6 @@ app.use("*", cors());
 // Mount routes
 app.route("/api/health", healthRouter);
 app.route("/api/photos", photosRouter);
-app.route("/api/image", imagesRouter);
 app.route("/api/scan", scanRouter);
 
 console.log(`🚀 PhotoBrain API starting on port ${config.PORT}`);

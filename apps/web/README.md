@@ -77,5 +77,6 @@ The built files will be in the `dist` directory.
 The app connects to the PhotoBrain API at the configured `VITE_API_URL`:
 
 - `GET /api/photos` - Fetch all photos
-- `GET /api/photos?q=<query>` - Search photos
-- `GET /api/image/<filename>` - Serve image files
+- `GET /api/photos/search?q=<query>` - Semantic search using CLIP embeddings
+- `GET /api/photos/:id` - Get photo metadata
+- `GET /api/photos/:id/file` - Serve image file

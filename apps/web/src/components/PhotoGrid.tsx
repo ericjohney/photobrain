@@ -14,7 +14,7 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 
 	const getImageUrl = (photo: PhotoMetadata) => {
 		const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-		return `${apiUrl}/api/image/${photo.id}`;
+		return `${apiUrl}/api/photos/${photo.id}/file`;
 	};
 
 	return (

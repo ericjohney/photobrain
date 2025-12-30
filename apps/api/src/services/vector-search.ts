@@ -1,7 +1,8 @@
 import { sql, inArray } from "drizzle-orm";
-import { db } from "./index";
-import { photos as photosTable } from "./schema";
-import type { Photo } from "./schema";
+import { db } from "@/db";
+import { photos as photosTable } from "@/db/schema";
+import type { Photo } from "@/db/schema";
+import { clipTextEmbedding } from "@photobrain/image-processing";
 
 /**
  * Find similar photos using CLIP embedding vector similarity
@@ -60,7 +61,6 @@ export async function searchPhotosByText(
 	text: string,
 	limit = 20,
 ): Promise<Photo[]> {
-	const { clipTextEmbedding } = await import("@photobrain/image-processing");
 	const textEmbedding = clipTextEmbedding(text);
 	return findSimilarPhotos(textEmbedding, limit);
 }
