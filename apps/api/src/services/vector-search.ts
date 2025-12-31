@@ -19,20 +19,20 @@ export async function findSimilarPhotos(
 			? Buffer.from(embedding.buffer)
 			: Buffer.from(new Float32Array(embedding).buffer);
 
-	const results = await db.all<{ id: number; distance: number }>(
+	// Query from photo_embeddings table (CLIP embeddings are now in separate table)
+	const results = await db.all<{ photo_id: number; distance: number }>(
 		sql`
       SELECT
-        id,
+        photo_id,
         vec_distance_L2(clip_embedding, ${embeddingBlob}) as distance
-      FROM photos
-      WHERE clip_embedding IS NOT NULL
+      FROM photo_embeddings
       ORDER BY distance ASC
       LIMIT ${limit}
     `,
 	);
 
 	// Fetch full photo details
-	const photoIds = results.map((r) => r.id);
+	const photoIds = results.map((r) => r.photo_id);
 	const photosList =
 		photoIds.length > 0
 			? await db
@@ -45,7 +45,7 @@ export async function findSimilarPhotos(
 	// Sort photos by similarity distance
 	const photosMap = new Map(photosList.map((p) => [p.id, p]));
 	const sortedPhotos = results
-		.map((r) => photosMap.get(r.id))
+		.map((r) => photosMap.get(r.photo_id))
 		.filter((p): p is Photo => p !== undefined);
 
 	return sortedPhotos;

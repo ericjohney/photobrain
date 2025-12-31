@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { join } from "node:path";
 import { db } from "@/db";
-import { photos as photosTable } from "@/db/schema";
+import { photos as photosTable, photoThumbnails } from "@/db/schema";
 import { searchPhotosByText } from "@/services/vector-search";
 import { config } from "@/config";
+import { eq } from "drizzle-orm";
 
 const router = new Hono();
 
@@ -104,28 +105,24 @@ router.get("/:id/thumbnail/:size", async (c) => {
 	}
 
 	try {
-		// Get photo from database
-		const photo = await db.query.photos.findFirst({
-			where: (photos, { eq }) => eq(photos.id, id),
+		// Get thumbnail paths from photo_thumbnails table
+		const thumbnail = await db.query.photoThumbnails.findFirst({
+			where: (thumbnails, { eq }) => eq(thumbnails.photoId, id),
 		});
 
-		if (!photo) {
-			return c.json({ error: "Photo not found in database" }, 404);
+		if (!thumbnail) {
+			return c.json({ error: "Thumbnails not generated yet" }, 404);
 		}
 
-		// Get the appropriate thumbnail path
+		// Get the appropriate thumbnail path based on size
 		const thumbnailPath =
 			size === "tiny"
-				? photo.thumbnailTiny
+				? thumbnail.tiny
 				: size === "small"
-					? photo.thumbnailSmall
+					? thumbnail.small
 					: size === "medium"
-						? photo.thumbnailMedium
-						: photo.thumbnailLarge;
-
-		if (!thumbnailPath) {
-			return c.json({ error: "Thumbnail not generated yet" }, 404);
-		}
+						? thumbnail.medium
+						: thumbnail.large;
 
 		// Resolve thumbnail path
 		const absolutePath = join(config.THUMBNAIL_DIRECTORY, thumbnailPath);
