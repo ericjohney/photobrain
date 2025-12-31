@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 import type { NewPhoto } from "@/db/schema";
-import { extractPhotoMetadata } from "@photobrain/image-processing";
+import { extractPhotoMetadata, generateThumbnails } from "@photobrain/image-processing";
 
 export interface ScanOptions {
 	directory: string;
@@ -80,9 +80,13 @@ export async function scanDirectory(options: ScanOptions) {
 
 /**
  * Extract metadata from a photo file using Rust
+ * Note: Thumbnails are not generated during initial scan (requires photo ID from database)
+ * Use generateThumbnailsForPhoto() after inserting to database
  */
 async function extractMetadata(filePath: string, baseDirectory: string): Promise<NewPhoto> {
-	const rustMetadata = extractPhotoMetadata(filePath, baseDirectory);
+	// Pass null for thumbnailDir and photoId during initial scan
+	// Thumbnails will be generated in a separate pass after database insertion
+	const rustMetadata = extractPhotoMetadata(filePath, baseDirectory, null, null);
 
 	// Convert clipEmbedding f64 array to Float32Array
 	const clipEmbedding = rustMetadata.clipEmbedding
@@ -100,5 +104,37 @@ async function extractMetadata(filePath: string, baseDirectory: string): Promise
 		mimeType: rustMetadata.mimeType,
 		phash: rustMetadata.phash,
 		clipEmbedding,
+		thumbnailTiny: rustMetadata.thumbnailTiny,
+		thumbnailSmall: rustMetadata.thumbnailSmall,
+		thumbnailMedium: rustMetadata.thumbnailMedium,
+		thumbnailLarge: rustMetadata.thumbnailLarge,
 	};
+}
+
+/**
+ * Generate thumbnails for a photo that's already in the database
+ * This loads the image once and generates all 4 thumbnail sizes
+ */
+export function generateThumbnailsForPhoto(
+	filePath: string,
+	thumbnailDir: string,
+	photoId: number,
+) {
+	try {
+		const thumbnailPaths = generateThumbnails(filePath, thumbnailDir, photoId);
+		return {
+			thumbnailTiny: thumbnailPaths.tiny,
+			thumbnailSmall: thumbnailPaths.small,
+			thumbnailMedium: thumbnailPaths.medium,
+			thumbnailLarge: thumbnailPaths.large,
+		};
+	} catch (error) {
+		console.error(`Error generating thumbnails for photo ${photoId}:`, error);
+		return {
+			thumbnailTiny: null,
+			thumbnailSmall: null,
+			thumbnailMedium: null,
+			thumbnailLarge: null,
+		};
+	}
 }

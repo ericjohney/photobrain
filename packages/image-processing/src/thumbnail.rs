@@ -47,8 +47,37 @@ pub struct ThumbnailPaths {
     pub large: String,
 }
 
-/// Generate all thumbnail sizes for a photo
-/// Memory optimization: We resize from largest to smallest, reusing the same image
+/// Generate all thumbnail sizes for a photo from an already-loaded image
+/// Memory optimization: Image is already loaded once for metadata/phash/CLIP
+pub fn generate_thumbnails_from_image(
+    img: &DynamicImage,
+    thumbnail_dir: &str,
+    photo_id: i64,
+) -> napi::Result<ThumbnailPaths> {
+    let mut paths = ThumbnailPaths {
+        tiny: String::new(),
+        small: String::new(),
+        medium: String::new(),
+        large: String::new(),
+    };
+
+    // Generate all thumbnail sizes
+    for size in ALL_SIZES.iter() {
+        let path = generate_single_thumbnail(img, thumbnail_dir, photo_id, *size)?;
+
+        match size {
+            ThumbnailSize::Tiny => paths.tiny = path,
+            ThumbnailSize::Small => paths.small = path,
+            ThumbnailSize::Medium => paths.medium = path,
+            ThumbnailSize::Large => paths.large = path,
+        }
+    }
+
+    Ok(paths)
+}
+
+/// Generate all thumbnail sizes for a photo (NAPI-exposed version that loads from file)
+/// Note: Prefer using generate_thumbnails_from_image when image is already loaded
 #[napi]
 pub fn generate_thumbnails(
     source_path: String,
@@ -61,26 +90,7 @@ pub fn generate_thumbnails(
         .decode()
         .map_err(|e| napi::Error::from_reason(format!("Failed to decode image: {}", e)))?;
 
-    let mut paths = ThumbnailPaths {
-        tiny: String::new(),
-        small: String::new(),
-        medium: String::new(),
-        large: String::new(),
-    };
-
-    // Generate all thumbnail sizes
-    for size in ALL_SIZES.iter() {
-        let path = generate_single_thumbnail(&img, &thumbnail_dir, photo_id, *size)?;
-
-        match size {
-            ThumbnailSize::Tiny => paths.tiny = path,
-            ThumbnailSize::Small => paths.small = path,
-            ThumbnailSize::Medium => paths.medium = path,
-            ThumbnailSize::Large => paths.large = path,
-        }
-    }
-
-    Ok(paths)
+    generate_thumbnails_from_image(&img, &thumbnail_dir, photo_id)
 }
 
 /// Generate a single thumbnail size
