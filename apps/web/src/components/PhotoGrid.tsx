@@ -11,10 +11,15 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 	const [selectedPhoto, setSelectedPhoto] = useState<PhotoMetadata | null>(
 		null,
 	);
+	const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
 
-	const getImageUrl = (photo: PhotoMetadata) => {
+	const getImageUrl = (photo: PhotoMetadata, size: "tiny" | "small" | "medium" | "large" = "tiny") => {
 		const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-		return `${apiUrl}/api/photos/${photo.id}/file`;
+		return `${apiUrl}/api/photos/${photo.id}/thumbnail/${size}`;
+	};
+
+	const handleImageLoad = (photoId: number) => {
+		setLoadedImages(prev => new Set(prev).add(photoId));
 	};
 
 	return (
@@ -28,11 +33,17 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 					>
 						<div className="aspect-square relative bg-muted">
 							<img
-								src={getImageUrl(photo)}
+								src={getImageUrl(photo, "tiny")}
 								alt={photo.name}
-								className="w-full h-full object-cover"
+								className={`w-full h-full object-cover transition-opacity duration-300 ${
+									loadedImages.has(photo.id) ? "opacity-100" : "opacity-0"
+								}`}
 								loading="lazy"
+								onLoad={() => handleImageLoad(photo.id)}
 							/>
+							{!loadedImages.has(photo.id) && (
+								<div className="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-800 dark:to-gray-900 animate-pulse" />
+							)}
 							<div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
 						</div>
 						<div className="p-2 bg-card">
@@ -67,7 +78,7 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 						onClick={(e) => e.stopPropagation()}
 					>
 						<img
-							src={getImageUrl(selectedPhoto)}
+							src={getImageUrl(selectedPhoto, "large")}
 							alt={selectedPhoto.name}
 							className="max-w-full max-h-[90vh] object-contain rounded-lg"
 						/>

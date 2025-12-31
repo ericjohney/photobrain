@@ -88,6 +88,73 @@ router.get("/:id", async (c) => {
 	}
 });
 
+// Serve thumbnail by ID and size
+router.get("/:id/thumbnail/:size", async (c) => {
+	const id = Number.parseInt(c.req.param("id"), 10);
+	const size = c.req.param("size");
+
+	if (Number.isNaN(id)) {
+		return c.json({ error: "Invalid photo ID" }, 400);
+	}
+
+	// Validate size parameter
+	const validSizes = ["tiny", "small", "medium", "large"];
+	if (!validSizes.includes(size)) {
+		return c.json({ error: `Invalid size. Must be one of: ${validSizes.join(", ")}` }, 400);
+	}
+
+	try {
+		// Get photo from database
+		const photo = await db.query.photos.findFirst({
+			where: (photos, { eq }) => eq(photos.id, id),
+		});
+
+		if (!photo) {
+			return c.json({ error: "Photo not found in database" }, 404);
+		}
+
+		// Get the appropriate thumbnail path
+		const thumbnailPath =
+			size === "tiny"
+				? photo.thumbnailTiny
+				: size === "small"
+					? photo.thumbnailSmall
+					: size === "medium"
+						? photo.thumbnailMedium
+						: photo.thumbnailLarge;
+
+		if (!thumbnailPath) {
+			return c.json({ error: "Thumbnail not generated yet" }, 404);
+		}
+
+		// Resolve thumbnail path
+		const absolutePath = join(config.THUMBNAIL_DIRECTORY, thumbnailPath);
+
+		// Read the file using Bun.file
+		const file = Bun.file(absolutePath);
+
+		// Check if file exists
+		if (!(await file.exists())) {
+			return c.json({ error: "Thumbnail file not found" }, 404);
+		}
+
+		// Stream the file
+		const stream = file.stream();
+
+		return new Response(stream, {
+			status: 200,
+			headers: {
+				"Content-Type": "image/jpeg",
+				"Cache-Control": "public, max-age=31536000", // Cache for 1 year
+				"Content-Length": file.size.toString(),
+			},
+		});
+	} catch (error) {
+		console.error("Error serving thumbnail:", error);
+		return c.json({ error: "Failed to serve thumbnail" }, 500);
+	}
+});
+
 // Serve actual image file by ID
 router.get("/:id/file", async (c) => {
 	const id = Number.parseInt(c.req.param("id"), 10);

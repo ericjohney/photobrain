@@ -28,6 +28,10 @@ export const photos = sqliteTable("photos", {
 	mimeType: text("mime_type"),
 	phash: text("phash"),
 	clipEmbedding: float32Vector("clip_embedding"),
+	thumbnailTiny: text("thumbnail_tiny"),
+	thumbnailSmall: text("thumbnail_small"),
+	thumbnailMedium: text("thumbnail_medium"),
+	thumbnailLarge: text("thumbnail_large"),
 });
 
 export type Photo = typeof photos.$inferSelect;
