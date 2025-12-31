@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 import type { NewPhoto } from "@/db/schema";
-import { extractPhotoMetadata, generateThumbnails } from "@photobrain/image-processing";
+import { extractPhotoMetadata, compute_photo_analytics } from "@photobrain/image-processing";
 
 export interface ScanOptions {
 	directory: string;
@@ -79,19 +79,11 @@ export async function scanDirectory(options: ScanOptions) {
 }
 
 /**
- * Extract metadata from a photo file using Rust
- * Note: Thumbnails are not generated during initial scan (requires photo ID from database)
- * Use generateThumbnailsForPhoto() after inserting to database
+ * Extract basic file metadata using Rust
+ * Analytics (pHash, CLIP, thumbnails) computed separately with processPhotoAnalytics()
  */
 async function extractMetadata(filePath: string, baseDirectory: string): Promise<NewPhoto> {
-	// Pass null for thumbnailDir and photoId during initial scan
-	// Thumbnails will be generated in a separate pass after database insertion
-	const rustMetadata = extractPhotoMetadata(filePath, baseDirectory, null, null);
-
-	// Convert clipEmbedding f64 array to Float32Array
-	const clipEmbedding = rustMetadata.clipEmbedding
-		? new Float32Array(rustMetadata.clipEmbedding)
-		: undefined;
+	const rustMetadata = extractPhotoMetadata(filePath, baseDirectory);
 
 	return {
 		path: rustMetadata.path,
@@ -102,39 +94,29 @@ async function extractMetadata(filePath: string, baseDirectory: string): Promise
 		width: rustMetadata.width,
 		height: rustMetadata.height,
 		mimeType: rustMetadata.mimeType,
-		phash: rustMetadata.phash,
-		clipEmbedding,
-		thumbnailTiny: rustMetadata.thumbnailTiny,
-		thumbnailSmall: rustMetadata.thumbnailSmall,
-		thumbnailMedium: rustMetadata.thumbnailMedium,
-		thumbnailLarge: rustMetadata.thumbnailLarge,
 	};
 }
 
 /**
- * Generate thumbnails for a photo that's already in the database
- * This loads the image once and generates all 4 thumbnail sizes
+ * Process photo analytics after DB insertion
+ * Loads image once and computes pHash, CLIP embedding, and all thumbnails
+ * Returns data for separate tables
  */
-export function generateThumbnailsForPhoto(
+export function processPhotoAnalytics(
 	filePath: string,
 	thumbnailDir: string,
 	photoId: number,
 ) {
-	try {
-		const thumbnailPaths = generateThumbnails(filePath, thumbnailDir, photoId);
-		return {
-			thumbnailTiny: thumbnailPaths.tiny,
-			thumbnailSmall: thumbnailPaths.small,
-			thumbnailMedium: thumbnailPaths.medium,
-			thumbnailLarge: thumbnailPaths.large,
-		};
-	} catch (error) {
-		console.error(`Error generating thumbnails for photo ${photoId}:`, error);
-		return {
-			thumbnailTiny: null,
-			thumbnailSmall: null,
-			thumbnailMedium: null,
-			thumbnailLarge: null,
-		};
-	}
+	const analytics = compute_photo_analytics(filePath, thumbnailDir, photoId);
+
+	return {
+		phash: analytics.phash,
+		clipEmbedding: new Float32Array(analytics.clipEmbedding),
+		thumbnails: {
+			tiny: analytics.thumbnailTiny,
+			small: analytics.thumbnailSmall,
+			medium: analytics.thumbnailMedium,
+			large: analytics.thumbnailLarge,
+		},
+	};
 }

@@ -16,6 +16,7 @@ const float32Vector = customType<{
 	},
 });
 
+// Main photos table - basic file metadata only
 export const photos = sqliteTable("photos", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
 	path: text("path").notNull().unique(),
@@ -26,13 +27,43 @@ export const photos = sqliteTable("photos", {
 	width: integer("width"),
 	height: integer("height"),
 	mimeType: text("mime_type"),
-	phash: text("phash"),
-	clipEmbedding: float32Vector("clip_embedding"),
-	thumbnailTiny: text("thumbnail_tiny"),
-	thumbnailSmall: text("thumbnail_small"),
-	thumbnailMedium: text("thumbnail_medium"),
-	thumbnailLarge: text("thumbnail_large"),
+});
+
+// Perceptual hashes for duplicate detection
+export const photoHashes = sqliteTable("photo_hashes", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	photoId: integer("photo_id").notNull().references(() => photos.id, { onDelete: "cascade" }),
+	phash: text("phash").notNull(),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// CLIP embeddings for semantic search
+export const photoEmbeddings = sqliteTable("photo_embeddings", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	photoId: integer("photo_id").notNull().references(() => photos.id, { onDelete: "cascade" }),
+	clipEmbedding: float32Vector("clip_embedding").notNull(),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// Thumbnails for display
+export const photoThumbnails = sqliteTable("photo_thumbnails", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	photoId: integer("photo_id").notNull().references(() => photos.id, { onDelete: "cascade" }),
+	tiny: text("tiny").notNull(),
+	small: text("small").notNull(),
+	medium: text("medium").notNull(),
+	large: text("large").notNull(),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
 export type Photo = typeof photos.$inferSelect;
 export type NewPhoto = typeof photos.$inferInsert;
+
+export type PhotoHash = typeof photoHashes.$inferSelect;
+export type NewPhotoHash = typeof photoHashes.$inferInsert;
+
+export type PhotoEmbedding = typeof photoEmbeddings.$inferSelect;
+export type NewPhotoEmbedding = typeof photoEmbeddings.$inferInsert;
+
+export type PhotoThumbnail = typeof photoThumbnails.$inferSelect;
+export type NewPhotoThumbnail = typeof photoThumbnails.$inferInsert;

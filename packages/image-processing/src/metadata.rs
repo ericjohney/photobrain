@@ -3,10 +3,6 @@ use napi_derive::napi;
 use std::fs;
 use std::path::Path;
 
-use crate::clip::generate_clip_embedding_from_image;
-use crate::phash::generate_phash_from_image;
-use crate::thumbnail::generate_thumbnails_from_image;
-
 #[napi(object)]
 pub struct PhotoMetadata {
   pub path: String,
@@ -17,20 +13,14 @@ pub struct PhotoMetadata {
   pub width: Option<u32>,
   pub height: Option<u32>,
   pub mime_type: Option<String>,
-  pub phash: Option<String>,
-  pub clip_embedding: Option<Vec<f64>>,
-  pub thumbnail_tiny: Option<String>,
-  pub thumbnail_small: Option<String>,
-  pub thumbnail_medium: Option<String>,
-  pub thumbnail_large: Option<String>,
 }
 
+/// Extract basic file metadata only (dimensions, MIME type, file stats)
+/// For analytics (pHash, CLIP, thumbnails) use compute_photo_analytics() after getting photo ID
 #[napi]
 pub fn extract_photo_metadata(
   file_path: String,
   base_directory: String,
-  thumbnail_dir: Option<String>,
-  photo_id: Option<i64>,
 ) -> napi::Result<PhotoMetadata> {
   let path = Path::new(&file_path);
   let base_path = Path::new(&base_directory);
@@ -56,7 +46,7 @@ pub fn extract_photo_metadata(
   // Get file size
   let size = metadata.len() as i64;
 
-  // Get timestamps as JavaScript Date objects
+  // Get timestamps
   let created_at = metadata
     .created()
     .ok()
@@ -71,40 +61,21 @@ pub fn extract_photo_metadata(
     .map(|d| d.as_millis() as f64)
     .unwrap_or_else(|| 0.0);
 
-  // Read and decode the image once for metadata, phash, CLIP embedding, and thumbnails
-  // Memory optimization: We read the image once and carefully manage ownership
-  // to avoid cloning large raw image data
-  let (width, height, mime_type, phash, clip_embedding, thumbnail_paths) = match ImageReader::open(&file_path) {
+  // Read image to get dimensions and MIME type
+  let (width, height, mime_type) = match ImageReader::open(&file_path) {
     Ok(reader) => {
       let format = reader.format();
       match reader.decode() {
         Ok(img) => {
-          // Extract dimension info before moving ownership
           let w = img.width();
           let h = img.height();
           let mime = format.map(|f| format!("image/{}", format!("{:?}", f).to_lowercase()));
-
-          // Generate perceptual hash (borrows img, no copy)
-          let hash = Some(generate_phash_from_image(&img));
-
-          // Generate thumbnails if thumbnail_dir and photo_id are provided (borrows img, no copy)
-          let thumbnails = if let (Some(ref thumb_dir), Some(id)) = (&thumbnail_dir, photo_id) {
-            generate_thumbnails_from_image(&img, thumb_dir, id).ok()
-          } else {
-            None
-          };
-
-          // Generate CLIP embedding (moves img ownership, avoids clone)
-          // This must be last since it consumes the image
-          let embedding = generate_clip_embedding_from_image(img)
-            .map(|vec| vec.iter().map(|&f| f as f64).collect());
-
-          (Some(w), Some(h), mime, hash, embedding, thumbnails)
+          (Some(w), Some(h), mime)
         }
-        Err(_) => (None, None, None, None, None, None),
+        Err(_) => (None, None, None),
       }
     }
-    Err(_) => (None, None, None, None, None, None),
+    Err(_) => (None, None, None),
   };
 
   Ok(PhotoMetadata {
@@ -116,11 +87,5 @@ pub fn extract_photo_metadata(
     width,
     height,
     mime_type,
-    phash,
-    clip_embedding,
-    thumbnail_tiny: thumbnail_paths.as_ref().map(|t| t.tiny.clone()),
-    thumbnail_small: thumbnail_paths.as_ref().map(|t| t.small.clone()),
-    thumbnail_medium: thumbnail_paths.as_ref().map(|t| t.medium.clone()),
-    thumbnail_large: thumbnail_paths.as_ref().map(|t| t.large.clone()),
   })
 }
