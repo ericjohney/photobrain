@@ -18,7 +18,7 @@ pub struct PhotoAnalytics {
 /// Compute all photo analytics from a single image load
 /// This loads the image once and computes: pHash, CLIP embedding, and all thumbnails
 /// Memory optimization: Single image load, zero-copy where possible
-#[napi]
+#[napi(js_name = "computePhotoAnalytics")]
 pub fn compute_photo_analytics(
     file_path: String,
     thumbnail_dir: String,

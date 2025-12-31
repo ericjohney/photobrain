@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 import type { NewPhoto } from "@/db/schema";
-import { extractPhotoMetadata, compute_photo_analytics } from "@photobrain/image-processing";
+import { extractPhotoMetadata, computePhotoAnalytics } from "@photobrain/image-processing";
 
 export interface ScanOptions {
 	directory: string;
@@ -107,7 +107,7 @@ export function processPhotoAnalytics(
 	thumbnailDir: string,
 	photoId: number,
 ) {
-	const analytics = compute_photo_analytics(filePath, thumbnailDir, photoId);
+	const analytics = computePhotoAnalytics(filePath, thumbnailDir, photoId);
 
 	return {
 		phash: analytics.phash,
