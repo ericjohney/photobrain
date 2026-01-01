@@ -8,7 +8,7 @@ import {
 	Text,
 } from "react-native";
 import { Image } from "expo-image";
-import type { PhotoMetadata } from "@photobrain/shared-types";
+import type { PhotoMetadata } from "@photobrain/api-client";
 
 interface PhotoGridProps {
 	photos: PhotoMetadata[];

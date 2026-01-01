@@ -24,8 +24,7 @@ photobrain/
 │   ├── web/             # React web app (Vite)
 │   └── mobile/          # React Native Expo app
 └── packages/
-    ├── api-client/      # Shared API client
-    ├── shared-types/    # Shared TypeScript types
+    ├── api-client/      # Shared API client and types
     ├── utils/           # Shared utility functions
     ├── config/          # Shared TypeScript config
     └── image-processing/# Rust NAPI module
@@ -156,24 +155,21 @@ bun run web              # Run in web browser
 
 PhotoBrain uses workspace packages to share code between platforms:
 
-### `@photobrain/shared-types`
-
-TypeScript interfaces and types used across all apps:
-
-```typescript
-import type { PhotoMetadata, PhotosResponse } from '@photobrain/shared-types';
-```
-
 ### `@photobrain/api-client`
 
-API client for communicating with the backend:
+API client and TypeScript types for communicating with the backend:
 
 ```typescript
 import { PhotoBrainClient } from '@photobrain/api-client';
 
 const client = new PhotoBrainClient('http://localhost:3000');
+
+// Use the API client
 const photos = await client.getPhotos();
 const results = await client.searchPhotos({ query: 'sunset' });
+
+// Import types
+import type { PhotoMetadata, PhotosResponse } from '@photobrain/api-client';
 ```
 
 ### `@photobrain/utils`
@@ -256,8 +252,7 @@ photobrain/
 │       └── App.tsx              # App entry point
 │
 └── packages/
-    ├── api-client/              # Shared API client
-    ├── shared-types/            # Shared TypeScript types
+    ├── api-client/              # Shared API client and types
     ├── utils/                   # Shared utilities
     ├── config/                  # Shared TS config
     └── image-processing/        # Rust NAPI module

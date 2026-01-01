@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import type { PhotoMetadata } from "@photobrain/shared-types";
+import type { PhotoMetadata } from "@photobrain/api-client";
 import { formatFileSize, formatDate } from "@photobrain/utils";
 
 interface PhotoModalProps {

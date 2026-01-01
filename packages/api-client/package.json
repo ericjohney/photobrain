@@ -7,9 +7,6 @@
 	"exports": {
 		".": "./src/index.ts"
 	},
-	"dependencies": {
-		"@photobrain/shared-types": "workspace:*"
-	},
 	"devDependencies": {
 		"typescript": "^5.7.2"
 	}

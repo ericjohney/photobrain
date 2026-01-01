@@ -1,7 +1,7 @@
 import { ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import type { PhotoMetadata } from "@photobrain/shared-types";
+import type { PhotoMetadata } from "@photobrain/api-client";
 import { formatFileSize } from "@photobrain/utils";
 
 interface PhotoGridProps {

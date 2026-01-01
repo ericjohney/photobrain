@@ -68,8 +68,7 @@ bun run web
 
 This mobile app shares code with the web app through workspace packages:
 
-- `@photobrain/shared-types` - TypeScript type definitions
-- `@photobrain/api-client` - API client for backend communication
+- `@photobrain/api-client` - API client and TypeScript type definitions
 - `@photobrain/utils` - Shared utility functions (formatFileSize, formatDate, etc.)
 
 ## Project Structure
