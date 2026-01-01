@@ -4,9 +4,10 @@ import { SearchBar } from "@/components/SearchBar";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/Layout";
 import { RefreshCw, Loader2 } from "lucide-react";
-import type { PhotosResponse } from "@/types";
+import { PhotoBrainClient, type PhotosResponse } from "@photobrain/api-client";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const client = new PhotoBrainClient(API_URL);
 
 export function Dashboard() {
 	const [photos, setPhotos] = useState<PhotosResponse | null>(null);
@@ -21,17 +22,10 @@ export function Dashboard() {
 
 		try {
 			// Use semantic search if there's a query, otherwise get all photos
-			const url = query
-				? `${API_URL}/api/photos/search?q=${encodeURIComponent(query)}`
-				: `${API_URL}/api/photos`;
+			const data = query
+				? await client.searchPhotos({ query })
+				: await client.getPhotos();
 
-			const response = await fetch(url);
-
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-
-			const data: PhotosResponse = await response.json();
 			setPhotos(data);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to load photos");
@@ -46,15 +40,7 @@ export function Dashboard() {
 		setError(null);
 
 		try {
-			const response = await fetch(`${API_URL}/api/scan`, {
-				method: "POST",
-			});
-
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-
-			const result = await response.json();
+			const result = await client.scan();
 			console.log("Scan result:", result);
 
 			// After scanning, fetch the updated photos
