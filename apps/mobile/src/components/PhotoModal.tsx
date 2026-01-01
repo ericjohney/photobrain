@@ -10,8 +10,12 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import type { PhotoMetadata } from "@photobrain/api-client";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@photobrain/api/src/trpc/router";
 import { formatFileSize, formatDate } from "@photobrain/utils";
+
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 interface PhotoModalProps {
 	visible: boolean;

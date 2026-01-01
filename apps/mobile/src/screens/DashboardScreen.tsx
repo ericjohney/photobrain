@@ -10,14 +10,17 @@ import {
 	ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { PhotoBrainClient, PhotoMetadata } from "@photobrain/api-client";
+import { trpc } from "../lib/trpc";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@photobrain/api/src/trpc/router";
 import { debounce } from "@photobrain/utils";
 import { API_URL } from "../config";
 import PhotoGrid from "../components/PhotoGrid";
 import SearchBar from "../components/SearchBar";
 import PhotoModal from "../components/PhotoModal";
 
-const client = new PhotoBrainClient(API_URL);
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 export default function DashboardScreen() {
 	const [photos, setPhotos] = useState<PhotoMetadata[]>([]);

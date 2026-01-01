@@ -1,8 +1,13 @@
 import { ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import type { PhotoMetadata } from "@photobrain/api-client";
+import type { AppRouter } from "@photobrain/api/src/trpc/router";
+import type { inferRouterOutputs } from "@trpc/server";
 import { formatFileSize } from "@photobrain/utils";
+
+// Infer types from tRPC router
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 interface PhotoGridProps {
 	photos: PhotoMetadata[];
