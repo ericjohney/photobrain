@@ -11,7 +11,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@photobrain/api/src/trpc/router";
+import type { AppRouter } from "@photobrain/api";
 import { formatFileSize, formatDate } from "@photobrain/utils";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;

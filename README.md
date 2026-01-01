@@ -20,11 +20,10 @@ PhotoBrain is a **Turbo monorepo** with shared code between web and mobile platf
 ```
 photobrain/
 ├── apps/
-│   ├── api/             # Hono backend API
+│   ├── api/             # tRPC backend API
 │   ├── web/             # React web app (Vite)
 │   └── mobile/          # React Native Expo app
 └── packages/
-    ├── api-client/      # Shared API client and types
     ├── utils/           # Shared utility functions
     ├── config/          # Shared TypeScript config
     └── image-processing/# Rust NAPI module
@@ -155,21 +154,28 @@ bun run web              # Run in web browser
 
 PhotoBrain uses workspace packages to share code between platforms:
 
-### `@photobrain/api-client`
+### `@photobrain/api` (tRPC)
 
-API client and TypeScript types for communicating with the backend:
+End-to-end type-safe API using tRPC. Types are automatically inferred from the backend router:
 
 ```typescript
-import { PhotoBrainClient } from '@photobrain/api-client';
+// Web app - using React Query hooks
+import { trpc } from '@/lib/trpc';
 
-const client = new PhotoBrainClient('http://localhost:3000');
+function MyComponent() {
+  const photosQuery = trpc.photos.useQuery();
+  const scanMutation = trpc.scan.useMutation();
 
-// Use the API client
-const photos = await client.getPhotos();
-const results = await client.searchPhotos({ query: 'sunset' });
+  // Types are automatically inferred!
+  const photos = photosQuery.data?.photos; // TypeScript knows the shape
+}
 
 // Import types
-import type { PhotoMetadata, PhotosResponse } from '@photobrain/api-client';
+import type { AppRouter } from '@photobrain/api';
+import type { inferRouterOutputs } from '@trpc/server';
+
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 ```
 
 ### `@photobrain/utils`
@@ -252,7 +258,6 @@ photobrain/
 │       └── App.tsx              # App entry point
 │
 └── packages/
-    ├── api-client/              # Shared API client and types
     ├── utils/                   # Shared utilities
     ├── config/                  # Shared TS config
     └── image-processing/        # Rust NAPI module

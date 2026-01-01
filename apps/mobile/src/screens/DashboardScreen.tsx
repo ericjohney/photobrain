@@ -12,7 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { trpc } from "../lib/trpc";
 import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@photobrain/api/src/trpc/router";
+import type { AppRouter } from "@photobrain/api";
 import { debounce } from "@photobrain/utils";
 import { API_URL } from "../config";
 import PhotoGrid from "../components/PhotoGrid";

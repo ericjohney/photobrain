@@ -1,7 +1,7 @@
 import { ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import type { AppRouter } from "@photobrain/api/src/trpc/router";
+import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 import { formatFileSize } from "@photobrain/utils";
 

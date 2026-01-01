@@ -8,7 +8,11 @@ import {
 	Text,
 } from "react-native";
 import { Image } from "expo-image";
-import type { PhotoMetadata } from "@photobrain/api-client";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@photobrain/api";
+
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 interface PhotoGridProps {
 	photos: PhotoMetadata[];
