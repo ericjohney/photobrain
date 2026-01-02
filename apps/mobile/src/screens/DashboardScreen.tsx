@@ -12,11 +12,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@photobrain/api";
-import { API_URL } from "../config";
-import PhotoGrid from "../components/PhotoGrid";
-import PhotoModal from "../components/PhotoModal";
-import SearchBar from "../components/SearchBar";
-import { trpc } from "../lib/trpc";
+import { API_URL } from "@/config";
+import PhotoGrid from "@/components/PhotoGrid";
+import PhotoModal from "@/components/PhotoModal";
+import SearchBar from "@/components/SearchBar";
+import { trpc } from "@/lib/trpc";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];

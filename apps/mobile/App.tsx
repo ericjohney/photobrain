@@ -3,12 +3,12 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { trpc } from "./src/lib/trpc";
-import { trpcClient } from "./src/lib/trpc-client";
-import DashboardScreen from "./src/screens/DashboardScreen";
-import CollectionsScreen from "./src/screens/CollectionsScreen";
-import PreferencesScreen from "./src/screens/PreferencesScreen";
-import AboutScreen from "./src/screens/AboutScreen";
+import { trpc } from "@/lib/trpc";
+import { trpcClient } from "@/lib/trpc-client";
+import DashboardScreen from "@/screens/DashboardScreen";
+import CollectionsScreen from "@/screens/CollectionsScreen";
+import PreferencesScreen from "@/screens/PreferencesScreen";
+import AboutScreen from "@/screens/AboutScreen";
 
 const Tab = createBottomTabNavigator();
 const queryClient = new QueryClient();
