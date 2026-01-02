@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import * as schema from "./schema";
-import { createDatabase } from "./setup";
+import * as schema from "@/db/schema";
+import { createDatabase } from "@/db/setup";
 
 const sqlite = createDatabase();
 
