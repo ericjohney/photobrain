@@ -5,7 +5,8 @@ RUN apt-get update && apt-get install -y curl build-essential pkg-config libssl-
     rm -rf /var/lib/apt/lists/*
 ENV PATH="/root/.cargo/bin:${PATH}"
 COPY . ./
-RUN bun install --frozen-lockfile
+# RUN bun install --frozen-lockfile
+RUN bun install
 RUN bun run build --filter=@photobrain/image-processing
 
 # API
