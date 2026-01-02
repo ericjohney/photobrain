@@ -17,6 +17,8 @@ CMD ["bun", "run", "dev"]
 
 # Web
 FROM base AS web
+WORKDIR /app
+RUN bun run build --filter=@photobrain/web
 WORKDIR /app/apps/web
 EXPOSE 3001
-CMD ["bun", "run", "dev"]
+CMD ["bun", "run", "serve.ts"]
