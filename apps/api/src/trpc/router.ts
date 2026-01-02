@@ -1,27 +1,34 @@
 import { z } from "zod";
 import { router, publicProcedure } from "./trpc";
-import { photos as photosTable } from "@/db/schema";
+import { photos as photosTable, photoExif as photoExifTable } from "@/db/schema";
 import { searchPhotosByText } from "@/services/vector-search";
 import { scanDirectory } from "@/scanner";
 import { config } from "@/config";
 import { eq } from "drizzle-orm";
 
 export const appRouter = router({
-	// Get all photos
+	// Get all photos with EXIF data
 	photos: publicProcedure.query(async ({ ctx }) => {
-		const photosList = await ctx.db.select().from(photosTable).all();
+		const photosList = await ctx.db.query.photos.findMany({
+			with: {
+				exif: true,
+			},
+		});
 		return {
 			photos: photosList,
 			total: photosList.length,
 		};
 	}),
 
-	// Get single photo by ID
+	// Get single photo by ID with EXIF data
 	photo: publicProcedure
 		.input(z.object({ id: z.number() }))
 		.query(async ({ ctx, input }) => {
 			const photo = await ctx.db.query.photos.findFirst({
 				where: (photos, { eq }) => eq(photos.id, input.id),
+				with: {
+					exif: true,
+				},
 			});
 
 			if (!photo) {
@@ -62,33 +69,47 @@ export const appRouter = router({
 		let inserted = 0;
 		let skipped = 0;
 
-		for (const photo of result.photos) {
+		for (const photoWithExif of result.photos) {
 			try {
 				// Check if photo already exists
 				const existing = await ctx.db.query.photos.findFirst({
-					where: eq(photosTable.path, photo.path),
+					where: eq(photosTable.path, photoWithExif.photo.path),
 				});
 
 				if (existing) {
 					skipped++;
 				} else {
 					// Insert new photo
-					await ctx.db.insert(photosTable).values({
-						path: photo.path,
-						name: photo.name,
-						size: photo.size,
-						createdAt: photo.createdAt,
-						modifiedAt: photo.modifiedAt,
-						mimeType: photo.mimeType,
-						width: photo.width,
-						height: photo.height,
-						phash: photo.phash,
-						clipEmbedding: photo.clipEmbedding,
-					});
+					const insertResult = await ctx.db
+						.insert(photosTable)
+						.values({
+							path: photoWithExif.photo.path,
+							name: photoWithExif.photo.name,
+							size: photoWithExif.photo.size,
+							createdAt: photoWithExif.photo.createdAt,
+							modifiedAt: photoWithExif.photo.modifiedAt,
+							mimeType: photoWithExif.photo.mimeType,
+							width: photoWithExif.photo.width,
+							height: photoWithExif.photo.height,
+							phash: photoWithExif.photo.phash,
+							clipEmbedding: photoWithExif.photo.clipEmbedding,
+						})
+						.returning({ id: photosTable.id });
+
+					const photoId = insertResult[0].id;
+
+					// Insert EXIF data if available
+					if (photoWithExif.exif) {
+						await ctx.db.insert(photoExifTable).values({
+							photoId,
+							...photoWithExif.exif,
+						});
+					}
+
 					inserted++;
 				}
 			} catch (error) {
-				console.error(`Error processing photo ${photo.path}:`, error);
+				console.error(`Error processing photo ${photoWithExif.photo.path}:`, error);
 			}
 		}
 
