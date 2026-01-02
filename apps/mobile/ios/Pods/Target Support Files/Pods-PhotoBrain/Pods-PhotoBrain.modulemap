@@ -1,6 +1,0 @@
-module Pods_PhotoBrain {
-  umbrella header "Pods-PhotoBrain-umbrella.h"
-
-  export *
-  module * { export * }
-}
