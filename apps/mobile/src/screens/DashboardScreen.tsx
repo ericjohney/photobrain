@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import {
 	View,
 	StyleSheet,
@@ -10,105 +10,68 @@ import {
 	ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { trpc } from "../lib/trpc";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@photobrain/api";
-import { debounce } from "@photobrain/utils";
 import { API_URL } from "../config";
 import PhotoGrid from "../components/PhotoGrid";
-import SearchBar from "../components/SearchBar";
 import PhotoModal from "../components/PhotoModal";
+import SearchBar from "../components/SearchBar";
+import { trpc } from "../lib/trpc";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 export default function DashboardScreen() {
-	const [photos, setPhotos] = useState<PhotoMetadata[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [refreshing, setRefreshing] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [searching, setSearching] = useState(false);
-	const [scanning, setScanning] = useState(false);
 	const [selectedPhoto, setSelectedPhoto] = useState<PhotoMetadata | null>(null);
-	const [error, setError] = useState<string | null>(null);
 
-	const loadPhotos = async () => {
-		try {
-			setError(null);
-			const response = await client.getPhotos();
-			setPhotos(response.photos);
-		} catch (err) {
-			const errorMessage = err instanceof Error ? err.message : "Failed to load photos";
-			setError(errorMessage);
-			Alert.alert("Error", errorMessage);
-		} finally {
-			setLoading(false);
-			setRefreshing(false);
+	// Use tRPC hooks
+	const photosQuery = trpc.photos.useQuery(undefined, {
+		enabled: !searchQuery.trim(),
+	});
+
+	const searchQuery$ = trpc.searchPhotos.useQuery(
+		{ query: searchQuery, limit: 50 },
+		{
+			enabled: searchQuery.trim().length > 0,
 		}
-	};
-
-	const searchPhotos = useCallback(
-		debounce(async (query: string) => {
-			if (!query.trim()) {
-				loadPhotos();
-				return;
-			}
-
-			try {
-				setSearching(true);
-				setError(null);
-				const response = await client.searchPhotos({ query, limit: 50 });
-				setPhotos(response.photos);
-			} catch (err) {
-				const errorMessage = err instanceof Error ? err.message : "Search failed";
-				setError(errorMessage);
-				Alert.alert("Search Error", errorMessage);
-			} finally {
-				setSearching(false);
-			}
-		}, 500),
-		[]
 	);
 
-	const handleScan = async () => {
-		try {
-			setScanning(true);
-			const result = await client.scan();
+	const scanMutation = trpc.scan.useMutation({
+		onSuccess: (result) => {
 			Alert.alert(
 				"Scan Complete",
 				`Scanned: ${result.scanned}\nInserted: ${result.inserted}\nSkipped: ${result.skipped}\nDuration: ${result.duration.toFixed(2)}s`
 			);
-			loadPhotos();
-		} catch (err) {
-			const errorMessage = err instanceof Error ? err.message : "Scan failed";
-			Alert.alert("Scan Error", errorMessage);
-		} finally {
-			setScanning(false);
-		}
+			photosQuery.refetch();
+		},
+		onError: (err) => {
+			Alert.alert("Scan Error", err.message);
+		},
+	});
+
+	// Determine which data to display
+	const isSearching = searchQuery.trim().length > 0;
+	const activeQuery = isSearching ? searchQuery$ : photosQuery;
+	const photos = activeQuery.data?.photos ?? [];
+	const loading = activeQuery.isLoading;
+	const error = activeQuery.error?.message ?? null;
+
+	const handleScan = () => {
+		scanMutation.mutate();
 	};
 
 	const handleSearchChange = (text: string) => {
 		setSearchQuery(text);
-		searchPhotos(text);
 	};
 
 	const handleSearchClear = () => {
 		setSearchQuery("");
-		loadPhotos();
 	};
 
 	const handleRefresh = () => {
-		setRefreshing(true);
-		if (searchQuery.trim()) {
-			searchPhotos(searchQuery);
-		} else {
-			loadPhotos();
-		}
+		activeQuery.refetch();
 	};
-
-	useEffect(() => {
-		loadPhotos();
-	}, []);
 
 	if (loading) {
 		return (
@@ -126,15 +89,15 @@ export default function DashboardScreen() {
 					value={searchQuery}
 					onChangeText={handleSearchChange}
 					onClear={handleSearchClear}
-					loading={searching}
+					loading={searchQuery$.isFetching}
 				/>
 				<View style={styles.actions}>
 					<TouchableOpacity
 						style={styles.scanButton}
 						onPress={handleScan}
-						disabled={scanning}
+						disabled={scanMutation.isPending}
 					>
-						{scanning ? (
+						{scanMutation.isPending ? (
 							<ActivityIndicator size="small" color="#ffffff" />
 						) : (
 							<>
@@ -156,7 +119,7 @@ export default function DashboardScreen() {
 			<ScrollView
 				style={styles.content}
 				refreshControl={
-					<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+					<RefreshControl refreshing={activeQuery.isFetching} onRefresh={handleRefresh} />
 				}
 			>
 				<PhotoGrid
