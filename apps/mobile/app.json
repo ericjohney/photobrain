@@ -1,0 +1,22 @@
+{
+	"expo": {
+		"name": "PhotoBrain",
+		"slug": "photobrain",
+		"version": "0.1.0",
+		"scheme": "photobrain",
+		"orientation": "portrait",
+		"userInterfaceStyle": "light",
+		"assetBundlePatterns": ["**/*"],
+		"ios": {
+			"supportsTablet": true,
+			"bundleIdentifier": "com.photobrain.app"
+		},
+		"android": {
+			"adaptiveIcon": {
+				"backgroundColor": "#ffffff"
+			},
+			"package": "com.photobrain.app"
+		},
+		"plugins": ["expo-router"]
+	}
+}

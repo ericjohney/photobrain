@@ -1,83 +1,47 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { SearchBar } from "@/components/SearchBar";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/Layout";
 import { RefreshCw, Loader2 } from "lucide-react";
-import type { PhotosResponse } from "@/types";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+import { trpc } from "@/lib/trpc";
 
 export function Dashboard() {
-	const [photos, setPhotos] = useState<PhotosResponse | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [scanning, setScanning] = useState(false);
 
-	const fetchPhotos = async (query?: string) => {
-		setLoading(true);
-		setError(null);
+	// Use tRPC queries
+	const photosQuery = trpc.photos.useQuery(undefined, {
+		enabled: !searchQuery,
+	});
 
-		try {
-			// Use semantic search if there's a query, otherwise get all photos
-			const url = query
-				? `${API_URL}/api/photos/search?q=${encodeURIComponent(query)}`
-				: `${API_URL}/api/photos`;
+	const searchPhotosQuery = trpc.searchPhotos.useQuery(
+		{ query: searchQuery, limit: 50 },
+		{ enabled: !!searchQuery }
+	);
 
-			const response = await fetch(url);
-
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-
-			const data: PhotosResponse = await response.json();
-			setPhotos(data);
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to load photos");
-			console.error("Error fetching photos:", err);
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const handleScan = async () => {
-		setScanning(true);
-		setError(null);
-
-		try {
-			const response = await fetch(`${API_URL}/api/scan`, {
-				method: "POST",
-			});
-
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-
-			const result = await response.json();
+	const scanMutation = trpc.scan.useMutation({
+		onSuccess: (result) => {
 			console.log("Scan result:", result);
+			// Refetch photos after scan
+			photosQuery.refetch();
+			if (searchQuery) {
+				searchPhotosQuery.refetch();
+			}
+		},
+	});
 
-			// After scanning, fetch the updated photos
-			await fetchPhotos(searchQuery);
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to scan photos");
-			console.error("Error scanning photos:", err);
-		} finally {
-			setScanning(false);
-		}
-	};
-
-	useEffect(() => {
-		fetchPhotos();
-	}, []);
+	// Determine which data to use
+	const photos = searchQuery ? searchPhotosQuery.data : photosQuery.data;
+	const loading = searchQuery ? searchPhotosQuery.isLoading : photosQuery.isLoading;
+	const error = searchQuery ? searchPhotosQuery.error : photosQuery.error;
 
 	const handleSearch = () => {
-		fetchPhotos(searchQuery);
+		// Search is handled automatically by the query
 	};
 
 	const handleRefresh = () => {
 		setSearchQuery("");
-		handleScan();
+		scanMutation.mutate();
 	};
 
 	return (
@@ -94,10 +58,10 @@ export function Dashboard() {
 						variant="outline"
 						size="icon"
 						onClick={handleRefresh}
-						disabled={loading || scanning}
+						disabled={loading || scanMutation.isPending}
 						title="Scan directory for new photos"
 					>
-						<RefreshCw className={`h-4 w-4 ${scanning ? "animate-spin" : ""}`} />
+						<RefreshCw className={`h-4 w-4 ${scanMutation.isPending ? "animate-spin" : ""}`} />
 					</Button>
 				</>
 			}
@@ -113,7 +77,7 @@ export function Dashboard() {
 				<div className="flex flex-col items-center justify-center py-20">
 					<div className="bg-destructive/10 text-destructive px-6 py-4 rounded-lg border border-destructive/20">
 						<p className="font-medium">Error loading photos</p>
-						<p className="text-sm">{error}</p>
+						<p className="text-sm">{error.message}</p>
 						<Button
 							variant="outline"
 							size="sm"

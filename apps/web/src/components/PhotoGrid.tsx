@@ -1,7 +1,13 @@
 import { ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import type { PhotoMetadata } from "@/types";
+import type { AppRouter } from "@photobrain/api";
+import type { inferRouterOutputs } from "@trpc/server";
+import { formatFileSize } from "@photobrain/utils";
+
+// Infer types from tRPC router
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 interface PhotoGridProps {
 	photos: PhotoMetadata[];
@@ -102,12 +108,4 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 			)}
 		</>
 	);
-}
-
-function formatFileSize(bytes: number): string {
-	if (bytes === 0) return "0 B";
-	const k = 1024;
-	const sizes = ["B", "KB", "MB", "GB"];
-	const i = Math.floor(Math.log(bytes) / Math.log(k));
-	return `${parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`;
 }

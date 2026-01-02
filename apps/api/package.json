@@ -3,6 +3,10 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
+	"exports": {
+		".": "./src/types.ts",
+		"./router": "./src/trpc/router.ts"
+	},
 	"scripts": {
 		"dev": "bun run --hot src/index.ts",
 		"build": "bun build src/index.ts --outdir dist --target bun",
@@ -14,10 +18,12 @@
 	"dependencies": {
 		"@hono/node-server": "^1.19.7",
 		"@photobrain/image-processing": "workspace:*",
+		"@trpc/server": "^11.0.0",
 		"drizzle-kit": "^0.31.8",
 		"drizzle-orm": "^0.45.1",
 		"hono": "^4.11.3",
 		"sqlite-vec": "^0.1.7-alpha.2",
+		"superjson": "^2.2.1",
 		"zod": "^4.2.1"
 	},
 	"devDependencies": {
