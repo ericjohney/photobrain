@@ -15,11 +15,12 @@ app.route("/api/health", healthRouter);
 app.route("/api/photos", photosRouter);
 app.route("/api/scan", scanRouter);
 
-console.log(`🚀 PhotoBrain API starting on port ${config.PORT}`);
+console.log(`🚀 PhotoBrain API starting on ${config.HOST}:${config.PORT}`);
 console.log(`📸 Photo directory: ${config.PHOTO_DIRECTORY}`);
 
 // Use Bun.serve for better performance
 Bun.serve({
+	hostname: config.HOST,
 	port: config.PORT,
 	fetch: app.fetch,
 });

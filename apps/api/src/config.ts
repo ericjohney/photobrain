@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const configSchema = z.object({
+	HOST: z.string().default("localhost"),
 	PORT: z.coerce.number().default(3000),
 	DATABASE_URL: z.string().default("./photobrain.db"),
 	PHOTO_DIRECTORY: z.string().default("../../temp-photos"),
