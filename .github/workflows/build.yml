@@ -64,3 +64,36 @@ jobs:
           echo "Web Docker image built and pushed successfully"
           echo "- registry.ericj5.com/photobrain-web:latest"
           echo "- registry.ericj5.com/photobrain-web:${{ github.sha }}"
+
+  update-argocd:
+    runs-on: ericjohney-org-runners
+    needs: [docker-api, docker-web]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout ArgoCD repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/argocd
+          path: argocd
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install yq
+        run: |
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+
+      - name: Update image tags
+        run: |
+          cd argocd/apps/photobrain
+          yq -i '.image.tag = "${{ github.sha }}"' values-api.yaml
+          yq -i '.image.tag = "${{ github.sha }}"' values-web.yaml
+
+      - name: Commit and push changes
+        run: |
+          cd argocd
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/photobrain/values-api.yaml apps/photobrain/values-web.yaml
+          git commit -m "Update photobrain image tags to ${{ github.sha }}" || exit 0
+          git push
