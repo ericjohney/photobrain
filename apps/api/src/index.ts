@@ -5,6 +5,12 @@ import { config } from "@/config";
 import { appRouter } from "@/trpc/router";
 import { createContext } from "@/trpc/context";
 import photosRouter from "@/routes/photos";
+import { initializeDatabase } from "@/db/init";
+
+// Initialize database if configured
+if (config.RUN_DB_INIT) {
+	await initializeDatabase();
+}
 
 const app = new Hono();
 

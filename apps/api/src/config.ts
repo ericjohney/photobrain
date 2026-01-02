@@ -6,6 +6,10 @@ const configSchema = z.object({
 	DATABASE_URL: z.string().default("./photobrain.db"),
 	PHOTO_DIRECTORY: z.string().default("../../temp-photos"),
 	NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+	RUN_DB_INIT: z
+		.string()
+		.transform((val) => val === "true" || val === "1")
+		.default("false"),
 });
 
 function loadConfig() {
