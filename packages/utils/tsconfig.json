@@ -1,5 +1,5 @@
 {
-	"extends": "@photobrain/config/typescript/base.json",
+	"extends": "@photobrain/config/tsconfig.json",
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "./src"
