@@ -17,19 +17,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build API Docker image
+      - name: Build and push API Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
           target: api
-          push: false
-          tags: photobrain-api:latest
+          push: true
+          tags: |
+            registry.ericj5.com/photobrain-api:latest
+            registry.ericj5.com/photobrain-api:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Docker build summary
-        run: echo "API Docker image built successfully - photobrain-api:latest"
+        run: |
+          echo "API Docker image built and pushed successfully"
+          echo "- registry.ericj5.com/photobrain-api:latest"
+          echo "- registry.ericj5.com/photobrain-api:${{ github.sha }}"
 
   docker-web:
     runs-on: ericjohney-org-runners
@@ -41,16 +46,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Web Docker image
+      - name: Build and push Web Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
           target: web
-          push: false
-          tags: photobrain-web:latest
+          push: true
+          tags: |
+            registry.ericj5.com/photobrain-web:latest
+            registry.ericj5.com/photobrain-web:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Docker build summary
-        run: echo "Web Docker image built successfully - photobrain-web:latest"
+        run: |
+          echo "Web Docker image built and pushed successfully"
+          echo "- registry.ericj5.com/photobrain-web:latest"
+          echo "- registry.ericj5.com/photobrain-web:${{ github.sha }}"
