@@ -4,10 +4,10 @@ import { existsSync } from "node:fs";
 import { config } from "@/config";
 
 /**
- * Creates and configures a SQLite database connection
+ * Opens and configures a SQLite database connection
  * Handles MacOS-specific SQLite library setup and loads sqlite-vec extension
  */
-export function createDatabase(): Database {
+export function openDatabase(): Database {
 	// MacOS *might* have to do this, as the builtin SQLite library on MacOS doesn't allow extensions
 	const sqliteLibPath = "/opt/homebrew/opt/sqlite3/lib/libsqlite3.dylib";
 	if (existsSync(sqliteLibPath)) {
