@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   docker-api:
     runs-on: ericjohney-org-runners
@@ -76,7 +80,7 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/argocd
           path: argocd
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.ARGOCD_REPO_TOKEN }}
 
       - name: Install yq
         run: |
