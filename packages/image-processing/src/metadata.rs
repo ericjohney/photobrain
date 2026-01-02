@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::clip::generate_clip_embedding_from_image;
+use crate::exif::ExifData;
 use crate::phash::generate_phash_from_image;
 
 #[napi(object)]
@@ -18,6 +19,7 @@ pub struct PhotoMetadata {
   pub mime_type: Option<String>,
   pub phash: Option<String>,
   pub clip_embedding: Option<Vec<f64>>,
+  pub exif: Option<ExifData>,
 }
 
 #[napi]
@@ -64,6 +66,10 @@ pub fn extract_photo_metadata(
     .map(|d| d.as_millis() as f64)
     .unwrap_or_else(|| 0.0);
 
+  // Extract EXIF data from raw file (before decoding)
+  // This reads the file headers only, not the full image data
+  let exif = crate::exif::extract_exif(file_path.clone());
+
   // Read and decode the image once for metadata, phash, and CLIP embedding
   // Memory optimization: We read the image once and carefully manage ownership
   // to avoid cloning large raw image data
@@ -104,5 +110,6 @@ pub fn extract_photo_metadata(
     mime_type,
     phash,
     clip_embedding,
+    exif,
   })
 }

@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 import type { NewPhoto, NewPhotoExif } from "@/db/schema";
-import { extractPhotoMetadata, extractExif } from "@photobrain/image-processing";
+import { extractPhotoMetadata } from "@photobrain/image-processing";
 
 export interface ScanOptions {
 	directory: string;
@@ -85,8 +85,10 @@ export async function scanDirectory(options: ScanOptions) {
 
 /**
  * Extract metadata and EXIF data from a photo file using Rust
+ * This function reads the file only ONCE and extracts all data in a single pass
  */
 async function extractMetadata(filePath: string, baseDirectory: string): Promise<PhotoWithExif> {
+	// Single file read - extracts photo metadata AND EXIF data together
 	const rustMetadata = extractPhotoMetadata(filePath, baseDirectory);
 
 	// Convert clipEmbedding f64 array to Float32Array
@@ -107,25 +109,22 @@ async function extractMetadata(filePath: string, baseDirectory: string): Promise
 		clipEmbedding,
 	};
 
-	// Extract EXIF data
-	const rustExif = extractExif(filePath);
-
-	// Convert Rust EXIF data to database format
-	const exif = rustExif
+	// Convert Rust EXIF data to database format (already extracted in the same pass)
+	const exif = rustMetadata.exif
 		? {
-				cameraMake: rustExif.cameraMake ?? undefined,
-				cameraModel: rustExif.cameraModel ?? undefined,
-				lensMake: rustExif.lensMake ?? undefined,
-				lensModel: rustExif.lensModel ?? undefined,
-				focalLength: rustExif.focalLength ?? undefined,
-				iso: rustExif.iso ?? undefined,
-				aperture: rustExif.aperture ?? undefined,
-				shutterSpeed: rustExif.shutterSpeed ?? undefined,
-				exposureBias: rustExif.exposureBias ?? undefined,
-				dateTaken: rustExif.dateTaken ?? undefined,
-				gpsLatitude: rustExif.gpsLatitude?.toString() ?? undefined,
-				gpsLongitude: rustExif.gpsLongitude?.toString() ?? undefined,
-				gpsAltitude: rustExif.gpsAltitude?.toString() ?? undefined,
+				cameraMake: rustMetadata.exif.cameraMake ?? undefined,
+				cameraModel: rustMetadata.exif.cameraModel ?? undefined,
+				lensMake: rustMetadata.exif.lensMake ?? undefined,
+				lensModel: rustMetadata.exif.lensModel ?? undefined,
+				focalLength: rustMetadata.exif.focalLength ?? undefined,
+				iso: rustMetadata.exif.iso ?? undefined,
+				aperture: rustMetadata.exif.aperture ?? undefined,
+				shutterSpeed: rustMetadata.exif.shutterSpeed ?? undefined,
+				exposureBias: rustMetadata.exif.exposureBias ?? undefined,
+				dateTaken: rustMetadata.exif.dateTaken ?? undefined,
+				gpsLatitude: rustMetadata.exif.gpsLatitude?.toString() ?? undefined,
+				gpsLongitude: rustMetadata.exif.gpsLongitude?.toString() ?? undefined,
+				gpsAltitude: rustMetadata.exif.gpsAltitude?.toString() ?? undefined,
 			}
 		: undefined;
 
