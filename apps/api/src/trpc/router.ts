@@ -7,11 +7,6 @@ import { config } from "@/config";
 import { eq } from "drizzle-orm";
 
 export const appRouter = router({
-	// Health check
-	health: publicProcedure.query(() => {
-		return { status: "ok", timestamp: new Date().toISOString() };
-	}),
-
 	// Get all photos
 	photos: publicProcedure.query(async ({ ctx }) => {
 		const photosList = await ctx.db.select().from(photosTable).all();

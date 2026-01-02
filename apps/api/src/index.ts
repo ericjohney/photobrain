@@ -11,6 +11,11 @@ const app = new Hono();
 // CORS middleware
 app.use("*", cors());
 
+// Health check endpoint
+app.get("/api/health", (c) => {
+	return c.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 // tRPC endpoint
 app.all("/api/trpc/*", async (c) => {
 	return fetchRequestHandler({
