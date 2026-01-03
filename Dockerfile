@@ -45,19 +45,28 @@ WORKDIR /app
 # Copy package files
 COPY --from=builder /app/package.json /app/bun.lock /app/turbo.json ./
 
-# Copy node_modules
+# Copy node_modules (will prune after)
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy image-processing built artifacts only (not the Rust source/target)
-COPY --from=builder /app/packages/image-processing/dist ./packages/image-processing/dist
+# Copy image-processing - only the linux binary (not darwin)
+COPY --from=builder /app/packages/image-processing/dist/index.js ./packages/image-processing/dist/
+COPY --from=builder /app/packages/image-processing/dist/index.d.ts ./packages/image-processing/dist/
+COPY --from=builder /app/packages/image-processing/dist/image-processing.linux-x64-gnu.node ./packages/image-processing/dist/
 COPY --from=builder /app/packages/image-processing/package.json ./packages/image-processing/
 
 # Copy other packages
 COPY --from=builder /app/packages/utils ./packages/utils
 COPY --from=builder /app/packages/config ./packages/config
 
-# Copy API app
-COPY --from=builder /app/apps/api ./apps/api
+# Copy API app source (not dist)
+COPY --from=builder /app/apps/api/src ./apps/api/src
+COPY --from=builder /app/apps/api/drizzle ./apps/api/drizzle
+COPY --from=builder /app/apps/api/package.json ./apps/api/
+COPY --from=builder /app/apps/api/drizzle.config.ts ./apps/api/
+COPY --from=builder /app/apps/api/tsconfig.json ./apps/api/
+
+# Remove darwin native modules from node_modules
+RUN find /app/node_modules -name "*.darwin-*.node" -delete 2>/dev/null || true
 
 WORKDIR /app/apps/api
 EXPOSE 3000
@@ -82,10 +91,9 @@ WORKDIR /app
 COPY --from=web-builder /app/apps/web/dist ./dist
 COPY --from=web-builder /app/apps/web/serve.ts ./serve.ts
 COPY --from=web-builder /app/apps/web/src/server-config.ts ./src/server-config.ts
-COPY --from=web-builder /app/apps/web/package.json ./package.json
 
-# Install only production dependencies for the server (just zod for config)
-RUN bun add zod
+# Create a minimal package.json for the static file server (no workspace deps)
+RUN echo '{"name":"photobrain-web","type":"module","dependencies":{"zod":"^4.2.1"}}' > package.json && bun install
 
 EXPOSE 3001
 CMD ["bun", "run", "serve.ts"]
