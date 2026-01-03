@@ -24,25 +24,25 @@ PhotoBrain aims to be a fast, AI-powered self-hosted photo management solution t
 
 These tasks are broken down into small, session-sized chunks that can each be completed in a single Claude Code session. Focus on delivering working, tested features incrementally.
 
-### Session 1: EXIF Data Extraction 📸 **HIGH PRIORITY**
+### Session 1: EXIF Data Extraction 📸 ✅ **COMPLETED**
 **Goal:** Extract and display camera metadata from existing photos
 
 **Deliverables:**
-- [ ] Add `kamadak-exif` crate to Rust image-processing package
-- [ ] Create `extract_exif()` function in Rust that returns JSON with:
+- [x] Add `kamadak-exif` crate to Rust image-processing package
+- [x] Create `extract_exif()` function in Rust that returns JSON with:
   - Camera make/model
   - Lens information
   - Exposure settings (ISO, aperture, shutter speed)
   - Focal length
   - Date taken
   - GPS coordinates (latitude/longitude)
-- [ ] Update database schema with EXIF fields
-- [ ] Migrate existing photos to populate EXIF data
-- [ ] Update API to return EXIF data with photo metadata
-- [ ] Display EXIF in lightbox photo detail view
+- [x] Update database schema with EXIF fields
+- [x] Migrate existing photos to populate EXIF data
+- [x] Update API to return EXIF data with photo metadata
+- [x] Display EXIF in lightbox photo detail view
 
-**Estimated time:** 1-2 hours
-**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/db/schema.ts`, `apps/web/src/components/Lightbox.tsx`
+**Completed!** All EXIF data is now extracted during scanning and displayed in the lightbox.
+**Files modified:** `packages/image-processing/src/exif.rs`, `apps/api/src/db/schema.ts`, `apps/web/src/components/Lightbox.tsx`
 
 ---
 
@@ -187,19 +187,19 @@ temporal server start-dev
 
 ---
 
-### Session 8: GPS Coordinate Extraction 🗺️
+### Session 8: GPS Coordinate Extraction 🗺️ ✅ **PARTIALLY COMPLETED**
 **Goal:** Extract and display photo locations
 
 **Deliverables:**
-- [ ] Parse GPS EXIF data (latitude, longitude, altitude)
-- [ ] Add GPS fields to database
-- [ ] Display coordinates in photo detail
+- [x] Parse GPS EXIF data (latitude, longitude, altitude)
+- [x] Add GPS fields to database
+- [x] Display coordinates in photo detail
 - [ ] Add basic map view using Leaflet.js
 - [ ] Show photo markers on map
 - [ ] Click marker to view photo
 
-**Estimated time:** 2-3 hours
-**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/web/src/pages/Map.tsx`
+**Status:** GPS data extraction and display is complete. Map view functionality remains to be implemented.
+**Files modified:** `packages/image-processing/src/exif.rs`, `apps/api/src/db/schema.ts`, `apps/web/src/components/Lightbox.tsx`
 
 ---
 
@@ -272,12 +272,12 @@ temporal server start-dev
 - Cache converted previews to avoid re-processing
 
 ### 1.2 Enhanced Image Metadata
-- [ ] EXIF data extraction (camera model, settings, lens, GPS)
-  - Integrate with Rust using `kamadak-exif` or `rexiv2` crate
+- [x] EXIF data extraction (camera model, settings, lens, GPS)
+  - ✅ Integrated with Rust using `kamadak-exif` crate
 - [ ] XMP sidecar support for non-destructive edits
-- [ ] Display full EXIF in photo detail view
+- [x] Display full EXIF in photo detail view
 - [ ] Parse IPTC metadata (keywords, copyright, descriptions)
-- [ ] GPS coordinate extraction for maps integration
+- [x] GPS coordinate extraction for maps integration (extraction complete, map view pending)
 
 ---
 
@@ -619,4 +619,4 @@ For RAW support implementation, refer to:
 4. **Lightweight footprint** - SQLite for easy deployment
 5. **RAW-first workflow** - Professional photographer focus
 
-Last Updated: 2025-12-30
+Last Updated: 2026-01-03
