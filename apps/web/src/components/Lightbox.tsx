@@ -1,4 +1,5 @@
 import { X, Camera, Aperture, Clock, MapPin } from "lucide-react";
+import { useEffect } from "react";
 import { config } from "@/lib/config";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -14,6 +15,16 @@ interface LightboxProps {
 }
 
 export function Lightbox({ photo, onClose }: LightboxProps) {
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				onClose();
+			}
+		};
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [onClose]);
+
 	const getImageUrl = (photo: PhotoMetadata) => {
 		return `${config.apiUrl}/api/photos/${photo.id}/file`;
 	};
