@@ -5,6 +5,7 @@ import { extractPhotoMetadata } from "@photobrain/image-processing";
 
 export interface ScanOptions {
 	directory: string;
+	thumbnailsDirectory: string;
 	recursive?: boolean;
 	supportedExtensions?: string[];
 }
@@ -40,6 +41,7 @@ export async function scanDirectory(options: ScanOptions) {
 	const startTime = Date.now();
 	const {
 		directory,
+		thumbnailsDirectory,
 		recursive = true,
 		supportedExtensions = DEFAULT_SUPPORTED_EXTENSIONS,
 	} = options;
@@ -59,7 +61,7 @@ export async function scanDirectory(options: ScanOptions) {
 					const ext = extname(entry.name).toLowerCase();
 					if (supportedExtensions.includes(ext)) {
 						try {
-							const photoWithExif = await extractMetadata(fullPath, directory);
+							const photoWithExif = await extractMetadata(fullPath, directory, thumbnailsDirectory);
 							photos.push(photoWithExif);
 						} catch (error) {
 							console.error(`Error extracting metadata from ${fullPath}:`, error);
@@ -86,10 +88,11 @@ export async function scanDirectory(options: ScanOptions) {
 /**
  * Extract metadata and EXIF data from a photo file using Rust
  * This function reads the file only ONCE and extracts all data in a single pass
+ * Thumbnails are generated automatically during this process
  */
-async function extractMetadata(filePath: string, baseDirectory: string): Promise<PhotoWithExif> {
-	// Single file read - extracts photo metadata AND EXIF data together
-	const rustMetadata = extractPhotoMetadata(filePath, baseDirectory);
+async function extractMetadata(filePath: string, baseDirectory: string, thumbnailsDirectory: string): Promise<PhotoWithExif> {
+	// Single file read - extracts photo metadata, EXIF data, AND generates thumbnails
+	const rustMetadata = extractPhotoMetadata(filePath, baseDirectory, thumbnailsDirectory);
 
 	// Convert clipEmbedding f64 array to Float32Array
 	const clipEmbedding = rustMetadata.clipEmbedding

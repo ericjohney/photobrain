@@ -1,6 +1,6 @@
 import { X, Camera, Aperture, Clock, MapPin } from "lucide-react";
 import { useEffect } from "react";
-import { config } from "@/lib/config";
+import { getThumbnailUrl, getFullImageUrl } from "@/lib/thumbnails";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 import { formatFileSize } from "@photobrain/utils";
@@ -25,10 +25,6 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [onClose]);
 
-	const getImageUrl = (photo: PhotoMetadata) => {
-		return `${config.apiUrl}/api/photos/${photo.id}/file`;
-	};
-
 	const hasExif = photo.exif !== null && photo.exif !== undefined;
 
 	return (
@@ -43,7 +39,13 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 				{/* Image container */}
 				<div className="flex-1 flex items-center justify-center p-4">
 					<img
-						src={getImageUrl(photo)}
+						src={getThumbnailUrl(photo.id, "large")}
+						srcSet={`
+							${getThumbnailUrl(photo.id, "medium")} 800w,
+							${getThumbnailUrl(photo.id, "large")} 1600w,
+							${getFullImageUrl(photo.id)} 4000w
+						`}
+						sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
 						alt={photo.name}
 						className="max-w-full max-h-full object-contain rounded-lg"
 					/>

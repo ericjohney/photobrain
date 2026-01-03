@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = "3.0.0"
 napi-derive = "3.0.0"
-image = "0.25"
+image = { version = "0.25", features = ["webp"] }
 image_hasher = "2.0"
 fastembed = "4.4.0"
 kamadak-exif = "0.5"
