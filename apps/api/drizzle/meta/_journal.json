@@ -15,6 +15,13 @@
       "when": 1767038698954,
       "tag": "0001_icy_misty_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1735823400000,
+      "tag": "0002_add_photo_exif_table",
+      "breakpoints": true
     }
   ]
 }

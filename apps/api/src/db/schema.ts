@@ -1,4 +1,5 @@
 import { integer, sqliteTable, text, blob, customType } from "drizzle-orm/sqlite-core";
+import { relations } from "drizzle-orm";
 
 // Custom type for Float32Array vectors stored as BLOB
 const float32Vector = customType<{
@@ -30,5 +31,52 @@ export const photos = sqliteTable("photos", {
 	clipEmbedding: float32Vector("clip_embedding"),
 });
 
+export const photoExif = sqliteTable("photo_exif", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	photoId: integer("photo_id")
+		.notNull()
+		.references(() => photos.id, { onDelete: "cascade" }),
+
+	// Camera info
+	cameraMake: text("camera_make"),
+	cameraModel: text("camera_model"),
+
+	// Lens info
+	lensMake: text("lens_make"),
+	lensModel: text("lens_model"),
+	focalLength: integer("focal_length"), // in mm
+
+	// Exposure settings
+	iso: integer("iso"),
+	aperture: text("aperture"), // e.g., "f/2.8"
+	shutterSpeed: text("shutter_speed"), // e.g., "1/250"
+	exposureBias: text("exposure_bias"), // e.g., "+0.3 EV"
+
+	// DateTime
+	dateTaken: text("date_taken"), // ISO 8601 format
+
+	// GPS coordinates
+	gpsLatitude: text("gps_latitude"), // stored as text for precision
+	gpsLongitude: text("gps_longitude"),
+	gpsAltitude: text("gps_altitude"),
+});
+
+// Define relations
+export const photosRelations = relations(photos, ({ one }) => ({
+	exif: one(photoExif, {
+		fields: [photos.id],
+		references: [photoExif.photoId],
+	}),
+}));
+
+export const photoExifRelations = relations(photoExif, ({ one }) => ({
+	photo: one(photos, {
+		fields: [photoExif.photoId],
+		references: [photos.id],
+	}),
+}));
+
 export type Photo = typeof photos.$inferSelect;
 export type NewPhoto = typeof photos.$inferInsert;
+export type PhotoExif = typeof photoExif.$inferSelect;
+export type NewPhotoExif = typeof photoExif.$inferInsert;

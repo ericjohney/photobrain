@@ -1,6 +1,7 @@
 import { ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import { Lightbox } from "@/components/Lightbox";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 import { formatFileSize } from "@photobrain/utils";
@@ -64,47 +65,10 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 			)}
 
 			{selectedPhoto && (
-				<div
-					className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-					onClick={() => setSelectedPhoto(null)}
-				>
-					<div
-						className="relative max-w-7xl max-h-[90vh]"
-						onClick={(e) => e.stopPropagation()}
-					>
-						<img
-							src={getImageUrl(selectedPhoto)}
-							alt={selectedPhoto.name}
-							className="max-w-full max-h-[90vh] object-contain rounded-lg"
-						/>
-						<div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white p-4 rounded-b-lg">
-							<p className="font-medium">{selectedPhoto.name}</p>
-							<p className="text-sm text-gray-300">
-								{formatFileSize(selectedPhoto.size)} •{" "}
-								{new Date(selectedPhoto.modifiedAt).toLocaleDateString()}
-							</p>
-						</div>
-						<button
-							onClick={() => setSelectedPhoto(null)}
-							className="absolute top-4 right-4 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="24"
-								height="24"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							>
-								<line x1="18" y1="6" x2="6" y2="18"></line>
-								<line x1="6" y1="6" x2="18" y2="18"></line>
-							</svg>
-						</button>
-					</div>
-				</div>
+				<Lightbox
+					photo={selectedPhoto}
+					onClose={() => setSelectedPhoto(null)}
+				/>
 			)}
 		</>
 	);
