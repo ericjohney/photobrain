@@ -32,7 +32,7 @@ jobs:
             registry.ericj5.com/photobrain-api:latest
             registry.ericj5.com/photobrain-api:${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: Docker build summary
         run: |
@@ -61,7 +61,7 @@ jobs:
             registry.ericj5.com/photobrain-web:latest
             registry.ericj5.com/photobrain-web:${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: Docker build summary
         run: |

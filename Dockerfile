@@ -22,8 +22,9 @@ COPY packages/config/package.json packages/config/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 
-# Install dependencies
-RUN bun install
+# Install dependencies with cache mount
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install
 
 # Copy source files
 COPY packages/image-processing packages/image-processing
@@ -32,8 +33,11 @@ COPY packages/config packages/config
 COPY apps/api apps/api
 COPY apps/web apps/web
 
-# Build the image-processing package (Rust/WASM)
-RUN bun run build --filter=@photobrain/image-processing
+# Build the image-processing package (Rust/WASM) with Cargo cache mount
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/app/packages/image-processing/target \
+    bun run build --filter=@photobrain/image-processing
 
 # =============================================================================
 # Stage 2: API Production Image
