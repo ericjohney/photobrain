@@ -2,6 +2,7 @@ import { ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Lightbox } from "@/components/Lightbox";
+import { config } from "@/lib/config";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 import { formatFileSize } from "@photobrain/utils";
@@ -20,8 +21,7 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 	);
 
 	const getImageUrl = (photo: PhotoMetadata) => {
-		const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-		return `${apiUrl}/api/photos/${photo.id}/file`;
+		return `${config.apiUrl}/api/photos/${photo.id}/file`;
 	};
 
 	return (

@@ -98,11 +98,29 @@ Configure the API via environment variables or `apps/api/src/config.ts`:
 
 ### Web App
 
-Create `apps/web/.env`:
+The web app supports runtime configuration via environment variables when running in production with `serve.ts`.
+
+**Development** (Vite dev server) - Create `apps/web/.env`:
 
 ```env
 VITE_API_URL=http://localhost:3000
 ```
+
+**Production** - Set environment variables when running the server:
+
+```bash
+API_URL=https://api.example.com bun run serve.ts
+```
+
+Available environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_URL` | `http://localhost:3000` | Backend API URL |
+| `HOST` | `0.0.0.0` | Server hostname |
+| `PORT` | `3001` | Server port |
+
+Configuration is injected at runtime, so you can change the API URL without rebuilding the app.
 
 ### Mobile App
 
