@@ -15,14 +15,18 @@ export const THUMBNAIL_CONFIG = {
 export type ThumbnailSize = keyof typeof THUMBNAIL_CONFIG.sizes;
 
 /**
- * Generate deterministic thumbnail path
- * No database storage needed - paths are computed from photo ID and size
+ * Generate deterministic thumbnail path from photo relative path
+ * Thumbnails mirror the original directory structure
+ * Example: photo at "2024/vacation/IMG_1234.jpg" -> "tiny/2024/vacation/IMG_1234.webp"
+ * No database storage needed - paths are computed from photo path and size
  */
 export function getThumbnailPath(
-	photoId: number,
+	photoRelativePath: string,
 	size: ThumbnailSize,
 ): string {
-	return `${size}/${photoId}.webp`;
+	// Remove extension and add .webp
+	const pathWithoutExt = photoRelativePath.replace(/\.[^/.]+$/, "");
+	return `${size}/${pathWithoutExt}.webp`;
 }
 
 /**

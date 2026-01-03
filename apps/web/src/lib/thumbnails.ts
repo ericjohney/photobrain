@@ -3,7 +3,8 @@ import { config } from "@/lib/config";
 
 /**
  * Generate thumbnail URL for a photo
- * Uses deterministic paths based on photo ID and size
+ * The API endpoint resolves the photo path from the database
+ * and serves the corresponding thumbnail file
  */
 export function getThumbnailUrl(photoId: number, size: ThumbnailSize): string {
 	return `${config.apiUrl}/api/photos/${photoId}/thumbnail/${size}`;

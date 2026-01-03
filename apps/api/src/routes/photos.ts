@@ -80,11 +80,13 @@ router.get("/:id/thumbnail/:size", async (c) => {
 			return c.json({ error: "Photo not found in database" }, 404);
 		}
 
-		// Construct thumbnail path
+		// Construct thumbnail path using photo's relative path
+		// Thumbnails mirror the directory structure: thumbnails/{size}/{path}.webp
+		const pathWithoutExt = photo.path.replace(/\.[^/.]+$/, "");
 		const thumbnailPath = join(
 			config.THUMBNAILS_DIRECTORY,
 			size,
-			`${id}.webp`,
+			`${pathWithoutExt}.webp`,
 		);
 
 		// Read the thumbnail file

@@ -84,42 +84,26 @@ pub fn generate_thumbnail_from_image(
   Ok(())
 }
 
-/// Generate all thumbnail sizes from an image
-/// This is called during the metadata extraction pipeline to avoid re-reading the image
-#[napi]
-pub fn generate_thumbnails(
-  img: &DynamicImage,
-  photo_id: i64,
-  thumbnails_base_dir: String,
-) -> napi::Result<()> {
-  let sizes = ThumbnailSizes::default();
-
-  // Generate each thumbnail size
-  let thumbnail_configs = [
-    ("tiny", &sizes.tiny),
-    ("small", &sizes.small),
-    ("medium", &sizes.medium),
-    ("large", &sizes.large),
-  ];
-
-  for (size_name, config) in thumbnail_configs {
-    let output_path = format!("{}/{}/{}.webp", thumbnails_base_dir, size_name, photo_id);
-
-    generate_thumbnail_from_image(img, config, &output_path)
-      .map_err(|e| napi::Error::from_reason(format!("Failed to generate {} thumbnail: {}", size_name, e)))?;
-  }
-
-  Ok(())
-}
-
-/// Export for use within Rust (non-NAPI)
+/// Generate all thumbnail sizes from an image based on the relative file path
+/// Thumbnails mirror the original directory structure
+/// Example: photo at "2024/vacation/IMG_1234.jpg" creates thumbnails at:
+///   - thumbnails/tiny/2024/vacation/IMG_1234.webp
+///   - thumbnails/small/2024/vacation/IMG_1234.webp
+///   - etc.
 pub fn generate_all_thumbnails_internal(
   img: &DynamicImage,
-  photo_id: i64,
+  relative_path: &str,
   thumbnails_base_dir: &str,
 ) -> Result<(), String> {
   let sizes = ThumbnailSizes::default();
 
+  // Get the path without extension and convert to .webp
+  let path_obj = Path::new(relative_path);
+  let path_without_ext = path_obj
+    .with_extension("")
+    .to_string_lossy()
+    .to_string();
+
   let thumbnail_configs = [
     ("tiny", &sizes.tiny),
     ("small", &sizes.small),
@@ -128,32 +112,10 @@ pub fn generate_all_thumbnails_internal(
   ];
 
   for (size_name, config) in thumbnail_configs {
-    let output_path = format!("{}/{}/{}.webp", thumbnails_base_dir, size_name, photo_id);
+    // Mirror the directory structure: thumbnails/{size}/{relative_path}.webp
+    let output_path = format!("{}/{}/{}.webp", thumbnails_base_dir, size_name, path_without_ext);
     generate_thumbnail_from_image(img, config, &output_path)?;
   }
-
-  Ok(())
-}
-
-/// Generate thumbnails from a file path (for use after DB insert)
-/// This reads the image file and generates all thumbnail sizes
-#[napi]
-pub fn generate_thumbnails_from_file(
-  file_path: String,
-  photo_id: i64,
-  thumbnails_base_dir: String,
-) -> napi::Result<()> {
-  use image::ImageReader;
-
-  // Read the image
-  let img = ImageReader::open(&file_path)
-    .map_err(|e| napi::Error::from_reason(format!("Failed to open image: {}", e)))?
-    .decode()
-    .map_err(|e| napi::Error::from_reason(format!("Failed to decode image: {}", e)))?;
-
-  // Generate all thumbnails
-  generate_all_thumbnails_internal(&img, photo_id, &thumbnails_base_dir)
-    .map_err(|e| napi::Error::from_reason(e))?;
 
   Ok(())
 }

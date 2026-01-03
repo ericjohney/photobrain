@@ -1,38 +1,28 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { db } from "@/db";
 import { photos, photoExif } from "@/db/schema";
 import { scanDirectory } from "@/scanner";
 import { config } from "@/config";
-import { getAllThumbnailSizes } from "@photobrain/utils";
-import { generateThumbnailsFromFile } from "@photobrain/image-processing";
 
 const router = new Hono();
 
 // Scan directory and populate database
+// Thumbnails are generated automatically during metadata extraction
 router.post("/", async (c) => {
 	try {
 		const startTime = Date.now();
 
-		// Create thumbnail directories if they don't exist
-		const thumbnailSizes = getAllThumbnailSizes();
-		for (const size of thumbnailSizes) {
-			const sizePath = join(config.THUMBNAILS_DIRECTORY, size);
-			await mkdir(sizePath, { recursive: true });
-		}
-
-		// Scan the directory
+		// Scan the directory (thumbnails are generated automatically)
 		const result = await scanDirectory({
 			directory: config.PHOTO_DIRECTORY,
+			thumbnailsDirectory: config.THUMBNAILS_DIRECTORY,
 			recursive: true,
 		});
 
 		// Insert or update photos in database
 		let inserted = 0;
 		let skipped = 0;
-		let thumbnailsGenerated = 0;
 
 		for (const photoData of result.photos) {
 			try {
@@ -70,28 +60,6 @@ router.post("/", async (c) => {
 							...photoData.exif,
 						});
 					}
-
-					// Generate thumbnails for the newly inserted photo
-					if (insertedPhoto) {
-						try {
-							const fullPath = join(
-								config.PHOTO_DIRECTORY,
-								photoData.photo.path,
-							);
-							generateThumbnailsFromFile(
-								fullPath,
-								insertedPhoto.id,
-								config.THUMBNAILS_DIRECTORY,
-							);
-							thumbnailsGenerated++;
-						} catch (thumbnailError) {
-							console.error(
-								`Failed to generate thumbnails for photo ${insertedPhoto.id}:`,
-								thumbnailError,
-							);
-							// Continue processing even if thumbnail generation fails
-						}
-					}
 				}
 			} catch (error) {
 				console.error(`Error processing photo ${photoData.photo.path}:`, error);
@@ -105,7 +73,6 @@ router.post("/", async (c) => {
 			scanned: result.photos.length,
 			inserted,
 			skipped,
-			thumbnailsGenerated,
 			duration: totalTime,
 			scanDuration: result.duration,
 			directory: config.PHOTO_DIRECTORY,
