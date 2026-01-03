@@ -1,9 +1,13 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { db } from "@/db";
-import { photos } from "@/db/schema";
+import { photos, photoExif } from "@/db/schema";
 import { scanDirectory } from "@/scanner";
 import { config } from "@/config";
+import { getAllThumbnailSizes } from "@photobrain/utils";
+import { generateThumbnailsFromFile } from "@photobrain/image-processing";
 
 const router = new Hono();
 
@@ -11,6 +15,13 @@ const router = new Hono();
 router.post("/", async (c) => {
 	try {
 		const startTime = Date.now();
+
+		// Create thumbnail directories if they don't exist
+		const thumbnailSizes = getAllThumbnailSizes();
+		for (const size of thumbnailSizes) {
+			const sizePath = join(config.THUMBNAILS_DIRECTORY, size);
+			await mkdir(sizePath, { recursive: true });
+		}
 
 		// Scan the directory
 		const result = await scanDirectory({
@@ -21,34 +32,69 @@ router.post("/", async (c) => {
 		// Insert or update photos in database
 		let inserted = 0;
 		let skipped = 0;
+		let thumbnailsGenerated = 0;
 
-		for (const photo of result.photos) {
+		for (const photoData of result.photos) {
 			try {
 				// Check if photo already exists
 				const existing = await db.query.photos.findFirst({
-					where: eq(photos.path, photo.path),
+					where: eq(photos.path, photoData.photo.path),
 				});
 
 				if (existing) {
 					skipped++;
 				} else {
-					// Insert new photo
-					await db.insert(photos).values({
-						path: photo.path,
-						name: photo.name,
-						size: photo.size,
-						createdAt: photo.createdAt,
-						modifiedAt: photo.modifiedAt,
-						mimeType: photo.mimeType,
-						width: photo.width,
-						height: photo.height,
-						phash: photo.phash,
-						clipEmbedding: photo.clipEmbedding,
-					});
+					// Insert new photo and get the ID
+					const [insertedPhoto] = await db
+						.insert(photos)
+						.values({
+							path: photoData.photo.path,
+							name: photoData.photo.name,
+							size: photoData.photo.size,
+							createdAt: photoData.photo.createdAt,
+							modifiedAt: photoData.photo.modifiedAt,
+							mimeType: photoData.photo.mimeType,
+							width: photoData.photo.width,
+							height: photoData.photo.height,
+							phash: photoData.photo.phash,
+							clipEmbedding: photoData.photo.clipEmbedding,
+						})
+						.returning();
+
 					inserted++;
+
+					// Insert EXIF data if available
+					if (photoData.exif && insertedPhoto) {
+						await db.insert(photoExif).values({
+							photoId: insertedPhoto.id,
+							...photoData.exif,
+						});
+					}
+
+					// Generate thumbnails for the newly inserted photo
+					if (insertedPhoto) {
+						try {
+							const fullPath = join(
+								config.PHOTO_DIRECTORY,
+								photoData.photo.path,
+							);
+							generateThumbnailsFromFile(
+								fullPath,
+								insertedPhoto.id,
+								config.THUMBNAILS_DIRECTORY,
+							);
+							thumbnailsGenerated++;
+						} catch (thumbnailError) {
+							console.error(
+								`Failed to generate thumbnails for photo ${insertedPhoto.id}:`,
+								thumbnailError,
+							);
+							// Continue processing even if thumbnail generation fails
+						}
+					}
 				}
 			} catch (error) {
-				console.error(`Error processing photo ${photo.path}:`, error);
+				console.error(`Error processing photo ${photoData.photo.path}:`, error);
 			}
 		}
 
@@ -59,6 +105,7 @@ router.post("/", async (c) => {
 			scanned: result.photos.length,
 			inserted,
 			skipped,
+			thumbnailsGenerated,
 			duration: totalTime,
 			scanDuration: result.duration,
 			directory: config.PHOTO_DIRECTORY,

@@ -2,7 +2,7 @@ import { ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Lightbox } from "@/components/Lightbox";
-import { config } from "@/lib/config";
+import { getThumbnailUrl } from "@/lib/thumbnails";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 import { formatFileSize } from "@photobrain/utils";
@@ -20,10 +20,6 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 		null,
 	);
 
-	const getImageUrl = (photo: PhotoMetadata) => {
-		return `${config.apiUrl}/api/photos/${photo.id}/file`;
-	};
-
 	return (
 		<>
 			<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
@@ -35,7 +31,7 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 					>
 						<div className="aspect-square relative bg-muted">
 							<img
-								src={getImageUrl(photo)}
+								src={getThumbnailUrl(photo.id, "tiny")}
 								alt={photo.name}
 								className="w-full h-full object-cover"
 								loading="lazy"

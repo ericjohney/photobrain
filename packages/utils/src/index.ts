@@ -35,3 +35,6 @@ export function debounce<T extends (...args: any[]) => any>(
 		timeout = setTimeout(() => func(...args), wait);
 	};
 }
+
+// Re-export thumbnail utilities
+export * from "./thumbnails";
