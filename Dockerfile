@@ -55,7 +55,7 @@ COPY --from=builder /app/node_modules ./node_modules
 # Copy image-processing - only the linux binary (not darwin)
 COPY --from=builder /app/packages/image-processing/dist/index.js ./packages/image-processing/dist/
 COPY --from=builder /app/packages/image-processing/dist/index.d.ts ./packages/image-processing/dist/
-COPY --from=builder /app/packages/image-processing/dist/image-processing.linux-x64-gnu.node ./packages/image-processing/dist/
+COPY --from=builder /app/packages/image-processing/dist/*.linux-*.node ./packages/image-processing/dist/
 COPY --from=builder /app/packages/image-processing/package.json ./packages/image-processing/
 
 # Copy other packages

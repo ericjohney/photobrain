@@ -4,7 +4,8 @@ A modern, AI-powered self-hosted photo management and gallery application with c
 
 ## Features
 
-- 🖼️ **Fast Photo Grid Gallery** - Responsive grid layout with optimized image loading
+- 🖼️ **Fast Photo Grid Gallery** - Responsive grid layout with optimized thumbnail loading
+- 🚀 **Multi-Size Thumbnails** - WebP thumbnails (tiny/small/medium/large) for 99% data reduction
 - 🔍 **AI-Powered Semantic Search** - Search photos by content using CLIP embeddings
 - 📱 **Cross-Platform** - Web app and native mobile apps (iOS & Android)
 - ⚡ **High Performance** - Built with Rust for image processing and metadata extraction
@@ -12,6 +13,7 @@ A modern, AI-powered self-hosted photo management and gallery application with c
 - 🎯 **Duplicate Detection** - Perceptual hashing for finding similar images
 - 💾 **SQLite Database** - Fast, reliable local storage with vector search
 - 🎨 **Modern UI** - Clean, intuitive interface on all platforms
+- 📸 **EXIF Data Extraction** - Full camera metadata including GPS coordinates
 
 ## Architecture
 
@@ -93,8 +95,10 @@ Scan the QR code with Expo Go on your mobile device.
 
 Configure the API via environment variables or `apps/api/src/config.ts`:
 
-- `PHOTOS_DIR` - Directory to scan for photos (default: `~/Pictures`)
-- `DB_PATH` - SQLite database path (default: `./photobrain.db`)
+- `PHOTO_DIRECTORY` - Directory to scan for photos (default: `../../temp-photos`)
+- `THUMBNAILS_DIRECTORY` - Directory to store thumbnails (default: `./thumbnails`)
+- `DATABASE_URL` - SQLite database path (default: `./photobrain.db`)
+- `PORT` - Server port (default: `3000`)
 
 ### Web App
 
@@ -213,6 +217,7 @@ Rust NAPI module for high-performance image operations:
 - CLIP embeddings (text & image)
 - Metadata extraction (EXIF, dimensions, etc.)
 - Perceptual hashing for duplicate detection
+- Multi-size thumbnail generation (WebP format)
 
 ## Technology Stack
 
@@ -243,7 +248,8 @@ Rust NAPI module for high-performance image operations:
 - `GET /api/health` - Health check
 - `GET /api/photos` - Get all photos
 - `GET /api/photos/:id` - Get single photo metadata
-- `GET /api/photos/:id/file` - Get photo file
+- `GET /api/photos/:id/file` - Get full-resolution photo file
+- `GET /api/photos/:id/thumbnail/:size` - Get thumbnail (sizes: tiny, small, medium, large)
 - `GET /api/photos/search?q=query` - Semantic search
 - `POST /api/scan` - Trigger directory scan
 
@@ -277,12 +283,16 @@ photobrain/
 │
 └── packages/
     ├── utils/                   # Shared utilities
+    │   └── src/
+    │       └── thumbnails.ts    # Thumbnail configuration
     ├── config/                  # Shared TS config
     └── image-processing/        # Rust NAPI module
         └── src/
             ├── clip.rs          # CLIP embeddings
-            ├── metadata.rs      # EXIF extraction
-            └── phash.rs         # Perceptual hashing
+            ├── exif.rs          # EXIF extraction
+            ├── metadata.rs      # Photo metadata
+            ├── phash.rs         # Perceptual hashing
+            └── thumbnails.rs    # Thumbnail generation
 ```
 
 ## Building for Production

@@ -54,9 +54,12 @@ export default function PhotoModal({
 					minimumZoomScale={1}
 				>
 					<Image
-						source={{ uri: `${apiUrl}/api/photos/${photo.id}/file` }}
+						source={{ uri: `${apiUrl}/api/photos/${photo.id}/thumbnail/medium` }}
+						placeholder={{ uri: `${apiUrl}/api/photos/${photo.id}/thumbnail/tiny` }}
 						style={styles.image}
 						contentFit="contain"
+						priority="high"
+						cachePolicy="memory-disk"
 					/>
 
 					<View style={styles.infoContainer}>

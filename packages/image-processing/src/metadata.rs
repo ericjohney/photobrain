@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::clip::generate_clip_embedding_from_image;
 use crate::exif::ExifData;
 use crate::phash::generate_phash_from_image;
+use crate::thumbnails::generate_all_thumbnails_internal;
 
 #[napi(object)]
 pub struct PhotoMetadata {
@@ -26,6 +27,7 @@ pub struct PhotoMetadata {
 pub fn extract_photo_metadata(
   file_path: String,
   base_directory: String,
+  thumbnails_directory: Option<String>,
 ) -> napi::Result<PhotoMetadata> {
   let path = Path::new(&file_path);
   let base_path = Path::new(&base_directory);
@@ -70,7 +72,7 @@ pub fn extract_photo_metadata(
   // This reads the file headers only, not the full image data
   let exif = crate::exif::extract_exif(file_path.clone());
 
-  // Read and decode the image once for metadata, phash, and CLIP embedding
+  // Read and decode the image once for metadata, phash, thumbnails, and CLIP embedding
   // Memory optimization: We read the image once and carefully manage ownership
   // to avoid cloning large raw image data
   let (width, height, mime_type, phash, clip_embedding) = match ImageReader::open(&file_path) {
@@ -85,6 +87,14 @@ pub fn extract_photo_metadata(
 
           // Generate perceptual hash (borrows img, no copy)
           let hash = Some(generate_phash_from_image(&img));
+
+          // Generate thumbnails if directory is provided (borrows img, no copy)
+          if let Some(ref thumbs_dir) = thumbnails_directory {
+            if let Err(e) = generate_all_thumbnails_internal(&img, &relative_path, thumbs_dir) {
+              eprintln!("Warning: Failed to generate thumbnails for {}: {}", relative_path, e);
+              // Continue processing even if thumbnails fail
+            }
+          }
 
           // Generate CLIP embedding (moves img ownership, avoids clone)
           // This must be last since it consumes the image
