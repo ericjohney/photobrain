@@ -1,4 +1,4 @@
-use image::{imageops::FilterType, DynamicImage, ImageFormat};
+use image::{imageops::FilterType, DynamicImage, GenericImageView, ImageFormat};
 use napi_derive::napi;
 use std::fs;
 use std::path::Path;
