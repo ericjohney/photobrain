@@ -15,6 +15,7 @@ image = { version = "0.25", features = ["webp"] }
 image_hasher = "2.0"
 fastembed = "4.4.0"
 kamadak-exif = "0.5"
+libheif-rs = "0.22"
 
 [build-dependencies]
 napi-build = "2"

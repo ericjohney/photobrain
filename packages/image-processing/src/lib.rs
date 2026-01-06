@@ -2,6 +2,7 @@
 
 mod clip;
 mod exif;
+mod heif;
 mod metadata;
 mod phash;
 mod thumbnails;

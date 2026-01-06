@@ -1,10 +1,11 @@
-use image::ImageReader;
+use image::{DynamicImage, ImageReader};
 use napi_derive::napi;
 use std::fs;
 use std::path::Path;
 
 use crate::clip::generate_clip_embedding_from_image;
 use crate::exif::ExifData;
+use crate::heif::{decode_heif, is_heif_file};
 use crate::phash::generate_phash_from_image;
 use crate::thumbnails::generate_all_thumbnails_internal;
 
@@ -75,38 +76,56 @@ pub fn extract_photo_metadata(
   // Read and decode the image once for metadata, phash, thumbnails, and CLIP embedding
   // Memory optimization: We read the image once and carefully manage ownership
   // to avoid cloning large raw image data
-  let (width, height, mime_type, phash, clip_embedding) = match ImageReader::open(&file_path) {
-    Ok(reader) => {
-      let format = reader.format();
-      match reader.decode() {
-        Ok(img) => {
-          // Extract dimension info before moving ownership
-          let w = img.width();
-          let h = img.height();
-          let mime = format.map(|f| format!("image/{}", format!("{:?}", f).to_lowercase()));
-
-          // Generate perceptual hash (borrows img, no copy)
-          let hash = Some(generate_phash_from_image(&img));
-
-          // Generate thumbnails if directory is provided (borrows img, no copy)
-          if let Some(ref thumbs_dir) = thumbnails_directory {
-            if let Err(e) = generate_all_thumbnails_internal(&img, &relative_path, thumbs_dir) {
-              eprintln!("Warning: Failed to generate thumbnails for {}: {}", relative_path, e);
-              // Continue processing even if thumbnails fail
+  let (width, height, mime_type, phash, clip_embedding) = {
+    // Try to decode the image - use HEIF decoder for HEIF/HEIC files
+    let decode_result: Result<(DynamicImage, Option<String>), ()> = if is_heif_file(path) {
+      decode_heif(path)
+        .map(|img| (img, Some("image/heic".to_string())))
+        .map_err(|e| {
+          eprintln!("Warning: Failed to decode HEIF file {}: {}", file_path, e);
+        })
+    } else {
+      match ImageReader::open(&file_path) {
+        Ok(reader) => {
+          let format = reader.format();
+          match reader.decode() {
+            Ok(img) => {
+              let mime = format.map(|f| format!("image/{}", format!("{:?}", f).to_lowercase()));
+              Ok((img, mime))
             }
+            Err(_) => Err(()),
           }
-
-          // Generate CLIP embedding (moves img ownership, avoids clone)
-          // This must be last since it consumes the image
-          let embedding = generate_clip_embedding_from_image(img)
-            .map(|vec| vec.iter().map(|&f| f as f64).collect());
-
-          (Some(w), Some(h), mime, hash, embedding)
         }
-        Err(_) => (None, None, None, None, None),
+        Err(_) => Err(()),
       }
+    };
+
+    match decode_result {
+      Ok((img, mime)) => {
+        // Extract dimension info before moving ownership
+        let w = img.width();
+        let h = img.height();
+
+        // Generate perceptual hash (borrows img, no copy)
+        let hash = Some(generate_phash_from_image(&img));
+
+        // Generate thumbnails if directory is provided (borrows img, no copy)
+        if let Some(ref thumbs_dir) = thumbnails_directory {
+          if let Err(e) = generate_all_thumbnails_internal(&img, &relative_path, thumbs_dir) {
+            eprintln!("Warning: Failed to generate thumbnails for {}: {}", relative_path, e);
+            // Continue processing even if thumbnails fail
+          }
+        }
+
+        // Generate CLIP embedding (moves img ownership, avoids clone)
+        // This must be last since it consumes the image
+        let embedding = generate_clip_embedding_from_image(img)
+          .map(|vec| vec.iter().map(|&f| f as f64).collect());
+
+        (Some(w), Some(h), mime, hash, embedding)
+      }
+      Err(_) => (None, None, None, None, None),
     }
-    Err(_) => (None, None, None, None, None),
   };
 
   Ok(PhotoMetadata {
