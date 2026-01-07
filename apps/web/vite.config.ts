@@ -11,5 +11,6 @@ export default defineConfig({
 	},
 	server: {
 		port: 3001,
+		allowedHosts: ["devbox.quail-pike.ts.net"],
 	},
 });
