@@ -12,4 +12,4 @@ pub use clip::clip_text_embedding;
 pub use exif::{extract_exif, ExifData};
 pub use metadata::{extract_photo_metadata, PhotoMetadata};
 pub use phash::perceptual_hash;
-pub use thumbnails::{ThumbnailConfig, ThumbnailSizes};
+pub use thumbnails::{generate_thumbnails_from_file, ThumbnailConfig, ThumbnailSizes};
