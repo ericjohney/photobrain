@@ -5,7 +5,7 @@ import { AlertCircle, Camera, ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Lightbox } from "@/components/Lightbox";
 import { Card } from "@/components/ui/card";
-import { getThumbnailUrl } from "@/lib/thumbnails";
+import { getThumbnailSrcSet, getThumbnailUrl } from "@/lib/thumbnails";
 
 // Infer types from tRPC router
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -42,7 +42,9 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 								</div>
 							) : (
 								<img
-									src={getThumbnailUrl(photo.id, "tiny")}
+									src={getThumbnailUrl(photo.id, "small")}
+									srcSet={getThumbnailSrcSet(photo.id)}
+									sizes="(min-width: 1536px) 16vw, (min-width: 1280px) 20vw, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
 									alt={photo.name}
 									className="w-full h-full object-cover"
 									loading="lazy"

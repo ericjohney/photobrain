@@ -1,4 +1,4 @@
-import type { ThumbnailSize } from "@photobrain/utils";
+import { THUMBNAIL_CONFIG, type ThumbnailSize } from "@photobrain/utils";
 import { config } from "@/lib/config";
 
 /**
@@ -8,6 +8,16 @@ import { config } from "@/lib/config";
  */
 export function getThumbnailUrl(photoId: number, size: ThumbnailSize): string {
 	return `${config.apiUrl}/api/photos/${photoId}/thumbnail/${size}`;
+}
+
+/**
+ * Generate srcset for responsive thumbnail loading
+ * Browser will choose the best size based on rendered size and device pixel ratio
+ */
+export function getThumbnailSrcSet(photoId: number): string {
+	return (Object.keys(THUMBNAIL_CONFIG.sizes) as ThumbnailSize[])
+		.map((size) => `${getThumbnailUrl(photoId, size)} ${THUMBNAIL_CONFIG.sizes[size].maxDimension}w`)
+		.join(", ");
 }
 
 /**
