@@ -7,6 +7,8 @@ import {
 } from "@photobrain/image-processing";
 import type { NewPhoto, NewPhotoExif } from "@/db/schema";
 import {
+	batchConvertRawFiles,
+	cleanupBatchConversion,
 	cleanupTempConversion,
 	convertRawToTemp,
 	isDarktableAvailable,
@@ -51,8 +53,15 @@ const DEFAULT_SUPPORTED_EXTENSIONS = [
 	...getAllRawExtensions(),
 ];
 
+interface CollectedFile {
+	fullPath: string;
+	ext: string;
+	isRaw: boolean;
+}
+
 /**
  * Scan a directory for photo files and extract metadata
+ * Uses batch processing for RAW files to amortize darktable startup overhead
  */
 export async function scanDirectory(options: ScanOptions) {
 	const startTime = Date.now();
@@ -63,9 +72,10 @@ export async function scanDirectory(options: ScanOptions) {
 		supportedExtensions = DEFAULT_SUPPORTED_EXTENSIONS,
 	} = options;
 
-	const photos: PhotoWithExif[] = [];
+	// Phase 1: Collect all files
+	const collectedFiles: CollectedFile[] = [];
 
-	async function scanDir(currentPath: string) {
+	async function collectFiles(currentPath: string) {
 		try {
 			const entries = await readdir(currentPath, { withFileTypes: true });
 
@@ -73,23 +83,15 @@ export async function scanDirectory(options: ScanOptions) {
 				const fullPath = join(currentPath, entry.name);
 
 				if (entry.isDirectory() && recursive) {
-					await scanDir(fullPath);
+					await collectFiles(fullPath);
 				} else if (entry.isFile()) {
 					const ext = extname(entry.name).toLowerCase();
 					if (supportedExtensions.includes(ext)) {
-						try {
-							const photoWithExif = await extractMetadata(
-								fullPath,
-								directory,
-								thumbnailsDirectory,
-							);
-							photos.push(photoWithExif);
-						} catch (error) {
-							console.error(
-								`Error extracting metadata from ${fullPath}:`,
-								error,
-							);
-						}
+						collectedFiles.push({
+							fullPath,
+							ext,
+							isRaw: isRawFile(ext),
+						});
 					}
 				}
 			}
@@ -98,7 +100,68 @@ export async function scanDirectory(options: ScanOptions) {
 		}
 	}
 
-	await scanDir(directory);
+	await collectFiles(directory);
+
+	const rawFiles = collectedFiles.filter((f) => f.isRaw);
+	const standardFiles = collectedFiles.filter((f) => !f.isRaw);
+
+	console.log(
+		`📁 Found ${collectedFiles.length} files (${standardFiles.length} standard, ${rawFiles.length} RAW)`,
+	);
+
+	// Phase 2: Batch convert RAW files (single darktable invocation)
+	let rawConversions = new Map<string, string>();
+	let batchTempDir = "";
+
+	if (rawFiles.length > 0) {
+		const batchResult = await batchConvertRawFiles(
+			rawFiles.map((f) => f.fullPath),
+		);
+		rawConversions = batchResult.conversions;
+		batchTempDir = batchResult.tempDir;
+
+		if (batchResult.failed.length > 0) {
+			console.warn(
+				`⚠️ ${batchResult.failed.length} RAW files failed to convert`,
+			);
+		}
+	}
+
+	// Phase 3: Process all files through Rust pipeline
+	const photos: PhotoWithExif[] = [];
+
+	// Process standard files
+	for (const file of standardFiles) {
+		try {
+			const photoWithExif = await extractStandardMetadata(
+				file.fullPath,
+				directory,
+				thumbnailsDirectory,
+			);
+			photos.push(photoWithExif);
+		} catch (error) {
+			console.error(`Error extracting metadata from ${file.fullPath}:`, error);
+		}
+	}
+
+	// Process RAW files using pre-converted JPEGs
+	for (const file of rawFiles) {
+		try {
+			const convertedPath = rawConversions.get(file.fullPath);
+			const photoWithExif = await extractRawMetadataFromConverted(
+				file.fullPath,
+				convertedPath,
+				directory,
+				thumbnailsDirectory,
+			);
+			photos.push(photoWithExif);
+		} catch (error) {
+			console.error(`Error extracting metadata from ${file.fullPath}:`, error);
+		}
+	}
+
+	// Cleanup batch temp directory
+	await cleanupBatchConversion(batchTempDir);
 
 	const duration = Date.now() - startTime;
 
@@ -137,12 +200,18 @@ async function extractStandardMetadata(
 	baseDirectory: string,
 	thumbnailsDirectory: string,
 ): Promise<PhotoWithExif> {
+	const fileName = basename(filePath);
+	const startTime = performance.now();
+
 	// Single file read - extracts photo metadata, EXIF data, AND generates thumbnails
 	const rustMetadata = extractPhotoMetadata(
 		filePath,
 		baseDirectory,
 		thumbnailsDirectory,
 	);
+
+	const duration = Math.round(performance.now() - startTime);
+	console.log(`⏱️  ${fileName}: ${duration}ms (rust pipeline)`);
 
 	// Convert clipEmbedding f64 array to Float32Array
 	const clipEmbedding = rustMetadata.clipEmbedding
@@ -181,17 +250,20 @@ async function extractRawMetadata(
 	const rawFormat = getRawFormat(ext);
 	const fileName = basename(filePath);
 	const relativePath = relative(baseDirectory, filePath);
+	const timings: Record<string, number> = {};
 
 	// Get file stats for the original RAW file
 	const fileStats = await stat(filePath);
 
 	// Extract EXIF from the RAW file directly (before conversion)
 	let rawExif: ReturnType<typeof extractExif> | undefined;
+	const exifStart = performance.now();
 	try {
 		rawExif = extractExif(filePath);
 	} catch {
 		// EXIF extraction failed, continue without it
 	}
+	timings.exif = Math.round(performance.now() - exifStart);
 
 	// Check if darktable is available
 	if (!(await isDarktableAvailable())) {
@@ -212,6 +284,7 @@ async function extractRawMetadata(
 	// Convert RAW to temporary JPEG
 	console.log(`📷 Converting RAW file: ${fileName}`);
 	const conversionResult = await convertRawToTemp(filePath);
+	timings.darktable = conversionResult.duration ?? 0;
 
 	if (!conversionResult.success || !conversionResult.outputPath) {
 		console.error(
@@ -228,20 +301,21 @@ async function extractRawMetadata(
 		);
 	}
 
-	console.log(`✅ Converted ${fileName} in ${conversionResult.duration}ms`);
-
 	try {
 		// Process the converted JPEG through the standard Rust pipeline
 		// Note: We pass null for thumbnailsDirectory to skip thumbnail generation here
 		// because the temp file path won't produce correct thumbnail paths
+		const rustStart = performance.now();
 		const rustMetadata = extractPhotoMetadata(
 			conversionResult.outputPath,
 			baseDirectory,
 			null, // Don't generate thumbnails here
 		);
+		timings.rustPipeline = Math.round(performance.now() - rustStart);
 
 		// Generate thumbnails separately with the correct RAW file relative path
 		// Pass orientation from original RAW EXIF data for correct rotation
+		const thumbStart = performance.now();
 		try {
 			generateThumbnailsFromFile(
 				conversionResult.outputPath,
@@ -256,6 +330,12 @@ async function extractRawMetadata(
 			);
 			// Continue even if thumbnail generation fails
 		}
+		timings.thumbnails = Math.round(performance.now() - thumbStart);
+
+		const total = Object.values(timings).reduce((a, b) => a + b, 0);
+		console.log(
+			`⏱️  ${fileName}: ${total}ms total (darktable: ${timings.darktable}ms, rust: ${timings.rustPipeline}ms, thumbnails: ${timings.thumbnails}ms, exif: ${timings.exif}ms)`,
+		);
 
 		// Convert clipEmbedding f64 array to Float32Array
 		const clipEmbedding = rustMetadata.clipEmbedding
@@ -291,6 +371,103 @@ async function extractRawMetadata(
 		// Always clean up the temporary file
 		await cleanupTempConversion(conversionResult.outputPath);
 	}
+}
+
+/**
+ * Extract metadata from RAW files using pre-converted JPEGs (from batch conversion)
+ * This is faster because darktable has already processed all RAW files at once
+ */
+async function extractRawMetadataFromConverted(
+	rawFilePath: string,
+	convertedJpegPath: string | undefined,
+	baseDirectory: string,
+	thumbnailsDirectory: string,
+): Promise<PhotoWithExif> {
+	const ext = extname(rawFilePath).toLowerCase();
+	const rawFormat = getRawFormat(ext);
+	const fileName = basename(rawFilePath);
+	const relativePath = relative(baseDirectory, rawFilePath);
+	const timings: Record<string, number> = {};
+
+	// Get file stats for the original RAW file
+	const fileStats = await stat(rawFilePath);
+
+	// Extract EXIF from the RAW file directly
+	let rawExif: ReturnType<typeof extractExif> | undefined;
+	const exifStart = performance.now();
+	try {
+		rawExif = extractExif(rawFilePath);
+	} catch {
+		// EXIF extraction failed, continue without it
+	}
+	timings.exif = Math.round(performance.now() - exifStart);
+
+	// If conversion failed, return failed record
+	if (!convertedJpegPath) {
+		return createFailedRawPhoto(
+			relativePath,
+			fileName,
+			fileStats,
+			rawFormat,
+			"failed",
+			"Batch conversion failed",
+			rawExif,
+		);
+	}
+
+	// Process the converted JPEG through the standard Rust pipeline
+	const rustStart = performance.now();
+	const rustMetadata = extractPhotoMetadata(
+		convertedJpegPath,
+		baseDirectory,
+		null, // Don't generate thumbnails here
+	);
+	timings.rustPipeline = Math.round(performance.now() - rustStart);
+
+	// Generate thumbnails separately with the correct RAW file relative path
+	const thumbStart = performance.now();
+	try {
+		generateThumbnailsFromFile(
+			convertedJpegPath,
+			relativePath,
+			thumbnailsDirectory,
+			rawExif?.orientation ?? null,
+		);
+	} catch (error) {
+		console.warn(`Warning: Failed to generate thumbnails for ${fileName}:`, error);
+	}
+	timings.thumbnails = Math.round(performance.now() - thumbStart);
+
+	const total = Object.values(timings).reduce((a, b) => a + b, 0);
+	console.log(
+		`⏱️  ${fileName}: ${total}ms (rust: ${timings.rustPipeline}ms, thumbnails: ${timings.thumbnails}ms, exif: ${timings.exif}ms)`,
+	);
+
+	// Convert clipEmbedding f64 array to Float32Array
+	const clipEmbedding = rustMetadata.clipEmbedding
+		? new Float32Array(rustMetadata.clipEmbedding)
+		: undefined;
+
+	const photo: NewPhoto = {
+		path: relativePath,
+		name: fileName,
+		size: fileStats.size,
+		createdAt: fileStats.birthtime,
+		modifiedAt: fileStats.mtime,
+		width: rustMetadata.width,
+		height: rustMetadata.height,
+		mimeType: `image/x-${rawFormat?.toLowerCase() ?? "raw"}`,
+		phash: rustMetadata.phash,
+		clipEmbedding,
+		isRaw: true,
+		rawFormat,
+		rawStatus: "converted",
+		rawError: null,
+	};
+
+	const exif = convertExifToDbFormat(rawExif ?? rustMetadata.exif);
+
+	return { photo, exif };
 }
 
 /**
