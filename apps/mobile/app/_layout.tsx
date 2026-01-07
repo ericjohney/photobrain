@@ -1,7 +1,7 @@
-import { StatusBar } from "expo-status-bar";
-import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Tabs } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { trpc } from "../src/lib/trpc";
 import { trpcClient } from "../src/lib/trpc-client";
 
@@ -70,7 +70,11 @@ export default function RootLayout() {
 							title: "About",
 							tabBarIcon: ({ focused, color, size }) => (
 								<Ionicons
-									name={focused ? "information-circle" : "information-circle-outline"}
+									name={
+										focused
+											? "information-circle"
+											: "information-circle-outline"
+									}
 									size={size}
 									color={color}
 								/>

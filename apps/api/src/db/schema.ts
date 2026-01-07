@@ -1,5 +1,11 @@
-import { integer, sqliteTable, text, blob, customType } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
+import {
+	blob,
+	customType,
+	integer,
+	sqliteTable,
+	text,
+} from "drizzle-orm/sqlite-core";
 
 // Custom type for Float32Array vectors stored as BLOB
 const float32Vector = customType<{
@@ -13,7 +19,11 @@ const float32Vector = customType<{
 		return Buffer.from(value.buffer);
 	},
 	fromDriver(value: Buffer): Float32Array {
-		return new Float32Array(value.buffer, value.byteOffset, value.byteLength / 4);
+		return new Float32Array(
+			value.buffer,
+			value.byteOffset,
+			value.byteLength / 4,
+		);
 	},
 });
 
@@ -29,6 +39,11 @@ export const photos = sqliteTable("photos", {
 	mimeType: text("mime_type"),
 	phash: text("phash"),
 	clipEmbedding: float32Vector("clip_embedding"),
+	// RAW file support
+	isRaw: integer("is_raw", { mode: "boolean" }).default(false),
+	rawFormat: text("raw_format"), // "CR2", "NEF", "ARW", etc.
+	rawStatus: text("raw_status"), // "converted", "failed", "no_converter"
+	rawError: text("raw_error"), // Error message if conversion failed
 });
 
 export const photoExif = sqliteTable("photo_exif", {

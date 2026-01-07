@@ -1,21 +1,21 @@
+import { Ionicons } from "@expo/vector-icons";
+import type { AppRouter } from "@photobrain/api";
+import type { inferRouterOutputs } from "@trpc/server";
 import React, { useState } from "react";
 import {
-	View,
-	StyleSheet,
 	ActivityIndicator,
-	Text,
-	TouchableOpacity,
 	Alert,
 	RefreshControl,
 	ScrollView,
+	StyleSheet,
+	Text,
+	TouchableOpacity,
+	View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@photobrain/api";
-import { API_URL } from "@/config";
 import PhotoGrid from "@/components/PhotoGrid";
 import PhotoModal from "@/components/PhotoModal";
 import SearchBar from "@/components/SearchBar";
+import { API_URL } from "@/config";
 import { trpc } from "@/lib/trpc";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -23,7 +23,9 @@ type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 export default function DashboardScreen() {
 	const [searchQuery, setSearchQuery] = useState("");
-	const [selectedPhoto, setSelectedPhoto] = useState<PhotoMetadata | null>(null);
+	const [selectedPhoto, setSelectedPhoto] = useState<PhotoMetadata | null>(
+		null,
+	);
 
 	// Use tRPC hooks
 	const photosQuery = trpc.photos.useQuery(undefined, {
@@ -34,14 +36,14 @@ export default function DashboardScreen() {
 		{ query: searchQuery, limit: 50 },
 		{
 			enabled: searchQuery.trim().length > 0,
-		}
+		},
 	);
 
 	const scanMutation = trpc.scan.useMutation({
 		onSuccess: (result) => {
 			Alert.alert(
 				"Scan Complete",
-				`Scanned: ${result.scanned}\nInserted: ${result.inserted}\nSkipped: ${result.skipped}\nDuration: ${result.duration.toFixed(2)}s`
+				`Scanned: ${result.scanned}\nInserted: ${result.inserted}\nSkipped: ${result.skipped}\nDuration: ${result.duration.toFixed(2)}s`,
 			);
 			photosQuery.refetch();
 		},
@@ -119,7 +121,10 @@ export default function DashboardScreen() {
 			<ScrollView
 				style={styles.content}
 				refreshControl={
-					<RefreshControl refreshing={activeQuery.isFetching} onRefresh={handleRefresh} />
+					<RefreshControl
+						refreshing={activeQuery.isFetching}
+						onRefresh={handleRefresh}
+					/>
 				}
 			>
 				<PhotoGrid

@@ -1,18 +1,18 @@
+import { Ionicons } from "@expo/vector-icons";
+import type { AppRouter } from "@photobrain/api";
+import { formatDate, formatFileSize } from "@photobrain/utils";
+import type { inferRouterOutputs } from "@trpc/server";
+import { Image } from "expo-image";
 import React from "react";
 import {
-	Modal,
-	View,
-	StyleSheet,
-	TouchableOpacity,
-	Text,
 	Dimensions,
+	Modal,
 	ScrollView,
+	StyleSheet,
+	Text,
+	TouchableOpacity,
+	View,
 } from "react-native";
-import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@photobrain/api";
-import { formatFileSize, formatDate } from "@photobrain/utils";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -54,8 +54,12 @@ export default function PhotoModal({
 					minimumZoomScale={1}
 				>
 					<Image
-						source={{ uri: `${apiUrl}/api/photos/${photo.id}/thumbnail/medium` }}
-						placeholder={{ uri: `${apiUrl}/api/photos/${photo.id}/thumbnail/tiny` }}
+						source={{
+							uri: `${apiUrl}/api/photos/${photo.id}/thumbnail/medium`,
+						}}
+						placeholder={{
+							uri: `${apiUrl}/api/photos/${photo.id}/thumbnail/tiny`,
+						}}
 						style={styles.image}
 						contentFit="contain"
 						priority="high"
@@ -78,7 +82,9 @@ export default function PhotoModal({
 						)}
 						<View style={styles.infoRow}>
 							<Text style={styles.infoLabel}>Modified:</Text>
-							<Text style={styles.infoValue}>{formatDate(photo.modifiedAt)}</Text>
+							<Text style={styles.infoValue}>
+								{formatDate(photo.modifiedAt)}
+							</Text>
 						</View>
 					</View>
 				</ScrollView>

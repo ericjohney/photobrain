@@ -1,8 +1,8 @@
-import { sql, inArray } from "drizzle-orm";
-import { db } from "@/db";
-import { photos as photosTable } from "@/db/schema";
-import type { Photo } from "@/db/schema";
 import { clipTextEmbedding } from "@photobrain/image-processing";
+import { inArray, sql } from "drizzle-orm";
+import { db } from "@/db";
+import type { Photo } from "@/db/schema";
+import { photos as photosTable } from "@/db/schema";
 
 /**
  * Find similar photos using CLIP embedding vector similarity

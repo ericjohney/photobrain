@@ -91,6 +91,31 @@ photobrain/
 - **image** v0.25 - Image decoding and resizing
 - **image_hasher** v2.0 - Perceptual hashing
 - **kamadak-exif** v0.5 - EXIF metadata extraction
+- **libheif-rs** v0.22 - HEIF/HEIC image decoding
+
+## System Dependencies
+
+For local development, the following system packages are required:
+
+### Linux (Debian/Ubuntu)
+```bash
+# Required for Rust native module compilation
+apt-get install -y build-essential pkg-config libssl-dev libheif-dev libclang-dev
+
+# Install Bun
+curl -fsSL https://bun.sh/install | bash
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Docker Build Dependencies
+The Dockerfile requires these packages in the builder stage:
+- `libheif-dev` - HEIF/HEIC encoding/decoding headers
+- `libclang-dev` - Required by bindgen for FFI generation
+
+The API runtime stage requires:
+- `libheif1` - HEIF runtime library
 
 ## Development Commands
 
@@ -164,6 +189,11 @@ Two main tables in SQLite:
   clipEmbedding: blob (Float32Array, 512 dimensions)
   createdAt: timestamp
   modifiedAt: timestamp
+  // RAW file support
+  isRaw: boolean (default false)
+  rawFormat: text (e.g., "CR2", "NEF", "ARW")
+  rawStatus: text ("converted", "failed", "no_converter")
+  rawError: text (error message if conversion failed)
 }
 ```
 

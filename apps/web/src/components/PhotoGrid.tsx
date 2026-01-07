@@ -1,11 +1,11 @@
-import { ImageIcon } from "lucide-react";
-import { useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Lightbox } from "@/components/Lightbox";
-import { getThumbnailUrl } from "@/lib/thumbnails";
 import type { AppRouter } from "@photobrain/api";
-import type { inferRouterOutputs } from "@trpc/server";
 import { formatFileSize } from "@photobrain/utils";
+import type { inferRouterOutputs } from "@trpc/server";
+import { AlertCircle, Camera, ImageIcon } from "lucide-react";
+import { useState } from "react";
+import { Lightbox } from "@/components/Lightbox";
+import { Card } from "@/components/ui/card";
+import { getThumbnailUrl } from "@/lib/thumbnails";
 
 // Infer types from tRPC router
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -30,13 +30,39 @@ export function PhotoGrid({ photos }: PhotoGridProps) {
 						onClick={() => setSelectedPhoto(photo)}
 					>
 						<div className="aspect-square relative bg-muted">
-							<img
-								src={getThumbnailUrl(photo.id, "tiny")}
-								alt={photo.name}
-								className="w-full h-full object-cover"
-								loading="lazy"
-							/>
+							{/* Show placeholder for failed RAW conversions */}
+							{photo.isRaw && photo.rawStatus !== "converted" ? (
+								<div className="w-full h-full flex flex-col items-center justify-center bg-gray-800 text-gray-400">
+									<Camera className="w-12 h-12 mb-2 opacity-50" />
+									<span className="text-xs">
+										{photo.rawStatus === "no_converter"
+											? "No Converter"
+											: "Conversion Failed"}
+									</span>
+								</div>
+							) : (
+								<img
+									src={getThumbnailUrl(photo.id, "tiny")}
+									alt={photo.name}
+									className="w-full h-full object-cover"
+									loading="lazy"
+								/>
+							)}
 							<div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+
+							{/* RAW badge */}
+							{photo.isRaw && (
+								<div className="absolute top-2 left-2 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+									{photo.rawFormat || "RAW"}
+								</div>
+							)}
+
+							{/* Failed indicator */}
+							{photo.isRaw && photo.rawStatus === "failed" && (
+								<div className="absolute top-2 right-2">
+									<AlertCircle className="w-4 h-4 text-red-500" />
+								</div>
+							)}
 						</div>
 						<div className="p-2 bg-card">
 							<p className="text-xs font-medium truncate" title={photo.name}>

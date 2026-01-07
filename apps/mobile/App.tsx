@@ -1,14 +1,14 @@
-import { StatusBar } from "expo-status-bar";
-import { NavigationContainer } from "@react-navigation/native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { NavigationContainer } from "@react-navigation/native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { StatusBar } from "expo-status-bar";
 import { trpc } from "@/lib/trpc";
 import { trpcClient } from "@/lib/trpc-client";
-import DashboardScreen from "@/screens/DashboardScreen";
-import CollectionsScreen from "@/screens/CollectionsScreen";
-import PreferencesScreen from "@/screens/PreferencesScreen";
 import AboutScreen from "@/screens/AboutScreen";
+import CollectionsScreen from "@/screens/CollectionsScreen";
+import DashboardScreen from "@/screens/DashboardScreen";
+import PreferencesScreen from "@/screens/PreferencesScreen";
 
 const Tab = createBottomTabNavigator();
 const queryClient = new QueryClient();
@@ -31,7 +31,9 @@ export default function App() {
 								} else if (route.name === "Preferences") {
 									iconName = focused ? "settings" : "settings-outline";
 								} else if (route.name === "About") {
-									iconName = focused ? "information-circle" : "information-circle-outline";
+									iconName = focused
+										? "information-circle"
+										: "information-circle-outline";
 								}
 
 								return <Ionicons name={iconName} size={size} color={color} />;

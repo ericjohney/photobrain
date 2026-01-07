@@ -1,15 +1,15 @@
+import type { AppRouter } from "@photobrain/api";
+import type { inferRouterOutputs } from "@trpc/server";
+import { Image } from "expo-image";
 import React from "react";
 import {
+	Dimensions,
 	FlatList,
 	StyleSheet,
-	Dimensions,
+	Text,
 	TouchableOpacity,
 	View,
-	Text,
 } from "react-native";
-import { Image } from "expo-image";
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@photobrain/api";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -25,7 +25,11 @@ const COLUMNS = 3;
 const SPACING = 2;
 const ITEM_SIZE = (SCREEN_WIDTH - SPACING * (COLUMNS + 1)) / COLUMNS;
 
-export default function PhotoGrid({ photos, onPhotoPress, apiUrl }: PhotoGridProps) {
+export default function PhotoGrid({
+	photos,
+	onPhotoPress,
+	apiUrl,
+}: PhotoGridProps) {
 	if (photos.length === 0) {
 		return (
 			<View style={styles.emptyContainer}>

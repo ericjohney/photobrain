@@ -1,8 +1,8 @@
-import { Hono } from "hono";
 import { join } from "node:path";
-import { db } from "@/db";
-import { config } from "@/config";
 import { THUMBNAIL_CONFIG, type ThumbnailSize } from "@photobrain/utils";
+import { Hono } from "hono";
+import { config } from "@/config";
+import { db } from "@/db";
 
 const router = new Hono();
 
@@ -25,7 +25,47 @@ router.get("/:id/file", async (c) => {
 			return c.json({ error: "Photo not found in database" }, 404);
 		}
 
-		// Resolve relative path to absolute path
+		// For RAW files, serve the large thumbnail instead of the original
+		// (browsers can't display RAW files directly)
+		if (photo.isRaw) {
+			// Check if conversion was successful
+			if (photo.rawStatus !== "converted") {
+				return c.json(
+					{
+						error: "RAW file not converted",
+						rawStatus: photo.rawStatus,
+						rawError: photo.rawError,
+					},
+					422,
+				);
+			}
+
+			// Serve the large thumbnail as the "full" image
+			const pathWithoutExt = photo.path.replace(/\.[^/.]+$/, "");
+			const thumbnailPath = join(
+				config.THUMBNAILS_DIRECTORY,
+				"large",
+				`${pathWithoutExt}.webp`,
+			);
+
+			const thumbnailFile = Bun.file(thumbnailPath);
+
+			if (!(await thumbnailFile.exists())) {
+				return c.json({ error: "Converted image not found" }, 404);
+			}
+
+			return new Response(thumbnailFile.stream(), {
+				status: 200,
+				headers: {
+					"Content-Type": "image/webp",
+					"Cache-Control": "public, max-age=3600",
+					"Content-Length": thumbnailFile.size.toString(),
+					"X-Original-Format": photo.rawFormat || "RAW",
+				},
+			});
+		}
+
+		// Standard image: serve the original file
 		const absolutePath = join(config.PHOTO_DIRECTORY, photo.path);
 
 		// Read the file using Bun.file
@@ -65,7 +105,9 @@ router.get("/:id/thumbnail/:size", async (c) => {
 	// Validate thumbnail size
 	if (!THUMBNAIL_CONFIG.sizes[size]) {
 		return c.json(
-			{ error: `Invalid thumbnail size. Must be one of: ${Object.keys(THUMBNAIL_CONFIG.sizes).join(", ")}` },
+			{
+				error: `Invalid thumbnail size. Must be one of: ${Object.keys(THUMBNAIL_CONFIG.sizes).join(", ")}`,
+			},
 			400,
 		);
 	}
@@ -94,7 +136,9 @@ router.get("/:id/thumbnail/:size", async (c) => {
 
 		// Check if thumbnail exists, fallback to full image if not
 		if (!(await file.exists())) {
-			console.warn(`Thumbnail not found: ${thumbnailPath}, falling back to full image`);
+			console.warn(
+				`Thumbnail not found: ${thumbnailPath}, falling back to full image`,
+			);
 			// Redirect to full image endpoint
 			return c.redirect(`/api/photos/${id}/file`);
 		}

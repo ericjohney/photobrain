@@ -46,9 +46,10 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS api
 
-# Install runtime dependencies for native modules
+# Install runtime dependencies for native modules and RAW processing
 RUN apt-get update && apt-get install -y \
     libheif1 \
+    darktable \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

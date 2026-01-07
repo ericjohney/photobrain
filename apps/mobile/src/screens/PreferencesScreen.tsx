@@ -1,6 +1,6 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
 
 export default function PreferencesScreen() {
 	return (
@@ -9,7 +9,8 @@ export default function PreferencesScreen() {
 			<Text style={styles.title}>Preferences</Text>
 			<Text style={styles.subtitle}>Coming soon...</Text>
 			<Text style={styles.description}>
-				Customize your PhotoBrain experience with various settings and preferences.
+				Customize your PhotoBrain experience with various settings and
+				preferences.
 			</Text>
 		</View>
 	);

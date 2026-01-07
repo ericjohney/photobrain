@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
-import * as sqliteVec from "sqlite-vec";
 import { existsSync } from "node:fs";
+import * as sqliteVec from "sqlite-vec";
 import { config } from "@/config";
 
 /**
