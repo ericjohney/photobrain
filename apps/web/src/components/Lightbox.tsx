@@ -1,9 +1,19 @@
-import { X, Camera, Aperture, Clock, MapPin } from "lucide-react";
-import { useEffect } from "react";
-import { getThumbnailUrl, getFullImageUrl } from "@/lib/thumbnails";
 import type { AppRouter } from "@photobrain/api";
-import type { inferRouterOutputs } from "@trpc/server";
 import { formatFileSize } from "@photobrain/utils";
+import type { inferRouterOutputs } from "@trpc/server";
+import {
+	AlertTriangle,
+	Aperture,
+	Camera,
+	Clock,
+	FileImage,
+	MapPin,
+	RefreshCw,
+	X,
+} from "lucide-react";
+import { useEffect } from "react";
+import { getFullImageUrl, getThumbnailUrl } from "@/lib/thumbnails";
+import { trpc } from "@/lib/trpc";
 
 // Infer types from tRPC router
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -15,6 +25,14 @@ interface LightboxProps {
 }
 
 export function Lightbox({ photo, onClose }: LightboxProps) {
+	const utils = trpc.useUtils();
+	const reprocessMutation = trpc.reprocessRaw.useMutation({
+		onSuccess: () => {
+			// Invalidate and refetch photos
+			utils.photos.invalidate();
+		},
+	});
+
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
@@ -26,6 +44,7 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 	}, [onClose]);
 
 	const hasExif = photo.exif !== null && photo.exif !== undefined;
+	const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
 
 	return (
 		<div
@@ -38,17 +57,44 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 			>
 				{/* Image container */}
 				<div className="flex-1 flex items-center justify-center p-4">
-					<img
-						src={getThumbnailUrl(photo.id, "large")}
-						srcSet={`
-							${getThumbnailUrl(photo.id, "medium")} 800w,
-							${getThumbnailUrl(photo.id, "large")} 1600w,
-							${getFullImageUrl(photo.id)} 4000w
-						`}
-						sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
-						alt={photo.name}
-						className="max-w-full max-h-full object-contain rounded-lg"
-					/>
+					{isFailedRaw ? (
+						<div className="flex flex-col items-center justify-center text-gray-400">
+							<Camera className="w-24 h-24 mb-4 opacity-50" />
+							<p className="text-lg mb-2">RAW Conversion Failed</p>
+							<p className="text-sm text-gray-500 mb-4">
+								{photo.rawError || "Unknown error"}
+							</p>
+							<button
+								onClick={() => reprocessMutation.mutate({ id: photo.id })}
+								disabled={reprocessMutation.isPending}
+								className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
+							>
+								<RefreshCw
+									className={`w-4 h-4 ${reprocessMutation.isPending ? "animate-spin" : ""}`}
+								/>
+								{reprocessMutation.isPending
+									? "Retrying..."
+									: "Retry Conversion"}
+							</button>
+							{reprocessMutation.isError && (
+								<p className="text-red-400 text-sm mt-2">
+									{reprocessMutation.error.message}
+								</p>
+							)}
+						</div>
+					) : (
+						<img
+							src={getThumbnailUrl(photo.id, "large")}
+							srcSet={`
+								${getThumbnailUrl(photo.id, "medium")} 800w,
+								${getThumbnailUrl(photo.id, "large")} 1600w,
+								${getFullImageUrl(photo.id)} 4000w
+							`}
+							sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+							alt={photo.name}
+							className="max-w-full max-h-full object-contain rounded-lg"
+						/>
+					)}
 				</div>
 
 				{/* Info sidebar */}
@@ -65,9 +111,7 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 					{/* Photo info */}
 					<div className="space-y-6">
 						<div>
-							<h2 className="text-lg font-semibold mb-2 pr-8">
-								{photo.name}
-							</h2>
+							<h2 className="text-lg font-semibold mb-2 pr-8">{photo.name}</h2>
 							<div className="text-sm text-gray-300 space-y-1">
 								<p>{formatFileSize(photo.size)}</p>
 								{photo.width && photo.height && (
@@ -78,6 +122,63 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 								<p>{new Date(photo.modifiedAt).toLocaleDateString()}</p>
 							</div>
 						</div>
+
+						{/* RAW file info */}
+						{photo.isRaw && (
+							<div>
+								<div className="flex items-center gap-2 mb-2">
+									<FileImage className="w-4 h-4 text-orange-400" />
+									<h3 className="text-sm font-semibold text-gray-300">
+										RAW File
+									</h3>
+								</div>
+								<div className="text-sm space-y-1">
+									<p className="text-orange-400 font-medium">
+										{photo.rawFormat || "RAW"}
+									</p>
+									<p className="text-gray-400">
+										Status:{" "}
+										<span
+											className={
+												photo.rawStatus === "converted"
+													? "text-green-400"
+													: photo.rawStatus === "failed"
+														? "text-red-400"
+														: "text-yellow-400"
+											}
+										>
+											{photo.rawStatus === "converted"
+												? "Converted"
+												: photo.rawStatus === "failed"
+													? "Failed"
+													: photo.rawStatus === "no_converter"
+														? "No Converter"
+														: "Unknown"}
+										</span>
+									</p>
+									{photo.rawError && (
+										<div className="mt-2 p-2 bg-red-900/30 rounded text-red-300 text-xs">
+											<div className="flex items-start gap-1">
+												<AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+												<span>{photo.rawError}</span>
+											</div>
+										</div>
+									)}
+									{photo.rawStatus !== "converted" && (
+										<button
+											onClick={() => reprocessMutation.mutate({ id: photo.id })}
+											disabled={reprocessMutation.isPending}
+											className="mt-2 flex items-center gap-1 text-xs bg-orange-600 hover:bg-orange-500 disabled:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
+										>
+											<RefreshCw
+												className={`w-3 h-3 ${reprocessMutation.isPending ? "animate-spin" : ""}`}
+											/>
+											{reprocessMutation.isPending ? "Retrying..." : "Retry"}
+										</button>
+									)}
+								</div>
+							</div>
+						)}
 
 						{/* EXIF data */}
 						{hasExif && (
@@ -92,9 +193,7 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 											</h3>
 										</div>
 										<div className="text-sm space-y-1">
-											{photo.exif.cameraMake && (
-												<p>{photo.exif.cameraMake}</p>
-											)}
+											{photo.exif.cameraMake && <p>{photo.exif.cameraMake}</p>}
 											{photo.exif.cameraModel && (
 												<p className="text-gray-400">
 													{photo.exif.cameraModel}
@@ -114,13 +213,9 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 											</h3>
 										</div>
 										<div className="text-sm space-y-1">
-											{photo.exif.lensMake && (
-												<p>{photo.exif.lensMake}</p>
-											)}
+											{photo.exif.lensMake && <p>{photo.exif.lensMake}</p>}
 											{photo.exif.lensModel && (
-												<p className="text-gray-400">
-													{photo.exif.lensModel}
-												</p>
+												<p className="text-gray-400">{photo.exif.lensModel}</p>
 											)}
 										</div>
 									</div>

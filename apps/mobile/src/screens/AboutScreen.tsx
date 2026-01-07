@@ -1,6 +1,6 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import React from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 export default function AboutScreen() {
 	return (
@@ -14,8 +14,8 @@ export default function AboutScreen() {
 			<View style={styles.section}>
 				<Text style={styles.sectionTitle}>About</Text>
 				<Text style={styles.description}>
-					PhotoBrain is a modern, AI-powered self-hosted photo management and gallery
-					application. Fast, intelligent, and easy to use.
+					PhotoBrain is a modern, AI-powered self-hosted photo management and
+					gallery application. Fast, intelligent, and easy to use.
 				</Text>
 			</View>
 

@@ -1,9 +1,9 @@
+import { Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
+import { Layout } from "@/components/Layout";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { SearchBar } from "@/components/SearchBar";
 import { Button } from "@/components/ui/button";
-import { Layout } from "@/components/Layout";
-import { RefreshCw, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 export function Dashboard() {
@@ -16,7 +16,7 @@ export function Dashboard() {
 
 	const searchPhotosQuery = trpc.searchPhotos.useQuery(
 		{ query: searchQuery, limit: 50 },
-		{ enabled: !!searchQuery }
+		{ enabled: !!searchQuery },
 	);
 
 	const scanMutation = trpc.scan.useMutation({
@@ -32,7 +32,9 @@ export function Dashboard() {
 
 	// Determine which data to use
 	const photos = searchQuery ? searchPhotosQuery.data : photosQuery.data;
-	const loading = searchQuery ? searchPhotosQuery.isLoading : photosQuery.isLoading;
+	const loading = searchQuery
+		? searchPhotosQuery.isLoading
+		: photosQuery.isLoading;
 	const error = searchQuery ? searchPhotosQuery.error : photosQuery.error;
 
 	const handleSearch = () => {
@@ -61,7 +63,9 @@ export function Dashboard() {
 						disabled={loading || scanMutation.isPending}
 						title="Scan directory for new photos"
 					>
-						<RefreshCw className={`h-4 w-4 ${scanMutation.isPending ? "animate-spin" : ""}`} />
+						<RefreshCw
+							className={`h-4 w-4 ${scanMutation.isPending ? "animate-spin" : ""}`}
+						/>
 					</Button>
 				</>
 			}

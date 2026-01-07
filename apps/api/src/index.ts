@@ -1,10 +1,10 @@
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { config } from "@/config";
-import { appRouter } from "@/trpc/router";
-import { createContext } from "@/trpc/context";
 import photosRouter from "@/routes/photos";
+import { createContext } from "@/trpc/context";
+import { appRouter } from "@/trpc/router";
 
 const app = new Hono();
 

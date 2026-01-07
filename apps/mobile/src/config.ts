@@ -1,17 +1,18 @@
-import { z } from "zod";
 import Constants from "expo-constants";
+import { z } from "zod";
 
 const configSchema = z.object({
 	API_URL: z.string().url().default("http://localhost:3000"),
-	NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+	NODE_ENV: z
+		.enum(["development", "production", "test"])
+		.default("development"),
 });
 
 function loadConfig() {
 	// Expo environment variables
 	const env = {
 		API_URL:
-			Constants.expoConfig?.extra?.apiUrl ||
-			process.env.EXPO_PUBLIC_API_URL,
+			Constants.expoConfig?.extra?.apiUrl || process.env.EXPO_PUBLIC_API_URL,
 		NODE_ENV: process.env.NODE_ENV,
 	};
 

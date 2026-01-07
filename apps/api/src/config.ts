@@ -6,11 +6,16 @@ const configSchema = z.object({
 	DATABASE_URL: z.string().default("./photobrain.db"),
 	PHOTO_DIRECTORY: z.string().default("../../temp-photos"),
 	THUMBNAILS_DIRECTORY: z.string().default("./thumbnails"),
-	NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+	NODE_ENV: z
+		.enum(["development", "production", "test"])
+		.default("development"),
 	RUN_DB_INIT: z
 		.string()
-		.transform((val) => val === "true" || val === "1")
-		.default("false"),
+		.default("false")
+		.transform((val) => val === "true" || val === "1"),
+	// RAW conversion settings
+	DARKTABLE_CLI_PATH: z.string().default("darktable-cli"),
+	RAW_CONVERSION_TIMEOUT: z.coerce.number().default(120000), // 2 minutes
 });
 
 function loadConfig() {
