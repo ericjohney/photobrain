@@ -34,11 +34,9 @@ pub struct ExifData {
   pub orientation: Option<u32>,
 }
 
-/// Extract EXIF data from an image file
-/// Returns None if the file has no EXIF data or cannot be read
-#[napi]
-pub fn extract_exif(file_path: String) -> Option<ExifData> {
-  let path = Path::new(&file_path);
+/// Internal function to extract EXIF data (callable from other Rust modules)
+pub fn extract_exif_internal(file_path: &str) -> Option<ExifData> {
+  let path = Path::new(file_path);
 
   // Open file and create EXIF reader
   let file = File::open(path).ok()?;
@@ -97,7 +95,6 @@ pub fn extract_exif(file_path: String) -> Option<ExifData> {
     if exposure >= 1.0 {
       format!("{:.1}s", exposure)
     } else {
-      // Convert to fraction (e.g., 1/250)
       let denominator = (1.0 / exposure).round() as u32;
       format!("1/{}", denominator)
     }
@@ -141,6 +138,13 @@ pub fn extract_exif(file_path: String) -> Option<ExifData> {
     gps_altitude,
     orientation,
   })
+}
+
+/// Extract EXIF data from an image file
+/// Returns None if the file has no EXIF data or cannot be read
+#[napi]
+pub fn extract_exif(file_path: String) -> Option<ExifData> {
+  extract_exif_internal(&file_path)
 }
 
 /// Helper function to extract GPS coordinates from degrees, minutes, seconds

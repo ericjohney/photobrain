@@ -1,5 +1,6 @@
 use image::{imageops::FilterType, DynamicImage, GenericImageView, ImageFormat};
 use napi_derive::napi;
+use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
@@ -132,6 +133,7 @@ pub fn generate_thumbnails_from_file(
 
 /// Generate all thumbnail sizes from an image based on the relative file path
 /// Thumbnails mirror the original directory structure
+/// Each size is generated in parallel using Rayon
 /// Example: photo at "2024/vacation/IMG_1234.jpg" creates thumbnails at:
 ///   - thumbnails/tiny/2024/vacation/IMG_1234.webp
 ///   - thumbnails/small/2024/vacation/IMG_1234.webp
@@ -157,10 +159,18 @@ pub fn generate_all_thumbnails_internal(
     ("large", &sizes.large),
   ];
 
-  for (size_name, config) in thumbnail_configs {
-    // Mirror the directory structure: thumbnails/{size}/{relative_path}.webp
-    let output_path = format!("{}/{}/{}.webp", thumbnails_base_dir, size_name, path_without_ext);
-    generate_thumbnail_from_image(img, config, &output_path)?;
+  // Generate all 4 thumbnail sizes in parallel
+  let results: Vec<Result<(), String>> = thumbnail_configs
+    .par_iter()
+    .map(|(size_name, config)| {
+      let output_path = format!("{}/{}/{}.webp", thumbnails_base_dir, size_name, path_without_ext);
+      generate_thumbnail_from_image(img, config, &output_path)
+    })
+    .collect();
+
+  // Return first error if any
+  for result in results {
+    result?;
   }
 
   Ok(())

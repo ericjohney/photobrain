@@ -51,3 +51,17 @@ pub fn generate_clip_embedding_from_image(img: DynamicImage) -> Option<Vec<f32>>
     Err(_) => None,
   }
 }
+
+/// Generate CLIP embedding from JPEG/image bytes
+/// Used for RAW files where we already have the embedded preview as bytes
+#[napi]
+pub fn clip_embedding_from_bytes(image_bytes: napi::bindgen_prelude::Buffer) -> Option<Vec<f64>> {
+  // Decode the image bytes
+  let img = image::load_from_memory(&image_bytes).ok()?;
+
+  // Generate CLIP embedding
+  let embedding = generate_clip_embedding_from_image(img)?;
+
+  // Convert f32 to f64 for JavaScript compatibility
+  Some(embedding.iter().map(|&f| f as f64).collect())
+}
