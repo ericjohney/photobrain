@@ -29,6 +29,9 @@ pub struct ExifData {
   pub gps_latitude: Option<f64>,
   pub gps_longitude: Option<f64>,
   pub gps_altitude: Option<f64>,
+
+  // Orientation (1-8, EXIF standard)
+  pub orientation: Option<u32>,
 }
 
 /// Extract EXIF data from an image file
@@ -119,6 +122,9 @@ pub fn extract_exif(file_path: String) -> Option<ExifData> {
   let gps_longitude = extract_gps_coordinate(&exif_reader, Tag::GPSLongitude, Tag::GPSLongitudeRef);
   let gps_altitude = get_rational_decimal(Tag::GPSAltitude);
 
+  // Orientation (1-8)
+  let orientation = get_uint(Tag::Orientation);
+
   Some(ExifData {
     camera_make,
     camera_model,
@@ -133,6 +139,7 @@ pub fn extract_exif(file_path: String) -> Option<ExifData> {
     gps_latitude,
     gps_longitude,
     gps_altitude,
+    orientation,
   })
 }
 

@@ -84,13 +84,29 @@ pub fn generate_thumbnail_from_image(
   Ok(())
 }
 
+/// Apply EXIF orientation to an image
+fn apply_orientation(img: DynamicImage, orientation: Option<u32>) -> DynamicImage {
+  match orientation {
+    Some(2) => img.fliph(),
+    Some(3) => img.rotate180(),
+    Some(4) => img.flipv(),
+    Some(5) => img.rotate270().fliph(),
+    Some(6) => img.rotate90(),
+    Some(7) => img.rotate90().fliph(),
+    Some(8) => img.rotate270(),
+    _ => img, // 1 or None = no transformation
+  }
+}
+
 /// Generate thumbnails from a file with a custom relative path
 /// Used for RAW files where the source file is a temp JPEG but thumbnails should use the RAW path
+/// Optionally accepts an orientation value to apply (for RAW files where EXIF is from original)
 #[napi]
 pub fn generate_thumbnails_from_file(
   file_path: String,
   relative_path: String,
   thumbnails_base_dir: String,
+  orientation: Option<u32>,
 ) -> napi::Result<()> {
   use crate::heif::{decode_heif, is_heif_file};
   use image::ImageReader;
@@ -106,6 +122,9 @@ pub fn generate_thumbnails_from_file(
       .decode()
       .map_err(|e| napi::Error::from_reason(format!("Failed to decode image: {}", e)))?
   };
+
+  // Apply orientation if provided
+  let img = apply_orientation(img, orientation);
 
   generate_all_thumbnails_internal(&img, &relative_path, &thumbnails_base_dir)
     .map_err(|e| napi::Error::from_reason(e))

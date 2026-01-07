@@ -9,6 +9,29 @@ use crate::heif::{decode_heif, is_heif_file};
 use crate::phash::generate_phash_from_image;
 use crate::thumbnails::generate_all_thumbnails_internal;
 
+/// Apply EXIF orientation to an image
+/// Orientation values (EXIF standard):
+/// 1 = Normal (no transformation)
+/// 2 = Flip horizontal
+/// 3 = Rotate 180
+/// 4 = Flip vertical
+/// 5 = Transpose (rotate 90 CCW + flip horizontal)
+/// 6 = Rotate 90 CW
+/// 7 = Transverse (rotate 90 CW + flip horizontal)
+/// 8 = Rotate 90 CCW
+fn apply_orientation(img: DynamicImage, orientation: Option<u32>) -> DynamicImage {
+  match orientation {
+    Some(2) => img.fliph(),
+    Some(3) => img.rotate180(),
+    Some(4) => img.flipv(),
+    Some(5) => img.rotate270().fliph(),
+    Some(6) => img.rotate90(),
+    Some(7) => img.rotate90().fliph(),
+    Some(8) => img.rotate270(),
+    _ => img, // 1 or None = no transformation
+  }
+}
+
 #[napi(object)]
 pub struct PhotoMetadata {
   pub path: String,
@@ -102,7 +125,11 @@ pub fn extract_photo_metadata(
 
     match decode_result {
       Ok((img, mime)) => {
-        // Extract dimension info before moving ownership
+        // Apply EXIF orientation to correct image rotation
+        let orientation = exif.as_ref().and_then(|e| e.orientation);
+        let img = apply_orientation(img, orientation);
+
+        // Extract dimension info AFTER applying orientation
         let w = img.width();
         let h = img.height();
 

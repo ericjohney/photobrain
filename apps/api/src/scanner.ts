@@ -241,11 +241,13 @@ async function extractRawMetadata(
 		);
 
 		// Generate thumbnails separately with the correct RAW file relative path
+		// Pass orientation from original RAW EXIF data for correct rotation
 		try {
 			generateThumbnailsFromFile(
 				conversionResult.outputPath,
 				relativePath, // Use original RAW path for thumbnail output
 				thumbnailsDirectory,
+				rawExif?.orientation ?? null, // Pass orientation from RAW EXIF
 			);
 		} catch (error) {
 			console.warn(
