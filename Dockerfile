@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
     libssl-dev \
+    libheif-dev \
+    libclang-dev \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
     && rm -rf /var/lib/apt/lists/*
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -43,6 +45,11 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # Stage 2: API Production Image
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS api
+
+# Install runtime dependencies for native modules
+RUN apt-get update && apt-get install -y \
+    libheif1 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
