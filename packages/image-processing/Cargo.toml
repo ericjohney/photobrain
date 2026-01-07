@@ -16,6 +16,8 @@ image_hasher = "2.0"
 fastembed = "4.4.0"
 kamadak-exif = "0.5"
 libheif-rs = "0.22"
+rsraw = "0.1"
+rayon = "1.10"
 
 [build-dependencies]
 napi-build = "2"
