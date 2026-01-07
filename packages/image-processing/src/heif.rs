@@ -1,5 +1,5 @@
 use image::{DynamicImage, RgbImage, RgbaImage};
-use libheif_rs::{ColorSpace, HeifContext, RgbChroma};
+use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
 use std::path::Path;
 
 /// Check if a file path has a HEIF/HEIC extension
@@ -15,6 +15,7 @@ pub fn is_heif_file(path: &Path) -> bool {
 
 /// Decode a HEIF/HEIC file and return a DynamicImage
 pub fn decode_heif(path: &Path) -> Result<DynamicImage, String> {
+    let lib_heif = LibHeif::new();
     let ctx = HeifContext::read_from_file(path.to_str().ok_or("Invalid path")?)
         .map_err(|e| format!("Failed to read HEIF file: {}", e))?;
 
@@ -28,8 +29,8 @@ pub fn decode_heif(path: &Path) -> Result<DynamicImage, String> {
 
     // Decode the image to RGB or RGBA depending on alpha channel
     if has_alpha {
-        let image = handle
-            .decode(ColorSpace::Rgb(RgbChroma::Rgba), None)
+        let image = lib_heif
+            .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None)
             .map_err(|e| format!("Failed to decode HEIF image: {}", e))?;
 
         let planes = image.planes();
@@ -53,8 +54,8 @@ pub fn decode_heif(path: &Path) -> Result<DynamicImage, String> {
 
         Ok(DynamicImage::ImageRgba8(img))
     } else {
-        let image = handle
-            .decode(ColorSpace::Rgb(RgbChroma::Rgb), None)
+        let image = lib_heif
+            .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgb), None)
             .map_err(|e| format!("Failed to decode HEIF image: {}", e))?;
 
         let planes = image.planes();
