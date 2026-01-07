@@ -20,7 +20,10 @@ photobrain/
 │   │   └── src/
 │   │       ├── db/          # Drizzle ORM schema and migrations
 │   │       ├── routes/      # REST endpoints (photos, health, scan)
-│   │       ├── services/    # Business logic (vector-search.ts)
+│   │       ├── services/    # Business logic
+│   │       │   ├── vector-search.ts  # CLIP similarity search
+│   │       │   ├── raw-converter.ts  # darktable CLI wrapper
+│   │       │   └── raw-formats.ts    # RAW extension detection
 │   │       ├── trpc/        # tRPC router and context
 │   │       ├── config.ts    # Environment configuration
 │   │       ├── scanner.ts   # Directory scanning orchestration
@@ -52,6 +55,7 @@ photobrain/
 │           ├── lib.rs       # Module entry point
 │           ├── clip.rs      # CLIP text/image embeddings
 │           ├── exif.rs      # EXIF metadata extraction
+│           ├── heif.rs      # HEIF/HEIC image decoding
 │           ├── metadata.rs  # Photo metadata extraction
 │           ├── phash.rs     # Perceptual hashing
 │           └── thumbnails.rs # WebP thumbnail generation
@@ -102,6 +106,9 @@ For local development, the following system packages are required:
 # Required for Rust native module compilation
 apt-get install -y build-essential pkg-config libssl-dev libheif-dev libclang-dev
 
+# Required for RAW image conversion
+apt-get install -y darktable
+
 # Install Bun
 curl -fsSL https://bun.sh/install | bash
 
@@ -116,6 +123,7 @@ The Dockerfile requires these packages in the builder stage:
 
 The API runtime stage requires:
 - `libheif1` - HEIF runtime library
+- `darktable` - RAW image conversion (provides darktable-cli)
 
 ## Development Commands
 
@@ -245,7 +253,7 @@ large:  1600px, 90% quality  // Full view
 - **REST** for binary file streaming (tRPC doesn't handle streaming well)
 
 ### Image Processing Pipeline
-The scanner processes images in a single pass:
+The scanner processes standard images in a single pass:
 1. Read image file
 2. Extract metadata (dimensions, MIME type)
 3. Extract EXIF data
@@ -253,6 +261,19 @@ The scanner processes images in a single pass:
 5. Compute perceptual hash
 6. Generate WebP thumbnails (all sizes)
 7. Save to database
+
+### RAW Image Processing
+RAW files follow a modified pipeline:
+1. Extract EXIF from RAW file directly (before conversion)
+2. Convert RAW to temp JPEG via `darktable-cli` (max 1600px)
+3. Process temp JPEG through Rust pipeline (embeddings, phash)
+4. Generate thumbnails using original RAW relative path
+5. Delete temp JPEG
+6. Save to database with `isRaw=true`, `rawFormat`, `rawStatus`
+
+**Supported RAW formats:** CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2, PEF, SRW, X3F, 3FR, IIQ, RWL
+
+**RAW file serving:** For RAW photos, `/api/photos/:id/file` serves the large thumbnail (1600px WebP) since the original RAW cannot be displayed in browsers.
 
 ### Deterministic Thumbnail Paths
 Thumbnails use predictable paths: `/thumbnails/{size}/{photo-path-hash}.webp`
@@ -351,7 +372,7 @@ bun run dev
 
 See `ROADMAP.md` for planned features including:
 - Async processing with Temporal workflows
-- RAW format support
+- ~~RAW format support~~ (implemented)
 - EXIF-based filtering
 - Map view with GPS data
 - Duplicate detection UI
