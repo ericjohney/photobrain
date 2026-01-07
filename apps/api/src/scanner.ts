@@ -3,6 +3,7 @@ import { basename, extname, join, relative } from "node:path";
 import {
 	extractExif,
 	extractPhotoMetadata,
+	generateThumbnailsFromFile,
 } from "@photobrain/image-processing";
 import type { NewPhoto, NewPhotoExif } from "@/db/schema";
 import {
@@ -231,12 +232,28 @@ async function extractRawMetadata(
 
 	try {
 		// Process the converted JPEG through the standard Rust pipeline
-		// This generates thumbnails, CLIP embeddings, and phash
+		// Note: We pass null for thumbnailsDirectory to skip thumbnail generation here
+		// because the temp file path won't produce correct thumbnail paths
 		const rustMetadata = extractPhotoMetadata(
 			conversionResult.outputPath,
 			baseDirectory,
-			thumbnailsDirectory,
+			null, // Don't generate thumbnails here
 		);
+
+		// Generate thumbnails separately with the correct RAW file relative path
+		try {
+			generateThumbnailsFromFile(
+				conversionResult.outputPath,
+				relativePath, // Use original RAW path for thumbnail output
+				thumbnailsDirectory,
+			);
+		} catch (error) {
+			console.warn(
+				`Warning: Failed to generate thumbnails for ${fileName}:`,
+				error,
+			);
+			// Continue even if thumbnail generation fails
+		}
 
 		// Convert clipEmbedding f64 array to Float32Array
 		const clipEmbedding = rustMetadata.clipEmbedding

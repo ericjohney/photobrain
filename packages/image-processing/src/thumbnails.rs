@@ -84,6 +84,33 @@ pub fn generate_thumbnail_from_image(
   Ok(())
 }
 
+/// Generate thumbnails from a file with a custom relative path
+/// Used for RAW files where the source file is a temp JPEG but thumbnails should use the RAW path
+#[napi]
+pub fn generate_thumbnails_from_file(
+  file_path: String,
+  relative_path: String,
+  thumbnails_base_dir: String,
+) -> napi::Result<()> {
+  use crate::heif::{decode_heif, is_heif_file};
+  use image::ImageReader;
+
+  let path = Path::new(&file_path);
+
+  // Decode the image - use HEIF decoder for HEIF/HEIC files
+  let img = if is_heif_file(path) {
+    decode_heif(path).map_err(|e| napi::Error::from_reason(format!("Failed to decode HEIF: {}", e)))?
+  } else {
+    ImageReader::open(&file_path)
+      .map_err(|e| napi::Error::from_reason(format!("Failed to open image: {}", e)))?
+      .decode()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to decode image: {}", e)))?
+  };
+
+  generate_all_thumbnails_internal(&img, &relative_path, &thumbnails_base_dir)
+    .map_err(|e| napi::Error::from_reason(e))
+}
+
 /// Generate all thumbnail sizes from an image based on the relative file path
 /// Thumbnails mirror the original directory structure
 /// Example: photo at "2024/vacation/IMG_1234.jpg" creates thumbnails at:
