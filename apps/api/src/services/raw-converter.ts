@@ -78,7 +78,9 @@ export async function convertRawToTemp(
 				"--hq",
 				"true",
 				"--apply-custom-presets",
-				"false",
+				"true", // Enable default workflow (exposure +0.7 EV, sigmoid tone mapping, color calibration)
+				"--icc-type",
+				"SRGB", // Web-compatible color profile
 			],
 			{
 				stdout: "pipe",
