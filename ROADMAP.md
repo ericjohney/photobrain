@@ -128,57 +128,80 @@ temporal server start-dev
 
 ---
 
-### Session 4: RAW Format Detection 📷
-**Goal:** Identify RAW files without processing them yet
+### Session 4: RAW Image Support 📷 ✅ **COMPLETED**
+**Goal:** Full RAW image processing with native Rust pipeline
 
 **Deliverables:**
-- [ ] Add RAW format MIME type mapping in Rust
-- [ ] Detect common RAW extensions: `.cr2`, `.cr3`, `.nef`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`
-- [ ] Update database schema:
-  - Add `isRaw: boolean`
-  - Add `rawFormat: text` (e.g., "CR2", "NEF")
-- [ ] Add RAW badge in photo grid UI
-- [ ] Filter photos by type (all/jpeg/raw)
-- [ ] Show RAW file count in dashboard stats
+- [x] Add `rsraw` crate for RAW demosaicing (libraw bindings)
+- [x] Detect common RAW extensions: `.cr2`, `.cr3`, `.nef`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw`, `.x3f`, `.3fr`, `.iiq`, `.rwl`
+- [x] Update database schema with `isRaw`, `rawFormat`, `rawStatus`, `rawError` fields
+- [x] Per-channel histogram matching to match camera's embedded preview (corrects tone AND white balance)
+- [x] Unified processing pipeline in Rust (`batch.rs`) - handles RAW, HEIF, and standard images
+- [x] Generate thumbnails from processed RAW
+- [x] Generate CLIP embeddings for RAW files
+- [x] Memory-efficient parallel processing (limited to 4 threads for large RAW files)
+- [x] Reprocess RAW endpoint for failed conversions
+- [x] Filter photos by type (all/raw/standard)
 
-**Estimated time:** 1-2 hours
-**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/db/schema.ts`, `apps/web/src/components/PhotoGrid.tsx`
+**Files created:** `packages/image-processing/src/raw.rs`, `packages/image-processing/src/batch.rs`
+**Files modified:** `apps/api/src/db/schema.ts`, `apps/api/src/scanner.ts`, `apps/api/src/trpc/router.ts`
 
 ---
 
-### Session 5: Basic RAW Thumbnail Extraction 🎨
-**Goal:** Extract embedded JPEG previews from RAW files without external tools
+### Session 5: HEIF/HEIC Support 🍎 ✅ **COMPLETED**
+**Goal:** Support Apple's HEIF/HEIC image format
 
 **Deliverables:**
-- [ ] Use `rawler` or `imagepipe` crate to extract embedded preview
-- [ ] Fallback to placeholder if no preview exists
-- [ ] Store extracted preview as thumbnail
-- [ ] Display RAW previews in gallery
-- [ ] Add "Download Original RAW" button in lightbox
+- [x] Add `libheif-rs` crate for HEIF decoding
+- [x] Detect `.heic` and `.heif` extensions
+- [x] Decode HEIF images to RGB for processing
+- [x] Generate thumbnails and CLIP embeddings for HEIF files
+- [x] Unified with standard image pipeline
 
-**Estimated time:** 2-3 hours
-**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/routes/photos.ts`
+**Files created:** `packages/image-processing/src/heif.rs`
 
 ---
 
-### Session 6: RawTherapee CLI Integration 🎛️
-**Goal:** Convert RAW files to high-quality JPEG using RawTherapee
+### Session 6: Lens Corrections 🔍 **FUTURE**
+**Goal:** Apply optical corrections (distortion, vignette, chromatic aberration)
 
-**Deliverables:**
-- [ ] Add system dependency check for `rawtherapee-cli`
-- [ ] Create Rust function to invoke CLI: `convert_raw_to_jpeg()`
-- [ ] Use `std::process::Command` with timeout
-- [ ] Store converted JPEG alongside original RAW
-- [ ] Update database with `convertedPath` field
-- [ ] Create Temporal workflow: `convertRawWorkflow`
-- [ ] Create Temporal activity: `convertRawFile` (calls Rust function)
-- [ ] Serve converted JPEG for RAW files in API
-- [ ] Add "Reprocess RAW" button in UI (triggers workflow)
-- [ ] Track conversion progress in Temporal UI
+**Background:**
+Lens corrections compensate for optical imperfections in camera lenses:
+- **Distortion** - barrel/pincushion warping
+- **Vignette** - corner darkening
+- **Chromatic aberration** - color fringing at edges
+- **Sharpness falloff** - edge softness
 
-**Estimated time:** 2-3 hours
-**Files to create:** `apps/api/src/workflows/convertRaw.ts`
-**Files to modify:** `packages/image-processing/src/lib.rs`, `apps/api/src/activities/photoActivities.ts`, `apps/api/src/routes/photos.ts`
+**Implementation Options:**
+
+| Option | Effort | Pros | Cons |
+|--------|--------|------|------|
+| **lensfun FFI bindings** | High (1-2 weeks) | Industry standard, 10k+ lens profiles, what darktable/RawTherapee use | No Rust bindings exist, need to create FFI, bundle ~50MB database |
+| **Embedded corrections** | Medium | Some cameras embed correction data in RAW | Only works for Sony, some Canon; not universal |
+| **darktable-cli** | Low | Full correction support | Slow, adds external dependency |
+| **Skip for browsing** | None | Corrections matter more for final exports | May look slightly off for wide-angle lenses |
+
+**Technical Notes:**
+- [lensfun](https://github.com/lensfun/lensfun) is the open-source standard used by darktable, RawTherapee, GIMP
+- Database contains profiles for thousands of camera/lens combinations
+- Uses EXIF data (camera model, lens model, focal length, aperture) to look up corrections
+- Sony cameras often apply corrections in-camera (EXIF shows "Distortion Correction: Auto fixed by lens")
+- libraw/rsraw has no built-in lens correction support
+
+**Potential Deliverables:**
+- [ ] Create Rust FFI bindings for lensfun C library
+- [ ] Bundle lensfun database with application
+- [ ] Look up lens profile from EXIF metadata
+- [ ] Apply distortion correction during RAW processing
+- [ ] Apply vignette correction
+- [ ] Apply chromatic aberration correction
+- [ ] Add toggle in settings to enable/disable corrections
+- [ ] Cache correction parameters per lens/focal length combination
+
+**References:**
+- [lensfun GitHub](https://github.com/lensfun/lensfun)
+- [lensfun usage docs](https://lensfun.github.io/usage/)
+- [Lens calibration tutorial](https://wilson.bronger.org/lens_calibration_tutorial/)
 
 ---
 
@@ -246,41 +269,29 @@ temporal server start-dev
 
 ---
 
-## Phase 1: RAW Support & Image Processing 🎯 **IMMEDIATE PRIORITY**
+## Phase 1: RAW Support & Image Processing ✅ **COMPLETED**
 
-### 1.1 RAW Image Support
+### 1.1 RAW Image Support ✅
 **Goal:** Enable viewing, processing, and conversion of RAW image formats
 
-**Tasks:**
-- [ ] Evaluate RawTherapee CLI vs Darktable CLI for batch processing
-  - RawTherapee: Better for simple conversion, faster on lower-end hardware
-  - Darktable: More advanced features, GPU acceleration, selective editing with masks
-  - **Recommendation:** Start with RawTherapee CLI for simplicity, add Darktable as advanced option later
-- [ ] Add system dependencies detection (rawtherapee-cli installation check)
-- [ ] Implement RAW format detection (.CR2, .NEF, .ARW, .DNG, .RAF, etc.)
-- [ ] Create RAW converter service in Rust
-  - Use `std::process::Command` to invoke rawtherapee-cli
-  - Generate JPEG previews for gallery display
-  - Store both RAW originals and converted versions
-- [ ] Add thumbnail generation for RAW files
-  - Small thumbnails (200px) for grid view
-  - Medium previews (1200px) for lightbox
-  - Large exports (full resolution) on demand
-- [ ] Update database schema to track RAW files
-  - Add `isRaw: boolean` field
-  - Add `rawFormat: text` field (CR2, NEF, etc.)
-  - Add `convertedPath: text` for JPEG preview location
-- [ ] Add RAW file upload endpoint
-- [ ] Update frontend to display RAW badge/indicator
-- [ ] Add RAW processing settings (PP3 profiles for RawTherapee)
-  - Default profile for quick conversion
-  - Custom profiles for advanced users
+**Completed Implementation:**
+- [x] Native Rust RAW processing using `rsraw` crate (libraw bindings) - no external CLI dependencies
+- [x] Support for 14+ RAW formats: CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2, PEF, SRW, X3F, 3FR, IIQ, RWL
+- [x] Per-channel histogram matching to match camera's embedded JPEG preview (tone + white balance)
+- [x] Unified processing pipeline (`batch.rs`) handles RAW, HEIF, and standard images
+- [x] Memory-efficient parallel processing (limited to 4 threads for large RAW files)
+- [x] Database schema with `isRaw`, `rawFormat`, `rawStatus`, `rawError` fields
+- [x] Thumbnail generation (tiny/small/medium/large) for RAW files
+- [x] CLIP embeddings generated from processed RAW for semantic search
+- [x] Reprocess RAW endpoint for failed conversions
+- [x] Filter photos by type (all/raw/standard)
+- [x] HEIF/HEIC support via `libheif-rs`
 
-**Technical Notes:**
-- RawTherapee CLI: `rawtherapee-cli -c <input.raw> -o <output.jpg> -p <profile.pp3>`
-- Darktable CLI: `darktable-cli <input.raw> <xmp-file> <output.jpg>`
-- Process conversions asynchronously using Temporal workflows
-- Cache converted previews to avoid re-processing
+**Technical Implementation:**
+- RAW demosaicing via rsraw (libraw)
+- Histogram matching: compute per-channel CDFs, build tone curves, apply R/G/B corrections
+- Thumbnails stored as WebP for 30% size reduction
+- No external CLI tools required (pure Rust)
 
 ### 1.2 Enhanced Image Metadata
 - [x] EXIF data extraction (camera model, settings, lens, GPS)
@@ -630,4 +641,4 @@ For RAW support implementation, refer to:
 4. **Lightweight footprint** - SQLite for easy deployment
 5. **RAW-first workflow** - Professional photographer focus
 
-Last Updated: 2026-01-03
+Last Updated: 2026-01-08
