@@ -73,10 +73,10 @@ fn process_raw_to_rgb(raw: &mut RawImage) -> Result<RgbImage> {
 		.ok_or_else(|| Error::from_reason("Failed to create image buffer"))
 }
 
-/// Compute luminance histogram from RgbImage using sampling for large images
-/// For images > 1M pixels, sample every Nth pixel to reduce computation
-fn compute_histogram_sampled(img: &RgbImage) -> [u64; 256] {
-	let mut histogram = [0u64; 256];
+/// Compute per-channel RGB histograms from RgbImage using sampling for large images
+/// Returns [R histogram, G histogram, B histogram]
+fn compute_rgb_histograms_sampled(img: &RgbImage) -> [[u64; 256]; 3] {
+	let mut histograms = [[0u64; 256]; 3];
 	let total_pixels = img.width() as usize * img.height() as usize;
 
 	// Sample every Nth pixel for large images (target ~500k samples max)
@@ -88,14 +88,13 @@ fn compute_histogram_sampled(img: &RgbImage) -> [u64; 256] {
 
 	for (i, pixel) in img.pixels().enumerate() {
 		if i % step == 0 {
-			// Fast integer luminance approximation: (77*R + 150*G + 29*B) >> 8
-			let luminance =
-				((77 * pixel[0] as u32 + 150 * pixel[1] as u32 + 29 * pixel[2] as u32) >> 8) as u8;
-			histogram[luminance as usize] += 1;
+			histograms[0][pixel[0] as usize] += 1; // R
+			histograms[1][pixel[1] as usize] += 1; // G
+			histograms[2][pixel[2] as usize] += 1; // B
 		}
 	}
 
-	histogram
+	histograms
 }
 
 /// Convert histogram to Cumulative Distribution Function (CDF)
@@ -152,12 +151,13 @@ fn build_tone_curve(source_cdf: &[f64; 256], target_cdf: &[f64; 256]) -> [u8; 25
 	curve
 }
 
-/// Apply tone curve IN-PLACE to an RgbImage (no allocation)
-fn apply_tone_curve_inplace(img: &mut RgbImage, curve: &[u8; 256]) {
+/// Apply per-channel tone curves IN-PLACE to an RgbImage (no allocation)
+/// curves[0] = R curve, curves[1] = G curve, curves[2] = B curve
+fn apply_rgb_curves_inplace(img: &mut RgbImage, curves: &[[u8; 256]; 3]) {
 	for pixel in img.pixels_mut() {
-		pixel[0] = curve[pixel[0] as usize];
-		pixel[1] = curve[pixel[1] as usize];
-		pixel[2] = curve[pixel[2] as usize];
+		pixel[0] = curves[0][pixel[0] as usize]; // R
+		pixel[1] = curves[1][pixel[1] as usize]; // G
+		pixel[2] = curves[2][pixel[2] as usize]; // B
 	}
 }
 
@@ -206,21 +206,25 @@ pub fn process_raw_with_histogram_matching(file_path: String) -> Result<RawProce
 	let mut processed = process_raw_to_rgb(&mut raw)?;
 	let (width, height) = (processed.width(), processed.height());
 
-	// Apply histogram matching if we have a preview
+	// Apply per-channel histogram matching if we have a preview
+	// This corrects both tonal distribution AND white balance/color
 	let histogram_matched = if let Some(ref preview) = preview_img {
 		let min_dim = preview.width().min(preview.height());
 		if min_dim >= 800 {
-			// Compute histograms (sampled for performance)
-			let source_hist = compute_histogram_sampled(&processed);
-			let target_hist = compute_histogram_sampled(preview);
+			// Compute per-channel histograms (sampled for performance)
+			let source_hists = compute_rgb_histograms_sampled(&processed);
+			let target_hists = compute_rgb_histograms_sampled(preview);
 
-			// Build CDFs and tone curve
-			let source_cdf = histogram_to_cdf(&source_hist);
-			let target_cdf = histogram_to_cdf(&target_hist);
-			let curve = build_tone_curve(&source_cdf, &target_cdf);
+			// Build per-channel tone curves
+			let mut curves = [[0u8; 256]; 3];
+			for ch in 0..3 {
+				let source_cdf = histogram_to_cdf(&source_hists[ch]);
+				let target_cdf = histogram_to_cdf(&target_hists[ch]);
+				curves[ch] = build_tone_curve(&source_cdf, &target_cdf);
+			}
 
-			// Apply curve IN-PLACE (no allocation!)
-			apply_tone_curve_inplace(&mut processed, &curve);
+			// Apply curves IN-PLACE (no allocation!)
+			apply_rgb_curves_inplace(&mut processed, &curves);
 			true
 		} else {
 			false
@@ -514,16 +518,22 @@ pub fn process_raw_complete_internal(
 		}
 	};
 
-	// Apply histogram matching if we have a preview
+	// Apply per-channel histogram matching if we have a preview
+	// This corrects both tonal distribution AND white balance/color
 	let histogram_matched = if let Some(ref preview) = preview_rgb {
 		let min_dim = preview.width().min(preview.height());
 		if min_dim >= 800 {
-			let source_hist = compute_histogram_sampled(&rgb_img);
-			let target_hist = compute_histogram_sampled(preview);
-			let source_cdf = histogram_to_cdf(&source_hist);
-			let target_cdf = histogram_to_cdf(&target_hist);
-			let curve = build_tone_curve(&source_cdf, &target_cdf);
-			apply_tone_curve_inplace(&mut rgb_img, &curve);
+			let source_hists = compute_rgb_histograms_sampled(&rgb_img);
+			let target_hists = compute_rgb_histograms_sampled(preview);
+
+			let mut curves = [[0u8; 256]; 3];
+			for ch in 0..3 {
+				let source_cdf = histogram_to_cdf(&source_hists[ch]);
+				let target_cdf = histogram_to_cdf(&target_hists[ch]);
+				curves[ch] = build_tone_curve(&source_cdf, &target_cdf);
+			}
+
+			apply_rgb_curves_inplace(&mut rgb_img, &curves);
 			true
 		} else {
 			false
