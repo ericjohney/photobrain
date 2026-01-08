@@ -21,9 +21,7 @@ photobrain/
 │   │       ├── db/          # Drizzle ORM schema and migrations
 │   │       ├── routes/      # REST endpoints (photos, health, scan)
 │   │       ├── services/    # Business logic
-│   │       │   ├── vector-search.ts  # CLIP similarity search
-│   │       │   ├── raw-converter.ts  # darktable CLI wrapper
-│   │       │   └── raw-formats.ts    # RAW extension detection
+│   │       │   └── vector-search.ts  # CLIP similarity search
 │   │       ├── trpc/        # tRPC router and context
 │   │       ├── config.ts    # Environment configuration
 │   │       ├── scanner.ts   # Directory scanning orchestration
@@ -53,12 +51,14 @@ photobrain/
 │   └── image-processing/    # Rust NAPI native module
 │       └── src/
 │           ├── lib.rs       # Module entry point
+│           ├── batch.rs     # Unified photo processing (all types)
+│           ├── raw.rs       # RAW image processing (LibRaw)
 │           ├── clip.rs      # CLIP text/image embeddings
 │           ├── exif.rs      # EXIF metadata extraction
 │           ├── heif.rs      # HEIF/HEIC image decoding
 │           ├── metadata.rs  # Photo metadata extraction
 │           ├── phash.rs     # Perceptual hashing
-│           └── thumbnails.rs # WebP thumbnail generation
+│           └── thumbnails.rs # WebP thumbnail generation (parallel)
 │
 ├── biome.json               # Code formatter/linter config
 ├── turbo.json               # Monorepo build orchestration
@@ -91,6 +91,8 @@ photobrain/
 
 ### Image Processing (`packages/image-processing`)
 - **Rust** with NAPI bindings
+- **rsraw** v0.1 - RAW image processing (LibRaw bindings)
+- **rayon** v1.10 - Parallel processing
 - **fastembed** v4.4 - CLIP embeddings
 - **image** v0.25 - Image decoding and resizing
 - **image_hasher** v2.0 - Perceptual hashing
@@ -106,9 +108,6 @@ For local development, the following system packages are required:
 # Required for Rust native module compilation
 apt-get install -y build-essential pkg-config libssl-dev libheif-dev libclang-dev
 
-# Required for RAW image conversion
-apt-get install -y darktable
-
 # Install Bun
 curl -fsSL https://bun.sh/install | bash
 
@@ -123,7 +122,6 @@ The Dockerfile requires these packages in the builder stage:
 
 The API runtime stage requires:
 - `libheif1` - HEIF runtime library
-- `darktable` - RAW image conversion (provides darktable-cli)
 
 ## Development Commands
 
@@ -252,28 +250,42 @@ large:  1600px, 90% quality  // Full view
 - **tRPC** for typed RPC calls (metadata, search)
 - **REST** for binary file streaming (tRPC doesn't handle streaming well)
 
-### Image Processing Pipeline
-The scanner processes standard images in a single pass:
-1. Read image file
-2. Extract metadata (dimensions, MIME type)
-3. Extract EXIF data
-4. Generate CLIP embeddings (512-dim vector)
-5. Compute perceptual hash
-6. Generate WebP thumbnails (all sizes)
-7. Save to database
+### Unified Image Processing Pipeline
+All image processing happens in Rust via a single function call. The scanner collects file paths and passes them to `processPhotosBatch()` which:
 
-### RAW Image Processing
-RAW files follow a modified pipeline:
-1. Extract EXIF from RAW file directly (before conversion)
-2. Convert RAW to temp JPEG via `darktable-cli` (max 1600px)
-3. Process temp JPEG through Rust pipeline (embeddings, phash)
-4. Generate thumbnails using original RAW relative path
-5. Delete temp JPEG
-6. Save to database with `isRaw=true`, `rawFormat`, `rawStatus`
+1. Detects file type by extension (RAW, HEIF, or standard)
+2. Routes to appropriate processor
+3. Processes all files in parallel using Rayon
+4. Returns unified results
+
+**For standard images (JPEG, PNG, etc.):**
+- Decode image, apply EXIF orientation
+- Generate CLIP embeddings (512-dim vector)
+- Compute perceptual hash
+- Generate WebP thumbnails (all 4 sizes in parallel)
+
+**For RAW images:**
+- Extract EXIF from RAW file
+- Demosaic using LibRaw (rsraw)
+- Apply histogram matching from embedded preview for accurate colors
+- Generate CLIP, phash, and thumbnails
+- No temp files - all processing in memory
 
 **Supported RAW formats:** CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2, PEF, SRW, X3F, 3FR, IIQ, RWL
 
+**Performance:** ~586ms per photo average (mixed RAW and standard images)
+
 **RAW file serving:** For RAW photos, `/api/photos/:id/file` serves the large thumbnail (1600px WebP) since the original RAW cannot be displayed in browsers.
+
+### Rust NAPI Functions
+Key functions exported from `@photobrain/image-processing`:
+
+| Function | Purpose |
+|----------|---------|
+| `processPhotosBatch(paths, relativePaths, thumbDir)` | Process multiple photos in parallel (any type) |
+| `processPhoto(path, relativePath, thumbDir)` | Process single photo (any type) |
+| `getSupportedExtensions()` | Get list of supported file extensions |
+| `clipTextEmbedding(text)` | Generate CLIP embedding for search query |
 
 ### Deterministic Thumbnail Paths
 Thumbnails use predictable paths: `/thumbnails/{size}/{photo-path-hash}.webp`
