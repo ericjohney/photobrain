@@ -346,6 +346,40 @@ fn process_raw_file(
 	let raw_result: RawCompleteResult =
 		process_raw_complete_internal(file_path, relative_path, thumbnails_dir);
 
+	// If libraw fails with "FileUnsupported" (e.g., iPhone ProRAW DNGs),
+	// fall back to standard image processing since DNGs are TIFF-based
+	if !raw_result.success {
+		if let Some(ref err) = raw_result.error {
+			if err.contains("FileUnsupported") {
+				// Try processing as standard image (DNG is TIFF-based)
+				let fallback = process_standard_image(file_path, relative_path, thumbnails_dir);
+				if fallback.success {
+					return PhotoProcessingResult {
+						path: relative_path.to_string(),
+						name,
+						size,
+						created_at,
+						modified_at,
+						width: fallback.width,
+						height: fallback.height,
+						mime_type: raw_format
+							.as_ref()
+							.map(|f| format!("image/x-{}", f.to_lowercase())),
+						phash: fallback.phash,
+						clip_embedding: fallback.clip_embedding,
+						exif: fallback.exif.or(raw_result.exif),
+						is_raw: true,
+						raw_format,
+						raw_status: Some("fallback".to_string()),
+						raw_error: None,
+						success: true,
+						error: None,
+					};
+				}
+			}
+		}
+	}
+
 	PhotoProcessingResult {
 		path: relative_path.to_string(),
 		name,
