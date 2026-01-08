@@ -396,9 +396,8 @@ pub fn process_raw_complete_internal(
 ) -> RawCompleteResult {
 	let start = std::time::Instant::now();
 
-	// Extract EXIF data first (for orientation)
+	// Extract EXIF data (rsraw/libraw handles orientation automatically during process())
 	let exif = extract_exif_internal(file_path);
-	let orientation = exif.as_ref().and_then(|e| e.orientation);
 
 	// Phase 1: Extract preview for histogram matching and CLIP
 	// Uses a separate scope to release file_data memory before phase 2
@@ -569,21 +568,9 @@ pub fn process_raw_complete_internal(
 	drop(preview_rgb);
 
 	// Convert to DynamicImage for phash and thumbnails
-	let mut dynamic_img = DynamicImage::ImageRgb8(rgb_img);
-
-	// Apply EXIF orientation if provided
-	if let Some(orient) = orientation {
-		dynamic_img = match orient {
-			2 => dynamic_img.fliph(),
-			3 => dynamic_img.rotate180(),
-			4 => dynamic_img.flipv(),
-			5 => dynamic_img.rotate270().fliph(),
-			6 => dynamic_img.rotate90(),
-			7 => dynamic_img.rotate90().fliph(),
-			8 => dynamic_img.rotate270(),
-			_ => dynamic_img,
-		};
-	}
+	// Note: rsraw/libraw automatically applies EXIF orientation during process(),
+	// so we don't need to manually rotate here. The image is already correctly oriented.
+	let dynamic_img = DynamicImage::ImageRgb8(rgb_img);
 
 	// Generate phash from processed image
 	let phash = Some(generate_phash_from_image(&dynamic_img));
