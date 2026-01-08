@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { processPhoto } from "@photobrain/image-processing";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "@/config";
 import {
@@ -92,19 +92,42 @@ export const appRouter = router({
 			recursive: true,
 		});
 
+		// Collect all scanned paths
+		const scannedPaths = new Set(result.photos.map((p) => p.photo.path));
+
+		// Get all existing photo paths from database
+		const existingPhotos = await ctx.db.query.photos.findMany({
+			columns: { id: true, path: true },
+		});
+
+		// Find photos in DB that are no longer on disk
+		const photosToDelete = existingPhotos.filter(
+			(p) => !scannedPaths.has(p.path),
+		);
+
+		// Delete removed photos (EXIF cascades automatically)
+		let deleted = 0;
+		if (photosToDelete.length > 0) {
+			const idsToDelete = photosToDelete.map((p) => p.id);
+			await ctx.db
+				.delete(photosTable)
+				.where(inArray(photosTable.id, idsToDelete));
+			deleted = photosToDelete.length;
+			console.log(`🗑️ Removed ${deleted} photos no longer on disk`);
+		}
+
 		// Insert or update photos in database
 		let inserted = 0;
 		let skipped = 0;
 		let rawCount = 0;
 
+		// Build set of existing paths for quick lookup
+		const existingPaths = new Set(existingPhotos.map((p) => p.path));
+
 		for (const photoWithExif of result.photos) {
 			try {
 				// Check if photo already exists
-				const existing = await ctx.db.query.photos.findFirst({
-					where: eq(photosTable.path, photoWithExif.photo.path),
-				});
-
-				if (existing) {
+				if (existingPaths.has(photoWithExif.photo.path)) {
 					skipped++;
 				} else {
 					// Insert new photo (including RAW fields)
@@ -160,6 +183,7 @@ export const appRouter = router({
 			scanned: result.photos.length,
 			inserted,
 			skipped,
+			deleted,
 			rawCount,
 			duration: totalTime / 1000, // Convert to seconds
 			scanDuration: result.duration,
