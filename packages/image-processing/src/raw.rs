@@ -385,7 +385,7 @@ pub struct RawCompleteResult {
 
 /// Process a single RAW file completely in Rust
 /// Does EXIF extraction, demosaic, histogram matching, CLIP, phash, and thumbnails in one call
-fn process_raw_complete_internal(
+pub fn process_raw_complete_internal(
 	file_path: &str,
 	relative_path: &str,
 	thumbnails_dir: &str,

@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
-import { extractPhotoMetadata } from "@photobrain/image-processing";
+import { join, relative } from "node:path";
+import { processPhoto } from "@photobrain/image-processing";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "@/config";
@@ -9,10 +9,6 @@ import {
 	photos as photosTable,
 } from "@/db/schema";
 import { scanDirectory } from "@/scanner";
-import {
-	cleanupTempConversion,
-	convertRawToTemp,
-} from "@/services/raw-converter";
 import { searchPhotosByText } from "@/services/vector-search";
 import { publicProcedure, router } from "./trpc";
 
@@ -198,59 +194,50 @@ export const appRouter = router({
 				throw new Error("RAW file not found on disk");
 			}
 
-			// Convert RAW to temp JPEG
-			const conversionResult = await convertRawToTemp(absolutePath);
+			// Process the RAW file completely in Rust
+			const result = processPhoto(
+				absolutePath,
+				photo.path,
+				config.THUMBNAILS_DIRECTORY,
+			);
 
-			if (!conversionResult.success || !conversionResult.outputPath) {
+			if (!result.success) {
 				// Update database with failure
 				await ctx.db
 					.update(photosTable)
 					.set({
 						rawStatus: "failed",
-						rawError: conversionResult.error ?? "Unknown error",
+						rawError: result.error ?? "Unknown error",
 					})
 					.where(eq(photosTable.id, input.id));
 
 				return {
 					success: false,
-					error: conversionResult.error,
+					error: result.error,
 				};
 			}
 
-			try {
-				// Process the converted JPEG through Rust pipeline
-				const rustMetadata = extractPhotoMetadata(
-					conversionResult.outputPath,
-					config.PHOTO_DIRECTORY,
-					config.THUMBNAILS_DIRECTORY,
-				);
+			// Convert clipEmbedding to Float32Array
+			const clipEmbedding = result.clipEmbedding
+				? new Float32Array(result.clipEmbedding)
+				: undefined;
 
-				// Convert clipEmbedding to Float32Array
-				const clipEmbedding = rustMetadata.clipEmbedding
-					? new Float32Array(rustMetadata.clipEmbedding)
-					: undefined;
+			// Update database with new metadata
+			await ctx.db
+				.update(photosTable)
+				.set({
+					width: result.width,
+					height: result.height,
+					phash: result.phash,
+					clipEmbedding,
+					rawStatus: "converted",
+					rawError: null,
+				})
+				.where(eq(photosTable.id, input.id));
 
-				// Update database with new metadata
-				await ctx.db
-					.update(photosTable)
-					.set({
-						width: rustMetadata.width,
-						height: rustMetadata.height,
-						phash: rustMetadata.phash,
-						clipEmbedding,
-						rawStatus: "converted",
-						rawError: null,
-					})
-					.where(eq(photosTable.id, input.id));
-
-				return {
-					success: true,
-					duration: conversionResult.duration,
-				};
-			} finally {
-				// Clean up temp file
-				await cleanupTempConversion(conversionResult.outputPath);
-			}
+			return {
+				success: true,
+			};
 		}),
 });
 
