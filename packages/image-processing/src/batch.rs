@@ -196,7 +196,10 @@ fn process_standard_image(
 	let orientation = exif.as_ref().and_then(|e| e.orientation);
 
 	// Decode image
-	let decode_result = if is_heif_file(path) {
+	// Note: libheif automatically applies rotation based on the 'irot' box,
+	// so we track whether we need to apply EXIF orientation manually
+	let is_heif = is_heif_file(path);
+	let decode_result = if is_heif {
 		decode_heif(path)
 			.map(|img| (img, Some("image/heic".to_string())))
 			.map_err(|e| e.to_string())
@@ -219,7 +222,13 @@ fn process_standard_image(
 
 	match decode_result {
 		Ok((img, mime_type)) => {
-			let img = apply_orientation(img, orientation);
+			// Only apply EXIF orientation for non-HEIF files
+			// libheif automatically handles rotation via the 'irot' transformative property
+			let img = if is_heif {
+				img // libheif already rotated
+			} else {
+				apply_orientation(img, orientation)
+			};
 			let width = img.width();
 			let height = img.height();
 
