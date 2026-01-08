@@ -400,7 +400,55 @@ pub fn process_raw_complete_internal(
 	let exif = extract_exif_internal(file_path);
 	let orientation = exif.as_ref().and_then(|e| e.orientation);
 
-	// Read file into memory once
+	// Phase 1: Extract preview for histogram matching and CLIP
+	// Uses a separate scope to release file_data memory before phase 2
+	let (preview_rgb, preview_for_clip) = {
+		let file_data = match fs::read(file_path) {
+			Ok(data) => data,
+			Err(e) => {
+				return RawCompleteResult {
+					width: 0,
+					height: 0,
+					phash: None,
+					clip_embedding: None,
+					exif,
+					histogram_matched: false,
+					processing_time_ms: start.elapsed().as_millis() as u32,
+					success: false,
+					error: Some(format!("Failed to read file: {}", e)),
+				};
+			}
+		};
+
+		let mut raw = match RawImage::open(&file_data) {
+			Ok(r) => r,
+			Err(e) => {
+				return RawCompleteResult {
+					width: 0,
+					height: 0,
+					phash: None,
+					clip_embedding: None,
+					exif,
+					histogram_matched: false,
+					processing_time_ms: start.elapsed().as_millis() as u32,
+					success: false,
+					error: Some(format!("Failed to open RAW: {}", e)),
+				};
+			}
+		};
+
+		// Extract embedded preview (RgbImage for histogram, JPEG bytes for CLIP)
+		match extract_preview_with_jpeg(&mut raw) {
+			Some((rgb, jpeg_bytes)) => {
+				let clip_img = image::load_from_memory(&jpeg_bytes).ok();
+				(Some(rgb), clip_img)
+			}
+			None => (None, None),
+		}
+		// file_data and raw are dropped here, freeing ~50-80MB
+	};
+
+	// Phase 2: Process RAW - read file again to avoid holding both in memory
 	let file_data = match fs::read(file_path) {
 		Ok(data) => data,
 		Err(e) => {
@@ -413,12 +461,11 @@ pub fn process_raw_complete_internal(
 				histogram_matched: false,
 				processing_time_ms: start.elapsed().as_millis() as u32,
 				success: false,
-				error: Some(format!("Failed to read file: {}", e)),
+				error: Some(format!("Failed to read file for processing: {}", e)),
 			};
 		}
 	};
 
-	// Open RAW file for preview extraction
 	let mut raw = match RawImage::open(&file_data) {
 		Ok(r) => r,
 		Err(e) => {
@@ -431,36 +478,7 @@ pub fn process_raw_complete_internal(
 				histogram_matched: false,
 				processing_time_ms: start.elapsed().as_millis() as u32,
 				success: false,
-				error: Some(format!("Failed to open RAW: {}", e)),
-			};
-		}
-	};
-
-	// Extract embedded preview (RgbImage for histogram, DynamicImage for CLIP)
-	let preview_data = extract_preview_with_jpeg(&mut raw);
-	let (preview_rgb, preview_for_clip) = match preview_data {
-		Some((rgb, jpeg_bytes)) => {
-			// Decode preview JPEG to DynamicImage for CLIP
-			let clip_img = image::load_from_memory(&jpeg_bytes).ok();
-			(Some(rgb), clip_img)
-		}
-		None => (None, None),
-	};
-
-	// Re-open for processing (rsraw consumes RawImage on process)
-	let mut raw = match RawImage::open(&file_data) {
-		Ok(r) => r,
-		Err(e) => {
-			return RawCompleteResult {
-				width: 0,
-				height: 0,
-				phash: None,
-				clip_embedding: None,
-				exif,
-				histogram_matched: false,
-				processing_time_ms: start.elapsed().as_millis() as u32,
-				success: false,
-				error: Some(format!("Failed to reopen RAW: {}", e)),
+				error: Some(format!("Failed to open RAW for processing: {}", e)),
 			};
 		}
 	};
@@ -518,6 +536,11 @@ pub fn process_raw_complete_internal(
 		}
 	};
 
+	// Explicitly drop large allocations to free memory
+	drop(processed);
+	drop(raw);
+	drop(file_data);
+
 	// Apply per-channel histogram matching if we have a preview
 	// This corrects both tonal distribution AND white balance/color
 	let histogram_matched = if let Some(ref preview) = preview_rgb {
@@ -541,6 +564,9 @@ pub fn process_raw_complete_internal(
 	} else {
 		false
 	};
+
+	// Drop preview_rgb after histogram matching is complete
+	drop(preview_rgb);
 
 	// Convert to DynamicImage for phash and thumbnails
 	let mut dynamic_img = DynamicImage::ImageRgb8(rgb_img);

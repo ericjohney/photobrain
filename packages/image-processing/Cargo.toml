@@ -19,6 +19,7 @@ libheif-rs = "0.22"
 rsraw = "0.1"
 rayon = "1.10"
 num_cpus = "1.16"
+once_cell = "1.19"
 
 [build-dependencies]
 napi-build = "2"
