@@ -18,6 +18,7 @@ kamadak-exif = "0.5"
 libheif-rs = "0.22"
 rsraw = "0.1"
 rayon = "1.10"
+num_cpus = "1.16"
 
 [build-dependencies]
 napi-build = "2"

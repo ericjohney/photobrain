@@ -421,22 +421,35 @@ fn process_photo_internal(
 	}
 }
 
-/// Process a batch of photos in parallel
+/// Process a batch of photos in parallel with controlled concurrency
 /// Handles all file types (RAW, HEIF, standard images) automatically
+/// Uses chunked processing to limit memory usage with large RAW files
 #[napi]
 pub fn process_photos_batch(
 	file_paths: Vec<String>,
 	relative_paths: Vec<String>,
 	thumbnails_dir: String,
 ) -> Vec<PhotoProcessingResult> {
-	file_paths
-		.par_iter()
-		.enumerate()
-		.map(|(i, path)| {
-			let rel_path = relative_paths.get(i).map(|s| s.as_str()).unwrap_or("");
-			process_photo_internal(path, rel_path, &thumbnails_dir)
-		})
-		.collect()
+	// Limit concurrent processing to avoid memory exhaustion with large RAW files
+	// Each RAW file can use 100-200MB during processing
+	let max_concurrent = std::cmp::min(num_cpus::get(), 4);
+
+	// Build a custom thread pool with limited threads
+	let pool = rayon::ThreadPoolBuilder::new()
+		.num_threads(max_concurrent)
+		.build()
+		.unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().build().unwrap());
+
+	pool.install(|| {
+		file_paths
+			.par_iter()
+			.enumerate()
+			.map(|(i, path)| {
+				let rel_path = relative_paths.get(i).map(|s| s.as_str()).unwrap_or("");
+				process_photo_internal(path, rel_path, &thumbnails_dir)
+			})
+			.collect()
+	})
 }
 
 /// Process a single photo of any type
