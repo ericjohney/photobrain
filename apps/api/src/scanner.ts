@@ -1,21 +1,15 @@
-import { readdir, stat } from "node:fs/promises";
-import { basename, extname, join, relative } from "node:path";
+import { readdir } from "node:fs/promises";
+import { extname, join, relative } from "node:path";
 import {
-	extractPhotoMetadata,
-	processRawBatchComplete,
+	getSupportedExtensions,
+	processPhotosBatch,
 } from "@photobrain/image-processing";
 import type { NewPhoto, NewPhotoExif } from "@/db/schema";
-import {
-	getAllRawExtensions,
-	getRawFormat,
-	isRawFile,
-} from "./services/raw-formats";
 
 export interface ScanOptions {
 	directory: string;
 	thumbnailsDirectory: string;
 	recursive?: boolean;
-	supportedExtensions?: string[];
 }
 
 export interface PhotoWithExif {
@@ -29,36 +23,19 @@ export interface ScanResult {
 	duration: number;
 }
 
-const DEFAULT_SUPPORTED_EXTENSIONS = [
-	// Standard image formats
-	".jpg",
-	".jpeg",
-	".png",
-	".gif",
-	".webp",
-	".bmp",
-	".tiff",
-	".tif",
-	".heic",
-	".heif",
-	// RAW formats (added dynamically)
-	...getAllRawExtensions(),
-];
+// Get supported extensions from Rust (includes RAW, HEIF, and standard formats)
+const SUPPORTED_EXTENSIONS = getSupportedExtensions();
 
 /**
- * Scan a directory for photo files and extract metadata
+ * Scan a directory for photo files and process them
+ * All file type detection and processing happens in Rust
  */
 export async function scanDirectory(options: ScanOptions) {
 	const startTime = Date.now();
-	const {
-		directory,
-		thumbnailsDirectory,
-		recursive = true,
-		supportedExtensions = DEFAULT_SUPPORTED_EXTENSIONS,
-	} = options;
+	const { directory, thumbnailsDirectory, recursive = true } = options;
 
-	const photos: PhotoWithExif[] = [];
-	const rawFilesToProcess: string[] = [];
+	// Collect all supported file paths
+	const filePaths: string[] = [];
 
 	async function scanDir(currentPath: string) {
 		try {
@@ -71,26 +48,8 @@ export async function scanDirectory(options: ScanOptions) {
 					await scanDir(fullPath);
 				} else if (entry.isFile()) {
 					const ext = extname(entry.name).toLowerCase();
-					if (supportedExtensions.includes(ext)) {
-						// Collect RAW files for batch processing
-						if (isRawFile(ext)) {
-							rawFilesToProcess.push(fullPath);
-						} else {
-							// Process standard images immediately
-							try {
-								const photoWithExif = await extractStandardMetadata(
-									fullPath,
-									directory,
-									thumbnailsDirectory,
-								);
-								photos.push(photoWithExif);
-							} catch (error) {
-								console.error(
-									`Error extracting metadata from ${fullPath}:`,
-									error,
-								);
-							}
-						}
+					if (SUPPORTED_EXTENSIONS.includes(ext)) {
+						filePaths.push(fullPath);
 					}
 				}
 			}
@@ -101,22 +60,68 @@ export async function scanDirectory(options: ScanOptions) {
 
 	await scanDir(directory);
 
-	// Batch process all RAW files in parallel using Rayon
-	if (rawFilesToProcess.length > 0) {
-		console.log(`📷 Batch processing ${rawFilesToProcess.length} RAW files...`);
-		const batchStartTime = Date.now();
+	if (filePaths.length === 0) {
+		return {
+			photos: [],
+			total: 0,
+			duration: Date.now() - startTime,
+		};
+	}
 
-		const rawPhotos = await processBatchRawFiles(
-			rawFilesToProcess,
-			directory,
-			thumbnailsDirectory,
-		);
-		photos.push(...rawPhotos);
+	// Compute relative paths
+	const relativePaths = filePaths.map((fp) => relative(directory, fp));
 
-		const batchDuration = Date.now() - batchStartTime;
-		console.log(
-			`✅ Batch processed ${rawFilesToProcess.length} RAW files in ${batchDuration}ms (${Math.round(batchDuration / rawFilesToProcess.length)}ms avg)`,
-		);
+	// Process all files in Rust (handles RAW, HEIF, standard images automatically)
+	console.log(`📷 Processing ${filePaths.length} photos...`);
+	const batchStartTime = Date.now();
+
+	const results = processPhotosBatch(
+		filePaths,
+		relativePaths,
+		thumbnailsDirectory,
+	);
+
+	const batchDuration = Date.now() - batchStartTime;
+	const successCount = results.filter((r) => r.success).length;
+	console.log(
+		`✅ Processed ${successCount}/${filePaths.length} photos in ${batchDuration}ms (${Math.round(batchDuration / filePaths.length)}ms avg)`,
+	);
+
+	// Convert results to PhotoWithExif
+	const photos: PhotoWithExif[] = [];
+	for (const result of results) {
+		if (!result.success) {
+			console.error(`Failed to process ${result.path}: ${result.error}`);
+			// Still include failed photos with minimal info
+			if (result.isRaw) {
+				photos.push(createFailedPhoto(result));
+			}
+			continue;
+		}
+
+		const clipEmbedding = result.clipEmbedding
+			? new Float32Array(result.clipEmbedding)
+			: undefined;
+
+		const photo: NewPhoto = {
+			path: result.path,
+			name: result.name,
+			size: result.size,
+			createdAt: new Date(result.createdAt),
+			modifiedAt: new Date(result.modifiedAt),
+			width: result.width ?? null,
+			height: result.height ?? null,
+			mimeType: result.mimeType ?? null,
+			phash: result.phash ?? null,
+			clipEmbedding,
+			isRaw: result.isRaw,
+			rawFormat: result.rawFormat ?? null,
+			rawStatus: result.rawStatus ?? null,
+			rawError: result.rawError ?? null,
+		};
+
+		const exif = convertExifToDbFormat(result.exif);
+		photos.push({ photo, exif });
 	}
 
 	const duration = Date.now() - startTime;
@@ -128,132 +133,7 @@ export async function scanDirectory(options: ScanOptions) {
 	};
 }
 
-/**
- * Batch process multiple RAW files completely in Rust
- * All processing (EXIF, demosaic, histogram matching, CLIP, phash, thumbnails) happens in one Rust call
- * No temp files, no large buffer transfers between JS and Rust, single JS→Rust call
- */
-async function processBatchRawFiles(
-	filePaths: string[],
-	baseDirectory: string,
-	thumbnailsDirectory: string,
-): Promise<PhotoWithExif[]> {
-	// Prepare relative paths and file stats
-	const relativePaths: string[] = [];
-	const fileStatsMap: Map<string, { size: number; birthtime: Date; mtime: Date }> = new Map();
-
-	for (const filePath of filePaths) {
-		relativePaths.push(relative(baseDirectory, filePath));
-		const fileStats = await stat(filePath);
-		fileStatsMap.set(filePath, fileStats);
-	}
-
-	// Process all RAW files completely in Rust (parallel via Rayon)
-	// This does: EXIF extraction, demosaic, histogram matching, CLIP, phash, thumbnails
-	const batchResults = processRawBatchComplete(
-		filePaths,
-		relativePaths,
-		thumbnailsDirectory,
-	);
-
-	// Convert results to PhotoWithExif
-	const photos: PhotoWithExif[] = [];
-
-	for (let i = 0; i < filePaths.length; i++) {
-		const filePath = filePaths[i];
-		const result = batchResults[i];
-		const ext = extname(filePath).toLowerCase();
-		const rawFormat = getRawFormat(ext);
-		const fileName = basename(filePath);
-		const relativePath = relativePaths[i];
-		const fileStats = fileStatsMap.get(filePath)!;
-
-		// Handle failed RAW processing
-		if (!result.success) {
-			photos.push(
-				createFailedRawPhoto(
-					relativePath,
-					fileName,
-					fileStats,
-					rawFormat,
-					"failed",
-					result.error ?? "RAW processing failed",
-					result.exif, // EXIF from Rust
-				),
-			);
-			continue;
-		}
-
-		// Convert CLIP embedding to Float32Array
-		const clipEmbedding = result.clipEmbedding
-			? new Float32Array(result.clipEmbedding)
-			: undefined;
-
-		const photo: NewPhoto = {
-			path: relativePath,
-			name: fileName,
-			size: fileStats.size,
-			createdAt: fileStats.birthtime,
-			modifiedAt: fileStats.mtime,
-			width: result.width,
-			height: result.height,
-			mimeType: `image/x-${rawFormat?.toLowerCase() ?? "raw"}`,
-			phash: result.phash ?? null,
-			clipEmbedding,
-			isRaw: true,
-			rawFormat,
-			rawStatus: "converted",
-			rawError: null,
-		};
-
-		// Use EXIF from Rust result
-		const exif = convertRustExifToDbFormat(result.exif);
-		photos.push({ photo, exif });
-	}
-
-	return photos;
-}
-
-/**
- * Extract metadata from standard image files (JPEG, PNG, etc.)
- */
-async function extractStandardMetadata(
-	filePath: string,
-	baseDirectory: string,
-	thumbnailsDirectory: string,
-): Promise<PhotoWithExif> {
-	// Single file read - extracts photo metadata, EXIF data, AND generates thumbnails
-	const rustMetadata = extractPhotoMetadata(
-		filePath,
-		baseDirectory,
-		thumbnailsDirectory,
-	);
-
-	// Convert clipEmbedding f64 array to Float32Array
-	const clipEmbedding = rustMetadata.clipEmbedding
-		? new Float32Array(rustMetadata.clipEmbedding)
-		: undefined;
-
-	const photo: NewPhoto = {
-		path: rustMetadata.path,
-		name: rustMetadata.name,
-		size: rustMetadata.size,
-		createdAt: new Date(rustMetadata.createdAt),
-		modifiedAt: new Date(rustMetadata.modifiedAt),
-		width: rustMetadata.width,
-		height: rustMetadata.height,
-		mimeType: rustMetadata.mimeType,
-		phash: rustMetadata.phash,
-		clipEmbedding,
-	};
-
-	// Convert Rust EXIF data to database format (already extracted in the same pass)
-	const exif = convertRustExifToDbFormat(rustMetadata.exif);
-
-	return { photo, exif };
-}
-
-// Type for EXIF data from Rust (NAPI converts snake_case to camelCase)
+// Type for EXIF data from Rust
 interface RustExifData {
 	cameraMake?: string | null;
 	cameraModel?: string | null;
@@ -272,43 +152,45 @@ interface RustExifData {
 }
 
 /**
- * Create a photo record for a failed RAW conversion
+ * Create a photo record for a failed processing
  */
-function createFailedRawPhoto(
-	relativePath: string,
-	fileName: string,
-	fileStats: { size: number; birthtime: Date; mtime: Date },
-	rawFormat: string | null,
-	rawStatus: string,
-	rawError: string,
-	rawExif?: RustExifData | null,
-): PhotoWithExif {
+function createFailedPhoto(result: {
+	path: string;
+	name: string;
+	size: number;
+	createdAt: number;
+	modifiedAt: number;
+	mimeType?: string | null;
+	isRaw: boolean;
+	rawFormat?: string | null;
+	rawError?: string | null;
+	exif?: RustExifData | null;
+}): PhotoWithExif {
 	const photo: NewPhoto = {
-		path: relativePath,
-		name: fileName,
-		size: fileStats.size,
-		createdAt: fileStats.birthtime,
-		modifiedAt: fileStats.mtime,
+		path: result.path,
+		name: result.name,
+		size: result.size,
+		createdAt: new Date(result.createdAt),
+		modifiedAt: new Date(result.modifiedAt),
 		width: null,
 		height: null,
-		mimeType: `image/x-${rawFormat?.toLowerCase() ?? "raw"}`,
+		mimeType: result.mimeType ?? null,
 		phash: null,
 		clipEmbedding: undefined,
-		isRaw: true,
-		rawFormat,
-		rawStatus,
-		rawError,
+		isRaw: result.isRaw,
+		rawFormat: result.rawFormat ?? null,
+		rawStatus: "failed",
+		rawError: result.rawError ?? "Processing failed",
 	};
 
-	const exif = convertRustExifToDbFormat(rawExif);
-
+	const exif = convertExifToDbFormat(result.exif);
 	return { photo, exif };
 }
 
 /**
  * Convert Rust EXIF data to database format
  */
-function convertRustExifToDbFormat(
+function convertExifToDbFormat(
 	exifData?: RustExifData | null,
 ): Omit<NewPhotoExif, "id" | "photoId"> | undefined {
 	if (!exifData) return undefined;
