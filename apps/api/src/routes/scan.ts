@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { config } from "@/config";
 import { db } from "@/db";
 import { photoExif, photos } from "@/db/schema";
-import { scanDirectory } from "@/scanner";
+import { scanDirectory } from "@/services/scanner";
 
 const router = new Hono();
 

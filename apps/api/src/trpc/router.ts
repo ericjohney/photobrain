@@ -8,7 +8,7 @@ import {
 	photoExif as photoExifTable,
 	photos as photosTable,
 } from "@/db/schema";
-import { scanDirectory } from "@/scanner";
+import { scanDirectory } from "@/services/scanner";
 import { searchPhotosByText } from "@/services/vector-search";
 import { publicProcedure, router } from "./trpc";
 
