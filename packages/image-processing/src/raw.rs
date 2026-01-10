@@ -62,15 +62,33 @@ fn extract_preview_exiftool(file_path: &str) -> Option<Vec<u8>> {
 	None
 }
 
-/// Extract embedded preview - tries rsraw first, falls back to exiftool
-fn extract_largest_preview(file_path: &str, file_data: &[u8]) -> Option<Vec<u8>> {
-	// Try rsraw first (faster, no process spawn)
-	if let Some(preview) = extract_preview_rsraw(file_data) {
-		return Some(preview);
+/// Check if file is a DNG (often problematic with rsraw, especially iPhone ProRAW)
+fn is_dng_file(file_path: &str) -> bool {
+	file_path.to_lowercase().ends_with(".dng")
+}
+
+/// Extract embedded preview - optimized for different file types
+fn extract_largest_preview(file_path: &str, file_data: Option<&[u8]>) -> Option<Vec<u8>> {
+	// For DNG files, try exiftool first (rsraw often fails with iPhone ProRAW DNGs)
+	if is_dng_file(file_path) {
+		if let Some(preview) = extract_preview_exiftool(file_path) {
+			return Some(preview);
+		}
 	}
 
-	// Fall back to exiftool for files rsraw can't handle (e.g., iPhone ProRAW DNGs)
-	extract_preview_exiftool(file_path)
+	// Try rsraw if we have file data (faster than exiftool for supported formats)
+	if let Some(data) = file_data {
+		if let Some(preview) = extract_preview_rsraw(data) {
+			return Some(preview);
+		}
+	}
+
+	// Fall back to exiftool for any remaining cases
+	if !is_dng_file(file_path) {
+		extract_preview_exiftool(file_path)
+	} else {
+		None // Already tried exiftool above
+	}
 }
 
 /// Process a RAW file using its embedded preview
@@ -85,25 +103,30 @@ pub fn process_raw_complete_internal(
 	// Extract EXIF data from the RAW file
 	let exif = extract_exif_internal(file_path);
 
-	// Read the RAW file
-	let file_data = match fs::read(file_path) {
-		Ok(data) => data,
-		Err(e) => {
-			return RawCompleteResult {
-				width: 0,
-				height: 0,
-				phash: None,
-				clip_embedding: None,
-				exif,
-				processing_time_ms: start.elapsed().as_millis() as u32,
-				success: false,
-				error: Some(format!("Failed to read file: {}", e)),
-			};
+	// For DNG files, skip reading the full file - exiftool reads directly from disk
+	// This saves ~20-75MB of memory and disk I/O for files rsraw can't handle
+	let file_data = if is_dng_file(file_path) {
+		None
+	} else {
+		match fs::read(file_path) {
+			Ok(data) => Some(data),
+			Err(e) => {
+				return RawCompleteResult {
+					width: 0,
+					height: 0,
+					phash: None,
+					clip_embedding: None,
+					exif,
+					processing_time_ms: start.elapsed().as_millis() as u32,
+					success: false,
+					error: Some(format!("Failed to read file: {}", e)),
+				};
+			}
 		}
 	};
 
 	// Extract embedded preview JPEG
-	let preview_jpeg = match extract_largest_preview(file_path, &file_data) {
+	let preview_jpeg = match extract_largest_preview(file_path, file_data.as_deref()) {
 		Some(data) => data,
 		None => {
 			return RawCompleteResult {
@@ -228,8 +251,14 @@ pub fn process_raw_batch_complete(
 /// Extract the embedded JPEG preview from a RAW file
 #[napi]
 pub fn extract_raw_preview(file_path: String) -> Result<Option<Buffer>> {
+	// For DNG files, use exiftool directly (skip file read)
+	if is_dng_file(&file_path) {
+		return Ok(extract_largest_preview(&file_path, None).map(|v| v.into()));
+	}
+
+	// For other RAW files, read and use rsraw
 	let file_data =
 		fs::read(&file_path).map_err(|e| Error::from_reason(format!("Failed to read file: {}", e)))?;
 
-	Ok(extract_largest_preview(&file_path, &file_data).map(|v| v.into()))
+	Ok(extract_largest_preview(&file_path, Some(&file_data)).map(|v| v.into()))
 }
