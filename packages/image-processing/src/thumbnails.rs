@@ -4,6 +4,8 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
+use crate::orientation::apply_orientation;
+
 #[napi(object)]
 pub struct ThumbnailConfig {
   pub max_dimension: u32,
@@ -83,20 +85,6 @@ pub fn generate_thumbnail_from_image(
     .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
 
   Ok(())
-}
-
-/// Apply EXIF orientation to an image
-fn apply_orientation(img: DynamicImage, orientation: Option<u32>) -> DynamicImage {
-  match orientation {
-    Some(2) => img.fliph(),
-    Some(3) => img.rotate180(),
-    Some(4) => img.flipv(),
-    Some(5) => img.rotate270().fliph(),
-    Some(6) => img.rotate90(),
-    Some(7) => img.rotate90().fliph(),
-    Some(8) => img.rotate270(),
-    _ => img, // 1 or None = no transformation
-  }
 }
 
 /// Generate thumbnails from a file with a custom relative path

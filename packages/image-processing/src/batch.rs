@@ -1,4 +1,4 @@
-use image::{DynamicImage, ImageReader};
+use image::ImageReader;
 use napi_derive::napi;
 use rayon::prelude::*;
 use std::fs;
@@ -7,6 +7,7 @@ use std::path::Path;
 use crate::clip::generate_clip_embedding_from_image;
 use crate::exif::{extract_exif_internal, ExifData};
 use crate::heif::{decode_heif, is_heif_file};
+use crate::orientation::apply_orientation;
 use crate::phash::generate_phash_from_image;
 use crate::raw::{process_raw_complete_internal, RawCompleteResult};
 use crate::thumbnails::generate_all_thumbnails_internal;
@@ -116,20 +117,6 @@ pub struct PhotoProcessingResult {
 	pub success: bool,
 	/// Error message if failed
 	pub error: Option<String>,
-}
-
-/// Apply EXIF orientation to an image
-fn apply_orientation(img: DynamicImage, orientation: Option<u32>) -> DynamicImage {
-	match orientation {
-		Some(2) => img.fliph(),
-		Some(3) => img.rotate180(),
-		Some(4) => img.flipv(),
-		Some(5) => img.rotate270().fliph(),
-		Some(6) => img.rotate90(),
-		Some(7) => img.rotate90().fliph(),
-		Some(8) => img.rotate270(),
-		_ => img,
-	}
 }
 
 /// Process a standard image file (JPEG, PNG, etc.)

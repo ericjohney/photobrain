@@ -1,4 +1,3 @@
-use image::DynamicImage;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use rayon::prelude::*;
@@ -8,6 +7,7 @@ use std::process::Command;
 
 use crate::clip::generate_clip_embedding_from_image;
 use crate::exif::{extract_exif_internal, ExifData};
+use crate::orientation::apply_orientation;
 use crate::phash::generate_phash_from_image;
 use crate::thumbnails::generate_all_thumbnails_internal;
 
@@ -192,20 +192,6 @@ pub fn process_raw_complete_internal(
 		processing_time_ms: start.elapsed().as_millis() as u32,
 		success: true,
 		error: None,
-	}
-}
-
-/// Apply EXIF orientation to an image
-fn apply_orientation(img: DynamicImage, orientation: Option<u32>) -> DynamicImage {
-	match orientation {
-		Some(2) => img.fliph(),
-		Some(3) => img.rotate180(),
-		Some(4) => img.flipv(),
-		Some(5) => img.rotate270().fliph(),
-		Some(6) => img.rotate90(),
-		Some(7) => img.rotate90().fliph(),
-		Some(8) => img.rotate270(),
-		_ => img,
 	}
 }
 
