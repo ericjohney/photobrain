@@ -125,6 +125,7 @@ export const appRouter = router({
 				clipEmbedding: true,
 				width: true,
 				height: true,
+				rawStatus: true,
 			},
 		});
 
@@ -160,12 +161,13 @@ export const appRouter = router({
 				const existingPhoto = existingPhotoMap.get(photoWithExif.photo.path);
 
 				if (existingPhoto) {
-					// Check if metadata is incomplete
+					// Check if metadata is incomplete or previously failed
 					const missingMetadata =
 						!existingPhoto.phash ||
 						!existingPhoto.clipEmbedding ||
 						!existingPhoto.width ||
 						!existingPhoto.height;
+					const previouslyFailed = existingPhoto.rawStatus === "failed";
 
 					// Check if thumbnails are missing
 					const hasThumbnails = await thumbnailsExist(
@@ -173,8 +175,10 @@ export const appRouter = router({
 						config.THUMBNAILS_DIRECTORY,
 					);
 
-					if ((missingMetadata || !hasThumbnails) && photoWithExif.photo.phash) {
-						// Update existing photo with new metadata
+					const needsUpdate = missingMetadata || !hasThumbnails || previouslyFailed;
+
+					if (needsUpdate && photoWithExif.photo.phash) {
+						// Update existing photo with new metadata, clear any previous errors
 						await ctx.db
 							.update(photosTable)
 							.set({
@@ -182,15 +186,18 @@ export const appRouter = router({
 								height: photoWithExif.photo.height,
 								phash: photoWithExif.photo.phash,
 								clipEmbedding: photoWithExif.photo.clipEmbedding,
-								// Update RAW status if applicable
-								rawStatus: photoWithExif.photo.rawStatus ?? undefined,
-								rawError: photoWithExif.photo.rawError ?? undefined,
+								rawStatus: photoWithExif.photo.rawStatus ?? "converted",
+								rawError: null, // Clear previous errors on successful reprocess
 							})
 							.where(eq(photosTable.id, existingPhoto.id));
 
 						updated++;
-						const reason = missingMetadata ? "metadata" : "thumbnails";
-						console.log(`🔄 Updated ${photoWithExif.photo.path} (missing ${reason})`);
+						const reason = previouslyFailed
+							? "retry after failure"
+							: missingMetadata
+								? "missing metadata"
+								: "missing thumbnails";
+						console.log(`🔄 Updated ${photoWithExif.photo.path} (${reason})`);
 					} else {
 						skipped++;
 					}
