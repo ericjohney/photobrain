@@ -130,9 +130,7 @@ export const appRouter = router({
 		});
 
 		// Build map for quick lookup
-		const existingPhotoMap = new Map(
-			existingPhotos.map((p) => [p.path, p]),
-		);
+		const existingPhotoMap = new Map(existingPhotos.map((p) => [p.path, p]));
 
 		// Find photos in DB that are no longer on disk
 		const photosToDelete = existingPhotos.filter(
@@ -175,7 +173,8 @@ export const appRouter = router({
 						config.THUMBNAILS_DIRECTORY,
 					);
 
-					const needsUpdate = missingMetadata || !hasThumbnails || previouslyFailed;
+					const needsUpdate =
+						missingMetadata || !hasThumbnails || previouslyFailed;
 
 					if (needsUpdate && photoWithExif.photo.phash) {
 						// Update existing photo with new metadata, clear any previous errors

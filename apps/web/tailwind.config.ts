@@ -5,6 +5,19 @@ const config: Config = {
 	content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
 	theme: {
 		extend: {
+			fontFamily: {
+				sans: [
+					"Inter",
+					"-apple-system",
+					"BlinkMacSystemFont",
+					"Segoe UI",
+					"Roboto",
+					"sans-serif",
+				],
+			},
+			fontSize: {
+				"2xs": ["0.625rem", { lineHeight: "0.875rem" }],
+			},
 			colors: {
 				background: "hsl(var(--background))",
 				foreground: "hsl(var(--foreground))",
@@ -49,11 +62,28 @@ const config: Config = {
 					border: "hsl(var(--sidebar-border))",
 					ring: "hsl(var(--sidebar-ring))",
 				},
+				// Lightroom-specific colors
+				panel: {
+					DEFAULT: "hsl(var(--panel))",
+					foreground: "hsl(var(--panel-foreground))",
+				},
+				toolbar: "hsl(var(--toolbar))",
+				filmstrip: "hsl(var(--filmstrip))",
+				selection: {
+					DEFAULT: "hsl(var(--selection))",
+					muted: "hsl(var(--selection-muted))",
+				},
+				thumbnail: {
+					border: "hsl(var(--thumbnail-border))",
+				},
 			},
 			borderRadius: {
 				lg: "var(--radius)",
 				md: "calc(var(--radius) - 2px)",
 				sm: "calc(var(--radius) - 4px)",
+			},
+			spacing: {
+				"grid-gap": "var(--grid-gap)",
 			},
 		},
 	},

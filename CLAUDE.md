@@ -29,7 +29,14 @@ photobrain/
 │   │
 │   ├── web/                 # React web app (Vite)
 │   │   └── src/
-│   │       ├── components/  # React components (PhotoGrid, Lightbox, etc.)
+│   │       ├── components/  # React components
+│   │       │   ├── panels/  # Panel system (PanelLayout, MetadataPanel)
+│   │       │   ├── ui/      # shadcn/ui primitives
+│   │       │   ├── PhotoGrid.tsx    # Thumbnail grid with selection
+│   │       │   ├── Filmstrip.tsx    # Horizontal thumbnail strip
+│   │       │   ├── LoupeView.tsx    # Single photo view with zoom
+│   │       │   └── Toolbar.tsx      # Top toolbar with controls
+│   │       ├── hooks/       # State management hooks
 │   │       ├── pages/       # Route pages
 │   │       ├── lib/         # Utilities (trpc client, thumbnails)
 │   │       └── main.tsx     # App entry point
@@ -79,9 +86,10 @@ photobrain/
 - **React** v18.3 - UI library
 - **Vite** v6.0 - Build tool and dev server
 - **TailwindCSS** v3.4 - Utility-first CSS framework
-- **Radix UI** - Accessible component primitives
+- **Radix UI** - Accessible component primitives (shadcn/ui)
 - **React Router** v7.11 - Client-side routing
 - **React Query** v5.62 - Data fetching and caching
+- **react-resizable-panels** v4.3 - Resizable panel layout
 
 ### Mobile Frontend (`apps/mobile`)
 - **React Native** v0.81 - Cross-platform mobile framework
@@ -176,6 +184,60 @@ Run `bun run check` to auto-fix formatting issues before committing.
 - Data fetching via tRPC hooks (`trpc.photos.useQuery()`)
 - Styling with TailwindCSS utility classes
 - Icons from `lucide-react`
+
+## Web UI Design System
+
+The web app uses an **Adobe Lightroom-inspired design** with a professional photo management layout.
+
+### Layout Architecture
+```
++------------------+------------------------+------------------+
+|  Left Panel      |     Center Content     |   Right Panel    |
+|  (Navigation)    |     (Grid/Loupe)       |   (Metadata)     |
++------------------+------------------------+------------------+
+|                      Filmstrip                               |
++--------------------------------------------------------------+
+```
+
+### Color Palette (CSS Variables in `index.css`)
+- **Light mode**: Clean professional look (light gray backgrounds)
+- **Dark mode**: Lightroom-style dark theme (`#1d1d1d` backgrounds)
+- **Accent color**: Blue (`hsl(210 100% 50%)`) for selection states
+- Custom tokens: `--panel`, `--toolbar`, `--filmstrip`, `--selection`
+
+### Key Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `PanelLayout` | `components/panels/PanelLayout.tsx` | Three-panel resizable layout |
+| `MetadataPanel` | `components/panels/MetadataPanel.tsx` | EXIF display with collapsible sections |
+| `PhotoGrid` | `components/PhotoGrid.tsx` | Dense thumbnail grid with selection |
+| `Filmstrip` | `components/Filmstrip.tsx` | Horizontal thumbnail navigation |
+| `LoupeView` | `components/LoupeView.tsx` | Full-bleed single photo view |
+| `Toolbar` | `components/Toolbar.tsx` | View controls, search, actions |
+
+### State Management Hooks
+
+| Hook | File | Purpose |
+|------|------|---------|
+| `useLibraryState` | `hooks/use-library-state.ts` | View mode, selection, thumbnail size |
+| `usePanelState` | `hooks/use-panel-state.ts` | Panel visibility with localStorage |
+| `useKeyboardShortcuts` | `hooks/use-keyboard-shortcuts.ts` | Lightroom-style shortcuts |
+
+### Keyboard Shortcuts
+- `G` - Grid view
+- `E` - Loupe view
+- `Tab` - Toggle all panels
+- `Shift+Space` - Toggle filmstrip
+- `Arrow keys` - Navigate photos
+- `Escape` - Return to grid / clear selection
+- `Ctrl/Cmd+A` - Select all
+
+### Selection Behavior
+- **Single click**: Select photo
+- **Shift+click**: Range selection
+- **Ctrl/Cmd+click**: Toggle selection
+- **Double-click**: Open in loupe view
 
 ## Database Schema
 

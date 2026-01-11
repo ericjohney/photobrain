@@ -16,7 +16,10 @@ export function getThumbnailUrl(photoId: number, size: ThumbnailSize): string {
  */
 export function getThumbnailSrcSet(photoId: number): string {
 	return (Object.keys(THUMBNAIL_CONFIG.sizes) as ThumbnailSize[])
-		.map((size) => `${getThumbnailUrl(photoId, size)} ${THUMBNAIL_CONFIG.sizes[size].maxDimension}w`)
+		.map(
+			(size) =>
+				`${getThumbnailUrl(photoId, size)} ${THUMBNAIL_CONFIG.sizes[size].maxDimension}w`,
+		)
 		.join(", ");
 }
 

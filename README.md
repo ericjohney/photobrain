@@ -4,15 +4,17 @@ A modern, AI-powered self-hosted photo management and gallery application with c
 
 ## Features
 
-- 🖼️ **Fast Photo Grid Gallery** - Responsive grid layout with optimized thumbnail loading
+- 🎨 **Lightroom-Inspired UI** - Professional three-panel layout with collapsible panels, filmstrip, and loupe view
+- 🖼️ **Fast Photo Grid Gallery** - Dense grid layout with adjustable thumbnail sizes and multi-select support
 - 🚀 **Multi-Size Thumbnails** - WebP thumbnails (tiny/small/medium/large) for 99% data reduction
 - 🔍 **AI-Powered Semantic Search** - Search photos by content using CLIP embeddings
+- ⌨️ **Keyboard Shortcuts** - Lightroom-style shortcuts (G=grid, E=loupe, Tab=panels, arrows=navigate)
 - 📱 **Cross-Platform** - Web app and native mobile apps (iOS & Android)
 - ⚡ **High Performance** - Built with Rust for image processing and metadata extraction
 - 🔄 **Automatic Directory Scanning** - Detect and process new photos automatically
 - 🎯 **Duplicate Detection** - Perceptual hashing for finding similar images
 - 💾 **SQLite Database** - Fast, reliable local storage with vector search
-- 🎨 **Modern UI** - Clean, intuitive interface on all platforms
+- 🌓 **Light & Dark Themes** - Professional dark theme inspired by Adobe Lightroom
 - 📸 **EXIF Data Extraction** - Full camera metadata including GPS coordinates
 
 ## Architecture
@@ -235,6 +237,7 @@ Rust NAPI module for high-performance image operations:
 - **TailwindCSS** - Utility-first CSS framework
 - **Radix UI** - Accessible component primitives
 - **React Router** - Client-side routing
+- **react-resizable-panels** - Panel layout system
 
 ### Mobile Frontend
 
@@ -253,6 +256,43 @@ Rust NAPI module for high-performance image operations:
 - `GET /api/photos/search?q=query` - Semantic search
 - `POST /api/scan` - Trigger directory scan
 
+## Web UI
+
+The web app features a professional Lightroom-inspired interface with a three-panel layout:
+
+```
++------------------+------------------------+------------------+
+|  Left Panel      |     Center Content     |   Right Panel    |
+|  (Navigation)    |     (Photo Grid/       |   (Metadata)     |
+|  Collapsible     |      Loupe View)       |   Collapsible    |
++------------------+------------------------+------------------+
+|                      Filmstrip                               |
++--------------------------------------------------------------+
+```
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `G` | Switch to grid view |
+| `E` | Switch to loupe (single photo) view |
+| `Tab` | Toggle all panels |
+| `←` / `→` | Navigate previous/next photo |
+| `Escape` | Deselect all / close loupe view |
+| `Shift+Click` | Range select photos |
+| `Ctrl/Cmd+Click` | Toggle individual photo selection |
+
+### View Modes
+
+- **Grid View**: Dense thumbnail grid with adjustable sizes (50-300px)
+- **Loupe View**: Full-size photo with zoom controls (Fit/Fill/1:1)
+
+### Panel Controls
+
+- Left and right panels can be collapsed via toolbar buttons
+- Filmstrip at the bottom shows all photos with active selection indicator
+- Panel states persist in localStorage
+
 ## Project Structure
 
 ```
@@ -268,7 +308,19 @@ photobrain/
 │   │
 │   ├── web/
 │   │   └── src/
-│   │       ├── components/      # React components
+│   │       ├── components/
+│   │       │   ├── panels/      # Panel layout components
+│   │       │   │   ├── PanelLayout.tsx    # Three-panel resizable layout
+│   │       │   │   └── MetadataPanel.tsx  # EXIF metadata display
+│   │       │   ├── ui/          # shadcn/ui components
+│   │       │   ├── PhotoGrid.tsx     # Photo grid with selection
+│   │       │   ├── Filmstrip.tsx     # Horizontal thumbnail strip
+│   │       │   ├── LoupeView.tsx     # Single photo view with zoom
+│   │       │   └── Toolbar.tsx       # Top toolbar with controls
+│   │       ├── hooks/
+│   │       │   ├── use-library-state.ts    # View mode, selection state
+│   │       │   ├── use-panel-state.ts      # Panel visibility state
+│   │       │   └── use-keyboard-shortcuts.ts # Keyboard navigation
 │   │       ├── pages/           # Route pages
 │   │       ├── lib/             # Utilities
 │   │       └── main.tsx         # App entry point
