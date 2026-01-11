@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { processPhoto } from "@photobrain/image-processing";
 import { eq, inArray } from "drizzle-orm";
@@ -11,6 +11,27 @@ import {
 import { scanDirectory } from "@/services/scanner";
 import { searchPhotosByText } from "@/services/vector-search";
 import { publicProcedure, router } from "./trpc";
+
+const THUMBNAIL_SIZES = ["tiny", "small", "medium", "large"] as const;
+
+/** Check if all thumbnails exist for a photo */
+async function thumbnailsExist(
+	relativePath: string,
+	thumbnailsDir: string,
+): Promise<boolean> {
+	// Get path without extension
+	const pathWithoutExt = relativePath.replace(/\.[^/.]+$/, "");
+
+	for (const size of THUMBNAIL_SIZES) {
+		const thumbPath = join(thumbnailsDir, size, `${pathWithoutExt}.webp`);
+		try {
+			await access(thumbPath);
+		} catch {
+			return false;
+		}
+	}
+	return true;
+}
 
 export const appRouter = router({
 	// Get all photos with EXIF data
@@ -95,10 +116,22 @@ export const appRouter = router({
 		// Collect all scanned paths
 		const scannedPaths = new Set(result.photos.map((p) => p.photo.path));
 
-		// Get all existing photo paths from database
+		// Get existing photos with metadata fields to check completeness
 		const existingPhotos = await ctx.db.query.photos.findMany({
-			columns: { id: true, path: true },
+			columns: {
+				id: true,
+				path: true,
+				phash: true,
+				clipEmbedding: true,
+				width: true,
+				height: true,
+			},
 		});
+
+		// Build map for quick lookup
+		const existingPhotoMap = new Map(
+			existingPhotos.map((p) => [p.path, p]),
+		);
 
 		// Find photos in DB that are no longer on disk
 		const photosToDelete = existingPhotos.filter(
@@ -118,19 +151,51 @@ export const appRouter = router({
 
 		// Insert or update photos in database
 		let inserted = 0;
+		let updated = 0;
 		let skipped = 0;
 		let rawCount = 0;
 
-		// Build set of existing paths for quick lookup
-		const existingPaths = new Set(existingPhotos.map((p) => p.path));
-
 		for (const photoWithExif of result.photos) {
 			try {
-				// Check if photo already exists
-				if (existingPaths.has(photoWithExif.photo.path)) {
-					skipped++;
+				const existingPhoto = existingPhotoMap.get(photoWithExif.photo.path);
+
+				if (existingPhoto) {
+					// Check if metadata is incomplete
+					const missingMetadata =
+						!existingPhoto.phash ||
+						!existingPhoto.clipEmbedding ||
+						!existingPhoto.width ||
+						!existingPhoto.height;
+
+					// Check if thumbnails are missing
+					const hasThumbnails = await thumbnailsExist(
+						photoWithExif.photo.path,
+						config.THUMBNAILS_DIRECTORY,
+					);
+
+					if ((missingMetadata || !hasThumbnails) && photoWithExif.photo.phash) {
+						// Update existing photo with new metadata
+						await ctx.db
+							.update(photosTable)
+							.set({
+								width: photoWithExif.photo.width,
+								height: photoWithExif.photo.height,
+								phash: photoWithExif.photo.phash,
+								clipEmbedding: photoWithExif.photo.clipEmbedding,
+								// Update RAW status if applicable
+								rawStatus: photoWithExif.photo.rawStatus ?? undefined,
+								rawError: photoWithExif.photo.rawError ?? undefined,
+							})
+							.where(eq(photosTable.id, existingPhoto.id));
+
+						updated++;
+						const reason = missingMetadata ? "metadata" : "thumbnails";
+						console.log(`🔄 Updated ${photoWithExif.photo.path} (missing ${reason})`);
+					} else {
+						skipped++;
+					}
 				} else {
-					// Insert new photo (including RAW fields)
+					// Insert new photo
 					const insertResult = await ctx.db
 						.insert(photosTable)
 						.values({
@@ -144,7 +209,6 @@ export const appRouter = router({
 							height: photoWithExif.photo.height,
 							phash: photoWithExif.photo.phash,
 							clipEmbedding: photoWithExif.photo.clipEmbedding,
-							// RAW fields
 							isRaw: photoWithExif.photo.isRaw ?? false,
 							rawFormat: photoWithExif.photo.rawFormat ?? null,
 							rawStatus: photoWithExif.photo.rawStatus ?? null,
@@ -182,10 +246,11 @@ export const appRouter = router({
 			success: true,
 			scanned: result.photos.length,
 			inserted,
+			updated,
 			skipped,
 			deleted,
 			rawCount,
-			duration: totalTime / 1000, // Convert to seconds
+			duration: totalTime / 1000,
 			scanDuration: result.duration,
 			directory: config.PHOTO_DIRECTORY,
 		};
