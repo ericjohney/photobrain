@@ -192,7 +192,7 @@ export function Dashboard() {
 			}
 			leftPanelVisible={panels.leftPanelVisible}
 			rightPanelVisible={panels.rightPanelVisible}
-			filmstripVisible={panels.filmstripVisible}
+			filmstripVisible={panels.filmstripVisible && library.viewMode === "loupe"}
 		>
 			{renderContent()}
 		</PanelLayout>
