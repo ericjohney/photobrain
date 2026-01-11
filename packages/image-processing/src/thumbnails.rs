@@ -88,8 +88,7 @@ pub fn generate_thumbnail_from_image(
 }
 
 /// Generate thumbnails from a file with a custom relative path
-/// Used for RAW files where the source file is a temp JPEG but thumbnails should use the RAW path
-/// Optionally accepts an orientation value to apply (for RAW files where EXIF is from original)
+/// Optionally accepts an orientation value to apply
 #[napi]
 pub fn generate_thumbnails_from_file(
   file_path: String,
@@ -97,14 +96,19 @@ pub fn generate_thumbnails_from_file(
   thumbnails_base_dir: String,
   orientation: Option<u32>,
 ) -> napi::Result<()> {
-  use crate::heif::{decode_heif, is_heif_file};
+  use crate::preview::{extract_preview, needs_preview_extraction};
   use image::ImageReader;
+  use std::io::Cursor;
 
-  let path = Path::new(&file_path);
-
-  // Decode the image - use HEIF decoder for HEIF/HEIC files
-  let img = if is_heif_file(path) {
-    decode_heif(path).map_err(|e| napi::Error::from_reason(format!("Failed to decode HEIF: {}", e)))?
+  // Decode the image - use preview extraction for RAW/HEIF
+  let img = if needs_preview_extraction(&file_path) {
+    let preview = extract_preview(&file_path)
+      .ok_or_else(|| napi::Error::from_reason("No embedded preview found"))?;
+    ImageReader::new(Cursor::new(preview))
+      .with_guessed_format()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to read preview: {}", e)))?
+      .decode()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to decode preview: {}", e)))?
   } else {
     ImageReader::open(&file_path)
       .map_err(|e| napi::Error::from_reason(format!("Failed to open image: {}", e)))?

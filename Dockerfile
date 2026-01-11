@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
     libssl-dev \
-    libheif-dev \
     libclang-dev \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
     && rm -rf /var/lib/apt/lists/*
@@ -46,9 +45,8 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS api
 
-# Install runtime dependencies for native modules and RAW processing
+# Install exiftool for EXIF extraction and preview extraction
 RUN apt-get update && apt-get install -y \
-    libheif1 \
     libimage-exiftool-perl \
     && rm -rf /var/lib/apt/lists/*
 

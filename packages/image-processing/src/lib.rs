@@ -3,10 +3,9 @@
 mod batch;
 mod clip;
 mod exif;
-mod heif;
 mod orientation;
 mod phash;
-mod raw;
+mod preview;
 mod thumbnails;
 
 // Re-export public functions and types
