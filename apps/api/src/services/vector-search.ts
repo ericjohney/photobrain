@@ -6,6 +6,7 @@ import { photos as photosTable } from "@/db/schema";
 
 /**
  * Find similar photos using CLIP embedding vector similarity
+ * Uses the photo_embedding sidecar table for vector search
  * @param embedding - The query embedding (Float32Array or number array)
  * @param limit - Maximum number of results to return
  * @returns Array of photos sorted by similarity
@@ -19,20 +20,20 @@ export async function findSimilarPhotos(
 			? Buffer.from(embedding.buffer)
 			: Buffer.from(new Float32Array(embedding).buffer);
 
-	const results = await db.all<{ id: number; distance: number }>(
+	// Query the photo_embedding sidecar table
+	const results = await db.all<{ photo_id: number; distance: number }>(
 		sql`
       SELECT
-        id,
-        vec_distance_L2(clip_embedding, ${embeddingBlob}) as distance
-      FROM photos
-      WHERE clip_embedding IS NOT NULL
+        photo_id,
+        vec_distance_L2(embedding, ${embeddingBlob}) as distance
+      FROM photo_embedding
       ORDER BY distance ASC
       LIMIT ${limit}
     `,
 	);
 
 	// Fetch full photo details
-	const photoIds = results.map((r) => r.id);
+	const photoIds = results.map((r) => r.photo_id);
 	const photosList =
 		photoIds.length > 0
 			? await db
@@ -45,7 +46,7 @@ export async function findSimilarPhotos(
 	// Sort photos by similarity distance
 	const photosMap = new Map(photosList.map((p) => [p.id, p]));
 	const sortedPhotos = results
-		.map((r) => photosMap.get(r.id))
+		.map((r) => photosMap.get(r.photo_id))
 		.filter((p): p is Photo => p !== undefined);
 
 	return sortedPhotos;

@@ -24,12 +24,14 @@ PhotoBrain is a **Turbo monorepo** with shared code between web and mobile platf
 ```
 photobrain/
 ├── apps/
-│   ├── api/             # tRPC backend API
+│   ├── api/             # tRPC backend API (Hono + Bun)
+│   ├── worker/          # BullMQ job worker (scan, phash, embeddings)
 │   ├── web/             # React web app (Vite)
 │   └── mobile/          # React Native Expo app
 └── packages/
     ├── utils/           # Shared utility functions
     ├── config/          # Shared TypeScript config
+    ├── db/              # Shared database schema (Drizzle ORM)
     └── image-processing/# Rust NAPI module
 ```
 
@@ -39,6 +41,7 @@ photobrain/
 - **Node.js** v18+ - For Expo CLI
 - **Rust** - For building the image-processing module
 - **SQLite** with vector extension support
+- **Redis/Valkey** - For BullMQ job queues (can run via Docker)
 
 ### For Mobile Development
 
@@ -63,7 +66,15 @@ bun run build
 cd ../..
 ```
 
-### 3. Start the Backend API
+### 3. Start Redis
+
+```bash
+docker run -p 6379:6379 valkey/valkey:8-alpine
+```
+
+Redis is required for the BullMQ job queue system.
+
+### 4. Start the Backend API
 
 ```bash
 bun run dev:api
@@ -71,7 +82,17 @@ bun run dev:api
 
 The API will be available at `http://localhost:3000`
 
-### 4. Start the Web App
+### 5. Start the Worker
+
+In a new terminal:
+
+```bash
+bun run dev:worker
+```
+
+The worker processes scan, phash, and embedding jobs asynchronously.
+
+### 6. Start the Web App
 
 In a new terminal:
 
@@ -81,7 +102,7 @@ bun run dev:web
 
 The web app will be available at `http://localhost:3001`
 
-### 5. Start the Mobile App (Optional)
+### 7. Start the Mobile App (Optional)
 
 In a new terminal:
 
@@ -100,7 +121,16 @@ Configure the API via environment variables or `apps/api/src/config.ts`:
 - `PHOTO_DIRECTORY` - Directory to scan for photos (default: `../../temp-photos`)
 - `THUMBNAILS_DIRECTORY` - Directory to store thumbnails (default: `./thumbnails`)
 - `DATABASE_URL` - SQLite database path (default: `./photobrain.db`)
+- `REDIS_URL` - Redis connection URL (default: `redis://localhost:6379`)
 - `PORT` - Server port (default: `3000`)
+
+### Worker
+
+Configure the worker via environment variables:
+
+- `REDIS_URL` - Redis connection URL (default: `redis://localhost:6379`)
+- `DATABASE_PATH` - SQLite database path (default: `../api/photobrain.db`)
+- `THUMBNAILS_DIR` - Directory to store thumbnails (default: `../api/thumbnails`)
 
 ### Web App
 
@@ -160,6 +190,7 @@ bun run check            # Check and fix code with Biome
 
 ```bash
 bun run dev:api          # Start backend API
+bun run dev:worker       # Start BullMQ worker
 bun run dev:web          # Start web app
 bun run dev:mobile       # Start mobile app (Expo)
 ```
@@ -228,6 +259,8 @@ Rust NAPI module for high-performance image operations:
 - **Hono** - Lightweight, TypeScript-first web framework
 - **SQLite** - Fast, embedded database with `sqlite-vec` extension
 - **Drizzle ORM** - Type-safe database toolkit
+- **BullMQ** - Job queue for async processing (scan, phash, embeddings)
+- **Redis/Valkey** - Queue storage backend
 - **Rust (NAPI)** - Native image processing module
 
 ### Web Frontend
@@ -300,11 +333,17 @@ photobrain/
 ├── apps/
 │   ├── api/
 │   │   └── src/
-│   │       ├── db/              # Database schema and migrations
+│   │       ├── db/              # Database migrations
 │   │       ├── routes/          # API route handlers
 │   │       ├── services/        # Business logic (vector search)
-│   │       ├── scanner.ts       # Directory scanning
 │   │       └── index.ts         # Server entry point
+│   │
+│   ├── worker/
+│   │   └── src/
+│   │       ├── queues/          # BullMQ queue definitions
+│   │       ├── workers/         # Job processors
+│   │       ├── activities/      # Shared job activities
+│   │       └── index.ts         # Worker entry point
 │   │
 │   ├── web/
 │   │   └── src/
@@ -336,8 +375,14 @@ photobrain/
 └── packages/
     ├── utils/                   # Shared utilities
     │   └── src/
-    │       └── thumbnails.ts    # Thumbnail configuration
+    │       ├── thumbnails.ts    # Thumbnail configuration
+    │       └── tasks.ts         # Task type definitions
     ├── config/                  # Shared TS config
+    ├── db/                      # Shared database schema
+    │   ├── drizzle/             # Database migrations
+    │   └── src/
+    │       ├── schema.ts        # Drizzle ORM table definitions
+    │       └── index.ts         # Database connection
     └── image-processing/        # Rust NAPI module
         └── src/
             ├── clip.rs          # CLIP embeddings
@@ -413,6 +458,13 @@ bun run typecheck  # Type checking
 1. Ensure all dependencies are installed: `bun install`
 2. Build the Rust module: `cd packages/image-processing && bun run build`
 3. Clear build cache: `rm -rf node_modules/.cache`
+
+### Scan Not Working
+
+1. Ensure Redis is running: `docker run -p 6379:6379 valkey/valkey:8-alpine`
+2. Ensure the worker is running: `bun run dev:worker`
+3. Check worker logs for errors
+4. Verify `REDIS_URL` environment variable is set correctly in both API and worker
 
 ## License
 

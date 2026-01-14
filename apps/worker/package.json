@@ -1,0 +1,17 @@
+{
+	"name": "@photobrain/worker",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "bun run src/index.ts"
+	},
+	"dependencies": {
+		"@photobrain/db": "workspace:*",
+		"@photobrain/image-processing": "workspace:*",
+		"@photobrain/utils": "workspace:*",
+		"bullmq": "^5.0.0",
+		"drizzle-orm": "^0.45.0",
+		"ioredis": "^5.4.0"
+	}
+}

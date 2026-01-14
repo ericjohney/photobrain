@@ -1,5 +1,6 @@
 import {
 	Grid3X3,
+	Loader2,
 	Maximize2,
 	Moon,
 	PanelLeftClose,
@@ -47,6 +48,10 @@ interface ToolbarProps {
 	onRefresh: () => void;
 	isRefreshing?: boolean;
 
+	// Processing indicator
+	hasActiveJobs?: boolean;
+	processingProgress?: { current: number; total: number };
+
 	// Stats
 	photoCount?: number;
 	selectedCount?: number;
@@ -68,6 +73,8 @@ export function Toolbar({
 	onSearch,
 	onRefresh,
 	isRefreshing,
+	hasActiveJobs,
+	processingProgress,
 	photoCount = 0,
 	selectedCount = 0,
 	className,
@@ -196,6 +203,16 @@ export function Toolbar({
 
 				<Separator orientation="vertical" className="h-5" />
 
+				{/* Processing indicator */}
+				{hasActiveJobs && processingProgress && (
+					<div className="flex items-center gap-2 text-xs text-muted-foreground">
+						<Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+						<span>
+							{processingProgress.current}/{processingProgress.total}
+						</span>
+					</div>
+				)}
+
 				{/* Refresh */}
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -204,14 +221,16 @@ export function Toolbar({
 							size="icon"
 							className="h-7 w-7"
 							onClick={onRefresh}
-							disabled={isRefreshing}
+							disabled={isRefreshing || hasActiveJobs}
 						>
 							<RefreshCw
 								className={cn("h-4 w-4", isRefreshing && "animate-spin")}
 							/>
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>Scan for new photos</TooltipContent>
+					<TooltipContent>
+						{hasActiveJobs ? "Processing in progress..." : "Scan for new photos"}
+					</TooltipContent>
 				</Tooltip>
 
 				{/* Theme toggle */}

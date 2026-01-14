@@ -30,3 +30,10 @@ pub fn generate_phash_from_image(img: &DynamicImage) -> String {
   let hash = hasher.hash_image(img);
   hash.to_base64()
 }
+
+/// Generate perceptual hash from a file path
+/// Alias for perceptual_hash with a more consistent naming scheme
+#[napi]
+pub fn generate_phash(file_path: String) -> napi::Result<String> {
+  perceptual_hash(file_path)
+}

@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
 import { PhotoGrid } from "@/components/PhotoGrid";
+import { ActivityPanel } from "@/components/panels/ActivityPanel";
 import { LibraryPanel } from "@/components/panels/LibraryPanel";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { PanelLayout } from "@/components/panels/PanelLayout";
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { usePanelState } from "@/hooks/use-panel-state";
+import { useTaskProgress } from "@/hooks/use-task-progress";
 import { trpc } from "@/lib/trpc";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -31,14 +33,15 @@ export function Dashboard() {
 		{ enabled: !!searchQuery },
 	);
 
+	// BullMQ-based async scan
 	const scanMutation = trpc.scan.useMutation({
-		onSuccess: () => {
-			photosQuery.refetch();
-			if (searchQuery) {
-				searchPhotosQuery.refetch();
-			}
+		onError: (error) => {
+			console.error("Scan failed:", error);
 		},
 	});
+
+	// Task progress tracking
+	const taskProgress = useTaskProgress();
 
 	// Determine which data to use
 	const photosData = searchQuery ? searchPhotosQuery.data : photosQuery.data;
@@ -174,12 +177,24 @@ export function Dashboard() {
 					onSearch={handleSearch}
 					onRefresh={handleRefresh}
 					isRefreshing={scanMutation.isPending}
+					hasActiveJobs={taskProgress.hasActiveJobs}
+					processingProgress={taskProgress.totalProgress}
 					photoCount={photos.length}
 					selectedCount={library.selectedCount}
 				/>
 			}
 			leftPanel={
-				<LibraryPanel photoCount={photos.length} searchQuery={searchQuery} />
+				<div className="flex flex-col h-full">
+					<div className="flex-1 overflow-auto">
+						<LibraryPanel photoCount={photos.length} searchQuery={searchQuery} />
+					</div>
+					<ActivityPanel
+						scanProgress={taskProgress.scanProgress}
+						phashProgress={taskProgress.phashProgress}
+						embeddingProgress={taskProgress.embeddingProgress}
+						hasActiveJobs={taskProgress.hasActiveJobs}
+					/>
+				</div>
 			}
 			rightPanel={<MetadataPanel photo={library.activePhoto} />}
 			filmstrip={
