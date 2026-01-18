@@ -1,37 +1,23 @@
-import { access, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { processPhoto } from "@photobrain/image-processing";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "@/config";
+import { photos as photosTable } from "@/db/schema";
 import {
-	photoExif as photoExifTable,
-	photos as photosTable,
-} from "@/db/schema";
-import { scanDirectory } from "@/services/scanner";
+	addScanJob,
+	getJobCounts,
+	scanQueue,
+	phashQueue,
+	embeddingQueue,
+	scanQueueEvents,
+	phashQueueEvents,
+	embeddingQueueEvents,
+} from "@/queue";
 import { searchPhotosByText } from "@/services/vector-search";
 import { publicProcedure, router } from "./trpc";
 
-const THUMBNAIL_SIZES = ["tiny", "small", "medium", "large"] as const;
-
-/** Check if all thumbnails exist for a photo */
-async function thumbnailsExist(
-	relativePath: string,
-	thumbnailsDir: string,
-): Promise<boolean> {
-	// Get path without extension
-	const pathWithoutExt = relativePath.replace(/\.[^/.]+$/, "");
-
-	for (const size of THUMBNAIL_SIZES) {
-		const thumbPath = join(thumbnailsDir, size, `${pathWithoutExt}.webp`);
-		try {
-			await access(thumbPath);
-		} catch {
-			return false;
-		}
-	}
-	return true;
-}
+// Task types for subscriptions
+const TaskTypeSchema = z.enum(["scan", "phash", "embedding"]);
+type TaskType = z.infer<typeof TaskTypeSchema>;
 
 export const appRouter = router({
 	// Get all photos with EXIF data
@@ -102,237 +88,131 @@ export const appRouter = router({
 			};
 		}),
 
-	// Scan directory for photos
-	scan: publicProcedure.mutation(async ({ ctx }) => {
-		const startTime = Date.now();
-
-		// Scan the directory
-		const result = await scanDirectory({
-			directory: config.PHOTO_DIRECTORY,
-			thumbnailsDirectory: config.THUMBNAILS_DIRECTORY,
-			recursive: true,
-		});
-
-		// Collect all scanned paths
-		const scannedPaths = new Set(result.photos.map((p) => p.photo.path));
-
-		// Get existing photos with metadata fields to check completeness
-		const existingPhotos = await ctx.db.query.photos.findMany({
-			columns: {
-				id: true,
-				path: true,
-				phash: true,
-				clipEmbedding: true,
-				width: true,
-				height: true,
-				rawStatus: true,
-			},
-		});
-
-		// Build map for quick lookup
-		const existingPhotoMap = new Map(existingPhotos.map((p) => [p.path, p]));
-
-		// Find photos in DB that are no longer on disk
-		const photosToDelete = existingPhotos.filter(
-			(p) => !scannedPaths.has(p.path),
-		);
-
-		// Delete removed photos (EXIF cascades automatically)
-		let deleted = 0;
-		if (photosToDelete.length > 0) {
-			const idsToDelete = photosToDelete.map((p) => p.id);
-			await ctx.db
-				.delete(photosTable)
-				.where(inArray(photosTable.id, idsToDelete));
-			deleted = photosToDelete.length;
-			console.log(`🗑️ Removed ${deleted} photos no longer on disk`);
+	// Start a scan job (BullMQ-based async scan)
+	scan: publicProcedure.mutation(async () => {
+		try {
+			const job = await addScanJob({
+				directory: config.PHOTO_DIRECTORY,
+				thumbnailsDir: config.THUMBNAILS_DIRECTORY,
+			});
+			return { success: true, jobId: job.id };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			console.error("Failed to start scan job:", message);
+			return { success: false, error: message };
 		}
-
-		// Insert or update photos in database
-		let inserted = 0;
-		let updated = 0;
-		let skipped = 0;
-		let rawCount = 0;
-
-		for (const photoWithExif of result.photos) {
-			try {
-				const existingPhoto = existingPhotoMap.get(photoWithExif.photo.path);
-
-				if (existingPhoto) {
-					// Check if metadata is incomplete or previously failed
-					const missingMetadata =
-						!existingPhoto.phash ||
-						!existingPhoto.clipEmbedding ||
-						!existingPhoto.width ||
-						!existingPhoto.height;
-					const previouslyFailed = existingPhoto.rawStatus === "failed";
-
-					// Check if thumbnails are missing
-					const hasThumbnails = await thumbnailsExist(
-						photoWithExif.photo.path,
-						config.THUMBNAILS_DIRECTORY,
-					);
-
-					const needsUpdate =
-						missingMetadata || !hasThumbnails || previouslyFailed;
-
-					if (needsUpdate && photoWithExif.photo.phash) {
-						// Update existing photo with new metadata, clear any previous errors
-						await ctx.db
-							.update(photosTable)
-							.set({
-								width: photoWithExif.photo.width,
-								height: photoWithExif.photo.height,
-								phash: photoWithExif.photo.phash,
-								clipEmbedding: photoWithExif.photo.clipEmbedding,
-								rawStatus: photoWithExif.photo.rawStatus ?? "converted",
-								rawError: null, // Clear previous errors on successful reprocess
-							})
-							.where(eq(photosTable.id, existingPhoto.id));
-
-						updated++;
-						const reason = previouslyFailed
-							? "retry after failure"
-							: missingMetadata
-								? "missing metadata"
-								: "missing thumbnails";
-						console.log(`🔄 Updated ${photoWithExif.photo.path} (${reason})`);
-					} else {
-						skipped++;
-					}
-				} else {
-					// Insert new photo
-					const insertResult = await ctx.db
-						.insert(photosTable)
-						.values({
-							path: photoWithExif.photo.path,
-							name: photoWithExif.photo.name,
-							size: photoWithExif.photo.size,
-							createdAt: photoWithExif.photo.createdAt,
-							modifiedAt: photoWithExif.photo.modifiedAt,
-							mimeType: photoWithExif.photo.mimeType,
-							width: photoWithExif.photo.width,
-							height: photoWithExif.photo.height,
-							phash: photoWithExif.photo.phash,
-							clipEmbedding: photoWithExif.photo.clipEmbedding,
-							isRaw: photoWithExif.photo.isRaw ?? false,
-							rawFormat: photoWithExif.photo.rawFormat ?? null,
-							rawStatus: photoWithExif.photo.rawStatus ?? null,
-							rawError: photoWithExif.photo.rawError ?? null,
-						})
-						.returning({ id: photosTable.id });
-
-					const photoId = insertResult[0].id;
-
-					// Insert EXIF data if available
-					if (photoWithExif.exif) {
-						await ctx.db.insert(photoExifTable).values({
-							photoId,
-							...photoWithExif.exif,
-						});
-					}
-
-					if (photoWithExif.photo.isRaw) {
-						rawCount++;
-					}
-
-					inserted++;
-				}
-			} catch (error) {
-				console.error(
-					`Error processing photo ${photoWithExif.photo.path}:`,
-					error,
-				);
-			}
-		}
-
-		const totalTime = Date.now() - startTime;
-
-		return {
-			success: true,
-			scanned: result.photos.length,
-			inserted,
-			updated,
-			skipped,
-			deleted,
-			rawCount,
-			duration: totalTime / 1000,
-			scanDuration: result.duration,
-			directory: config.PHOTO_DIRECTORY,
-		};
 	}),
 
-	// Reprocess a failed RAW file
-	reprocessRaw: publicProcedure
-		.input(z.object({ id: z.number() }))
-		.mutation(async ({ ctx, input }) => {
-			// Get the photo
-			const photo = await ctx.db.query.photos.findFirst({
-				where: eq(photosTable.id, input.id),
-			});
-
-			if (!photo) {
-				throw new Error("Photo not found");
-			}
-
-			if (!photo.isRaw) {
-				throw new Error("Photo is not a RAW file");
-			}
-
-			// Get absolute path to RAW file
-			const absolutePath = join(config.PHOTO_DIRECTORY, photo.path);
-
-			// Check if file exists
-			try {
-				await stat(absolutePath);
-			} catch {
-				throw new Error("RAW file not found on disk");
-			}
-
-			// Process the RAW file completely in Rust
-			const result = processPhoto(
-				absolutePath,
-				photo.path,
-				config.THUMBNAILS_DIRECTORY,
-			);
-
-			if (!result.success) {
-				// Update database with failure
-				await ctx.db
-					.update(photosTable)
-					.set({
-						rawStatus: "failed",
-						rawError: result.error ?? "Unknown error",
-					})
-					.where(eq(photosTable.id, input.id));
-
-				return {
-					success: false,
-					error: result.error,
-				};
-			}
-
-			// Convert clipEmbedding to Float32Array
-			const clipEmbedding = result.clipEmbedding
-				? new Float32Array(result.clipEmbedding)
-				: undefined;
-
-			// Update database with new metadata
-			await ctx.db
-				.update(photosTable)
-				.set({
-					width: result.width,
-					height: result.height,
-					phash: result.phash,
-					clipEmbedding,
-					rawStatus: "converted",
-					rawError: null,
-				})
-				.where(eq(photosTable.id, input.id));
-
+	// Get job counts for all queues
+	jobCounts: publicProcedure.query(async () => {
+		try {
+			const counts = await getJobCounts();
+			return { counts };
+		} catch (error) {
+			console.error("Failed to get job counts:", error);
 			return {
-				success: true,
+				counts: {
+					scan: { active: 0, waiting: 0, completed: 0, failed: 0 },
+					phash: { active: 0, waiting: 0, completed: 0, failed: 0 },
+					embedding: { active: 0, waiting: 0, completed: 0, failed: 0 },
+				},
 			};
+		}
+	}),
+
+	// Subscription for task progress updates (SSE via BullMQ QueueEvents)
+	onTaskProgress: publicProcedure
+		.input(
+			z
+				.object({
+					taskTypes: z.array(TaskTypeSchema).optional(),
+				})
+				.optional(),
+		)
+		.subscription(async function* (opts) {
+			const { taskTypes } = opts.input ?? {};
+
+			// Create event handlers for each queue
+			const eventQueues: Array<{
+				type: TaskType;
+				events: typeof scanQueueEvents;
+				queue: typeof scanQueue;
+			}> = [];
+
+			if (!taskTypes || taskTypes.includes("scan")) {
+				eventQueues.push({ type: "scan", events: scanQueueEvents, queue: scanQueue });
+			}
+			if (!taskTypes || taskTypes.includes("phash")) {
+				eventQueues.push({ type: "phash", events: phashQueueEvents, queue: phashQueue });
+			}
+			if (!taskTypes || taskTypes.includes("embedding")) {
+				eventQueues.push({ type: "embedding", events: embeddingQueueEvents, queue: embeddingQueue });
+			}
+
+			// Set up event listeners with a shared event queue
+			const eventBuffer: Array<{
+				type: "progress" | "completed" | "failed" | "active";
+				taskType: TaskType;
+				jobId: string;
+				data?: unknown;
+				returnvalue?: unknown;
+				failedReason?: string;
+			}> = [];
+
+			const cleanupFns: Array<() => void> = [];
+
+			for (const { type, events } of eventQueues) {
+				const onProgress = ({ jobId, data }: { jobId: string; data: unknown }) => {
+					eventBuffer.push({ type: "progress", taskType: type, jobId, data });
+				};
+				const onCompleted = ({ jobId, returnvalue }: { jobId: string; returnvalue: unknown }) => {
+					eventBuffer.push({ type: "completed", taskType: type, jobId, returnvalue });
+				};
+				const onFailed = ({ jobId, failedReason }: { jobId: string; failedReason: string }) => {
+					eventBuffer.push({ type: "failed", taskType: type, jobId, failedReason });
+				};
+				const onActive = ({ jobId }: { jobId: string }) => {
+					eventBuffer.push({ type: "active", taskType: type, jobId });
+				};
+
+				events.on("progress", onProgress);
+				events.on("completed", onCompleted);
+				events.on("failed", onFailed);
+				events.on("active", onActive);
+
+				cleanupFns.push(() => {
+					events.off("progress", onProgress);
+					events.off("completed", onCompleted);
+					events.off("failed", onFailed);
+					events.off("active", onActive);
+				});
+			}
+
+			try {
+				// Poll for events and yield them
+				while (true) {
+					// Drain the event buffer
+					while (eventBuffer.length > 0) {
+						const event = eventBuffer.shift()!;
+						yield {
+							eventType: event.type,
+							taskType: event.taskType,
+							jobId: event.jobId,
+							data: event.data,
+							returnvalue: event.returnvalue,
+							failedReason: event.failedReason,
+						};
+					}
+
+					// Small delay before checking again
+					await new Promise((resolve) => setTimeout(resolve, 100));
+				}
+			} finally {
+				// Cleanup event listeners
+				for (const cleanup of cleanupFns) {
+					cleanup();
+				}
+			}
 		}),
 });
 

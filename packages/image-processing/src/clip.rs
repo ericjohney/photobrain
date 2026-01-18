@@ -80,3 +80,16 @@ pub fn clip_embedding_from_bytes(image_bytes: napi::bindgen_prelude::Buffer) -> 
 	// Convert f32 to f64 for JavaScript compatibility
 	Some(embedding.iter().map(|&f| f as f64).collect())
 }
+
+/// Generate CLIP embedding from an image file path
+/// Used for background processing of thumbnails
+#[napi]
+pub fn generate_clip_embedding(file_path: String) -> Option<Vec<f64>> {
+	let img = image::open(&file_path).ok()?;
+
+	// Generate CLIP embedding
+	let embedding = generate_clip_embedding_from_image(img)?;
+
+	// Convert f32 to f64 for JavaScript compatibility
+	Some(embedding.iter().map(|&f| f as f64).collect())
+}

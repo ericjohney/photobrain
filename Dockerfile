@@ -20,8 +20,10 @@ COPY package.json bun.lock turbo.json ./
 COPY packages/image-processing/package.json packages/image-processing/
 COPY packages/utils/package.json packages/utils/
 COPY packages/config/package.json packages/config/
+COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
 
 # Install dependencies with cache mount
 RUN --mount=type=cache,target=/root/.bun/install/cache \
@@ -31,6 +33,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 COPY packages/image-processing packages/image-processing
 COPY packages/utils packages/utils
 COPY packages/config packages/config
+COPY packages/db packages/db
 COPY apps/api apps/api
 COPY apps/web apps/web
 
@@ -67,12 +70,11 @@ COPY --from=builder /app/packages/image-processing/package.json ./packages/image
 # Copy other packages
 COPY --from=builder /app/packages/utils ./packages/utils
 COPY --from=builder /app/packages/config ./packages/config
+COPY --from=builder /app/packages/db ./packages/db
 
 # Copy API app source (not dist)
 COPY --from=builder /app/apps/api/src ./apps/api/src
-COPY --from=builder /app/apps/api/drizzle ./apps/api/drizzle
 COPY --from=builder /app/apps/api/package.json ./apps/api/
-COPY --from=builder /app/apps/api/drizzle.config.ts ./apps/api/
 COPY --from=builder /app/apps/api/tsconfig.json ./apps/api/
 
 # Remove darwin native modules from node_modules
@@ -83,7 +85,49 @@ EXPOSE 3000
 CMD ["bun", "run", "src/index.ts"]
 
 # =============================================================================
-# Stage 3: Web Builder - Build the Vite frontend
+# Stage 3: Worker Production Image (BullMQ worker with Bun)
+# =============================================================================
+FROM oven/bun:1.3.5-slim AS worker
+
+# Install exiftool for EXIF extraction
+RUN apt-get update && apt-get install -y \
+    libimage-exiftool-perl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files
+COPY --from=builder /app/package.json /app/bun.lock /app/turbo.json ./
+
+# Copy node_modules
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy image-processing - only the linux binary
+COPY --from=builder /app/packages/image-processing/dist/index.js ./packages/image-processing/dist/
+COPY --from=builder /app/packages/image-processing/dist/index.d.ts ./packages/image-processing/dist/
+COPY --from=builder /app/packages/image-processing/dist/*.linux-*.node ./packages/image-processing/dist/
+COPY --from=builder /app/packages/image-processing/package.json ./packages/image-processing/
+
+# Copy other packages
+COPY --from=builder /app/packages/utils ./packages/utils
+COPY --from=builder /app/packages/config ./packages/config
+COPY --from=builder /app/packages/db ./packages/db
+
+# Copy worker app source (runs directly with Bun, no build step)
+COPY apps/worker ./apps/worker
+
+# Remove darwin native modules
+RUN find /app/node_modules -name "*.darwin-*.node" -delete 2>/dev/null || true
+
+WORKDIR /app/apps/worker
+
+ENV REDIS_URL=redis://redis:6379
+ENV DATABASE_PATH=/data/photobrain.db
+
+CMD ["bun", "run", "src/index.ts"]
+
+# =============================================================================
+# Stage 4: Web Builder - Build the Vite frontend
 # =============================================================================
 FROM builder AS web-builder
 
@@ -91,7 +135,7 @@ FROM builder AS web-builder
 RUN bun run build --filter=@photobrain/web
 
 # =============================================================================
-# Stage 4: Web Production Image
+# Stage 5: Web Production Image
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS web
 

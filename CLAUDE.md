@@ -18,14 +18,20 @@ photobrain/
 ├── apps/
 │   ├── api/                 # Backend API (Hono + tRPC + Bun)
 │   │   └── src/
-│   │       ├── db/          # Drizzle ORM schema and migrations
-│   │       ├── routes/      # REST endpoints (photos, health, scan)
+│   │       ├── db/          # Drizzle ORM migrations
+│   │       ├── routes/      # REST endpoints (photos, health)
 │   │       ├── services/    # Business logic
 │   │       │   └── vector-search.ts  # CLIP similarity search
 │   │       ├── trpc/        # tRPC router and context
 │   │       ├── config.ts    # Environment configuration
-│   │       ├── scanner.ts   # Directory scanning orchestration
 │   │       └── index.ts     # Server entry point
+│   │
+│   ├── worker/              # BullMQ job worker (Bun)
+│   │   └── src/
+│   │       ├── queues/      # Queue definitions (scan, phash, embedding)
+│   │       ├── workers/     # Job processors
+│   │       ├── activities/  # Shared activities (scan, phash, embedding)
+│   │       └── index.ts     # Worker entry point
 │   │
 │   ├── web/                 # React web app (Vite)
 │   │   └── src/
@@ -51,9 +57,16 @@ photobrain/
 ├── packages/
 │   ├── utils/               # Shared TypeScript utilities
 │   │   └── src/
-│   │       └── thumbnails.ts  # Thumbnail size configuration
+│   │       ├── thumbnails.ts  # Thumbnail size configuration
+│   │       └── tasks.ts       # Task type definitions for job progress
 │   │
 │   ├── config/              # Shared TypeScript configuration
+│   │
+│   ├── db/                  # Shared database schema (Drizzle ORM)
+│   │   ├── drizzle/           # Database migrations
+│   │   └── src/
+│   │       ├── schema.ts      # Table definitions
+│   │       └── index.ts       # Database connection
 │   │
 │   └── image-processing/    # Rust NAPI native module
 │       └── src/
@@ -80,7 +93,15 @@ photobrain/
 - **tRPC** v11 - End-to-end type-safe API layer
 - **Drizzle ORM** v0.45 - Type-safe database toolkit
 - **SQLite** with `sqlite-vec` - Vector similarity search
+- **BullMQ** v5.x - Job queue for async processing
+- **Redis/Valkey** - Queue storage backend
 - **Bun** - JavaScript runtime (server execution)
+
+### Worker (`apps/worker`)
+- **BullMQ** v5.x - Job queue processing
+- **Bun** - JavaScript runtime
+- Processes scan, phash, and embedding jobs asynchronously
+- Shares database schema via `@photobrain/db` package
 
 ### Web Frontend (`apps/web`)
 - **React** v18.3 - UI library
@@ -146,6 +167,7 @@ bun run dev
 # Start individual apps
 bun run dev:api      # Backend API (port 3000)
 bun run dev:web      # Web frontend (port 3001)
+bun run dev:worker   # BullMQ job worker
 bun run dev:mobile   # Expo dev server
 
 # Code quality
@@ -241,7 +263,7 @@ The web app uses an **Adobe Lightroom-inspired design** with a professional phot
 
 ## Database Schema
 
-Two main tables in SQLite:
+The database uses SQLite with sidecar tables for computed data (embeddings, hashes).
 
 ### `photos` table
 ```typescript
@@ -253,8 +275,6 @@ Two main tables in SQLite:
   width: integer (pixels)
   height: integer (pixels)
   mimeType: text
-  phash: text (64-char hex, perceptual hash)
-  clipEmbedding: blob (Float32Array, 512 dimensions)
   createdAt: timestamp
   modifiedAt: timestamp
   // RAW file support
@@ -262,6 +282,10 @@ Two main tables in SQLite:
   rawFormat: text (e.g., "CR2", "NEF", "ARW")
   rawStatus: text ("converted", "failed", "no_converter")
   rawError: text (error message if conversion failed)
+  // Processing status tracking
+  thumbnailStatus: text ("pending", "completed", "failed")
+  embeddingStatus: text ("pending", "completed", "failed")
+  phashStatus: text ("pending", "completed", "failed")
 }
 ```
 
@@ -279,7 +303,29 @@ Two main tables in SQLite:
 }
 ```
 
-**Vector Search:** Uses `sqlite-vec` extension with L2 distance for CLIP embeddings.
+### `photo_embedding` table (sidecar)
+```typescript
+{
+  id: integer (PRIMARY KEY)
+  photoId: integer (FOREIGN KEY → photos.id, CASCADE delete, UNIQUE)
+  embedding: blob (Float32Array, 512 dimensions)
+  modelVersion: text (default "clip-vit-b32")
+  createdAt: timestamp
+}
+```
+
+### `photo_phash` table (sidecar)
+```typescript
+{
+  id: integer (PRIMARY KEY)
+  photoId: integer (FOREIGN KEY → photos.id, CASCADE delete, UNIQUE)
+  hash: text (64-char hex)
+  algorithm: text (default "double_gradient_8x8")
+  createdAt: timestamp
+}
+```
+
+**Vector Search:** Uses `sqlite-vec` extension with L2 distance querying `photo_embedding` table.
 
 ## API Structure
 
@@ -289,7 +335,8 @@ Two main tables in SQLite:
 | `photos` | Query | Get all photos with EXIF |
 | `photo` | Query | Get single photo by ID |
 | `searchPhotos` | Query | Semantic search with CLIP |
-| `scan` | Mutation | Trigger directory scan |
+| `scan` | Mutation | Start async scan job (BullMQ) |
+| `onTaskProgress` | Subscription | SSE stream for job progress (scan, phash, embedding) |
 
 ### REST Endpoints (file streaming)
 | Endpoint | Method | Purpose |
@@ -371,7 +418,15 @@ PORT=3000               # Server port
 DATABASE_URL=./photobrain.db
 PHOTO_DIRECTORY=../../temp-photos
 THUMBNAILS_DIRECTORY=./thumbnails
+REDIS_URL=redis://localhost:6379
 RUN_DB_INIT=true        # Run migrations on startup
+```
+
+### Worker (`apps/worker`)
+```env
+REDIS_URL=redis://localhost:6379
+DATABASE_PATH=../api/photobrain.db
+THUMBNAILS_DIR=../api/thumbnails
 ```
 
 ### Web (`apps/web`)
@@ -394,17 +449,23 @@ Currently no test suite is implemented. Validation is done via:
 ## Deployment
 
 ### Docker
-Multi-stage Dockerfile with 4 stages:
+Multi-stage Dockerfile with 5 stages:
 1. **builder** - Rust toolchain, build NAPI module
 2. **api** - Bun runtime with API code
-3. **web-builder** - Vite frontend build
-4. **web** - Static file server for frontend
+3. **worker** - Bun runtime with BullMQ job worker
+4. **web-builder** - Vite frontend build
+5. **web** - Static file server for frontend
 
 ### CI/CD
 GitHub Actions workflow:
-- Builds Docker images for api and web
+- Builds Docker images for api, worker, and web
 - Pushes to `registry.ericj5.com`
 - Updates ArgoCD for GitOps deployment
+
+### Production Dependencies
+- **Redis/Valkey** - Required for BullMQ job queues
+- Worker and API must share access to the same SQLite database file
+- Worker needs read access to photo directory and write access to thumbnails directory
 
 ## Common Tasks for AI Assistants
 
@@ -414,9 +475,10 @@ GitHub Actions workflow:
 3. For file streaming, add REST route in `apps/api/src/routes/`
 
 ### Adding a New Database Column
-1. Update schema in `apps/api/src/db/schema.ts`
-2. Create migration in `apps/api/src/db/migrations/`
-3. Run migration: API auto-migrates on startup if `RUN_DB_INIT=true`
+1. Update schema in `packages/db/src/schema.ts`
+2. Generate migration: `cd packages/db && bun run db:generate`
+3. Migration files are created in `packages/db/drizzle/`
+4. Run migration: API auto-migrates on startup if `RUN_DB_INIT=true`
 
 ### Adding a New React Component
 1. Create component in `apps/web/src/components/`
@@ -432,20 +494,26 @@ GitHub Actions workflow:
 
 ### Running the Full Stack
 ```bash
-# Terminal 1: Start API
+# Terminal 1: Start Redis (required for job queues)
+docker run -p 6379:6379 valkey/valkey:8-alpine
+
+# Terminal 2: Start API
 bun run dev:api
 
-# Terminal 2: Start Web
+# Terminal 3: Start Worker
+bun run dev:worker
+
+# Terminal 4: Start Web
 bun run dev:web
 
-# Or start both:
+# Or start API, Worker, and Web together:
 bun run dev
 ```
 
 ## Roadmap Reference
 
 See `ROADMAP.md` for planned features including:
-- Async processing with Temporal workflows
+- ~~Async processing with BullMQ~~ (implemented)
 - ~~RAW format support~~ (implemented)
 - EXIF-based filtering
 - Map view with GPS data
@@ -460,3 +528,6 @@ See `ROADMAP.md` for planned features including:
 4. **tRPC types are auto-inferred** - no manual type definitions needed for API calls
 5. **SQLite file** is at `apps/api/photobrain.db` by default
 6. **Thumbnails directory** is at `apps/api/thumbnails/` by default
+7. **Redis/Valkey required** - BullMQ needs Redis for job queues; start with `docker run -p 6379:6379 valkey/valkey:8-alpine`
+8. **Worker processes jobs async** - Scan, phash, and embedding jobs run in the worker process, not the API
+9. **Database schema is shared** - Schema lives in `packages/db`, used by both API and worker

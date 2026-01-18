@@ -37,4 +37,6 @@ Bun.serve({
 	hostname: config.HOST,
 	port: config.PORT,
 	fetch: app.fetch,
+	// Increase idle timeout for SSE subscriptions (default is 10s)
+	idleTimeout: 120,
 });
