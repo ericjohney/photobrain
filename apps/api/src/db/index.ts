@@ -11,7 +11,7 @@ const db = drizzle(sqlite, { schema });
 if (config.RUN_DB_INIT) {
 	console.log("🔄 Initializing database...");
 	console.log("🔄 Running database migrations...");
-	migrate(db, { migrationsFolder: "./drizzle" });
+	migrate(db, { migrationsFolder: "../../packages/db/drizzle" });
 	console.log("✅ Database migrations complete!");
 }
 
