@@ -48,9 +48,11 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS api
 
-# Install exiftool for EXIF extraction and preview extraction
+# Install exiftool and native module dependencies
 RUN apt-get update && apt-get install -y \
     libimage-exiftool-perl \
+    libssl3 \
+    libzstd1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -89,9 +91,11 @@ CMD ["bun", "run", "src/index.ts"]
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS worker
 
-# Install exiftool for EXIF extraction
+# Install exiftool and native module dependencies
 RUN apt-get update && apt-get install -y \
     libimage-exiftool-perl \
+    libssl3 \
+    libzstd1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
