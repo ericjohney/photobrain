@@ -7,9 +7,10 @@ use std::path::Path;
 
 use crate::clip::generate_clip_embedding_from_image;
 use crate::exif::{extract_exif_internal, ExifData};
+use crate::heif::{decode_heif, is_heif_file};
 use crate::orientation::apply_orientation;
 use crate::phash::generate_phash_from_image;
-use crate::preview::{extract_preview, get_raw_format, needs_preview_extraction};
+use crate::preview::{extract_preview, get_raw_format, is_raw_file};
 use crate::thumbnails::generate_all_thumbnails_internal;
 
 /// Standard image extensions (directly decodable by image crate)
@@ -149,9 +150,12 @@ fn process_photo_internal(
 	let exif = extract_exif_internal(file_path);
 	let orientation = exif.as_ref().and_then(|e| e.orientation);
 
-	// Decode image - either directly or via preview extraction
-	let decode_result = if needs_preview_extraction(file_path) {
-		// RAW or HEIF: extract embedded preview
+	// Decode image based on file type
+	let decode_result = if is_heif_file(file_path) {
+		// HEIC/HEIF: decode using libheif
+		decode_heif(file_path)
+	} else if is_raw_file(file_path) {
+		// RAW: extract embedded preview
 		match extract_preview(file_path) {
 			Some(preview_bytes) => {
 				ImageReader::new(Cursor::new(preview_bytes))

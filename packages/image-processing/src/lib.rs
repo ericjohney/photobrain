@@ -3,6 +3,7 @@
 mod batch;
 mod clip;
 mod exif;
+mod heif;
 mod orientation;
 mod phash;
 mod preview;

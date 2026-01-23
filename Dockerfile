@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     libclang-dev \
+    libheif-dev \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
     && rm -rf /var/lib/apt/lists/*
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -48,11 +49,12 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS api
 
-# Install exiftool and native module dependencies
+# Install exiftool and native module dependencies (including libheif for HEIC support)
 RUN apt-get update && apt-get install -y \
     libimage-exiftool-perl \
     libssl3 \
     libzstd1 \
+    libheif1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -91,11 +93,12 @@ CMD ["bun", "run", "src/index.ts"]
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS worker
 
-# Install exiftool and native module dependencies
+# Install exiftool and native module dependencies (including libheif for HEIC support)
 RUN apt-get update && apt-get install -y \
     libimage-exiftool-perl \
     libssl3 \
     libzstd1 \
+    libheif1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

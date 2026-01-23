@@ -1,24 +1,21 @@
 use std::process::Command;
 
-/// File extensions that require preview extraction (not directly decodable by image crate)
-const PREVIEW_EXTENSIONS: &[&str] = &[
-	// RAW formats
+/// RAW file extensions that require preview extraction
+const RAW_EXTENSIONS: &[&str] = &[
 	".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw", ".x3f",
-	".3fr", ".iiq", ".rwl", // HEIF/HEIC formats
-	".heic", ".heif",
+	".3fr", ".iiq", ".rwl",
 ];
 
-/// Check if a file requires preview extraction
-pub fn needs_preview_extraction(file_path: &str) -> bool {
+/// Check if a file is a RAW file (needs preview extraction)
+pub fn is_raw_file(file_path: &str) -> bool {
 	let lower = file_path.to_lowercase();
-	PREVIEW_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
+	RAW_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
 }
 
 /// Get the format name for RAW files (for MIME type)
 pub fn get_raw_format(file_path: &str) -> Option<String> {
-	let lower = file_path.to_lowercase();
-	if lower.ends_with(".heic") || lower.ends_with(".heif") {
-		return None; // Not a RAW format
+	if !is_raw_file(file_path) {
+		return None;
 	}
 
 	// Extract extension without dot
