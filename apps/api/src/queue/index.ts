@@ -1,6 +1,22 @@
-import { Queue, QueueEvents } from "bullmq";
+import {
+	type EmbeddingJobData,
+	type PhashJobData,
+	QUEUE_NAMES,
+	type QueueName,
+	type ScanJobData,
+} from "@photobrain/utils";
 import type { JobsOptions } from "bullmq";
+import { Queue, QueueEvents } from "bullmq";
 import IORedis from "ioredis";
+
+// Re-export for convenience
+export {
+	QUEUE_NAMES,
+	type QueueName,
+	type ScanJobData,
+	type PhashJobData,
+	type EmbeddingJobData,
+};
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
@@ -8,15 +24,6 @@ const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 export const redis = new IORedis(REDIS_URL, {
 	maxRetriesPerRequest: null,
 });
-
-// Queue names match task types
-export const QUEUE_NAMES = {
-	SCAN: "scan",
-	PHASH: "phash",
-	EMBEDDING: "embedding",
-} as const;
-
-export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
 // Default job options
 const defaultJobOptions: JobsOptions = {
@@ -80,22 +87,6 @@ export function getQueueEvents(name: QueueName): QueueEvents {
 		case QUEUE_NAMES.EMBEDDING:
 			return embeddingQueueEvents;
 	}
-}
-
-// Job data types
-export interface ScanJobData {
-	directory: string;
-	thumbnailsDir: string;
-}
-
-export interface PhashJobData {
-	photoId: number;
-	thumbnailsDir: string;
-}
-
-export interface EmbeddingJobData {
-	photoId: number;
-	thumbnailsDir: string;
 }
 
 // Add a scan job

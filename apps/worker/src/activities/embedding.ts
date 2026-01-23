@@ -1,8 +1,8 @@
 import path from "node:path";
 import { generateClipEmbedding as generateClipEmbeddingRust } from "@photobrain/image-processing";
 import { getThumbnailPath } from "@photobrain/utils";
-import { db, photos, photoEmbedding } from "@/db";
 import { eq } from "drizzle-orm";
+import { db, photoEmbedding, photos } from "@/db";
 
 /**
  * Generate CLIP embedding for a single photo
@@ -35,10 +35,7 @@ export async function generateClipEmbedding(
 		}
 		return null;
 	} catch (error) {
-		console.error(
-			`Failed to generate embedding for photo ${photoId}:`,
-			error,
-		);
+		console.error(`Failed to generate embedding for photo ${photoId}:`, error);
 		return null;
 	}
 }
@@ -52,9 +49,7 @@ export async function saveEmbeddingToDb(
 ): Promise<void> {
 	if (embedding) {
 		// Delete existing embedding if any
-		await db
-			.delete(photoEmbedding)
-			.where(eq(photoEmbedding.photoId, photoId));
+		await db.delete(photoEmbedding).where(eq(photoEmbedding.photoId, photoId));
 
 		// Insert new embedding into sidecar table
 		await db.insert(photoEmbedding).values({

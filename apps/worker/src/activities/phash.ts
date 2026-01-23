@@ -1,8 +1,8 @@
 import path from "node:path";
 import { generatePhash as generatePhashRust } from "@photobrain/image-processing";
 import { getThumbnailPath } from "@photobrain/utils";
-import { db, photos, photoPhash } from "@/db";
 import { eq } from "drizzle-orm";
+import { db, photoPhash, photos } from "@/db";
 
 /**
  * Generate perceptual hash for a single photo

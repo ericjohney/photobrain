@@ -1,6 +1,4 @@
-import type { AppRouter } from "@photobrain/api";
 import { formatFileSize } from "@photobrain/utils";
-import type { inferRouterOutputs } from "@trpc/server";
 import {
 	Aperture,
 	Calendar,
@@ -9,9 +7,7 @@ import {
 	FileImage,
 	Gauge,
 	ImageIcon,
-	Lens,
 	MapPin,
-	RefreshCw,
 } from "lucide-react";
 import {
 	Collapsible,
@@ -19,11 +15,8 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { trpc } from "@/lib/trpc";
+import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-type RouterOutputs = inferRouterOutputs<AppRouter>;
-type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 interface MetadataPanelProps {
 	photo: PhotoMetadata | null;
@@ -74,13 +67,6 @@ function MetadataRow({
 }
 
 export function MetadataPanel({ photo, className }: MetadataPanelProps) {
-	const utils = trpc.useUtils();
-	const reprocessMutation = trpc.reprocessRaw.useMutation({
-		onSuccess: () => {
-			utils.photos.invalidate();
-		},
-	});
-
 	if (!photo) {
 		return (
 			<div
@@ -148,21 +134,6 @@ export function MetadataPanel({ photo, className }: MetadataPanelProps) {
 								<p className="text-2xs text-red-400 bg-red-500/10 rounded px-2 py-1">
 									{photo.rawError}
 								</p>
-							)}
-							{photo.rawStatus !== "converted" && (
-								<button
-									onClick={() => reprocessMutation.mutate({ id: photo.id })}
-									disabled={reprocessMutation.isPending}
-									className="flex items-center gap-1.5 text-2xs bg-orange-600 hover:bg-orange-500 disabled:bg-muted text-white px-2 py-1 rounded transition-colors"
-								>
-									<RefreshCw
-										className={cn(
-											"h-3 w-3",
-											reprocessMutation.isPending && "animate-spin",
-										)}
-									/>
-									{reprocessMutation.isPending ? "Retrying..." : "Retry"}
-								</button>
 							)}
 						</div>
 					</MetadataSection>

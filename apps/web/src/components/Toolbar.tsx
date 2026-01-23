@@ -229,7 +229,9 @@ export function Toolbar({
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>
-						{hasActiveJobs ? "Processing in progress..." : "Scan for new photos"}
+						{hasActiveJobs
+							? "Processing in progress..."
+							: "Scan for new photos"}
 					</TooltipContent>
 				</Tooltip>
 

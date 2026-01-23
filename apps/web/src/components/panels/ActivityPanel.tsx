@@ -1,5 +1,12 @@
-import { Camera, Hash, Brain, Loader2, CheckCircle, XCircle } from "lucide-react";
 import type { TaskProgress, TaskType } from "@photobrain/utils";
+import {
+	Brain,
+	Camera,
+	CheckCircle,
+	Hash,
+	Loader2,
+	XCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TaskItemProps {
@@ -34,9 +41,14 @@ function TaskItem({ taskType, progress }: TaskItemProps) {
 	const label = getTaskLabel(taskType);
 	const isActive = progress.total > 0 && progress.current < progress.total;
 	const isComplete = progress.total > 0 && progress.current >= progress.total;
-	const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+	const percentage =
+		progress.total > 0
+			? Math.round((progress.current / progress.total) * 100)
+			: 0;
 
-	const failedCount = progress.items.filter((item) => item.status === "failed").length;
+	const failedCount = progress.items.filter(
+		(item) => item.status === "failed",
+	).length;
 
 	if (progress.total === 0) {
 		return null;
@@ -97,7 +109,10 @@ export function ActivityPanel({
 	console.log("[ActivityPanel] Progress:", {
 		scan: { current: scanProgress.current, total: scanProgress.total },
 		phash: { current: phashProgress.current, total: phashProgress.total },
-		embedding: { current: embeddingProgress.current, total: embeddingProgress.total },
+		embedding: {
+			current: embeddingProgress.current,
+			total: embeddingProgress.total,
+		},
 		hasActiveJobs,
 	});
 

@@ -1,13 +1,10 @@
-export {
-	discoverPhotos,
-	quickProcessPhoto,
-	savePhotoToDb,
-	getPhotosNeedingPhash,
-	getPhotosNeedingEmbedding,
-	type QuickProcessResult,
-	type SavePhotoResult,
-} from "./scan";
+export { generateClipEmbedding, saveEmbeddingToDb } from "./embedding";
 
 export { generatePhash, savePhashToDb } from "./phash";
-
-export { generateClipEmbedding, saveEmbeddingToDb } from "./embedding";
+export {
+	discoverPhotos,
+	type QuickProcessResult,
+	quickProcessPhoto,
+	type SavePhotoResult,
+	savePhotoToDb,
+} from "./scan";

@@ -1,13 +1,9 @@
-import type { AppRouter } from "@photobrain/api";
-import type { inferRouterOutputs } from "@trpc/server";
 import { AlertCircle, Camera, ImageIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getThumbnailSrcSet, getThumbnailUrl } from "@/lib/thumbnails";
+import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-type RouterOutputs = inferRouterOutputs<AppRouter>;
-type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 interface PhotoGridProps {
 	photos: PhotoMetadata[];

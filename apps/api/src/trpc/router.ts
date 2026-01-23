@@ -4,13 +4,13 @@ import { config } from "@/config";
 import { photos as photosTable } from "@/db/schema";
 import {
 	addScanJob,
-	getJobCounts,
-	scanQueue,
-	phashQueue,
 	embeddingQueue,
-	scanQueueEvents,
-	phashQueueEvents,
 	embeddingQueueEvents,
+	getJobCounts,
+	phashQueue,
+	phashQueueEvents,
+	scanQueue,
+	scanQueueEvents,
 } from "@/queue";
 import { searchPhotosByText } from "@/services/vector-search";
 import { publicProcedure, router } from "./trpc";
@@ -140,13 +140,25 @@ export const appRouter = router({
 			}> = [];
 
 			if (!taskTypes || taskTypes.includes("scan")) {
-				eventQueues.push({ type: "scan", events: scanQueueEvents, queue: scanQueue });
+				eventQueues.push({
+					type: "scan",
+					events: scanQueueEvents,
+					queue: scanQueue,
+				});
 			}
 			if (!taskTypes || taskTypes.includes("phash")) {
-				eventQueues.push({ type: "phash", events: phashQueueEvents, queue: phashQueue });
+				eventQueues.push({
+					type: "phash",
+					events: phashQueueEvents,
+					queue: phashQueue,
+				});
 			}
 			if (!taskTypes || taskTypes.includes("embedding")) {
-				eventQueues.push({ type: "embedding", events: embeddingQueueEvents, queue: embeddingQueue });
+				eventQueues.push({
+					type: "embedding",
+					events: embeddingQueueEvents,
+					queue: embeddingQueue,
+				});
 			}
 
 			// Set up event listeners with a shared event queue
@@ -162,14 +174,42 @@ export const appRouter = router({
 			const cleanupFns: Array<() => void> = [];
 
 			for (const { type, events } of eventQueues) {
-				const onProgress = ({ jobId, data }: { jobId: string; data: unknown }) => {
+				const onProgress = ({
+					jobId,
+					data,
+				}: {
+					jobId: string;
+					data: unknown;
+				}) => {
 					eventBuffer.push({ type: "progress", taskType: type, jobId, data });
 				};
-				const onCompleted = ({ jobId, returnvalue }: { jobId: string; returnvalue: unknown }) => {
-					eventBuffer.push({ type: "completed", taskType: type, jobId, returnvalue });
+				const onCompleted = ({
+					jobId,
+					returnvalue,
+				}: {
+					jobId: string;
+					returnvalue: unknown;
+				}) => {
+					eventBuffer.push({
+						type: "completed",
+						taskType: type,
+						jobId,
+						returnvalue,
+					});
 				};
-				const onFailed = ({ jobId, failedReason }: { jobId: string; failedReason: string }) => {
-					eventBuffer.push({ type: "failed", taskType: type, jobId, failedReason });
+				const onFailed = ({
+					jobId,
+					failedReason,
+				}: {
+					jobId: string;
+					failedReason: string;
+				}) => {
+					eventBuffer.push({
+						type: "failed",
+						taskType: type,
+						jobId,
+						failedReason,
+					});
 				};
 				const onActive = ({ jobId }: { jobId: string }) => {
 					eventBuffer.push({ type: "active", taskType: type, jobId });

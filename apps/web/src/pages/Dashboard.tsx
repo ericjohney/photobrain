@@ -1,5 +1,3 @@
-import type { AppRouter } from "@photobrain/api";
-import type { inferRouterOutputs } from "@trpc/server";
 import { Loader2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Filmstrip } from "@/components/Filmstrip";
@@ -16,9 +14,7 @@ import { useLibraryState } from "@/hooks/use-library-state";
 import { usePanelState } from "@/hooks/use-panel-state";
 import { useTaskProgress } from "@/hooks/use-task-progress";
 import { trpc } from "@/lib/trpc";
-
-type RouterOutputs = inferRouterOutputs<AppRouter>;
-type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
+import type { PhotoMetadata } from "@/lib/types";
 
 export function Dashboard() {
 	const [searchQuery, setSearchQuery] = useState("");
@@ -186,7 +182,10 @@ export function Dashboard() {
 			leftPanel={
 				<div className="flex flex-col h-full">
 					<div className="flex-1 overflow-auto">
-						<LibraryPanel photoCount={photos.length} searchQuery={searchQuery} />
+						<LibraryPanel
+							photoCount={photos.length}
+							searchQuery={searchQuery}
+						/>
 					</div>
 					<ActivityPanel
 						scanProgress={taskProgress.scanProgress}

@@ -37,8 +37,10 @@ export function debounce<T extends (...args: any[]) => any>(
 	};
 }
 
-// Re-export thumbnail utilities
-export * from "./thumbnails";
+// Re-export queue constants and types
+export * from "./queues";
 
 // Re-export task types and schemas
 export * from "./tasks";
+// Re-export thumbnail utilities
+export * from "./thumbnails";

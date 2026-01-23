@@ -1,4 +1,8 @@
-import { httpBatchLink, splitLink, unstable_httpSubscriptionLink } from "@trpc/client";
+import {
+	httpBatchLink,
+	splitLink,
+	unstable_httpSubscriptionLink,
+} from "@trpc/client";
 import superjson from "superjson";
 import { config } from "./config";
 import { trpc } from "./trpc";

@@ -1,12 +1,8 @@
-import type { AppRouter } from "@photobrain/api";
-import type { inferRouterOutputs } from "@trpc/server";
 import { Camera } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
 import { getThumbnailUrl } from "@/lib/thumbnails";
+import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-type RouterOutputs = inferRouterOutputs<AppRouter>;
-type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 interface FilmstripProps {
 	photos: PhotoMetadata[];

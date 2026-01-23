@@ -1,6 +1,4 @@
-import type { AppRouter } from "@photobrain/api";
 import { formatFileSize } from "@photobrain/utils";
-import type { inferRouterOutputs } from "@trpc/server";
 import {
 	AlertTriangle,
 	Aperture,
@@ -8,16 +6,11 @@ import {
 	Clock,
 	FileImage,
 	MapPin,
-	RefreshCw,
 	X,
 } from "lucide-react";
 import { useEffect } from "react";
 import { getFullImageUrl, getThumbnailUrl } from "@/lib/thumbnails";
-import { trpc } from "@/lib/trpc";
-
-// Infer types from tRPC router
-type RouterOutputs = inferRouterOutputs<AppRouter>;
-type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
+import type { PhotoMetadata } from "@/lib/types";
 
 interface LightboxProps {
 	photo: PhotoMetadata;
@@ -25,14 +18,6 @@ interface LightboxProps {
 }
 
 export function Lightbox({ photo, onClose }: LightboxProps) {
-	const utils = trpc.useUtils();
-	const reprocessMutation = trpc.reprocessRaw.useMutation({
-		onSuccess: () => {
-			// Invalidate and refetch photos
-			utils.photos.invalidate();
-		},
-	});
-
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
@@ -64,23 +49,9 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 							<p className="text-sm text-gray-500 mb-4">
 								{photo.rawError || "Unknown error"}
 							</p>
-							<button
-								onClick={() => reprocessMutation.mutate({ id: photo.id })}
-								disabled={reprocessMutation.isPending}
-								className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
-							>
-								<RefreshCw
-									className={`w-4 h-4 ${reprocessMutation.isPending ? "animate-spin" : ""}`}
-								/>
-								{reprocessMutation.isPending
-									? "Retrying..."
-									: "Retry Conversion"}
-							</button>
-							{reprocessMutation.isError && (
-								<p className="text-red-400 text-sm mt-2">
-									{reprocessMutation.error.message}
-								</p>
-							)}
+							<p className="text-xs text-gray-500">
+								Re-run scan to retry conversion
+							</p>
 						</div>
 					) : (
 						<img
@@ -163,18 +134,6 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 												<span>{photo.rawError}</span>
 											</div>
 										</div>
-									)}
-									{photo.rawStatus !== "converted" && (
-										<button
-											onClick={() => reprocessMutation.mutate({ id: photo.id })}
-											disabled={reprocessMutation.isPending}
-											className="mt-2 flex items-center gap-1 text-xs bg-orange-600 hover:bg-orange-500 disabled:bg-gray-600 text-white px-2 py-1 rounded transition-colors"
-										>
-											<RefreshCw
-												className={`w-3 h-3 ${reprocessMutation.isPending ? "animate-spin" : ""}`}
-											/>
-											{reprocessMutation.isPending ? "Retrying..." : "Retry"}
-										</button>
 									)}
 								</div>
 							</div>

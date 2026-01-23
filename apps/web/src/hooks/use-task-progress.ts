@@ -1,10 +1,10 @@
-import { useState, useCallback } from "react";
 import {
-	type TaskType,
-	type TaskProgress,
 	createEmptyProgress,
 	TASK_TYPES,
+	type TaskProgress,
+	type TaskType,
 } from "@photobrain/utils";
+import { useCallback, useState } from "react";
 import { trpc } from "@/lib/trpc";
 
 export type TaskProgressState = Record<TaskType, TaskProgress>;
@@ -57,7 +57,8 @@ function createInitialState(): TaskProgressState {
 }
 
 export function useTaskProgress(taskTypes?: TaskType[]) {
-	const [progress, setProgress] = useState<TaskProgressState>(createInitialState);
+	const [progress, setProgress] =
+		useState<TaskProgressState>(createInitialState);
 	const utils = trpc.useUtils();
 
 	// Handle incoming BullMQ events
@@ -70,7 +71,13 @@ export function useTaskProgress(taskTypes?: TaskType[]) {
 			returnvalue: unknown;
 			failedReason: string | undefined;
 		}) => {
-			console.log("[TaskProgress] Event:", event.eventType, event.taskType, event.jobId, event.data);
+			console.log(
+				"[TaskProgress] Event:",
+				event.eventType,
+				event.taskType,
+				event.jobId,
+				event.data,
+			);
 
 			// Cast data to ProgressData
 			const data = event.data as ProgressData | undefined;
@@ -93,7 +100,10 @@ export function useTaskProgress(taskTypes?: TaskType[]) {
 							// Set phash/embedding totals from scan total immediately
 							if (data.total && data.total > 0) {
 								newProgress.phash = { ...newProgress.phash, total: data.total };
-								newProgress.embedding = { ...newProgress.embedding, total: data.total };
+								newProgress.embedding = {
+									...newProgress.embedding,
+									total: data.total,
+								};
 							}
 
 							// Add photo directly to cache from event data (no fetch needed)
@@ -177,10 +187,12 @@ export function useTaskProgress(taskTypes?: TaskType[]) {
 	const hasActiveJobs =
 		(scanProgress.total > 0 && scanProgress.current < scanProgress.total) ||
 		(phashProgress.total > 0 && phashProgress.current < phashProgress.total) ||
-		(embeddingProgress.total > 0 && embeddingProgress.current < embeddingProgress.total);
+		(embeddingProgress.total > 0 &&
+			embeddingProgress.current < embeddingProgress.total);
 
 	const totalProgress = {
-		current: scanProgress.current + phashProgress.current + embeddingProgress.current,
+		current:
+			scanProgress.current + phashProgress.current + embeddingProgress.current,
 		total: scanProgress.total + phashProgress.total + embeddingProgress.total,
 	};
 

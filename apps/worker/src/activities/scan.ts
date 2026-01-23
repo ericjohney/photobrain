@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-	processPhoto,
 	getSupportedExtensions,
+	processPhoto,
 } from "@photobrain/image-processing";
 import { getThumbnailPath } from "@photobrain/utils";
-import { db, photos, photoExif } from "@/db";
 import { eq } from "drizzle-orm";
+import { db, photoExif, photos } from "@/db";
 
 const supportedExtensions = new Set(
 	getSupportedExtensions().map((ext) => ext.toLowerCase()),
@@ -258,44 +258,22 @@ export async function savePhotoToDb(
 		isRaw: result.isRaw ?? false,
 		rawFormat: result.rawFormat ?? null,
 		rawStatus: result.isRaw ? "converted" : null,
-		exif: result.exif ? {
-			cameraMake: result.exif.cameraMake ?? null,
-			cameraModel: result.exif.cameraModel ?? null,
-			lensMake: result.exif.lensMake ?? null,
-			lensModel: result.exif.lensModel ?? null,
-			focalLength: result.exif.focalLength ?? null,
-			iso: result.exif.iso ?? null,
-			aperture: result.exif.aperture ?? null,
-			shutterSpeed: result.exif.shutterSpeed ?? null,
-			exposureBias: result.exif.exposureBias ?? null,
-			dateTaken: result.exif.dateTaken ?? null,
-			gpsLatitude: result.exif.gpsLatitude ?? null,
-			gpsLongitude: result.exif.gpsLongitude ?? null,
-			gpsAltitude: result.exif.gpsAltitude ?? null,
-		} : null,
+		exif: result.exif
+			? {
+					cameraMake: result.exif.cameraMake ?? null,
+					cameraModel: result.exif.cameraModel ?? null,
+					lensMake: result.exif.lensMake ?? null,
+					lensModel: result.exif.lensModel ?? null,
+					focalLength: result.exif.focalLength ?? null,
+					iso: result.exif.iso ?? null,
+					aperture: result.exif.aperture ?? null,
+					shutterSpeed: result.exif.shutterSpeed ?? null,
+					exposureBias: result.exif.exposureBias ?? null,
+					dateTaken: result.exif.dateTaken ?? null,
+					gpsLatitude: result.exif.gpsLatitude ?? null,
+					gpsLongitude: result.exif.gpsLongitude ?? null,
+					gpsAltitude: result.exif.gpsAltitude ?? null,
+				}
+			: null,
 	};
-}
-
-/**
- * Get photo IDs that need phash processing
- */
-export async function getPhotosNeedingPhash(): Promise<number[]> {
-	const results = await db
-		.select({ id: photos.id })
-		.from(photos)
-		.where(eq(photos.phashStatus, "pending"))
-		.all();
-	return results.map((r) => r.id);
-}
-
-/**
- * Get photo IDs that need embedding processing
- */
-export async function getPhotosNeedingEmbedding(): Promise<number[]> {
-	const results = await db
-		.select({ id: photos.id })
-		.from(photos)
-		.where(eq(photos.embeddingStatus, "pending"))
-		.all();
-	return results.map((r) => r.id);
 }

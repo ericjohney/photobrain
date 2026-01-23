@@ -1,14 +1,9 @@
-import type { AppRouter } from "@photobrain/api";
-import type { inferRouterOutputs } from "@trpc/server";
 import {
 	Camera,
 	ChevronLeft,
 	ChevronRight,
 	Maximize,
 	Minimize,
-	RefreshCw,
-	ZoomIn,
-	ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -19,11 +14,8 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { getFullImageUrl, getThumbnailUrl } from "@/lib/thumbnails";
-import { trpc } from "@/lib/trpc";
+import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-type RouterOutputs = inferRouterOutputs<AppRouter>;
-type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 type ZoomLevel = "fit" | "fill" | "100";
 
@@ -44,13 +36,6 @@ export function LoupeView({
 }: LoupeViewProps) {
 	const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("fit");
 	const [imageLoaded, setImageLoaded] = useState(false);
-
-	const utils = trpc.useUtils();
-	const reprocessMutation = trpc.reprocessRaw.useMutation({
-		onSuccess: () => {
-			utils.photos.invalidate();
-		},
-	});
 
 	// Reset image loaded state when photo changes
 	useEffect(() => {
@@ -123,19 +108,9 @@ export function LoupeView({
 					<p className="text-sm text-muted-foreground mb-4">
 						{photo.rawError || "Unknown error"}
 					</p>
-					<Button
-						onClick={() => reprocessMutation.mutate({ id: photo.id })}
-						disabled={reprocessMutation.isPending}
-						className="gap-2"
-					>
-						<RefreshCw
-							className={cn(
-								"h-4 w-4",
-								reprocessMutation.isPending && "animate-spin",
-							)}
-						/>
-						{reprocessMutation.isPending ? "Retrying..." : "Retry Conversion"}
-					</Button>
+					<p className="text-xs text-muted-foreground">
+						Re-run scan to retry conversion
+					</p>
 				</div>
 			) : (
 				<div

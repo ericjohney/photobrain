@@ -1,7 +1,8 @@
 import {
-	Camera,
 	Calendar,
+	Camera,
 	ChevronRight,
+	Clock,
 	Folder,
 	FolderOpen,
 	Heart,
@@ -9,7 +10,6 @@ import {
 	Images,
 	MapPin,
 	Star,
-	Clock,
 } from "lucide-react";
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -74,10 +74,7 @@ function Section({ title, children, defaultOpen = true }: SectionProps) {
 				className="flex w-full items-center gap-1 px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
 			>
 				<ChevronRight
-					className={cn(
-						"h-3 w-3 transition-transform",
-						open && "rotate-90",
-					)}
+					className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
 				/>
 				{title}
 			</button>
