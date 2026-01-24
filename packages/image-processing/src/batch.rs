@@ -7,7 +7,7 @@ use std::path::Path;
 
 use crate::clip::generate_clip_embedding_from_image;
 use crate::exif::{extract_exif_internal, ExifData};
-use crate::heif::{decode_heif, is_heif_file};
+use crate::heif::{decode_heif, is_heif_by_magic_bytes, is_heif_file};
 use crate::orientation::apply_orientation;
 use crate::phash::generate_phash_from_image;
 use crate::preview::{extract_preview, get_raw_format, is_raw_file};
@@ -71,14 +71,15 @@ fn is_standard_image(file_path: &str) -> bool {
 }
 
 /// Get MIME type for a file
-fn get_mime_type(file_path: &str, raw_format: &Option<String>) -> Option<String> {
+fn get_mime_type(file_path: &str, raw_format: &Option<String>, is_heif: bool) -> Option<String> {
 	let lower = file_path.to_lowercase();
 
 	if let Some(fmt) = raw_format {
 		return Some(format!("image/x-{}", fmt.to_lowercase()));
 	}
 
-	if lower.ends_with(".heic") || lower.ends_with(".heif") {
+	// Check if it's a HEIF file (by extension or magic bytes)
+	if lower.ends_with(".heic") || lower.ends_with(".heif") || is_heif {
 		return Some("image/heic".to_string());
 	}
 
@@ -146,12 +147,16 @@ fn process_photo_internal(
 	let raw_format = get_raw_format(file_path);
 	let is_raw = raw_format.is_some();
 
+	// Check for HEIF files - by extension or magic bytes (handles mislabeled iOS files)
+	let is_heif = is_heif_file(file_path) || is_heif_by_magic_bytes(file_path);
+
 	// Extract EXIF (works for all formats via exiftool)
 	let exif = extract_exif_internal(file_path);
 	let orientation = exif.as_ref().and_then(|e| e.orientation);
 
 	// Decode image based on file type
-	let decode_result = if is_heif_file(file_path) {
+	// Check magic bytes first to handle mislabeled HEIC files (e.g., iOS saving HEIC as .JPEG)
+	let decode_result = if is_heif {
 		// HEIC/HEIF: decode using libheif
 		decode_heif(file_path)
 	} else if is_raw_file(file_path) {
@@ -195,7 +200,7 @@ fn process_photo_internal(
 				.map(|vec| vec.iter().map(|&f| f as f64).collect());
 
 			// Determine MIME type
-			let mime_type = get_mime_type(file_path, &raw_format).or_else(|| {
+			let mime_type = get_mime_type(file_path, &raw_format, is_heif).or_else(|| {
 				let lower = file_path.to_lowercase();
 				if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
 					Some("image/jpeg".to_string())
@@ -235,7 +240,7 @@ fn process_photo_internal(
 			}
 		}
 		Err(e) => {
-			let mime_type = get_mime_type(file_path, &raw_format);
+			let mime_type = get_mime_type(file_path, &raw_format, is_heif);
 
 			PhotoProcessingResult {
 				path: relative_path.to_string(),

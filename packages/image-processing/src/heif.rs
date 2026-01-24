@@ -1,5 +1,7 @@
 use image::{DynamicImage, RgbImage, RgbaImage};
 use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 
 /// Decode a HEIF/HEIC file to a DynamicImage
@@ -90,15 +92,47 @@ pub fn decode_heif(file_path: &str) -> Result<DynamicImage, String> {
 	Ok(image)
 }
 
-/// Check if a file is a HEIF/HEIC file
+/// Check if a file is a HEIF/HEIC file by extension
 pub fn is_heif_file(file_path: &str) -> bool {
 	let lower = file_path.to_lowercase();
 	lower.ends_with(".heic") || lower.ends_with(".heif")
 }
 
+/// Check if file is a HEIF/HEIC file by checking magic bytes
+/// This handles mislabeled files (e.g., iOS saving HEIC as .JPEG)
+/// HEIF files have "ftyp" at offset 4 followed by heic/heif/heix/mif1/msf1
+pub fn is_heif_by_magic_bytes(file_path: &str) -> bool {
+	let mut file = match File::open(file_path) {
+		Ok(f) => f,
+		Err(_) => return false,
+	};
+
+	// Read first 12 bytes to check for HEIF signature
+	let mut buffer = [0u8; 12];
+	if file.read_exact(&mut buffer).is_err() {
+		return false;
+	}
+
+	// HEIF files have "ftyp" at offset 4
+	if &buffer[4..8] != b"ftyp" {
+		return false;
+	}
+
+	// Check for HEIF brand identifiers at offset 8
+	// Common brands: heic, heix, hevc, hevx, heim, heis, hevm, hevs, mif1, msf1
+	let brand = &buffer[8..12];
+	matches!(
+		brand,
+		b"heic" | b"heix" | b"hevc" | b"hevx" | b"heim" | b"heis" | b"hevm" | b"hevs" | b"mif1"
+			| b"msf1" | b"avif"
+	)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::io::Write;
+	use tempfile::NamedTempFile;
 
 	#[test]
 	fn test_is_heif_file() {
@@ -108,5 +142,25 @@ mod tests {
 		assert!(is_heif_file("photo.heif"));
 		assert!(!is_heif_file("photo.jpg"));
 		assert!(!is_heif_file("photo.png"));
+	}
+
+	#[test]
+	fn test_is_heif_by_magic_bytes() {
+		// Create a temp file with HEIC magic bytes
+		let mut temp_file = NamedTempFile::new().unwrap();
+		// HEIF header: 4 bytes size + "ftyp" + "heic"
+		let heic_header: [u8; 12] = [0x00, 0x00, 0x00, 0x24, b'f', b't', b'y', b'p', b'h', b'e', b'i', b'c'];
+		temp_file.write_all(&heic_header).unwrap();
+		temp_file.flush().unwrap();
+
+		assert!(is_heif_by_magic_bytes(temp_file.path().to_str().unwrap()));
+
+		// Create a temp file with JPEG magic bytes
+		let mut jpeg_file = NamedTempFile::new().unwrap();
+		let jpeg_header: [u8; 12] = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01];
+		jpeg_file.write_all(&jpeg_header).unwrap();
+		jpeg_file.flush().unwrap();
+
+		assert!(!is_heif_by_magic_bytes(jpeg_file.path().to_str().unwrap()));
 	}
 }
