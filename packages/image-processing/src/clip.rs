@@ -75,13 +75,28 @@ pub fn clip_text_embedding(text: String) -> napi::Result<Vec<f64>> {
 /// Generate CLIP embedding from a DynamicImage
 /// Takes ownership of the image to avoid cloning large raw image data
 pub fn generate_clip_embedding_from_image(img: DynamicImage) -> Option<Vec<f32>> {
-	let model_mutex = get_clip_image_model().ok()?;
+	let model_mutex = match get_clip_image_model() {
+		Ok(m) => m,
+		Err(e) => {
+			eprintln!("CLIP image model error: {}", e);
+			return None;
+		}
+	};
 
-	let model = model_mutex.lock().ok()?;
+	let model = match model_mutex.lock() {
+		Ok(m) => m,
+		Err(e) => {
+			eprintln!("CLIP model lock error: {}", e);
+			return None;
+		}
+	};
 
 	match model.embed_images(vec![img]) {
 		Ok(embeddings) => embeddings.first().cloned(),
-		Err(_) => None,
+		Err(e) => {
+			eprintln!("CLIP embed error: {}", e);
+			None
+		}
 	}
 }
 
@@ -103,7 +118,13 @@ pub fn clip_embedding_from_bytes(image_bytes: napi::bindgen_prelude::Buffer) -> 
 /// Used for background processing of thumbnails
 #[napi]
 pub fn generate_clip_embedding(file_path: String) -> Option<Vec<f64>> {
-	let img = image::open(&file_path).ok()?;
+	let img = match image::open(&file_path) {
+		Ok(i) => i,
+		Err(e) => {
+			eprintln!("Failed to open image {}: {}", file_path, e);
+			return None;
+		}
+	};
 
 	// Generate CLIP embedding
 	let embedding = generate_clip_embedding_from_image(img)?;

@@ -49,8 +49,9 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS api
 
-# Install exiftool and native module dependencies (including libheif for HEIC support)
+# Install CA certificates (for HTTPS model downloads), exiftool and native module dependencies
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     libimage-exiftool-perl \
     libssl3 \
     libzstd1 \
@@ -93,8 +94,9 @@ CMD ["bun", "run", "src/index.ts"]
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS worker
 
-# Install exiftool and native module dependencies (including libheif for HEIC support)
+# Install CA certificates (for HTTPS model downloads), exiftool and native module dependencies
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     libimage-exiftool-perl \
     libssl3 \
     libzstd1 \
