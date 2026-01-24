@@ -5,6 +5,7 @@ use fastembed::{
 use image::DynamicImage;
 use napi_derive::napi;
 use once_cell::sync::OnceCell;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 /// Global cached CLIP image model - loaded once, reused for all embeddings
@@ -13,22 +14,39 @@ static CLIP_IMAGE_MODEL: OnceCell<Mutex<ImageEmbedding>> = OnceCell::new();
 /// Global cached CLIP text model - loaded once, reused for all embeddings
 static CLIP_TEXT_MODEL: OnceCell<Mutex<TextEmbedding>> = OnceCell::new();
 
+/// Get the cache directory for fastembed models from environment variable
+fn get_cache_dir() -> Option<PathBuf> {
+	std::env::var("FASTEMBED_CACHE_DIR")
+		.ok()
+		.map(PathBuf::from)
+}
+
 fn get_clip_image_model() -> Result<&'static Mutex<ImageEmbedding>, String> {
 	CLIP_IMAGE_MODEL.get_or_try_init(|| {
-		let model = ImageEmbedding::try_new(
-			ImageInitOptions::new(ImageEmbeddingModel::ClipVitB32).with_show_download_progress(false),
-		)
-		.map_err(|e| format!("Failed to initialize CLIP image model: {}", e))?;
+		let mut options = ImageInitOptions::new(ImageEmbeddingModel::ClipVitB32)
+			.with_show_download_progress(true);
+
+		if let Some(cache_dir) = get_cache_dir() {
+			options = options.with_cache_dir(cache_dir);
+		}
+
+		let model = ImageEmbedding::try_new(options)
+			.map_err(|e| format!("Failed to initialize CLIP image model: {}", e))?;
 		Ok(Mutex::new(model))
 	})
 }
 
 fn get_clip_text_model() -> Result<&'static Mutex<TextEmbedding>, String> {
 	CLIP_TEXT_MODEL.get_or_try_init(|| {
-		let model = TextEmbedding::try_new(
-			InitOptions::new(EmbeddingModel::ClipVitB32).with_show_download_progress(false),
-		)
-		.map_err(|e| format!("Failed to initialize CLIP text model: {}", e))?;
+		let mut options = InitOptions::new(EmbeddingModel::ClipVitB32)
+			.with_show_download_progress(true);
+
+		if let Some(cache_dir) = get_cache_dir() {
+			options = options.with_cache_dir(cache_dir);
+		}
+
+		let model = TextEmbedding::try_new(options)
+			.map_err(|e| format!("Failed to initialize CLIP text model: {}", e))?;
 		Ok(Mutex::new(model))
 	})
 }
