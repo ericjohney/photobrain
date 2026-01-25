@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "@/config";
 import { photos as photosTable } from "@/db/schema";
@@ -19,36 +19,145 @@ import { publicProcedure, router } from "./trpc";
 const TaskTypeSchema = z.enum(["scan", "phash", "embedding"]);
 type TaskType = z.infer<typeof TaskTypeSchema>;
 
+// Folder tree node type
+export type FolderNode = {
+	name: string;
+	path: string;
+	photoCount: number;
+	children: FolderNode[];
+};
+
 export const appRouter = router({
+	// Get folder tree with photo counts
+	folders: publicProcedure.query(async ({ ctx }) => {
+		// Get all unique folder paths from photos
+		const results = await ctx.db
+			.select({
+				path: photosTable.path,
+			})
+			.from(photosTable);
+
+		const folderMap = new Map<
+			string,
+			{ name: string; path: string; photoCount: number; children: FolderNode[] }
+		>();
+
+		for (const { path } of results) {
+			// Get the folder part of the path (everything before the last /)
+			const lastSlash = path.lastIndexOf("/");
+			const folderPath = lastSlash > 0 ? path.substring(0, lastSlash) : "";
+
+			if (folderPath) {
+				// Increment count for this folder and all parent folders
+				const parts = folderPath.split("/");
+				let currentPath = "";
+
+				for (let i = 0; i < parts.length; i++) {
+					currentPath = i === 0 ? parts[i] : `${currentPath}/${parts[i]}`;
+
+					if (!folderMap.has(currentPath)) {
+						folderMap.set(currentPath, {
+							name: parts[i],
+							path: currentPath,
+							photoCount: 0,
+							children: [],
+						});
+					}
+
+					// Only count photos in the immediate folder, not subfolders
+					if (i === parts.length - 1) {
+						const folder = folderMap.get(currentPath);
+						if (folder) {
+							folder.photoCount++;
+						}
+					}
+				}
+			}
+		}
+
+		// Build tree structure
+		const rootFolders: FolderNode[] = [];
+
+		for (const [path, folder] of folderMap) {
+			const lastSlash = path.lastIndexOf("/");
+			if (lastSlash === -1) {
+				// Root level folder
+				rootFolders.push(folder);
+			} else {
+				// Child folder - add to parent
+				const parentPath = path.substring(0, lastSlash);
+				const parent = folderMap.get(parentPath);
+				if (parent) {
+					parent.children.push(folder);
+				}
+			}
+		}
+
+		// Sort folders alphabetically
+		const sortFolders = (folders: FolderNode[]): FolderNode[] => {
+			return folders
+				.sort((a, b) => a.name.localeCompare(b.name))
+				.map((f) => ({ ...f, children: sortFolders(f.children) }));
+		};
+
+		return {
+			folders: sortFolders(rootFolders),
+			totalPhotos: results.length,
+		};
+	}),
+
 	// Get all photos with EXIF data
 	photos: publicProcedure
 		.input(
 			z
 				.object({
 					filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
+					folder: z.string().optional(),
 				})
 				.optional(),
 		)
 		.query(async ({ ctx, input }) => {
 			const filter = input?.filterRaw ?? "all";
+			const folder = input?.folder;
+
+			// Build where conditions
+			const conditions = [];
+
+			if (filter === "raw") {
+				conditions.push(eq(photosTable.isRaw, true));
+			} else if (filter === "standard") {
+				conditions.push(eq(photosTable.isRaw, false));
+			}
+
+			if (folder) {
+				// Match photos in this folder (path starts with folder/ but not in subfolders)
+				// e.g., folder "01" matches "01/photo.jpg" but not "01/sub/photo.jpg"
+				conditions.push(like(photosTable.path, `${folder}/%`));
+			}
 
 			const photosList = await ctx.db.query.photos.findMany({
 				where:
-					filter === "raw"
-						? eq(photosTable.isRaw, true)
-						: filter === "standard"
-							? eq(photosTable.isRaw, false)
-							: undefined,
+					conditions.length > 0
+						? sql`${sql.join(conditions, sql` AND `)}`
+						: undefined,
 				with: {
 					exif: true,
 				},
 			});
 
-			const rawCount = photosList.filter((p) => p.isRaw).length;
+			// If folder filter is set, also filter out subfolders
+			const filteredPhotos = folder
+				? photosList.filter((p) => {
+						const relativePath = p.path.substring(folder.length + 1);
+						return !relativePath.includes("/");
+					})
+				: photosList;
+
+			const rawCount = filteredPhotos.filter((p) => p.isRaw).length;
 
 			return {
-				photos: photosList,
-				total: photosList.length,
+				photos: filteredPhotos,
+				total: filteredPhotos.length,
 				rawCount,
 			};
 		}),

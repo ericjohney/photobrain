@@ -18,11 +18,17 @@ import type { PhotoMetadata } from "@/lib/types";
 
 export function Dashboard() {
 	const [searchQuery, setSearchQuery] = useState("");
+	const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
 	// tRPC queries
-	const photosQuery = trpc.photos.useQuery(undefined, {
-		enabled: !searchQuery,
-	});
+	const foldersQuery = trpc.folders.useQuery();
+
+	const photosQuery = trpc.photos.useQuery(
+		{ folder: selectedFolder ?? undefined },
+		{
+			enabled: !searchQuery,
+		},
+	);
 
 	const searchPhotosQuery = trpc.searchPhotos.useQuery(
 		{ query: searchQuery, limit: 50 },
@@ -93,8 +99,14 @@ export function Dashboard() {
 
 	const handleRefresh = useCallback(() => {
 		setSearchQuery("");
+		setSelectedFolder(null);
 		scanMutation.mutate();
 	}, [scanMutation]);
+
+	const handleFolderSelect = useCallback((folder: string | null) => {
+		setSelectedFolder(folder);
+		setSearchQuery(""); // Clear search when selecting folder
+	}, []);
 
 	// Navigation helpers for loupe
 	const currentIndex = library.activePhoto
@@ -183,8 +195,11 @@ export function Dashboard() {
 				<div className="flex flex-col h-full">
 					<div className="flex-1 overflow-auto">
 						<LibraryPanel
-							photoCount={photos.length}
+							photoCount={foldersQuery.data?.totalPhotos ?? photos.length}
 							searchQuery={searchQuery}
+							folders={foldersQuery.data?.folders}
+							selectedFolder={selectedFolder}
+							onFolderSelect={handleFolderSelect}
 						/>
 					</div>
 					<ActivityPanel

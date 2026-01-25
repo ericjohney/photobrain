@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
 	Tooltip,
 	TooltipContent,
@@ -126,35 +125,27 @@ export function Toolbar({
 				<Separator orientation="vertical" className="h-5" />
 
 				{/* View mode toggle */}
-				<ToggleGroup
-					type="single"
-					value={viewMode}
-					onValueChange={(v) => v && onViewModeChange(v as ViewMode)}
-					className="gap-0"
-				>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<ToggleGroupItem
-								value="grid"
-								className="h-7 w-7 p-0 data-[state=on]:bg-selection/20"
-							>
-								<Grid3X3 className="h-4 w-4" />
-							</ToggleGroupItem>
-						</TooltipTrigger>
-						<TooltipContent>Grid view (G)</TooltipContent>
-					</Tooltip>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<ToggleGroupItem
-								value="loupe"
-								className="h-7 w-7 p-0 data-[state=on]:bg-selection/20"
-							>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7"
+							onClick={() =>
+								onViewModeChange(viewMode === "grid" ? "loupe" : "grid")
+							}
+						>
+							{viewMode === "grid" ? (
 								<Maximize2 className="h-4 w-4" />
-							</ToggleGroupItem>
-						</TooltipTrigger>
-						<TooltipContent>Loupe view (E)</TooltipContent>
-					</Tooltip>
-				</ToggleGroup>
+							) : (
+								<Grid3X3 className="h-4 w-4" />
+							)}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						{viewMode === "grid" ? "Loupe view (E)" : "Grid view (G)"}
+					</TooltipContent>
+				</Tooltip>
 
 				{/* Thumbnail size slider (only in grid mode) */}
 				{viewMode === "grid" && (
