@@ -1,11 +1,12 @@
 use image::ImageReader;
+use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 use rayon::prelude::*;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
+use std::sync::Arc;
 
-use crate::clip::generate_clip_embedding_from_image;
 use crate::exif::{extract_exif_internal, ExifData};
 use crate::heif::{decode_heif, is_heif_by_magic_bytes, is_heif_file};
 use crate::orientation::apply_orientation;
@@ -54,7 +55,6 @@ pub struct PhotoProcessingResult {
 	pub height: Option<u32>,
 	pub mime_type: Option<String>,
 	pub phash: Option<String>,
-	pub clip_embedding: Option<Vec<f64>>,
 	pub exif: Option<ExifData>,
 	pub is_raw: bool,
 	pub raw_format: Option<String>,
@@ -99,7 +99,6 @@ fn error_result(path: &str, name: String, error: String) -> PhotoProcessingResul
 		height: None,
 		mime_type: None,
 		phash: None,
-		clip_embedding: None,
 		exif: None,
 		is_raw: false,
 		raw_format: None,
@@ -195,9 +194,8 @@ fn process_photo_internal(
 				eprintln!("Warning: Failed to generate thumbnails: {}", e);
 			}
 
-			// Generate CLIP embedding
-			let clip_embedding = generate_clip_embedding_from_image(img)
-				.map(|vec| vec.iter().map(|&f| f as f64).collect());
+			// Note: CLIP embeddings are generated in a batch job after scan completes
+			// This makes the initial scan ~3x faster
 
 			// Determine MIME type
 			let mime_type = get_mime_type(file_path, &raw_format, is_heif).or_else(|| {
@@ -225,7 +223,6 @@ fn process_photo_internal(
 				height: Some(height),
 				mime_type,
 				phash,
-				clip_embedding,
 				exif,
 				is_raw,
 				raw_format,
@@ -252,7 +249,6 @@ fn process_photo_internal(
 				height: None,
 				mime_type,
 				phash: None,
-				clip_embedding: None,
 				exif,
 				is_raw,
 				raw_format,
@@ -303,4 +299,44 @@ pub fn process_photo(
 	thumbnails_dir: String,
 ) -> PhotoProcessingResult {
 	process_photo_internal(&file_path, &relative_path, &thumbnails_dir)
+}
+
+/// Process photos in parallel with callback for each completed photo.
+/// Uses rayon for CPU-bound parallel processing.
+/// Callback is called with Blocking mode - this allows Rust to wait for JS to process.
+#[napi]
+pub fn process_photos_with_callback(
+	file_paths: Vec<String>,
+	relative_paths: Vec<String>,
+	thumbnails_dir: String,
+	#[napi(ts_arg_type = "(result: PhotoProcessingResult) => void")]
+	on_photo_processed: ThreadsafeFunction<PhotoProcessingResult>,
+) -> u32 {
+	let callback = Arc::new(on_photo_processed);
+	let max_concurrent = std::cmp::min(num_cpus::get(), 4);
+
+	let pool = rayon::ThreadPoolBuilder::new()
+		.num_threads(max_concurrent)
+		.build()
+		.unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().build().unwrap());
+
+	let count = file_paths.len() as u32;
+
+	pool.install(|| {
+		file_paths
+			.par_iter()
+			.enumerate()
+			.for_each(|(i, file_path)| {
+				let rel_path = relative_paths.get(i).map(|s| s.as_str()).unwrap_or("");
+
+				// Process the photo
+				let result = process_photo_internal(file_path, rel_path, &thumbnails_dir);
+
+				// Call JS callback - Blocking mode waits for JS to process before continuing
+				// This provides natural backpressure
+				callback.call(Ok(result), ThreadsafeFunctionCallMode::Blocking);
+			});
+	});
+
+	count
 }

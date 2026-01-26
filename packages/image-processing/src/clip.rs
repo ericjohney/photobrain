@@ -72,14 +72,43 @@ pub fn clip_text_embedding(text: String) -> napi::Result<Vec<f64>> {
 	Ok(embedding.iter().map(|&f| f as f64).collect())
 }
 
-/// Generate CLIP embedding from a DynamicImage
-/// Takes ownership of the image to avoid cloning large raw image data
-pub fn generate_clip_embedding_from_image(img: DynamicImage) -> Option<Vec<f32>> {
+// Note: Single-image embedding functions removed as batch processing is now used exclusively.
+
+/// Batch generate CLIP embeddings from multiple image file paths
+/// Processes multiple images in a single model inference call for efficiency
+/// Returns a Vec with the same length as input - None for failed images
+#[napi]
+pub fn batch_generate_clip_embeddings(file_paths: Vec<String>) -> Vec<Option<Vec<f64>>> {
+	if file_paths.is_empty() {
+		return vec![];
+	}
+
+	// Load all images, tracking which ones failed
+	let mut images: Vec<DynamicImage> = Vec::with_capacity(file_paths.len());
+	let mut valid_indices: Vec<usize> = Vec::with_capacity(file_paths.len());
+
+	for (i, path) in file_paths.iter().enumerate() {
+		match image::open(path) {
+			Ok(img) => {
+				images.push(img);
+				valid_indices.push(i);
+			}
+			Err(e) => {
+				eprintln!("Failed to load image {}: {}", path, e);
+			}
+		}
+	}
+
+	if images.is_empty() {
+		return vec![None; file_paths.len()];
+	}
+
+	// Get the model
 	let model_mutex = match get_clip_image_model() {
 		Ok(m) => m,
 		Err(e) => {
 			eprintln!("CLIP image model error: {}", e);
-			return None;
+			return vec![None; file_paths.len()];
 		}
 	};
 
@@ -87,48 +116,26 @@ pub fn generate_clip_embedding_from_image(img: DynamicImage) -> Option<Vec<f32>>
 		Ok(m) => m,
 		Err(e) => {
 			eprintln!("CLIP model lock error: {}", e);
-			return None;
+			return vec![None; file_paths.len()];
 		}
 	};
 
-	match model.embed_images(vec![img]) {
-		Ok(embeddings) => embeddings.first().cloned(),
+	// Batch embed all images at once
+	let embeddings = match model.embed_images(images) {
+		Ok(embs) => embs,
 		Err(e) => {
-			eprintln!("CLIP embed error: {}", e);
-			None
+			eprintln!("CLIP batch embed error: {}", e);
+			return vec![None; file_paths.len()];
+		}
+	};
+
+	// Build result array with embeddings in correct positions
+	let mut results: Vec<Option<Vec<f64>>> = vec![None; file_paths.len()];
+	for (emb_idx, &orig_idx) in valid_indices.iter().enumerate() {
+		if let Some(embedding) = embeddings.get(emb_idx) {
+			results[orig_idx] = Some(embedding.iter().map(|&f| f as f64).collect());
 		}
 	}
-}
 
-/// Generate CLIP embedding from JPEG/image bytes
-/// Used for RAW files where we already have the embedded preview as bytes
-#[napi]
-pub fn clip_embedding_from_bytes(image_bytes: napi::bindgen_prelude::Buffer) -> Option<Vec<f64>> {
-	// Decode the image bytes
-	let img = image::load_from_memory(&image_bytes).ok()?;
-
-	// Generate CLIP embedding
-	let embedding = generate_clip_embedding_from_image(img)?;
-
-	// Convert f32 to f64 for JavaScript compatibility
-	Some(embedding.iter().map(|&f| f as f64).collect())
-}
-
-/// Generate CLIP embedding from an image file path
-/// Used for background processing of thumbnails
-#[napi]
-pub fn generate_clip_embedding(file_path: String) -> Option<Vec<f64>> {
-	let img = match image::open(&file_path) {
-		Ok(i) => i,
-		Err(e) => {
-			eprintln!("Failed to open image {}: {}", file_path, e);
-			return None;
-		}
-	};
-
-	// Generate CLIP embedding
-	let embedding = generate_clip_embedding_from_image(img)?;
-
-	// Convert f32 to f64 for JavaScript compatibility
-	Some(embedding.iter().map(|&f| f as f64).collect())
+	results
 }

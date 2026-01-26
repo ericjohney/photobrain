@@ -1,5 +1,5 @@
 import {
-	type EmbeddingJobData,
+	type BatchEmbeddingJobData,
 	type PhashJobData,
 	QUEUE_NAMES,
 	type QueueName,
@@ -15,7 +15,7 @@ export {
 	type QueueName,
 	type ScanJobData,
 	type PhashJobData,
-	type EmbeddingJobData,
+	type BatchEmbeddingJobData,
 };
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
@@ -105,10 +105,10 @@ export async function addPhashJob(data: PhashJobData) {
 	return job;
 }
 
-// Add embedding job for a photo
-export async function addEmbeddingJob(data: EmbeddingJobData) {
-	const job = await embeddingQueue.add("generate-embedding", data, {
-		jobId: `embedding-${data.photoId}`,
+// Add batch embedding job for multiple photos
+export async function addBatchEmbeddingJob(data: BatchEmbeddingJobData) {
+	const job = await embeddingQueue.add("batch-embedding", data, {
+		jobId: `batch-embedding-${Date.now()}`,
 	});
 	return job;
 }

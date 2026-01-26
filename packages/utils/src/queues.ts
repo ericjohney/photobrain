@@ -23,7 +23,7 @@ export interface PhashJobData {
 	thumbnailsDir: string;
 }
 
-export interface EmbeddingJobData {
-	photoId: number;
+export interface BatchEmbeddingJobData {
+	photoIds: number[];
 	thumbnailsDir: string;
 }

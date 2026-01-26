@@ -27,6 +27,7 @@ CREATE TABLE `photo_exif` (
 	FOREIGN KEY (`photo_id`) REFERENCES `photos`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `photo_exif_photo_id_unique` ON `photo_exif` (`photo_id`);--> statement-breakpoint
 CREATE TABLE `photo_phash` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`photo_id` integer NOT NULL,
@@ -47,8 +48,6 @@ CREATE TABLE `photos` (
 	`width` integer,
 	`height` integer,
 	`mime_type` text,
-	`phash` text,
-	`clip_embedding` blob,
 	`is_raw` integer DEFAULT false,
 	`raw_format` text,
 	`raw_status` text,
