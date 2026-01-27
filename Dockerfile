@@ -165,15 +165,28 @@ CMD ["bun", "run", "serve.ts"]
 # =============================================================================
 # Stage 6: Mobile Web Builder - Build the Expo web app
 # =============================================================================
-FROM builder AS mobile-builder
+FROM oven/bun:1.3.5-debian AS mobile-builder
 
 WORKDIR /app
 
-# Copy mobile app source
-COPY apps/mobile ./apps/mobile
+# Copy mobile app package files and install dependencies
+COPY apps/mobile/package.json apps/mobile/
+COPY package.json bun.lock ./
+COPY packages/utils/package.json packages/utils/
+COPY packages/config/package.json packages/config/
+COPY packages/db/package.json packages/db/
+COPY packages/image-processing/package.json packages/image-processing/
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
+RUN bun install
 
-# Install mobile dependencies (expo-cli, etc.) and build
-RUN cd apps/mobile && bun install && bunx expo export --platform web
+# Copy mobile source and shared packages needed at build time
+COPY apps/mobile apps/mobile
+COPY packages/utils packages/utils
+
+# Build Expo web export
+RUN cd apps/mobile && bunx expo export --platform web
 
 # =============================================================================
 # Stage 7: Mobile Web Production Image
