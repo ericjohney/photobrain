@@ -50,15 +50,14 @@ function saveToStorage(state: Partial<LibraryState>) {
 }
 
 export function useLibraryState(photos: PhotoMetadata[] = []) {
-	const stored = loadFromStorage();
-
+	// Load from storage only once on mount using lazy initializer
 	const [viewMode, setViewModeInternal] = useState<ViewMode>(
-		stored.viewMode || "grid",
+		() => loadFromStorage().viewMode || "grid",
 	);
 	const [selectedPhotos, setSelectedPhotos] = useState<Set<number>>(new Set());
 	const [activePhoto, setActivePhoto] = useState<PhotoMetadata | null>(null);
 	const [thumbnailSize, setThumbnailSizeInternal] = useState(
-		stored.thumbnailSize || 200,
+		() => loadFromStorage().thumbnailSize || 200,
 	);
 	const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(
 		null,

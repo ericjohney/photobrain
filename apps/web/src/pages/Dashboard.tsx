@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
 import { PhotoGrid } from "@/components/PhotoGrid";
@@ -76,21 +76,21 @@ export function Dashboard() {
 				ctrl: event.ctrlKey || event.metaKey,
 			});
 		},
-		[library],
+		[library.selectPhoto],
 	);
 
 	const handlePhotoDoubleClick = useCallback(
 		(photo: PhotoMetadata) => {
 			library.openInLoupe(photo);
 		},
-		[library],
+		[library.openInLoupe],
 	);
 
 	const handleFilmstripClick = useCallback(
 		(photo: PhotoMetadata) => {
 			library.selectPhoto(photo);
 		},
-		[library],
+		[library.selectPhoto],
 	);
 
 	const handleSearch = useCallback(() => {
@@ -108,12 +108,16 @@ export function Dashboard() {
 		setSearchQuery(""); // Clear search when selecting folder
 	}, []);
 
-	// Navigation helpers for loupe
-	const currentIndex = library.activePhoto
-		? photos.findIndex((p) => p.id === library.activePhoto?.id)
-		: -1;
-	const hasPrev = currentIndex > 0;
-	const hasNext = currentIndex < photos.length - 1;
+	// Navigation helpers for loupe - memoized to avoid recalculation on every render
+	const { hasPrev, hasNext } = useMemo(() => {
+		const currentIndex = library.activePhoto
+			? photos.findIndex((p) => p.id === library.activePhoto?.id)
+			: -1;
+		return {
+			hasPrev: currentIndex > 0,
+			hasNext: currentIndex < photos.length - 1,
+		};
+	}, [library.activePhoto, photos]);
 
 	// Render content based on view mode
 	const renderContent = () => {

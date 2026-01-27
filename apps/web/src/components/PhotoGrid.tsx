@@ -104,10 +104,10 @@ export function PhotoGrid({
 									/>
 								)}
 
-								{/* Hover overlay */}
+								{/* Hover overlay - pointer-events-none to not block clicks */}
 								<div
 									className={cn(
-										"absolute inset-0 transition-colors",
+										"absolute inset-0 transition-colors pointer-events-none",
 										"group-hover:bg-black/10",
 										isSelected && "bg-selection/10",
 									)}
