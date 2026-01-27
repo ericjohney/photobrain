@@ -25,6 +25,7 @@ COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/worker/package.json apps/worker/
+COPY apps/mobile/package.json apps/mobile/
 
 # Install dependencies with cache mount
 RUN --mount=type=cache,target=/root/.bun/install/cache \
@@ -171,8 +172,8 @@ WORKDIR /app
 # Copy mobile app source
 COPY apps/mobile ./apps/mobile
 
-# Build mobile web export
-RUN cd apps/mobile && bun run build:web
+# Install mobile dependencies (expo-cli, etc.) and build
+RUN cd apps/mobile && bun install && bunx expo export --platform web
 
 # =============================================================================
 # Stage 7: Mobile Web Production Image
