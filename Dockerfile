@@ -160,3 +160,102 @@ RUN echo '{"name":"photobrain-web","type":"module","dependencies":{"zod":"^4.2.1
 
 EXPOSE 3001
 CMD ["bun", "run", "serve.ts"]
+
+# =============================================================================
+# Stage 6: Mobile Web Builder - Build the Expo web app
+# =============================================================================
+FROM builder AS mobile-builder
+
+WORKDIR /app
+
+# Copy mobile app source
+COPY apps/mobile ./apps/mobile
+
+# Build mobile web export
+RUN cd apps/mobile && bun run build:web
+
+# =============================================================================
+# Stage 7: Mobile Web Production Image
+# =============================================================================
+FROM oven/bun:1.3.5-slim AS mobile
+
+WORKDIR /app
+
+# Copy the Expo web build output
+COPY --from=mobile-builder /app/apps/mobile/dist ./dist
+
+# Create a simple static file server
+RUN echo '{"name":"photobrain-mobile","type":"module","dependencies":{"zod":"^4.2.1"}}' > package.json && bun install
+
+# Create the serve script
+RUN cat > serve.ts << 'EOF'
+import { z } from "zod";
+
+const configSchema = z.object({
+  PORT: z.coerce.number().default(3002),
+  HOST: z.string().default("0.0.0.0"),
+});
+
+const config = configSchema.parse(process.env);
+
+const server = Bun.serve({
+  port: config.PORT,
+  hostname: config.HOST,
+  async fetch(req) {
+    const url = new URL(req.url);
+    let pathname = url.pathname;
+
+    // Try to serve the file directly
+    let file = Bun.file(`./dist${pathname}`);
+
+    // If the path doesn't have an extension, try adding .html
+    if (!pathname.includes(".") || !(await file.exists())) {
+      file = Bun.file(`./dist${pathname}/index.html`);
+    }
+
+    // Fallback to index.html for SPA routing
+    if (!(await file.exists())) {
+      file = Bun.file("./dist/index.html");
+    }
+
+    if (await file.exists()) {
+      const contentType = getContentType(file.name || "");
+      return new Response(file, {
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": pathname.includes("/_expo/")
+            ? "public, max-age=31536000, immutable"
+            : "no-cache",
+        },
+      });
+    }
+
+    return new Response("Not Found", { status: 404 });
+  },
+});
+
+function getContentType(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const types: Record<string, string> = {
+    html: "text/html",
+    js: "application/javascript",
+    css: "text/css",
+    json: "application/json",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    ico: "image/x-icon",
+    woff: "font/woff",
+    woff2: "font/woff2",
+    ttf: "font/ttf",
+  };
+  return types[ext || ""] || "application/octet-stream";
+}
+
+console.log(`Mobile web server running at http://${config.HOST}:${config.PORT}`);
+EOF
+
+EXPOSE 3002
+CMD ["bun", "run", "serve.ts"]

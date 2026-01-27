@@ -1,38 +1,44 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
 	ActivityIndicator,
-	Alert,
+	Pressable,
 	RefreshControl,
 	ScrollView,
 	StyleSheet,
 	Text,
-	TouchableOpacity,
 	View,
 } from "react-native";
+import ActivityBar from "@/components/ActivityBar";
+import Filmstrip from "@/components/Filmstrip";
+import LoupeView from "@/components/LoupeView";
+import MetadataPanel from "@/components/MetadataPanel";
 import PhotoGrid from "@/components/PhotoGrid";
-import PhotoModal from "@/components/PhotoModal";
 import SearchBar from "@/components/SearchBar";
 import { API_URL } from "@/config";
+import { useLibraryState } from "@/hooks/use-library-state";
+import { useTaskProgress } from "@/hooks/use-task-progress";
 import { trpc } from "@/lib/trpc";
+import { useColors } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 export default function DashboardScreen() {
+	const colors = useColors();
 	const [searchQuery, setSearchQuery] = useState("");
-	const [selectedPhoto, setSelectedPhoto] = useState<PhotoMetadata | null>(
+	const [metadataPhoto, setMetadataPhoto] = useState<PhotoMetadata | null>(
 		null,
 	);
 
-	// Use tRPC hooks
+	// tRPC queries
 	const photosQuery = trpc.photos.useQuery(undefined, {
 		enabled: !searchQuery.trim(),
 	});
 
-	const searchQuery$ = trpc.searchPhotos.useQuery(
+	const searchPhotosQuery = trpc.searchPhotos.useQuery(
 		{ query: searchQuery, limit: 50 },
 		{
 			enabled: searchQuery.trim().length > 0,
@@ -40,105 +46,226 @@ export default function DashboardScreen() {
 	);
 
 	const scanMutation = trpc.scan.useMutation({
-		onSuccess: (result) => {
-			Alert.alert(
-				"Scan Complete",
-				`Scanned: ${result.scanned}\nInserted: ${result.inserted}\nSkipped: ${result.skipped}\nDuration: ${result.duration.toFixed(2)}s`,
-			);
+		onSuccess: () => {
 			photosQuery.refetch();
 		},
 		onError: (err) => {
-			Alert.alert("Scan Error", err.message);
+			console.error("Scan error:", err.message);
 		},
 	});
 
+	// Task progress tracking
+	const taskProgress = useTaskProgress();
+
 	// Determine which data to display
 	const isSearching = searchQuery.trim().length > 0;
-	const activeQuery = isSearching ? searchQuery$ : photosQuery;
+	const activeQuery = isSearching ? searchPhotosQuery : photosQuery;
 	const photos = activeQuery.data?.photos ?? [];
 	const loading = activeQuery.isLoading;
 	const error = activeQuery.error?.message ?? null;
 
-	const handleScan = () => {
+	// Library state for selection and view mode
+	const library = useLibraryState(photos);
+
+	// Handlers
+	const handleScan = useCallback(() => {
 		scanMutation.mutate();
-	};
+	}, [scanMutation]);
 
-	const handleSearchChange = (text: string) => {
+	const handleSearchChange = useCallback((text: string) => {
 		setSearchQuery(text);
-	};
+	}, []);
 
-	const handleSearchClear = () => {
+	const handleSearchClear = useCallback(() => {
 		setSearchQuery("");
-	};
+	}, []);
 
-	const handleRefresh = () => {
+	const handleRefresh = useCallback(() => {
 		activeQuery.refetch();
-	};
+	}, [activeQuery]);
 
-	if (loading) {
+	const handlePhotoPress = useCallback(
+		(photo: PhotoMetadata) => {
+			library.selectPhoto(photo);
+		},
+		[library],
+	);
+
+	const handlePhotoLongPress = useCallback(
+		(photo: PhotoMetadata) => {
+			library.openInLoupe(photo);
+		},
+		[library],
+	);
+
+	const handleLoupeClose = useCallback(() => {
+		library.closeLoupe();
+	}, [library]);
+
+	const handleLoupeIndexChange = useCallback(
+		(index: number) => {
+			library.navigateToIndex(index);
+		},
+		[library],
+	);
+
+	const handleFilmstripPress = useCallback(
+		(photo: PhotoMetadata) => {
+			library.selectPhoto(photo);
+		},
+		[library],
+	);
+
+	const handleShowMetadata = useCallback((photo: PhotoMetadata) => {
+		setMetadataPhoto(photo);
+	}, []);
+
+	const handleCloseMetadata = useCallback(() => {
+		setMetadataPhoto(null);
+	}, []);
+
+	// Loading state
+	if (loading && !library.isLoaded) {
 		return (
-			<View style={styles.centerContainer}>
-				<ActivityIndicator size="large" color="#3b82f6" />
-				<Text style={styles.loadingText}>Loading photos...</Text>
+			<View
+				style={[styles.centerContainer, { backgroundColor: colors.background }]}
+			>
+				<ActivityIndicator size="large" color={colors.primary} />
+				<Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+					Loading photos...
+				</Text>
 			</View>
 		);
 	}
 
+	// Loupe view (full screen)
+	if (library.viewMode === "loupe") {
+		return (
+			<>
+				<LoupeView
+					photos={photos}
+					initialIndex={
+						library.activePhotoIndex >= 0 ? library.activePhotoIndex : 0
+					}
+					apiUrl={API_URL}
+					onClose={handleLoupeClose}
+					onIndexChange={handleLoupeIndexChange}
+					onShowMetadata={handleShowMetadata}
+				/>
+				<MetadataPanel
+					visible={metadataPhoto !== null}
+					photo={metadataPhoto}
+					apiUrl={API_URL}
+					onClose={handleCloseMetadata}
+				/>
+			</>
+		);
+	}
+
+	// Grid view
 	return (
-		<View style={styles.container}>
-			<View style={styles.header}>
+		<View style={[styles.container, { backgroundColor: colors.background }]}>
+			{/* Header with search and actions */}
+			<View style={[styles.header, { backgroundColor: colors.toolbar }]}>
 				<SearchBar
 					value={searchQuery}
 					onChangeText={handleSearchChange}
 					onClear={handleSearchClear}
-					loading={searchQuery$.isFetching}
+					loading={searchPhotosQuery.isFetching}
 				/>
 				<View style={styles.actions}>
-					<TouchableOpacity
-						style={styles.scanButton}
+					<View style={styles.photoCount}>
+						<Text
+							style={[styles.photoCountText, { color: colors.mutedForeground }]}
+						>
+							{photos.length} photos
+							{library.selectedCount > 0 &&
+								` (${library.selectedCount} selected)`}
+						</Text>
+					</View>
+					<Pressable
+						style={[styles.scanButton, { backgroundColor: colors.primary }]}
 						onPress={handleScan}
-						disabled={scanMutation.isPending}
+						disabled={scanMutation.isPending || taskProgress.hasActiveJobs}
 					>
-						{scanMutation.isPending ? (
+						{scanMutation.isPending || taskProgress.hasActiveJobs ? (
 							<ActivityIndicator size="small" color="#ffffff" />
 						) : (
 							<>
-								<Ionicons name="refresh" size={20} color="#ffffff" />
+								<Ionicons name="refresh" size={18} color="#ffffff" />
 								<Text style={styles.scanButtonText}>Scan</Text>
 							</>
 						)}
-					</TouchableOpacity>
+					</Pressable>
 				</View>
 			</View>
 
+			{/* Activity/Progress bar */}
+			<ActivityBar
+				scanProgress={taskProgress.scanProgress}
+				embeddingProgress={taskProgress.embeddingProgress}
+				hasActiveJobs={taskProgress.hasActiveJobs}
+			/>
+
+			{/* Error display */}
 			{error && (
-				<View style={styles.errorContainer}>
-					<Ionicons name="alert-circle" size={20} color="#ef4444" />
-					<Text style={styles.errorText}>{error}</Text>
+				<View
+					style={[
+						styles.errorContainer,
+						{ backgroundColor: `${colors.destructive}15` },
+					]}
+				>
+					<Ionicons name="alert-circle" size={20} color={colors.destructive} />
+					<Text style={[styles.errorText, { color: colors.destructive }]}>
+						{error}
+					</Text>
 				</View>
 			)}
 
-			<ScrollView
-				style={styles.content}
-				refreshControl={
-					<RefreshControl
-						refreshing={activeQuery.isFetching}
-						onRefresh={handleRefresh}
+			{/* Photo grid */}
+			<View style={styles.content}>
+				{loading ? (
+					<ScrollView
+						refreshControl={
+							<RefreshControl
+								refreshing={activeQuery.isFetching}
+								onRefresh={handleRefresh}
+								tintColor={colors.primary}
+							/>
+						}
+						contentContainerStyle={styles.loadingContainer}
+					>
+						<ActivityIndicator size="large" color={colors.primary} />
+					</ScrollView>
+				) : (
+					<PhotoGrid
+						photos={photos}
+						selectedPhotos={library.selectedPhotos}
+						activePhotoId={library.activePhoto?.id}
+						onPhotoPress={handlePhotoPress}
+						onPhotoLongPress={handlePhotoLongPress}
+						apiUrl={API_URL}
 					/>
-				}
-			>
-				<PhotoGrid
-					photos={photos}
-					onPhotoPress={setSelectedPhoto}
-					apiUrl={API_URL}
-				/>
-			</ScrollView>
+				)}
+			</View>
 
-			<PhotoModal
-				visible={selectedPhoto !== null}
-				photo={selectedPhoto}
+			{/* Filmstrip when a photo is selected */}
+			{library.activePhoto && photos.length > 1 && (
+				<Filmstrip
+					photos={photos}
+					activePhotoId={library.activePhoto.id}
+					selectedPhotos={library.selectedPhotos}
+					apiUrl={API_URL}
+					onPhotoPress={handleFilmstripPress}
+				/>
+			)}
+
+			{/* Metadata panel */}
+			<MetadataPanel
+				visible={metadataPhoto !== null}
+				photo={metadataPhoto}
 				apiUrl={API_URL}
-				onClose={() => setSelectedPhoto(null)}
+				onClose={handleCloseMetadata}
 			/>
 		</View>
 	);
@@ -147,24 +274,28 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#ffffff",
 	},
 	header: {
-		backgroundColor: "#ffffff",
 		borderBottomWidth: 1,
-		borderBottomColor: "#e5e7eb",
+		borderBottomColor: "rgba(0,0,0,0.1)",
 	},
 	actions: {
 		flexDirection: "row",
-		justifyContent: "flex-end",
+		justifyContent: "space-between",
+		alignItems: "center",
 		padding: 12,
 		paddingTop: 0,
+	},
+	photoCount: {
+		flex: 1,
+	},
+	photoCountText: {
+		fontSize: 13,
 	},
 	scanButton: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "#3b82f6",
-		paddingHorizontal: 16,
+		paddingHorizontal: 14,
 		paddingVertical: 8,
 		borderRadius: 6,
 		gap: 6,
@@ -178,12 +309,15 @@ const styles = StyleSheet.create({
 		flex: 1,
 		justifyContent: "center",
 		alignItems: "center",
-		backgroundColor: "#ffffff",
 	},
 	loadingText: {
 		marginTop: 12,
 		fontSize: 16,
-		color: "#6b7280",
+	},
+	loadingContainer: {
+		flex: 1,
+		justifyContent: "center",
+		alignItems: "center",
 	},
 	content: {
 		flex: 1,
@@ -191,13 +325,11 @@ const styles = StyleSheet.create({
 	errorContainer: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "#fee2e2",
 		padding: 12,
 		gap: 8,
 	},
 	errorText: {
 		flex: 1,
-		color: "#991b1b",
 		fontSize: 14,
 	},
 });

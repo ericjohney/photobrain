@@ -1,26 +1,40 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useColors } from "@/theme";
 
 export default function AboutScreen() {
+	const colors = useColors();
+
 	return (
-		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+		<ScrollView
+			style={[styles.container, { backgroundColor: colors.background }]}
+			contentContainerStyle={styles.content}
+		>
 			<View style={styles.header}>
-				<Ionicons name="images" size={64} color="#3b82f6" />
-				<Text style={styles.title}>PhotoBrain</Text>
-				<Text style={styles.version}>Version 0.1.0</Text>
+				<Ionicons name="images" size={64} color={colors.primary} />
+				<Text style={[styles.title, { color: colors.foreground }]}>
+					PhotoBrain
+				</Text>
+				<Text style={[styles.version, { color: colors.mutedForeground }]}>
+					Version 0.1.0
+				</Text>
 			</View>
 
 			<View style={styles.section}>
-				<Text style={styles.sectionTitle}>About</Text>
-				<Text style={styles.description}>
+				<Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+					About
+				</Text>
+				<Text style={[styles.description, { color: colors.mutedForeground }]}>
 					PhotoBrain is a modern, AI-powered self-hosted photo management and
 					gallery application. Fast, intelligent, and easy to use.
 				</Text>
 			</View>
 
 			<View style={styles.section}>
-				<Text style={styles.sectionTitle}>Technology Stack</Text>
+				<Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+					Technology Stack
+				</Text>
 				<View style={styles.techList}>
 					<TechItem icon="logo-react" text="React Native & Expo" />
 					<TechItem icon="search" text="AI-Powered Semantic Search (CLIP)" />
@@ -31,7 +45,9 @@ export default function AboutScreen() {
 			</View>
 
 			<View style={styles.section}>
-				<Text style={styles.sectionTitle}>Features</Text>
+				<Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+					Features
+				</Text>
 				<View style={styles.featureList}>
 					<FeatureItem text="Fast photo grid gallery" />
 					<FeatureItem text="Semantic search using CLIP embeddings" />
@@ -45,19 +61,31 @@ export default function AboutScreen() {
 }
 
 function TechItem({ icon, text }: { icon: string; text: string }) {
+	const colors = useColors();
+
 	return (
 		<View style={styles.techItem}>
-			<Ionicons name={icon as any} size={20} color="#3b82f6" />
-			<Text style={styles.techText}>{text}</Text>
+			<Ionicons
+				name={icon as keyof typeof Ionicons.glyphMap}
+				size={20}
+				color={colors.primary}
+			/>
+			<Text style={[styles.techText, { color: colors.foreground }]}>
+				{text}
+			</Text>
 		</View>
 	);
 }
 
 function FeatureItem({ text }: { text: string }) {
+	const colors = useColors();
+
 	return (
 		<View style={styles.featureItem}>
-			<Ionicons name="checkmark-circle" size={20} color="#10b981" />
-			<Text style={styles.featureText}>{text}</Text>
+			<Ionicons name="checkmark-circle" size={20} color={colors.success} />
+			<Text style={[styles.featureText, { color: colors.foreground }]}>
+				{text}
+			</Text>
 		</View>
 	);
 }
@@ -65,7 +93,6 @@ function FeatureItem({ text }: { text: string }) {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#ffffff",
 	},
 	content: {
 		padding: 24,
@@ -77,12 +104,10 @@ const styles = StyleSheet.create({
 	title: {
 		fontSize: 32,
 		fontWeight: "700",
-		color: "#111827",
 		marginTop: 16,
 	},
 	version: {
 		fontSize: 14,
-		color: "#6b7280",
 		marginTop: 4,
 	},
 	section: {
@@ -91,12 +116,10 @@ const styles = StyleSheet.create({
 	sectionTitle: {
 		fontSize: 20,
 		fontWeight: "600",
-		color: "#111827",
 		marginBottom: 12,
 	},
 	description: {
 		fontSize: 16,
-		color: "#4b5563",
 		lineHeight: 24,
 	},
 	techList: {
@@ -109,7 +132,6 @@ const styles = StyleSheet.create({
 	},
 	techText: {
 		fontSize: 16,
-		color: "#4b5563",
 	},
 	featureList: {
 		gap: 12,
@@ -121,6 +143,5 @@ const styles = StyleSheet.create({
 	},
 	featureText: {
 		fontSize: 16,
-		color: "#4b5563",
 	},
 });

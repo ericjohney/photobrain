@@ -2,11 +2,12 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import {
 	ActivityIndicator,
+	Pressable,
 	StyleSheet,
 	TextInput,
-	TouchableOpacity,
 	View,
 } from "react-native";
+import { useColors } from "@/theme";
 
 interface SearchBarProps {
 	value: string;
@@ -23,21 +24,23 @@ export default function SearchBar({
 	placeholder = "Search photos...",
 	loading = false,
 }: SearchBarProps) {
+	const colors = useColors();
+
 	return (
-		<View style={styles.container}>
-			<View style={styles.searchContainer}>
+		<View style={[styles.container, { backgroundColor: colors.toolbar }]}>
+			<View style={[styles.searchContainer, { backgroundColor: colors.input }]}>
 				<Ionicons
 					name="search"
 					size={20}
-					color="#6b7280"
+					color={colors.mutedForeground}
 					style={styles.searchIcon}
 				/>
 				<TextInput
-					style={styles.input}
+					style={[styles.input, { color: colors.foreground }]}
 					value={value}
 					onChangeText={onChangeText}
 					placeholder={placeholder}
-					placeholderTextColor="#9ca3af"
+					placeholderTextColor={colors.mutedForeground}
 					returnKeyType="search"
 					autoCapitalize="none"
 					autoCorrect={false}
@@ -45,14 +48,18 @@ export default function SearchBar({
 				{loading && (
 					<ActivityIndicator
 						size="small"
-						color="#3b82f6"
+						color={colors.primary}
 						style={styles.loadingIcon}
 					/>
 				)}
 				{value.length > 0 && !loading && (
-					<TouchableOpacity onPress={onClear} style={styles.clearButton}>
-						<Ionicons name="close-circle" size={20} color="#6b7280" />
-					</TouchableOpacity>
+					<Pressable onPress={onClear} style={styles.clearButton}>
+						<Ionicons
+							name="close-circle"
+							size={20}
+							color={colors.mutedForeground}
+						/>
+					</Pressable>
 				)}
 			</View>
 		</View>
@@ -62,14 +69,10 @@ export default function SearchBar({
 const styles = StyleSheet.create({
 	container: {
 		padding: 12,
-		backgroundColor: "#ffffff",
-		borderBottomWidth: 1,
-		borderBottomColor: "#e5e7eb",
 	},
 	searchContainer: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "#f3f4f6",
 		borderRadius: 8,
 		paddingHorizontal: 12,
 		height: 44,
@@ -80,7 +83,6 @@ const styles = StyleSheet.create({
 	input: {
 		flex: 1,
 		fontSize: 16,
-		color: "#111827",
 	},
 	loadingIcon: {
 		marginLeft: 8,
