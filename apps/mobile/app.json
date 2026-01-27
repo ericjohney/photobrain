@@ -5,7 +5,7 @@
 		"version": "0.1.0",
 		"scheme": "photobrain",
 		"orientation": "portrait",
-		"userInterfaceStyle": "light",
+		"userInterfaceStyle": "automatic",
 		"assetBundlePatterns": ["**/*"],
 		"ios": {
 			"supportsTablet": true,
@@ -16,6 +16,10 @@
 				"backgroundColor": "#ffffff"
 			},
 			"package": "com.photobrain.app"
+		},
+		"web": {
+			"bundler": "metro",
+			"output": "single"
 		},
 		"plugins": ["expo-router"]
 	}
