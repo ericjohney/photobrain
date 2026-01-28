@@ -39,7 +39,6 @@ temp/
 *.sqlite3
 
 # Docker
-.dockerignore
 
 # Runtime
 pids/

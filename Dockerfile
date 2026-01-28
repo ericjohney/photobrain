@@ -169,7 +169,7 @@ FROM oven/bun:1.3.5-debian AS mobile-builder
 
 WORKDIR /app
 
-# Copy mobile app package files and install dependencies
+# Copy all files needed for install + build
 COPY apps/mobile/package.json apps/mobile/
 COPY package.json bun.lock ./
 COPY packages/utils/package.json packages/utils/
@@ -179,14 +179,15 @@ COPY packages/image-processing/package.json packages/image-processing/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/worker/package.json apps/worker/
-RUN bun install
-
-# Copy mobile source and shared packages needed at build time
 COPY apps/mobile apps/mobile
 COPY packages/utils packages/utils
 
-# Build Expo web export
-RUN cd apps/mobile && bunx expo export --platform web
+# Install deps and build in a single layer using tmpfs for node_modules
+# so the huge node_modules directory is never committed to a Docker layer
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    --mount=type=tmpfs,target=/app/node_modules \
+    bun install \
+    && cd apps/mobile && bunx expo export --platform web
 
 # =============================================================================
 # Stage 7: Mobile Web Production Image
