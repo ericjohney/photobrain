@@ -10,11 +10,13 @@ packages/image-processing/target
 temp-photos
 .git
 .claude
-*.png
-*.jpg
-*.jpeg
 *.db
 arw_*
-test-*
-perf-test-*
-screenshot-*
+
+# Root-level test/screenshot images (not in apps/mobile/dist)
+/*.png
+/*.jpg
+/*.jpeg
+/test-*
+/perf-test-*
+/screenshot-*

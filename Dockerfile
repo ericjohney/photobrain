@@ -163,28 +163,18 @@ EXPOSE 3001
 CMD ["bun", "run", "serve.ts"]
 
 # =============================================================================
-# Stage 6: Mobile Web Builder - Build the Expo web app
-# Reuses the builder stage which already has node_modules installed
-# =============================================================================
-FROM builder AS mobile-builder
-
-# Copy mobile source code
-COPY apps/mobile apps/mobile
-
-# Build Expo web export
-RUN cd apps/mobile && bunx expo export --platform web
-
-# =============================================================================
-# Stage 7: Mobile Web Production Image
+# Stage 6: Mobile Web Production Image
+# The mobile Expo web build is done in CI before Docker build,
+# pre-built dist is copied directly into a slim runtime image.
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS mobile
 
 WORKDIR /app
 
-# Copy the Expo web build output
-COPY --from=mobile-builder /app/apps/mobile/dist ./dist
+# Copy pre-built Expo web export output (built by CI before docker build)
+COPY apps/mobile/dist ./dist
 
-# Create a simple static file server
+# Create a simple static file server with minimal deps
 RUN echo '{"name":"photobrain-mobile","type":"module","dependencies":{"zod":"^4.2.1"}}' > package.json && bun install
 
 # Create the serve script
