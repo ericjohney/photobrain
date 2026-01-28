@@ -120,7 +120,25 @@ jobs:
         run: bun install
 
       - name: Build Expo web export
-        run: cd apps/mobile && bunx expo export --platform web
+        run: |
+          cd apps/mobile
+          # Run expo export in background — the process may not exit on its own
+          # due to Metro keeping file watchers alive in CI environments
+          bunx expo export --platform web &
+          EXPO_PID=$!
+          # Wait for the export to produce output (poll for dist/index.html)
+          for i in $(seq 1 120); do
+            if [ -f dist/index.html ]; then
+              echo "Expo export completed successfully"
+              kill $EXPO_PID 2>/dev/null || true
+              wait $EXPO_PID 2>/dev/null || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Expo export timed out after 120 seconds"
+          kill $EXPO_PID 2>/dev/null || true
+          exit 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
