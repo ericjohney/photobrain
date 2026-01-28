@@ -170,12 +170,15 @@ FROM oven/bun:1.3.5-debian AS mobile
 
 WORKDIR /app
 
-# Copy package files for dependency installation
+# Copy all workspace package.json files (bun requires all workspace members present)
 COPY package.json bun.lock turbo.json ./
 COPY packages/utils/package.json packages/utils/
 COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
 COPY packages/image-processing/package.json packages/image-processing/
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
 COPY apps/mobile/package.json apps/mobile/
 
 # Install dependencies
@@ -187,6 +190,8 @@ COPY packages/utils packages/utils
 COPY packages/config packages/config
 COPY packages/db packages/db
 COPY packages/image-processing/browser.js packages/image-processing/browser.js
+COPY apps/api/src apps/api/src
+COPY apps/api/tsconfig.json apps/api/
 
 # Copy mobile app source
 COPY apps/mobile apps/mobile
