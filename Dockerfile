@@ -163,89 +163,35 @@ EXPOSE 3001
 CMD ["bun", "run", "serve.ts"]
 
 # =============================================================================
-# Stage 6: Mobile Web Production Image
-# The mobile Expo web build is done in CI before Docker build,
-# pre-built dist is copied directly into a slim runtime image.
+# Stage 6: Mobile Expo Dev Server
+# Runs the Expo dev server so Expo Go on Android can connect to it.
 # =============================================================================
-FROM oven/bun:1.3.5-slim AS mobile
+FROM oven/bun:1.3.5-debian AS mobile
 
 WORKDIR /app
 
-# Copy pre-built Expo web export output (built by CI before docker build)
-COPY apps/mobile/dist ./dist
+# Copy package files for dependency installation
+COPY package.json bun.lock turbo.json ./
+COPY packages/utils/package.json packages/utils/
+COPY packages/config/package.json packages/config/
+COPY packages/db/package.json packages/db/
+COPY packages/image-processing/package.json packages/image-processing/
+COPY apps/mobile/package.json apps/mobile/
 
-# Create a simple static file server with minimal deps
-RUN echo '{"name":"photobrain-mobile","type":"module","dependencies":{"zod":"^4.2.1"}}' > package.json && bun install
+# Install dependencies
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install
 
-# Create the serve script
-RUN cat > serve.ts << 'EOF'
-import { z } from "zod";
+# Copy workspace packages needed by the mobile app
+COPY packages/utils packages/utils
+COPY packages/config packages/config
+COPY packages/db packages/db
+COPY packages/image-processing/browser.js packages/image-processing/browser.js
 
-const configSchema = z.object({
-  PORT: z.coerce.number().default(3002),
-  HOST: z.string().default("0.0.0.0"),
-});
+# Copy mobile app source
+COPY apps/mobile apps/mobile
 
-const config = configSchema.parse(process.env);
+WORKDIR /app/apps/mobile
 
-const server = Bun.serve({
-  port: config.PORT,
-  hostname: config.HOST,
-  async fetch(req) {
-    const url = new URL(req.url);
-    let pathname = url.pathname;
-
-    // Try to serve the file directly
-    let file = Bun.file(`./dist${pathname}`);
-
-    // If the path doesn't have an extension, try adding .html
-    if (!pathname.includes(".") || !(await file.exists())) {
-      file = Bun.file(`./dist${pathname}/index.html`);
-    }
-
-    // Fallback to index.html for SPA routing
-    if (!(await file.exists())) {
-      file = Bun.file("./dist/index.html");
-    }
-
-    if (await file.exists()) {
-      const contentType = getContentType(file.name || "");
-      return new Response(file, {
-        headers: {
-          "Content-Type": contentType,
-          "Cache-Control": pathname.includes("/_expo/")
-            ? "public, max-age=31536000, immutable"
-            : "no-cache",
-        },
-      });
-    }
-
-    return new Response("Not Found", { status: 404 });
-  },
-});
-
-function getContentType(filename: string): string {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const types: Record<string, string> = {
-    html: "text/html",
-    js: "application/javascript",
-    css: "text/css",
-    json: "application/json",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    svg: "image/svg+xml",
-    ico: "image/x-icon",
-    woff: "font/woff",
-    woff2: "font/woff2",
-    ttf: "font/ttf",
-  };
-  return types[ext || ""] || "application/octet-stream";
-}
-
-console.log(`Mobile web server running at http://${config.HOST}:${config.PORT}`);
-EOF
-
-EXPOSE 3002
-CMD ["bun", "run", "serve.ts"]
+EXPOSE 8081
+CMD ["bunx", "expo", "start", "--non-interactive", "--port", "8081"]
