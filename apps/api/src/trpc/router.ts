@@ -1,3 +1,4 @@
+import path from "node:path";
 import { getSubscriptionToken } from "@inngest/realtime";
 import { eq, like, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -189,11 +190,14 @@ export const appRouter = router({
 	scan: publicProcedure.mutation(async () => {
 		try {
 			const jobId = crypto.randomUUID();
+			// Resolve relative paths to absolute paths for Inngest functions
+			const absolutePhotoDir = path.resolve(config.PHOTO_DIRECTORY);
+			const absoluteThumbnailsDir = path.resolve(config.THUMBNAILS_DIRECTORY);
 			await inngest.send({
 				name: "photos/scan.requested",
 				data: {
-					directory: config.PHOTO_DIRECTORY,
-					thumbnailsDir: config.THUMBNAILS_DIRECTORY,
+					directory: absolutePhotoDir,
+					thumbnailsDir: absoluteThumbnailsDir,
 					jobId,
 				},
 			});

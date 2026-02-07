@@ -1,7 +1,7 @@
 import {
 	discoverPhotos as discoverPhotosRust,
 	type PhotoProcessingResult,
-	processPhotosWithCallback,
+	processPhotosBatch,
 } from "@photobrain/image-processing";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -197,78 +197,59 @@ export const scanPhotosFunction = inngest.createFunction(
 			data: { phase: "processing", current: 0, total: totalCount },
 		});
 
-		// Process photos - this is a long-running operation
-		// Note: step.run doesn't support streaming callbacks well, so we do this in one step
-		const result = await step.run("process-photos", async () => {
-			let successCount = 0;
-			let processedCount = 0;
-			let completedCount = 0;
+		// Process photos in batches for better progress reporting
+		const BATCH_SIZE = 20;
+		let totalSuccessCount = 0;
+		let totalProcessedCount = 0;
 
-			return new Promise<{ processed: number; successful: number }>(
-				(resolve) => {
-					if (totalCount === 0) {
-						resolve({ processed: 0, successful: 0 });
-						return;
-					}
+		for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
+			const batchNum = Math.floor(i / BATCH_SIZE);
+			const batchFilePaths = filePaths.slice(i, i + BATCH_SIZE);
+			const batchRelativePaths = relativePaths.slice(i, i + BATCH_SIZE);
 
-					processPhotosWithCallback(
-						filePaths,
-						relativePaths,
+			const batchResults = await step.run(
+				`process-batch-${batchNum}`,
+				async () => {
+					console.log(
+						`Processing batch ${batchNum + 1}/${Math.ceil(filePaths.length / BATCH_SIZE)}...`,
+					);
+					return processPhotosBatch(
+						batchFilePaths,
+						batchRelativePaths,
 						thumbnailsDir,
-						(photoResult: PhotoProcessingResult) => {
-							processedCount++;
-							const myIndex = processedCount;
-
-							if (myIndex % 50 === 0 || myIndex === 1) {
-								console.log(`Processing ${myIndex}/${totalCount}...`);
-							}
-
-							// Process async
-							(async () => {
-								try {
-									if (photoResult.success) {
-										await saveRustPhotoToDb(photoResult);
-										successCount++;
-									}
-								} catch (error) {
-									console.error(`Error saving ${photoResult.path}:`, error);
-								} finally {
-									completedCount++;
-
-									// Publish progress periodically (every 10 photos to avoid overwhelming)
-									if (
-										completedCount % 10 === 0 ||
-										completedCount === totalCount
-									) {
-										try {
-											await publish({
-												channel: `job:${jobId}`,
-												topic: "progress",
-												data: {
-													phase: "processing",
-													current: completedCount,
-													total: totalCount,
-												},
-											});
-										} catch {
-											// Ignore publish errors
-										}
-									}
-
-									if (completedCount >= totalCount) {
-										console.log(`All ${totalCount} photos processed!`);
-										resolve({
-											processed: totalCount,
-											successful: successCount,
-										});
-									}
-								}
-							})();
-						},
 					);
 				},
 			);
-		});
+
+			// Save results to database
+			let batchSuccessCount = 0;
+			for (const photoResult of batchResults) {
+				if (photoResult.success) {
+					try {
+						await saveRustPhotoToDb(photoResult);
+						batchSuccessCount++;
+					} catch (error) {
+						console.error(`Error saving ${photoResult.path}:`, error);
+					}
+				}
+			}
+
+			totalSuccessCount += batchSuccessCount;
+			totalProcessedCount += batchResults.length;
+
+			// Publish progress after each batch
+			await publish({
+				channel: `job:${jobId}`,
+				topic: "progress",
+				data: {
+					phase: "processing",
+					current: totalProcessedCount,
+					total: totalCount,
+				},
+			});
+		}
+
+		const result = { processed: totalProcessedCount, successful: totalSuccessCount };
 
 		console.log(
 			`✅ Scan complete: ${result.successful}/${result.processed} successful`,
