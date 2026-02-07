@@ -1,7 +1,9 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serve } from "inngest/hono";
 import { config } from "@/config";
+import { functions, inngest } from "@/inngest";
 import photosRouter from "@/routes/photos";
 import { createContext } from "@/trpc/context";
 import { appRouter } from "@/trpc/router";
@@ -28,6 +30,13 @@ app.all("/api/trpc/*", async (c) => {
 
 // Keep file serving as REST endpoint (better for streaming)
 app.route("/api/photos", photosRouter);
+
+// Inngest endpoint for background job processing
+app.on(
+	["GET", "PUT", "POST"],
+	"/api/inngest",
+	serve({ client: inngest, functions }),
+);
 
 console.log(`🚀 PhotoBrain API starting on ${config.HOST}:${config.PORT}`);
 console.log(`📸 Photo directory: ${config.PHOTO_DIRECTORY}`);

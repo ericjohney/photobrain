@@ -9,16 +9,17 @@ import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { PanelLayout } from "@/components/panels/PanelLayout";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
+import { useJobProgress } from "@/hooks/use-job-progress";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { usePanelState } from "@/hooks/use-panel-state";
-import { useTaskProgress } from "@/hooks/use-task-progress";
 import { trpc } from "@/lib/trpc";
 import type { PhotoMetadata } from "@/lib/types";
 
 export function Dashboard() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+	const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
 	// tRPC queries
 	const foldersQuery = trpc.folders.useQuery();
@@ -35,15 +36,20 @@ export function Dashboard() {
 		{ enabled: !!searchQuery },
 	);
 
-	// BullMQ-based async scan
+	// Inngest-based async scan
 	const scanMutation = trpc.scan.useMutation({
+		onSuccess: (data) => {
+			if (data.success && data.jobId) {
+				setActiveJobId(data.jobId);
+			}
+		},
 		onError: (error) => {
 			console.error("Scan failed:", error);
 		},
 	});
 
-	// Task progress tracking
-	const taskProgress = useTaskProgress();
+	// Job progress tracking via Inngest Realtime
+	const jobProgress = useJobProgress(activeJobId);
 
 	// Determine which data to use
 	const photosData = searchQuery ? searchPhotosQuery.data : photosQuery.data;
@@ -189,8 +195,11 @@ export function Dashboard() {
 					onSearch={handleSearch}
 					onRefresh={handleRefresh}
 					isRefreshing={scanMutation.isPending}
-					hasActiveJobs={taskProgress.hasActiveJobs}
-					processingProgress={taskProgress.totalProgress}
+					hasActiveJobs={jobProgress.isActive}
+					processingProgress={{
+						current: jobProgress.progress.current,
+						total: jobProgress.progress.total,
+					}}
 					photoCount={photos.length}
 					selectedCount={library.selectedCount}
 				/>
@@ -207,10 +216,9 @@ export function Dashboard() {
 						/>
 					</div>
 					<ActivityPanel
-						scanProgress={taskProgress.scanProgress}
-						phashProgress={taskProgress.phashProgress}
-						embeddingProgress={taskProgress.embeddingProgress}
-						hasActiveJobs={taskProgress.hasActiveJobs}
+						progress={jobProgress.progress}
+						isActive={jobProgress.isActive}
+						isCompleted={jobProgress.isCompleted}
 					/>
 				</div>
 			}

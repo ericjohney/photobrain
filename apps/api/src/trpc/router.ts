@@ -1,23 +1,11 @@
+import { getSubscriptionToken } from "@inngest/realtime";
 import { eq, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "@/config";
 import { photos as photosTable } from "@/db/schema";
-import {
-	addScanJob,
-	embeddingQueue,
-	embeddingQueueEvents,
-	getJobCounts,
-	phashQueue,
-	phashQueueEvents,
-	scanQueue,
-	scanQueueEvents,
-} from "@/queue";
+import { inngest } from "@/inngest";
 import { searchPhotosByText } from "@/services/vector-search";
 import { publicProcedure, router } from "./trpc";
-
-// Task types for subscriptions
-const TaskTypeSchema = z.enum(["scan", "phash", "embedding"]);
-type TaskType = z.infer<typeof TaskTypeSchema>;
 
 // Folder tree node type
 export type FolderNode = {
@@ -197,14 +185,19 @@ export const appRouter = router({
 			};
 		}),
 
-	// Start a scan job (BullMQ-based async scan)
+	// Start a scan job (Inngest-based async scan)
 	scan: publicProcedure.mutation(async () => {
 		try {
-			const job = await addScanJob({
-				directory: config.PHOTO_DIRECTORY,
-				thumbnailsDir: config.THUMBNAILS_DIRECTORY,
+			const jobId = crypto.randomUUID();
+			await inngest.send({
+				name: "photos/scan.requested",
+				data: {
+					directory: config.PHOTO_DIRECTORY,
+					thumbnailsDir: config.THUMBNAILS_DIRECTORY,
+					jobId,
+				},
 			});
-			return { success: true, jobId: job.id };
+			return { success: true, jobId };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
 			console.error("Failed to start scan job:", message);
@@ -212,156 +205,15 @@ export const appRouter = router({
 		}
 	}),
 
-	// Get job counts for all queues
-	jobCounts: publicProcedure.query(async () => {
-		try {
-			const counts = await getJobCounts();
-			return { counts };
-		} catch (error) {
-			console.error("Failed to get job counts:", error);
-			return {
-				counts: {
-					scan: { active: 0, waiting: 0, completed: 0, failed: 0 },
-					phash: { active: 0, waiting: 0, completed: 0, failed: 0 },
-					embedding: { active: 0, waiting: 0, completed: 0, failed: 0 },
-				},
-			};
-		}
-	}),
-
-	// Subscription for task progress updates (SSE via BullMQ QueueEvents)
-	onTaskProgress: publicProcedure
-		.input(
-			z
-				.object({
-					taskTypes: z.array(TaskTypeSchema).optional(),
-				})
-				.optional(),
-		)
-		.subscription(async function* (opts) {
-			const { taskTypes } = opts.input ?? {};
-
-			// Create event handlers for each queue
-			const eventQueues: Array<{
-				type: TaskType;
-				events: typeof scanQueueEvents;
-				queue: typeof scanQueue;
-			}> = [];
-
-			if (!taskTypes || taskTypes.includes("scan")) {
-				eventQueues.push({
-					type: "scan",
-					events: scanQueueEvents,
-					queue: scanQueue,
-				});
-			}
-			if (!taskTypes || taskTypes.includes("phash")) {
-				eventQueues.push({
-					type: "phash",
-					events: phashQueueEvents,
-					queue: phashQueue,
-				});
-			}
-			if (!taskTypes || taskTypes.includes("embedding")) {
-				eventQueues.push({
-					type: "embedding",
-					events: embeddingQueueEvents,
-					queue: embeddingQueue,
-				});
-			}
-
-			// Set up event listeners with a shared event queue
-			const eventBuffer: Array<{
-				type: "progress" | "completed" | "failed" | "active";
-				taskType: TaskType;
-				jobId: string;
-				data?: unknown;
-				returnvalue?: unknown;
-				failedReason?: string;
-			}> = [];
-
-			const cleanupFns: Array<() => void> = [];
-
-			for (const { type, events } of eventQueues) {
-				const onProgress = ({
-					jobId,
-					data,
-				}: {
-					jobId: string;
-					data: unknown;
-				}) => {
-					eventBuffer.push({ type: "progress", taskType: type, jobId, data });
-				};
-				const onCompleted = ({
-					jobId,
-					returnvalue,
-				}: {
-					jobId: string;
-					returnvalue: unknown;
-				}) => {
-					eventBuffer.push({
-						type: "completed",
-						taskType: type,
-						jobId,
-						returnvalue,
-					});
-				};
-				const onFailed = ({
-					jobId,
-					failedReason,
-				}: {
-					jobId: string;
-					failedReason: string;
-				}) => {
-					eventBuffer.push({
-						type: "failed",
-						taskType: type,
-						jobId,
-						failedReason,
-					});
-				};
-				const onActive = ({ jobId }: { jobId: string }) => {
-					eventBuffer.push({ type: "active", taskType: type, jobId });
-				};
-
-				events.on("progress", onProgress);
-				events.on("completed", onCompleted);
-				events.on("failed", onFailed);
-				events.on("active", onActive);
-
-				cleanupFns.push(() => {
-					events.off("progress", onProgress);
-					events.off("completed", onCompleted);
-					events.off("failed", onFailed);
-					events.off("active", onActive);
-				});
-			}
-
-			try {
-				// Poll for events and yield them
-				while (true) {
-					// Drain the event buffer
-					while (eventBuffer.length > 0) {
-						const event = eventBuffer.shift()!;
-						yield {
-							eventType: event.type,
-							taskType: event.taskType,
-							jobId: event.jobId,
-							data: event.data,
-							returnvalue: event.returnvalue,
-							failedReason: event.failedReason,
-						};
-					}
-
-					// Small delay before checking again
-					await new Promise((resolve) => setTimeout(resolve, 100));
-				}
-			} finally {
-				// Cleanup event listeners
-				for (const cleanup of cleanupFns) {
-					cleanup();
-				}
-			}
+	// Get realtime subscription token for job progress
+	realtimeToken: publicProcedure
+		.input(z.object({ jobId: z.string() }))
+		.query(async ({ input }) => {
+			const token = await getSubscriptionToken(inngest, {
+				channel: `job:${input.jobId}`,
+				topics: ["progress"],
+			});
+			return { token };
 		}),
 });
 

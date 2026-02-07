@@ -24,7 +24,6 @@ COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
-COPY apps/worker/package.json apps/worker/
 COPY apps/mobile/package.json apps/mobile/
 
 # Install dependencies with cache mount
@@ -91,53 +90,7 @@ EXPOSE 3000
 CMD ["bun", "run", "src/index.ts"]
 
 # =============================================================================
-# Stage 3: Worker Production Image (BullMQ worker with Bun)
-# =============================================================================
-FROM oven/bun:1.3.5-slim AS worker
-
-# Install CA certificates (for HTTPS model downloads), exiftool and native module dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libimage-exiftool-perl \
-    libssl3 \
-    libzstd1 \
-    libheif1 \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy package files
-COPY --from=builder /app/package.json /app/bun.lock /app/turbo.json ./
-
-# Copy node_modules
-COPY --from=builder /app/node_modules ./node_modules
-
-# Copy image-processing - only the linux binary
-COPY --from=builder /app/packages/image-processing/dist/index.js ./packages/image-processing/dist/
-COPY --from=builder /app/packages/image-processing/dist/index.d.ts ./packages/image-processing/dist/
-COPY --from=builder /app/packages/image-processing/dist/*.linux-*.node ./packages/image-processing/dist/
-COPY --from=builder /app/packages/image-processing/package.json ./packages/image-processing/
-
-# Copy other packages
-COPY --from=builder /app/packages/utils ./packages/utils
-COPY --from=builder /app/packages/config ./packages/config
-COPY --from=builder /app/packages/db ./packages/db
-
-# Copy worker app source (runs directly with Bun, no build step)
-COPY apps/worker ./apps/worker
-
-# Remove darwin native modules
-RUN find /app/node_modules -name "*.darwin-*.node" -delete 2>/dev/null || true
-
-WORKDIR /app/apps/worker
-
-ENV REDIS_URL=redis://redis:6379
-ENV DATABASE_PATH=/data/photobrain.db
-
-CMD ["bun", "run", "src/index.ts"]
-
-# =============================================================================
-# Stage 4: Web Builder - Build the Vite frontend
+# Stage 3: Web Builder - Build the Vite frontend
 # =============================================================================
 FROM builder AS web-builder
 
@@ -145,7 +98,7 @@ FROM builder AS web-builder
 RUN bun run build --filter=@photobrain/web
 
 # =============================================================================
-# Stage 5: Web Production Image
+# Stage 4: Web Production Image
 # =============================================================================
 FROM oven/bun:1.3.5-slim AS web
 
@@ -163,7 +116,7 @@ EXPOSE 3001
 CMD ["bun", "run", "serve.ts"]
 
 # =============================================================================
-# Stage 6: Mobile Expo Dev Server
+# Stage 5: Mobile Expo Dev Server
 # Runs the Expo dev server so Expo Go on Android can connect to it.
 # =============================================================================
 FROM oven/bun:1.3.5-debian AS mobile
@@ -178,7 +131,6 @@ COPY packages/db/package.json packages/db/
 COPY packages/image-processing/package.json packages/image-processing/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
-COPY apps/worker/package.json apps/worker/
 COPY apps/mobile/package.json apps/mobile/
 
 # Install dependencies

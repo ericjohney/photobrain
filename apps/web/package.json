@@ -8,6 +8,7 @@
 		"build": "bunx vite build"
 	},
 	"dependencies": {
+		"@inngest/realtime": "^0.4.5",
 		"@photobrain/api": "workspace:*",
 		"@photobrain/utils": "workspace:*",
 		"@radix-ui/react-collapsible": "^1.1.12",

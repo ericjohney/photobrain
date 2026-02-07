@@ -12,14 +12,14 @@
 	},
 	"dependencies": {
 		"@hono/node-server": "^1.19.7",
+		"@inngest/realtime": "^0.4.5",
 		"@photobrain/db": "workspace:*",
 		"@photobrain/image-processing": "workspace:*",
 		"@photobrain/utils": "workspace:*",
 		"@trpc/server": "^11.0.0",
-		"bullmq": "^5.0.0",
 		"drizzle-orm": "^0.45.1",
 		"hono": "^4.11.3",
-		"ioredis": "^5.4.0",
+		"inngest": "^3.51.0",
 		"sqlite-vec": "^0.1.7-alpha.2",
 		"superjson": "^2.2.1",
 		"zod": "^3.24.0"
