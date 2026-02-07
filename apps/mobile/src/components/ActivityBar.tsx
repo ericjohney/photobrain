@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { TaskProgress } from "@photobrain/utils";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, {
@@ -8,10 +7,17 @@ import Animated, {
 } from "react-native-reanimated";
 import { useColors } from "@/theme";
 
+interface ProgressData {
+	phase: string | null;
+	current: number;
+	total: number;
+	percentage: number;
+}
+
 interface ActivityBarProps {
-	scanProgress: TaskProgress;
-	embeddingProgress: TaskProgress;
-	hasActiveJobs: boolean;
+	progress: ProgressData;
+	isActive: boolean;
+	isCompleted: boolean;
 }
 
 function ProgressBar({
@@ -41,78 +47,83 @@ function ProgressBar({
 	);
 }
 
+function getPhaseLabel(phase: string | null): string {
+	switch (phase) {
+		case "discovering":
+			return "Discovering Photos";
+		case "processing":
+			return "Processing Photos";
+		case "embedding":
+			return "Generating Embeddings";
+		case "scan-complete":
+			return "Scan Complete";
+		case "completed":
+			return "Complete";
+		default:
+			return "Processing";
+	}
+}
+
+function getPhaseIcon(phase: string | null): keyof typeof Ionicons.glyphMap {
+	switch (phase) {
+		case "discovering":
+		case "processing":
+		case "scan-complete":
+			return "scan-outline";
+		case "embedding":
+			return "sparkles-outline";
+		default:
+			return "hourglass-outline";
+	}
+}
+
 export default function ActivityBar({
-	scanProgress,
-	embeddingProgress,
-	hasActiveJobs,
+	progress,
+	isActive,
+	isCompleted,
 }: ActivityBarProps) {
 	const colors = useColors();
 
-	if (!hasActiveJobs) {
+	if (!isActive && !isCompleted) {
 		return null;
 	}
 
-	const isScanActive =
-		scanProgress.total > 0 && scanProgress.current < scanProgress.total;
-	const isEmbeddingActive =
-		embeddingProgress.total > 0 &&
-		embeddingProgress.current < embeddingProgress.total;
+	const label = getPhaseLabel(progress.phase);
+	const icon = getPhaseIcon(progress.phase);
+	const isEmbedding = progress.phase === "embedding";
 
 	return (
 		<View style={[styles.container, { backgroundColor: colors.toolbar }]}>
-			{isScanActive && (
-				<View style={styles.progressRow}>
-					<View style={styles.progressLabel}>
-						<Ionicons
-							name="scan-outline"
-							size={14}
-							color={colors.mutedForeground}
-						/>
-						<Text style={[styles.progressText, { color: colors.foreground }]}>
-							Scanning
-						</Text>
-					</View>
+			<View style={styles.progressRow}>
+				<View style={styles.progressLabel}>
+					{isActive ? (
+						<Ionicons name={icon} size={14} color={colors.primary} />
+					) : isCompleted ? (
+						<Ionicons name="checkmark-circle" size={14} color="#22c55e" />
+					) : (
+						<Ionicons name={icon} size={14} color={colors.mutedForeground} />
+					)}
+					<Text style={[styles.progressText, { color: colors.foreground }]}>
+						{label}
+					</Text>
+				</View>
+				{progress.total > 0 && (
 					<View style={styles.progressInfo}>
 						<Text
 							style={[styles.progressCount, { color: colors.mutedForeground }]}
 						>
-							{scanProgress.current} / {scanProgress.total}
+							{progress.current} / {progress.total}
 						</Text>
 					</View>
+				)}
+				{progress.total > 0 && (
 					<ProgressBar
-						current={scanProgress.current}
-						total={scanProgress.total}
-						color={colors.primary}
+						current={progress.current}
+						total={progress.total}
+						color={isCompleted ? "#22c55e" : isEmbedding ? "#22c55e" : colors.primary}
 					/>
-				</View>
-			)}
-
-			{isEmbeddingActive && (
-				<View style={styles.progressRow}>
-					<View style={styles.progressLabel}>
-						<Ionicons
-							name="sparkles-outline"
-							size={14}
-							color={colors.mutedForeground}
-						/>
-						<Text style={[styles.progressText, { color: colors.foreground }]}>
-							Indexing
-						</Text>
-					</View>
-					<View style={styles.progressInfo}>
-						<Text
-							style={[styles.progressCount, { color: colors.mutedForeground }]}
-						>
-							{embeddingProgress.current} / {embeddingProgress.total}
-						</Text>
-					</View>
-					<ProgressBar
-						current={embeddingProgress.current}
-						total={embeddingProgress.total}
-						color="#22c55e"
-					/>
-				</View>
-			)}
+				)}
+			</View>
 		</View>
 	);
 }

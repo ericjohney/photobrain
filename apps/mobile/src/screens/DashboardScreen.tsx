@@ -19,7 +19,7 @@ import PhotoGrid from "@/components/PhotoGrid";
 import SearchBar from "@/components/SearchBar";
 import { API_URL } from "@/config";
 import { useLibraryState } from "@/hooks/use-library-state";
-import { useTaskProgress } from "@/hooks/use-task-progress";
+import { useJobProgress } from "@/hooks/use-job-progress";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/theme";
 
@@ -32,6 +32,7 @@ export default function DashboardScreen() {
 	const [metadataPhoto, setMetadataPhoto] = useState<PhotoMetadata | null>(
 		null,
 	);
+	const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
 	// tRPC queries
 	const photosQuery = trpc.photos.useQuery(undefined, {
@@ -46,7 +47,10 @@ export default function DashboardScreen() {
 	);
 
 	const scanMutation = trpc.scan.useMutation({
-		onSuccess: () => {
+		onSuccess: (data) => {
+			if (data.jobId) {
+				setActiveJobId(data.jobId);
+			}
 			photosQuery.refetch();
 		},
 		onError: (err) => {
@@ -54,8 +58,8 @@ export default function DashboardScreen() {
 		},
 	});
 
-	// Task progress tracking
-	const taskProgress = useTaskProgress();
+	// Job progress tracking
+	const jobProgress = useJobProgress(activeJobId);
 
 	// Determine which data to display
 	const isSearching = searchQuery.trim().length > 0;
@@ -186,9 +190,9 @@ export default function DashboardScreen() {
 					<Pressable
 						style={[styles.scanButton, { backgroundColor: colors.primary }]}
 						onPress={handleScan}
-						disabled={scanMutation.isPending || taskProgress.hasActiveJobs}
+						disabled={scanMutation.isPending || jobProgress.isActive}
 					>
-						{scanMutation.isPending || taskProgress.hasActiveJobs ? (
+						{scanMutation.isPending || jobProgress.isActive ? (
 							<ActivityIndicator size="small" color="#ffffff" />
 						) : (
 							<>
@@ -202,9 +206,9 @@ export default function DashboardScreen() {
 
 			{/* Activity/Progress bar */}
 			<ActivityBar
-				scanProgress={taskProgress.scanProgress}
-				embeddingProgress={taskProgress.embeddingProgress}
-				hasActiveJobs={taskProgress.hasActiveJobs}
+				progress={jobProgress.progress}
+				isActive={jobProgress.isActive}
+				isCompleted={jobProgress.isCompleted}
 			/>
 
 			{/* Error display */}
