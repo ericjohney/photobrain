@@ -1,10 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
-import Animated, {
-	useAnimatedStyle,
-	withSpring,
-} from "react-native-reanimated";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/theme";
 
 interface ProgressData {
@@ -32,16 +28,22 @@ function ProgressBar({
 	const colors = useColors();
 	const progress = total > 0 ? (current / total) * 100 : 0;
 
-	const animatedStyle = useAnimatedStyle(() => ({
-		width: withSpring(`${progress}%`, { damping: 15, stiffness: 100 }),
-	}));
-
 	return (
 		<View
 			style={[styles.progressBarContainer, { backgroundColor: colors.muted }]}
 		>
-			<Animated.View
-				style={[styles.progressBar, { backgroundColor: color }, animatedStyle]}
+			<View
+				style={[
+					styles.progressBar,
+					{
+						backgroundColor: color,
+						width: `${progress}%`,
+						// CSS transition for smooth animation on web
+						...(Platform.OS === "web" && {
+							transition: "width 0.3s ease-out",
+						}),
+					} as any,
+				]}
 			/>
 		</View>
 	);
