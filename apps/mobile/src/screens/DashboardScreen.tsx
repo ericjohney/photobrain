@@ -1,22 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
-import React, { useCallback, useState } from "react";
+import { useNavigation } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	ActivityIndicator,
+	Dimensions,
+	FlatList,
 	Pressable,
 	RefreshControl,
-	ScrollView,
 	StyleSheet,
 	Text,
 	View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import ActivityBar from "@/components/ActivityBar";
-import Filmstrip from "@/components/Filmstrip";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
-import PhotoGrid from "@/components/PhotoGrid";
-import SearchBar from "@/components/SearchBar";
 import { API_URL } from "@/config";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { useJobProgress } from "@/hooks/use-job-progress";
@@ -26,25 +28,97 @@ import { useColors } from "@/theme";
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const COLUMNS = 4;
+const SPACING = 1.5;
+const ITEM_SIZE = (SCREEN_WIDTH - SPACING * (COLUMNS - 1)) / COLUMNS;
+
+type SectionItem =
+	| { type: "month-header"; title: string; key: string }
+	| { type: "date-header"; title: string; key: string }
+	| { type: "photo-row"; photos: PhotoMetadata[]; key: string };
+
+function groupPhotosByDate(photos: PhotoMetadata[]): SectionItem[] {
+	if (photos.length === 0) return [];
+
+	// Sort photos newest first
+	const sorted = [...photos].sort((a, b) => {
+		const dateA = a.exif?.dateTaken || a.modifiedAt || a.createdAt;
+		const dateB = b.exif?.dateTaken || b.modifiedAt || b.createdAt;
+		return new Date(dateB).getTime() - new Date(dateA).getTime();
+	});
+
+	const items: SectionItem[] = [];
+	let lastMonth = "";
+	let lastDate = "";
+	let currentRow: PhotoMetadata[] = [];
+
+	const flushRow = () => {
+		if (currentRow.length > 0) {
+			items.push({
+				type: "photo-row",
+				photos: [...currentRow],
+				key: `row-${currentRow[0].id}`,
+			});
+			currentRow = [];
+		}
+	};
+
+	for (const photo of sorted) {
+		const dateStr = photo.exif?.dateTaken || photo.modifiedAt || photo.createdAt;
+		const date = new Date(dateStr);
+		const monthKey = date.toLocaleDateString("en-US", {
+			year: "numeric",
+			month: "long",
+		});
+		const dateKey = date.toLocaleDateString("en-US", {
+			weekday: "short",
+			month: "short",
+			day: "numeric",
+			year: "numeric",
+		});
+
+		if (monthKey !== lastMonth) {
+			flushRow();
+			items.push({
+				type: "month-header",
+				title: monthKey,
+				key: `month-${monthKey}`,
+			});
+			lastMonth = monthKey;
+			lastDate = "";
+		}
+
+		if (dateKey !== lastDate) {
+			flushRow();
+			items.push({
+				type: "date-header",
+				title: dateKey,
+				key: `date-${dateKey}`,
+			});
+			lastDate = dateKey;
+		}
+
+		currentRow.push(photo);
+		if (currentRow.length === COLUMNS) {
+			flushRow();
+		}
+	}
+	flushRow();
+
+	return items;
+}
+
 export default function DashboardScreen() {
 	const colors = useColors();
-	const [searchQuery, setSearchQuery] = useState("");
+	const insets = useSafeAreaInsets();
 	const [metadataPhoto, setMetadataPhoto] = useState<PhotoMetadata | null>(
 		null,
 	);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
 	// tRPC queries
-	const photosQuery = trpc.photos.useQuery(undefined, {
-		enabled: !searchQuery.trim(),
-	});
-
-	const searchPhotosQuery = trpc.searchPhotos.useQuery(
-		{ query: searchQuery, limit: 50 },
-		{
-			enabled: searchQuery.trim().length > 0,
-		},
-	);
+	const photosQuery = trpc.photos.useQuery();
 
 	const scanMutation = trpc.scan.useMutation({
 		onSuccess: (data) => {
@@ -53,51 +127,49 @@ export default function DashboardScreen() {
 			}
 			photosQuery.refetch();
 		},
-		onError: (err) => {
-			console.error("Scan error:", err.message);
-		},
 	});
 
 	// Job progress tracking
 	const jobProgress = useJobProgress(activeJobId);
 
-	// Determine which data to display
-	const isSearching = searchQuery.trim().length > 0;
-	const activeQuery = isSearching ? searchPhotosQuery : photosQuery;
-	const photos = activeQuery.data?.photos ?? [];
-	const loading = activeQuery.isLoading;
-	const error = activeQuery.error?.message ?? null;
+	const photos = photosQuery.data?.photos ?? [];
+	const loading = photosQuery.isLoading;
 
 	// Library state for selection and view mode
 	const library = useLibraryState(photos);
+
+	// Hide tab bar when in loupe mode
+	const navigation = useNavigation();
+	useEffect(() => {
+		navigation.setOptions({
+			tabBarStyle: library.viewMode === "loupe" ? { display: "none" } : undefined,
+		});
+	}, [library.viewMode, navigation]);
+
+	// Group photos by date
+	const sections = useMemo(() => groupPhotosByDate(photos), [photos]);
 
 	// Handlers
 	const handleScan = useCallback(() => {
 		scanMutation.mutate();
 	}, [scanMutation]);
 
-	const handleSearchChange = useCallback((text: string) => {
-		setSearchQuery(text);
-	}, []);
-
-	const handleSearchClear = useCallback(() => {
-		setSearchQuery("");
-	}, []);
-
 	const handleRefresh = useCallback(() => {
-		activeQuery.refetch();
-	}, [activeQuery]);
+		photosQuery.refetch();
+	}, [photosQuery]);
 
 	const handlePhotoPress = useCallback(
 		(photo: PhotoMetadata) => {
-			library.selectPhoto(photo);
+			Haptics.selectionAsync();
+			library.openInLoupe(photo);
 		},
 		[library],
 	);
 
 	const handlePhotoLongPress = useCallback(
 		(photo: PhotoMetadata) => {
-			library.openInLoupe(photo);
+			Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+			library.selectPhoto(photo);
 		},
 		[library],
 	);
@@ -109,13 +181,6 @@ export default function DashboardScreen() {
 	const handleLoupeIndexChange = useCallback(
 		(index: number) => {
 			library.navigateToIndex(index);
-		},
-		[library],
-	);
-
-	const handleFilmstripPress = useCallback(
-		(photo: PhotoMetadata) => {
-			library.selectPhoto(photo);
 		},
 		[library],
 	);
@@ -166,29 +231,142 @@ export default function DashboardScreen() {
 		);
 	}
 
-	// Grid view
-	return (
-		<View style={[styles.container, { backgroundColor: colors.background }]}>
-			{/* Header with search and actions */}
-			<View style={[styles.header, { backgroundColor: colors.toolbar }]}>
-				<SearchBar
-					value={searchQuery}
-					onChangeText={handleSearchChange}
-					onClear={handleSearchClear}
-					loading={searchPhotosQuery.isFetching}
-				/>
-				<View style={styles.actions}>
-					<View style={styles.photoCount}>
-						<Text
-							style={[styles.photoCountText, { color: colors.mutedForeground }]}
-						>
-							{photos.length} photos
-							{library.selectedCount > 0 &&
-								` (${library.selectedCount} selected)`}
-						</Text>
-					</View>
+	const renderItem = ({ item }: { item: SectionItem }) => {
+		if (item.type === "month-header") {
+			return (
+				<View style={styles.monthHeader}>
+					<Text style={[styles.monthHeaderText, { color: colors.foreground }]}>
+						{item.title}
+					</Text>
+				</View>
+			);
+		}
+
+		if (item.type === "date-header") {
+			return (
+				<View style={styles.dateHeader}>
+					<Text
+						style={[styles.dateHeaderText, { color: colors.mutedForeground }]}
+					>
+						{item.title}
+					</Text>
 					<Pressable
-						style={[styles.scanButton, { backgroundColor: colors.primary }]}
+						style={[
+							styles.selectCircle,
+							{ borderColor: colors.mutedForeground },
+						]}
+						onPress={() => {
+							Haptics.selectionAsync();
+						}}
+					>
+						<Ionicons
+							name="checkmark"
+							size={14}
+							color={colors.mutedForeground}
+							style={{ opacity: 0.4 }}
+						/>
+					</Pressable>
+				</View>
+			);
+		}
+
+		// photo-row
+		const rowPhotos = item.photos;
+		return (
+			<View style={styles.photoRow}>
+				{rowPhotos.map((photo) => {
+					const isSelected = library.selectedPhotos.has(photo.id);
+					return (
+						<Pressable
+							key={photo.id}
+							onPress={() => handlePhotoPress(photo)}
+							onLongPress={() => handlePhotoLongPress(photo)}
+							style={[
+								styles.photoContainer,
+								{ backgroundColor: colors.muted },
+							]}
+						>
+							<Image
+								source={{
+									uri: `${API_URL}/api/photos/${photo.id}/thumbnail/tiny`,
+								}}
+								style={styles.photo}
+								contentFit="cover"
+								transition={150}
+								cachePolicy="memory-disk"
+								placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
+							/>
+
+							{/* RAW badge */}
+							{photo.isRaw && (
+								<View style={styles.rawBadge}>
+									<Text style={styles.rawBadgeText}>
+										{photo.rawFormat || "RAW"}
+									</Text>
+								</View>
+							)}
+
+							{/* Selection overlay */}
+							{isSelected && (
+								<View
+									style={[
+										styles.selectionOverlay,
+										{ backgroundColor: `${colors.selection}30` },
+									]}
+								>
+									<View
+										style={[
+											styles.checkmark,
+											{ backgroundColor: colors.selection },
+										]}
+									>
+										<Ionicons name="checkmark" size={14} color="#ffffff" />
+									</View>
+								</View>
+							)}
+						</Pressable>
+					);
+				})}
+				{/* Fill remaining space in incomplete rows */}
+				{rowPhotos.length < COLUMNS &&
+					Array.from({ length: COLUMNS - rowPhotos.length }).map((_, i) => (
+						<View
+							key={`spacer-${i}`}
+							style={[styles.photoContainer, { backgroundColor: "transparent" }]}
+						/>
+					))}
+			</View>
+		);
+	};
+
+	// Empty state
+	if (photos.length === 0 && !loading) {
+		return (
+			<View
+				style={[styles.container, { backgroundColor: colors.background }]}
+			>
+				<ActivityBar
+					progress={jobProgress.progress}
+					isActive={jobProgress.isActive}
+					isCompleted={jobProgress.isCompleted}
+				/>
+				<View style={styles.emptyContainer}>
+					<Ionicons
+						name="images-outline"
+						size={64}
+						color={colors.mutedForeground}
+						style={{ opacity: 0.25 }}
+					/>
+					<Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+						No photos found
+					</Text>
+					<Text
+						style={[styles.emptySubtext, { color: colors.mutedForeground }]}
+					>
+						Tap scan to import your photo library
+					</Text>
+					<Pressable
+						style={[styles.emptyButton, { backgroundColor: colors.primary }]}
 						onPress={handleScan}
 						disabled={scanMutation.isPending || jobProgress.isActive}
 					>
@@ -196,14 +374,18 @@ export default function DashboardScreen() {
 							<ActivityIndicator size="small" color="#ffffff" />
 						) : (
 							<>
-								<Ionicons name="refresh" size={18} color="#ffffff" />
-								<Text style={styles.scanButtonText}>Scan</Text>
+								<Ionicons name="scan-outline" size={20} color="#ffffff" />
+								<Text style={styles.emptyButtonText}>Scan Photos</Text>
 							</>
 						)}
 					</Pressable>
 				</View>
 			</View>
+		);
+	}
 
+	return (
+		<View style={[styles.container, { backgroundColor: colors.background }]}>
 			{/* Activity/Progress bar */}
 			<ActivityBar
 				progress={jobProgress.progress}
@@ -211,58 +393,75 @@ export default function DashboardScreen() {
 				isCompleted={jobProgress.isCompleted}
 			/>
 
-			{/* Error display */}
-			{error && (
-				<View
-					style={[
-						styles.errorContainer,
-						{ backgroundColor: `${colors.destructive}15` },
-					]}
-				>
-					<Ionicons name="alert-circle" size={20} color={colors.destructive} />
-					<Text style={[styles.errorText, { color: colors.destructive }]}>
-						{error}
-					</Text>
-				</View>
-			)}
-
-			{/* Photo grid */}
-			<View style={styles.content}>
-				{loading ? (
-					<ScrollView
-						refreshControl={
-							<RefreshControl
-								refreshing={activeQuery.isFetching}
-								onRefresh={handleRefresh}
-								tintColor={colors.primary}
-							/>
-						}
-						contentContainerStyle={styles.loadingContainer}
-					>
-						<ActivityIndicator size="large" color={colors.primary} />
-					</ScrollView>
-				) : (
-					<PhotoGrid
-						photos={photos}
-						selectedPhotos={library.selectedPhotos}
-						activePhotoId={library.activePhoto?.id}
-						onPhotoPress={handlePhotoPress}
-						onPhotoLongPress={handlePhotoLongPress}
-						apiUrl={API_URL}
+			<FlatList
+				data={sections}
+				keyExtractor={(item) => item.key}
+				renderItem={renderItem}
+				contentContainerStyle={{ paddingTop: insets.top }}
+				ListHeaderComponent={
+					<View style={styles.appHeader}>
+						<View style={styles.logoRow}>
+							<View
+								style={[
+									styles.logoCircle,
+									{ backgroundColor: colors.primary },
+								]}
+							>
+								<Ionicons name="images" size={16} color="#ffffff" />
+							</View>
+							<Text style={[styles.logoText, { color: colors.foreground }]}>
+								PhotoBrain
+							</Text>
+						</View>
+						<View style={styles.headerActions}>
+							<Pressable
+								onPress={handleScan}
+								disabled={scanMutation.isPending || jobProgress.isActive}
+								style={[
+									styles.headerButton,
+									{ backgroundColor: colors.muted },
+								]}
+							>
+								{scanMutation.isPending || jobProgress.isActive ? (
+									<ActivityIndicator size="small" color={colors.foreground} />
+								) : (
+									<Ionicons
+										name="sync-outline"
+										size={20}
+										color={colors.foreground}
+									/>
+								)}
+							</Pressable>
+							<View
+								style={[
+									styles.avatarCircle,
+									{
+										backgroundColor: colors.accent,
+										borderColor: colors.border,
+									},
+								]}
+							>
+								<Ionicons
+									name="person"
+									size={18}
+									color={colors.mutedForeground}
+								/>
+							</View>
+						</View>
+					</View>
+				}
+				refreshControl={
+					<RefreshControl
+						refreshing={photosQuery.isFetching}
+						onRefresh={handleRefresh}
+						tintColor={colors.primary}
 					/>
-				)}
-			</View>
-
-			{/* Filmstrip when a photo is selected */}
-			{library.activePhoto && photos.length > 1 && (
-				<Filmstrip
-					photos={photos}
-					activePhotoId={library.activePhoto.id}
-					selectedPhotos={library.selectedPhotos}
-					apiUrl={API_URL}
-					onPhotoPress={handleFilmstripPress}
-				/>
-			)}
+				}
+				initialNumToRender={15}
+				maxToRenderPerBatch={10}
+				windowSize={5}
+				removeClippedSubviews
+			/>
 
 			{/* Metadata panel */}
 			<MetadataPanel
@@ -279,36 +478,6 @@ const styles = StyleSheet.create({
 	container: {
 		flex: 1,
 	},
-	header: {
-		borderBottomWidth: 1,
-		borderBottomColor: "rgba(0,0,0,0.1)",
-	},
-	actions: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		padding: 12,
-		paddingTop: 0,
-	},
-	photoCount: {
-		flex: 1,
-	},
-	photoCountText: {
-		fontSize: 13,
-	},
-	scanButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		paddingHorizontal: 14,
-		paddingVertical: 8,
-		borderRadius: 6,
-		gap: 6,
-	},
-	scanButtonText: {
-		color: "#ffffff",
-		fontSize: 14,
-		fontWeight: "600",
-	},
 	centerContainer: {
 		flex: 1,
 		justifyContent: "center",
@@ -318,22 +487,152 @@ const styles = StyleSheet.create({
 		marginTop: 12,
 		fontSize: 16,
 	},
-	loadingContainer: {
-		flex: 1,
+	appHeader: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		alignItems: "center",
+		paddingHorizontal: 16,
+		paddingTop: 4,
+		paddingBottom: 8,
+	},
+	logoRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	logoCircle: {
+		width: 32,
+		height: 32,
+		borderRadius: 16,
 		justifyContent: "center",
 		alignItems: "center",
 	},
-	content: {
-		flex: 1,
+	logoText: {
+		fontSize: 20,
+		fontWeight: "800",
+		letterSpacing: -0.3,
 	},
-	errorContainer: {
+	headerActions: {
 		flexDirection: "row",
 		alignItems: "center",
-		padding: 12,
+		gap: 10,
+	},
+	headerButton: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	avatarCircle: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		justifyContent: "center",
+		alignItems: "center",
+		borderWidth: 1.5,
+	},
+	monthHeader: {
+		paddingHorizontal: 16,
+		paddingTop: 24,
+		paddingBottom: 4,
+	},
+	monthHeaderText: {
+		fontSize: 24,
+		fontWeight: "700",
+		letterSpacing: -0.3,
+	},
+	dateHeader: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		alignItems: "center",
+		paddingHorizontal: 16,
+		paddingTop: 12,
+		paddingBottom: 6,
+	},
+	dateHeaderText: {
+		fontSize: 14,
+		fontWeight: "500",
+	},
+	selectCircle: {
+		width: 24,
+		height: 24,
+		borderRadius: 12,
+		borderWidth: 1.5,
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	photoRow: {
+		flexDirection: "row",
+		gap: SPACING,
+		marginBottom: SPACING,
+	},
+	photoContainer: {
+		width: ITEM_SIZE,
+		height: ITEM_SIZE,
+		overflow: "hidden",
+	},
+	photo: {
+		width: "100%",
+		height: "100%",
+	},
+	rawBadge: {
+		position: "absolute",
+		top: 4,
+		left: 4,
+		backgroundColor: "rgba(249, 115, 22, 0.9)",
+		paddingHorizontal: 4,
+		paddingVertical: 2,
+		borderRadius: 3,
+	},
+	rawBadgeText: {
+		color: "#ffffff",
+		fontSize: 9,
+		fontWeight: "700",
+	},
+	selectionOverlay: {
+		...StyleSheet.absoluteFillObject,
+		borderRadius: 0,
+	},
+	checkmark: {
+		position: "absolute",
+		bottom: 6,
+		right: 6,
+		width: 22,
+		height: 22,
+		borderRadius: 11,
+		justifyContent: "center",
+		alignItems: "center",
+		borderWidth: 1.5,
+		borderColor: "#ffffff",
+	},
+	emptyContainer: {
+		flex: 1,
+		justifyContent: "center",
+		alignItems: "center",
+		padding: 24,
+		gap: 10,
+	},
+	emptyText: {
+		fontSize: 18,
+		fontWeight: "600",
+	},
+	emptySubtext: {
+		fontSize: 14,
+		textAlign: "center",
+		marginBottom: 16,
+	},
+	emptyButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		paddingHorizontal: 24,
+		paddingVertical: 12,
+		borderRadius: 24,
 		gap: 8,
 	},
-	errorText: {
-		flex: 1,
-		fontSize: 14,
+	emptyButtonText: {
+		color: "#ffffff",
+		fontSize: 16,
+		fontWeight: "600",
 	},
 });

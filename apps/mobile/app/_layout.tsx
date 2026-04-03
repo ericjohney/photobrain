@@ -14,25 +14,35 @@ function TabsNavigator() {
 	return (
 		<Tabs
 			screenOptions={{
-				tabBarActiveTintColor: colors.primary,
+				tabBarActiveTintColor: colors.foreground,
 				tabBarInactiveTintColor: colors.mutedForeground,
 				tabBarStyle: {
-					backgroundColor: colors.toolbar,
+					backgroundColor: colors.background,
 					borderTopColor: colors.border,
+					borderTopWidth: 0.5,
+					paddingTop: 4,
+				},
+				tabBarLabelStyle: {
+					fontSize: 10,
+					fontWeight: "500",
 				},
 				headerStyle: {
-					backgroundColor: colors.toolbar,
+					backgroundColor: colors.background,
+					shadowColor: "transparent",
+					elevation: 0,
 				},
 				headerTintColor: colors.foreground,
 				headerTitleStyle: {
-					fontWeight: "600",
+					fontWeight: "700",
+					fontSize: 18,
 				},
 			}}
 		>
 			<Tabs.Screen
 				name="index"
 				options={{
-					title: "Dashboard",
+					title: "Photos",
+					headerShown: false,
 					tabBarIcon: ({ focused, color, size }) => (
 						<Ionicons
 							name={focused ? "images" : "images-outline"}
@@ -43,12 +53,26 @@ function TabsNavigator() {
 				}}
 			/>
 			<Tabs.Screen
-				name="collections"
+				name="search"
 				options={{
-					title: "Collections",
+					title: "Search",
+					headerShown: false,
 					tabBarIcon: ({ focused, color, size }) => (
 						<Ionicons
-							name={focused ? "folder" : "folder-outline"}
+							name={focused ? "search" : "search-outline"}
+							size={size}
+							color={color}
+						/>
+					),
+				}}
+			/>
+			<Tabs.Screen
+				name="collections"
+				options={{
+					title: "Albums",
+					tabBarIcon: ({ focused, color, size }) => (
+						<Ionicons
+							name={focused ? "albums" : "albums-outline"}
 							size={size}
 							color={color}
 						/>
@@ -58,10 +82,10 @@ function TabsNavigator() {
 			<Tabs.Screen
 				name="preferences"
 				options={{
-					title: "Preferences",
+					title: "Library",
 					tabBarIcon: ({ focused, color, size }) => (
 						<Ionicons
-							name={focused ? "settings" : "settings-outline"}
+							name={focused ? "library" : "library-outline"}
 							size={size}
 							color={color}
 						/>
@@ -71,18 +95,7 @@ function TabsNavigator() {
 			<Tabs.Screen
 				name="about"
 				options={{
-					title: "About",
-					tabBarIcon: ({ focused, color, size }) => (
-						<Ionicons
-							name={
-								focused
-									? "information-circle"
-									: "information-circle-outline"
-							}
-							size={size}
-							color={color}
-						/>
-					),
+					href: null,
 				}}
 			/>
 		</Tabs>

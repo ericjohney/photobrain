@@ -14,7 +14,7 @@ import {
 	View,
 	type ViewToken,
 } from "react-native";
-import { useColors } from "@/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -28,7 +28,8 @@ interface LoupeViewProps {
 	onShowMetadata: (photo: PhotoMetadata) => void;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
+	Dimensions.get("window");
 
 export default function LoupeView({
 	photos,
@@ -38,7 +39,7 @@ export default function LoupeView({
 	onIndexChange,
 	onShowMetadata,
 }: LoupeViewProps) {
-	const colors = useColors();
+	const insets = useSafeAreaInsets();
 	const flatListRef = useRef<FlatList>(null);
 	const [currentIndex, setCurrentIndex] = useState(initialIndex);
 	const currentPhoto = photos[currentIndex];
@@ -57,26 +58,6 @@ export default function LoupeView({
 	const viewabilityConfig = useRef({
 		itemVisiblePercentThreshold: 50,
 	}).current;
-
-	const navigatePrev = useCallback(() => {
-		if (currentIndex > 0) {
-			Haptics.selectionAsync();
-			flatListRef.current?.scrollToIndex({
-				index: currentIndex - 1,
-				animated: true,
-			});
-		}
-	}, [currentIndex]);
-
-	const navigateNext = useCallback(() => {
-		if (currentIndex < photos.length - 1) {
-			Haptics.selectionAsync();
-			flatListRef.current?.scrollToIndex({
-				index: currentIndex + 1,
-				animated: true,
-			});
-		}
-	}, [currentIndex, photos.length]);
 
 	const renderPhoto = useCallback(
 		({ item }: { item: PhotoMetadata }) => (
@@ -105,41 +86,27 @@ export default function LoupeView({
 		[],
 	);
 
+	// Format the date nicely
+	const photoDate = currentPhoto?.exif?.dateTaken || currentPhoto?.modifiedAt;
+	const dateObj = photoDate ? new Date(photoDate) : null;
+	const formattedDate = dateObj
+		? dateObj.toLocaleDateString("en-US", {
+				weekday: "short",
+				month: "short",
+				day: "numeric",
+				year: "numeric",
+			})
+		: "";
+	const formattedTime = dateObj
+		? dateObj.toLocaleTimeString("en-US", {
+				hour: "numeric",
+				minute: "2-digit",
+			})
+		: "";
+
 	return (
-		<View style={[styles.container, { backgroundColor: colors.background }]}>
-			{/* Header */}
-			<View style={[styles.header, { backgroundColor: colors.toolbar }]}>
-				<Pressable onPress={onClose} style={styles.headerButton}>
-					<Ionicons name="close" size={28} color={colors.foreground} />
-				</Pressable>
-
-				<View style={styles.headerTitle}>
-					<Text
-						style={[styles.photoName, { color: colors.foreground }]}
-						numberOfLines={1}
-					>
-						{currentPhoto?.name ?? ""}
-					</Text>
-					<Text
-						style={[styles.photoCounter, { color: colors.mutedForeground }]}
-					>
-						{currentIndex + 1} / {photos.length}
-					</Text>
-				</View>
-
-				<Pressable
-					onPress={() => currentPhoto && onShowMetadata(currentPhoto)}
-					style={styles.headerButton}
-				>
-					<Ionicons
-						name="information-circle-outline"
-						size={28}
-						color={colors.foreground}
-					/>
-				</Pressable>
-			</View>
-
-			{/* Photo viewer with swipe */}
+		<View style={styles.container}>
+			{/* Photo viewer */}
 			<FlatList
 				ref={flatListRef}
 				data={photos}
@@ -156,64 +123,90 @@ export default function LoupeView({
 				bounces={false}
 			/>
 
-			{/* Navigation arrows */}
-			{currentIndex > 0 && (
-				<Pressable
-					style={[styles.navButton, styles.navButtonLeft]}
-					onPress={navigatePrev}
-				>
-					<View style={[styles.navButtonBg, { backgroundColor: colors.card }]}>
-						<Ionicons name="chevron-back" size={32} color={colors.foreground} />
-					</View>
+			{/* Top overlay controls */}
+			<View style={[styles.topBar, { paddingTop: insets.top + 4 }]}>
+				<Pressable onPress={onClose} style={styles.topButton}>
+					<Ionicons name="chevron-back" size={28} color="#ffffff" />
 				</Pressable>
-			)}
 
-			{currentIndex < photos.length - 1 && (
-				<Pressable
-					style={[styles.navButton, styles.navButtonRight]}
-					onPress={navigateNext}
-				>
-					<View style={[styles.navButtonBg, { backgroundColor: colors.card }]}>
+				<View style={styles.topActions}>
+					<Pressable style={styles.topButton}>
+						<Ionicons name="star-outline" size={24} color="#ffffff" />
+					</Pressable>
+					<Pressable style={styles.topButton}>
 						<Ionicons
-							name="chevron-forward"
-							size={32}
-							color={colors.foreground}
+							name="ellipsis-horizontal"
+							size={24}
+							color="#ffffff"
 						/>
-					</View>
-				</Pressable>
-			)}
+					</Pressable>
+				</View>
+			</View>
 
-			{/* Bottom info bar */}
-			<View style={[styles.bottomBar, { backgroundColor: colors.toolbar }]}>
-				<View style={styles.infoChips}>
-					{currentPhoto?.isRaw && (
-						<View style={[styles.chip, { backgroundColor: "#f97316" }]}>
-							<Text style={styles.chipText}>
-								{currentPhoto.rawFormat || "RAW"}
-							</Text>
-						</View>
-					)}
-					{currentPhoto && (
-						<>
-							<Text
-								style={[styles.infoText, { color: colors.mutedForeground }]}
-							>
-								{formatFileSize(currentPhoto.size)}
-							</Text>
-							{currentPhoto.width && currentPhoto.height && (
-								<Text
-									style={[styles.infoText, { color: colors.mutedForeground }]}
-								>
-									{currentPhoto.width} x {currentPhoto.height}
-								</Text>
-							)}
-							<Text
-								style={[styles.infoText, { color: colors.mutedForeground }]}
-							>
-								{formatDate(currentPhoto.modifiedAt)}
-							</Text>
-						</>
-					)}
+			{/* Bottom overlay */}
+			<View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+				{/* Date and info */}
+				<View style={styles.dateRow}>
+					<View>
+						<Text style={styles.dateText}>{formattedDate}</Text>
+						<Text style={styles.timeText}>
+							{formattedTime}
+							{currentPhoto?.width && currentPhoto?.height
+								? `  ·  ${currentPhoto.width} × ${currentPhoto.height}`
+								: ""}
+							{currentPhoto
+								? `  ·  ${formatFileSize(currentPhoto.size)}`
+								: ""}
+						</Text>
+					</View>
+				</View>
+
+				{/* Action buttons */}
+				<View style={styles.actionRow}>
+					<Pressable
+						style={styles.actionButton}
+						onPress={() => {
+							Haptics.selectionAsync();
+						}}
+					>
+						<Ionicons name="share-outline" size={24} color="#ffffff" />
+						<Text style={styles.actionLabel}>Share</Text>
+					</Pressable>
+
+					<Pressable
+						style={styles.actionButton}
+						onPress={() => {
+							Haptics.selectionAsync();
+						}}
+					>
+						<Ionicons name="heart-outline" size={24} color="#ffffff" />
+						<Text style={styles.actionLabel}>Like</Text>
+					</Pressable>
+
+					<Pressable
+						style={styles.actionButton}
+						onPress={() => {
+							Haptics.selectionAsync();
+							if (currentPhoto) onShowMetadata(currentPhoto);
+						}}
+					>
+						<Ionicons
+							name="information-circle-outline"
+							size={24}
+							color="#ffffff"
+						/>
+						<Text style={styles.actionLabel}>Info</Text>
+					</Pressable>
+
+					<Pressable
+						style={styles.actionButton}
+						onPress={() => {
+							Haptics.selectionAsync();
+						}}
+					>
+						<Ionicons name="trash-outline" size={24} color="#ffffff" />
+						<Text style={styles.actionLabel}>Delete</Text>
+					</Pressable>
 				</View>
 			</View>
 		</View>
@@ -223,32 +216,11 @@ export default function LoupeView({
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		paddingTop: 48,
-		paddingBottom: 12,
-		paddingHorizontal: 8,
-	},
-	headerButton: {
-		padding: 8,
-	},
-	headerTitle: {
-		flex: 1,
-		alignItems: "center",
-	},
-	photoName: {
-		fontSize: 16,
-		fontWeight: "600",
-	},
-	photoCounter: {
-		fontSize: 12,
-		marginTop: 2,
+		backgroundColor: "#000000",
 	},
 	photoContainer: {
 		width: SCREEN_WIDTH,
-		height: SCREEN_HEIGHT - 160,
+		height: SCREEN_HEIGHT,
 		justifyContent: "center",
 		alignItems: "center",
 	},
@@ -256,48 +228,62 @@ const styles = StyleSheet.create({
 		width: SCREEN_WIDTH,
 		height: "100%",
 	},
-	navButton: {
+	topBar: {
 		position: "absolute",
-		top: "50%",
-		marginTop: -24,
-		zIndex: 10,
-	},
-	navButtonLeft: {
-		left: 8,
-	},
-	navButtonRight: {
-		right: 8,
-	},
-	navButtonBg: {
-		width: 48,
-		height: 48,
-		borderRadius: 24,
-		justifyContent: "center",
+		top: 0,
+		left: 0,
+		right: 0,
+		flexDirection: "row",
+		justifyContent: "space-between",
 		alignItems: "center",
-		opacity: 0.9,
+		paddingHorizontal: 4,
+		paddingBottom: 8,
 	},
-	bottomBar: {
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		paddingBottom: 32,
+	topButton: {
+		padding: 10,
 	},
-	infoChips: {
+	topActions: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
-		flexWrap: "wrap",
 	},
-	chip: {
-		paddingHorizontal: 8,
-		paddingVertical: 4,
-		borderRadius: 4,
+	bottomBar: {
+		position: "absolute",
+		bottom: 0,
+		left: 0,
+		right: 0,
+		paddingHorizontal: 16,
+		paddingTop: 16,
+		background: "transparent",
 	},
-	chipText: {
+	dateRow: {
+		marginBottom: 16,
+	},
+	dateText: {
 		color: "#ffffff",
-		fontSize: 12,
+		fontSize: 15,
 		fontWeight: "600",
 	},
-	infoText: {
+	timeText: {
+		color: "rgba(255,255,255,0.65)",
 		fontSize: 13,
+		marginTop: 2,
+	},
+	actionRow: {
+		flexDirection: "row",
+		justifyContent: "space-around",
+		paddingTop: 12,
+		borderTopWidth: StyleSheet.hairlineWidth,
+		borderTopColor: "rgba(255,255,255,0.15)",
+	},
+	actionButton: {
+		alignItems: "center",
+		gap: 4,
+		paddingVertical: 4,
+		paddingHorizontal: 16,
+	},
+	actionLabel: {
+		color: "rgba(255,255,255,0.7)",
+		fontSize: 11,
+		fontWeight: "500",
 	},
 });
