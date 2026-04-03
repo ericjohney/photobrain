@@ -1,0 +1,49 @@
+{
+	"cli": {
+		"version": ">= 15.0.0",
+		"appVersionSource": "remote"
+	},
+	"build": {
+		"development": {
+			"developmentClient": true,
+			"distribution": "internal",
+			"env": {
+				"EXPO_PUBLIC_API_URL": "https://photobrain-api.ericj5.com"
+			},
+			"ios": {
+				"simulator": false
+			}
+		},
+		"development-simulator": {
+			"developmentClient": true,
+			"distribution": "internal",
+			"env": {
+				"EXPO_PUBLIC_API_URL": "https://photobrain-api.ericj5.com"
+			},
+			"ios": {
+				"simulator": true
+			}
+		},
+		"preview": {
+			"distribution": "internal",
+			"env": {
+				"EXPO_PUBLIC_API_URL": "https://photobrain-api.ericj5.com"
+			},
+			"ios": {
+				"resourceClass": "m-medium"
+			}
+		},
+		"production": {
+			"autoIncrement": true,
+			"env": {
+				"EXPO_PUBLIC_API_URL": "https://photobrain-api.ericj5.com"
+			},
+			"ios": {
+				"resourceClass": "m-medium"
+			}
+		}
+	},
+	"submit": {
+		"production": {}
+	}
+}
