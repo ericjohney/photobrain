@@ -1,0 +1,43 @@
+# Dependencies (EAS installs these during build)
+node_modules/
+
+# Rust native module build artifacts
+packages/image-processing/target/
+packages/image-processing/*.node
+packages/image-processing/.fastembed_cache/
+
+# Database and data files
+*.db
+apps/api/thumbnails/
+apps/api/.fastembed_cache/
+.fastembed_cache/
+
+# Test screenshots and artifacts
+*.png
+*.jpg
+test-results/
+test-*.ts
+test-*.js
+
+# Git
+.git/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+
+# Build artifacts from other apps
+apps/web/dist/
+apps/api/dist/
+apps/worker/dist/
+
+# Turbo cache
+.turbo/
+
+# Claude
+.claude/
+
+# Misc
+temp-photos/
+*.log

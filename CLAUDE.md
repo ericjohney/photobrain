@@ -491,6 +491,23 @@ GitHub Actions workflow:
 - Pushes to `registry.ericj5.com`
 - Updates ArgoCD for GitOps deployment (includes `values-mobile.yaml`)
 
+### iOS App (EAS Build)
+The mobile app is built and distributed via [EAS Build](https://docs.expo.dev/build/introduction/).
+- **EAS project**: `@ericjohney/photobrain` (ID: `5fcc4958-f697-46c6-9cfc-cd2ce0ac695c`)
+- **Bundle ID**: `com.photobrain.app`
+- **Apple Team**: `27ZLS4MK3J` (Eric Johney, Individual)
+- **Production API URL**: `https://photobrain-api.ericj5.com` (configured in `eas.json` env)
+- **Build profiles**: `development` (dev client), `development-simulator`, `preview` (internal distribution), `production`
+- **`.easignore`**: Located at `apps/mobile/.easignore` — keeps upload under control (without it, archive is ~1.4 GB)
+
+```bash
+# Build for physical iPhone (internal distribution)
+cd apps/mobile && eas build --platform ios --profile preview
+
+# Build for simulator
+cd apps/mobile && eas build --platform ios --profile development-simulator
+```
+
 ### Production Dependencies
 - **Redis/Valkey** - Required for BullMQ job queues
 - Worker and API must share access to the same SQLite database file
