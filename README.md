@@ -7,15 +7,18 @@ A modern, AI-powered self-hosted photo management and gallery application with c
 - 🎨 **Lightroom-Inspired UI** - Professional three-panel layout with collapsible panels, filmstrip, and loupe view
 - 🖼️ **Fast Photo Grid Gallery** - Dense grid layout with adjustable thumbnail sizes and multi-select support
 - 🚀 **Multi-Size Thumbnails** - WebP thumbnails (tiny/small/medium/large) for 99% data reduction
-- 🔍 **AI-Powered Semantic Search** - Search photos by content using CLIP embeddings
+- 🔍 **AI-Powered Semantic Search** - Search photos by content using CLIP embeddings (deferred batch generation)
 - ⌨️ **Keyboard Shortcuts** - Lightroom-style shortcuts (G=grid, E=loupe, Tab=panels, arrows=navigate)
-- 📱 **Cross-Platform** - Web app and native mobile apps (iOS & Android)
+- 📱 **Cross-Platform** - Web app, Expo web export, and native mobile apps (iOS & Android) with full feature parity
 - ⚡ **High Performance** - Built with Rust for image processing and metadata extraction
-- 🔄 **Automatic Directory Scanning** - Detect and process new photos automatically
+- 🔄 **Automatic Directory Scanning** - Parallel file discovery with async BullMQ job processing
+- 📷 **RAW Image Support** - 14+ RAW formats (CR2, CR3, NEF, ARW, DNG, etc.) with native Rust processing
+- 🍎 **HEIF/HEIC Support** - Apple image format with magic byte detection for mislabeled files
 - 🎯 **Duplicate Detection** - Perceptual hashing for finding similar images
 - 💾 **SQLite Database** - Fast, reliable local storage with vector search
 - 🌓 **Light & Dark Themes** - Professional dark theme inspired by Adobe Lightroom
 - 📸 **EXIF Data Extraction** - Full camera metadata including GPS coordinates
+- 📂 **Folder Navigation** - Browse photos by directory structure
 
 ## Architecture
 
@@ -275,19 +278,26 @@ Rust NAPI module for high-performance image operations:
 ### Mobile Frontend
 
 - **React Native** - Cross-platform mobile framework
-- **Expo** - React Native development platform
+- **Expo** - React Native development platform (+ Expo web export)
 - **React Navigation** - Native navigation
 - **expo-image** - Optimized image component
+- **react-native-gesture-handler** - Swipe/gesture support
+- **react-native-reanimated** - Fluid animations
+- **react-native-web** - Web rendering layer for Expo web export
 
 ## API Endpoints
 
+### REST (file streaming)
 - `GET /api/health` - Health check
-- `GET /api/photos` - Get all photos
-- `GET /api/photos/:id` - Get single photo metadata
-- `GET /api/photos/:id/file` - Get full-resolution photo file
+- `GET /api/photos/:id/file` - Get full-resolution photo (or large thumbnail for RAW files)
 - `GET /api/photos/:id/thumbnail/:size` - Get thumbnail (sizes: tiny, small, medium, large)
-- `GET /api/photos/search?q=query` - Semantic search
-- `POST /api/scan` - Trigger directory scan
+
+### tRPC (type-safe RPC)
+- `photos` - Query all photos with EXIF data
+- `photo` - Query single photo by ID
+- `searchPhotos` - Semantic search with CLIP embeddings
+- `scan` - Mutation to start async scan job (BullMQ)
+- `onTaskProgress` - SSE subscription for job progress (scan, phash, embedding)
 
 ## Web UI
 
@@ -365,8 +375,15 @@ photobrain/
 │   │       └── main.tsx         # App entry point
 │   │
 │   └── mobile/
+│       ├── metro.config.js      # Metro bundler config (stubs native modules)
 │       ├── src/
-│       │   ├── components/      # React Native components
+│       │   ├── components/      # React Native components (feature parity with web)
+│       │   │   ├── ActivityBar.tsx   # Real-time scan/embedding progress
+│       │   │   ├── Filmstrip.tsx     # Horizontal thumbnail strip
+│       │   │   ├── LoupeView.tsx     # Full-screen photo viewer with swipe
+│       │   │   ├── MetadataPanel.tsx  # EXIF metadata display
+│       │   │   ├── PhotoGrid.tsx     # Thumbnail grid
+│       │   │   └── SearchBar.tsx     # Semantic search input
 │       │   ├── screens/         # Main screens
 │       │   ├── navigation/      # Navigation setup
 │       │   └── config.ts        # App configuration
@@ -384,12 +401,18 @@ photobrain/
     │       ├── schema.ts        # Drizzle ORM table definitions
     │       └── index.ts         # Database connection
     └── image-processing/        # Rust NAPI module
+        ├── browser.js           # Browser/Metro stub for native modules
         └── src/
-            ├── clip.rs          # CLIP embeddings
+            ├── batch.rs         # Unified photo processing (all types)
+            ├── clip.rs          # CLIP embeddings (batch generation)
+            ├── discovery.rs     # Parallel file discovery
             ├── exif.rs          # EXIF extraction
-            ├── metadata.rs      # Photo metadata
+            ├── heif.rs          # HEIF/HEIC decoding
+            ├── orientation.rs   # EXIF orientation correction
             ├── phash.rs         # Perceptual hashing
-            └── thumbnails.rs    # Thumbnail generation
+            ├── preview.rs       # Embedded preview extraction
+            ├── raw.rs           # RAW image processing (LibRaw)
+            └── thumbnails.rs    # WebP thumbnail generation
 ```
 
 ## Building for Production
@@ -403,7 +426,7 @@ bun run build
 
 Output will be in `apps/web/dist/`
 
-### Mobile App
+### Mobile App (Native)
 
 For iOS and Android, use [EAS Build](https://docs.expo.dev/build/introduction/):
 
@@ -411,6 +434,31 @@ For iOS and Android, use [EAS Build](https://docs.expo.dev/build/introduction/):
 cd apps/mobile
 eas build --platform ios
 eas build --platform android
+```
+
+### Mobile App (Web Export)
+
+The mobile app can also be exported as a static web app using Expo:
+
+```bash
+cd apps/mobile
+npx expo export --platform web
+```
+
+Output will be in `apps/mobile/dist/`. This is used in CI/CD for the mobile Docker image.
+
+### Docker
+
+Multi-stage Dockerfile builds all services:
+
+```bash
+# Build individual targets
+docker build --target api -t photobrain-api .
+docker build --target worker -t photobrain-worker .
+docker build --target web -t photobrain-web .
+
+# Mobile image requires pre-built Expo web export in apps/mobile/dist/
+docker build --target mobile -t photobrain-mobile .
 ```
 
 ## Contributing

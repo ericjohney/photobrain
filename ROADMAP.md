@@ -9,14 +9,21 @@ PhotoBrain aims to be a fast, AI-powered self-hosted photo management solution t
 **Completed:**
 - ✅ Monorepo architecture with Turbo + Bun
 - ✅ Rust-based image processing (NAPI module)
-- ✅ CLIP embeddings for semantic search
+- ✅ CLIP embeddings for semantic search (deferred batch generation)
 - ✅ Perceptual hashing (pHash) for duplicate detection
-- ✅ Basic photo gallery with responsive grid
-- ✅ RESTful API with Hono.js
+- ✅ Lightroom-inspired UI with three-panel layout, filmstrip, and loupe view
+- ✅ RESTful + tRPC hybrid API with Hono.js
 - ✅ SQLite database with Drizzle ORM
 - ✅ Vector similarity search (sqlite-vec)
-- ✅ Directory scanning with metadata extraction
-- ✅ Basic lightbox viewer
+- ✅ Async directory scanning with BullMQ job queues
+- ✅ RAW image support (14+ formats via native Rust processing)
+- ✅ HEIF/HEIC support with magic byte detection
+- ✅ EXIF metadata extraction and display
+- ✅ Mobile app with full feature parity (React Native + Expo)
+- ✅ Expo web export for mobile web deployment
+- ✅ Docker multi-stage builds and CI/CD pipeline
+- ✅ Folder navigation
+- ✅ Light & dark theme support
 
 ---
 
@@ -78,53 +85,22 @@ These tasks are broken down into small, session-sized chunks that can each be co
 
 ---
 
-### Session 3: Async Processing Pipeline with Temporal 🔄 **HIGH PRIORITY**
-**Goal:** Move image processing off the main thread using Temporal workflows
+### Session 3: Async Processing Pipeline with BullMQ 🔄 ✅ **COMPLETED**
+**Goal:** Move image processing off the main thread using async job queues
 
-**Deliverables:**
-- [ ] Install `@temporalio/worker` and `@temporalio/client` packages
-- [ ] Set up Temporal development server (local Docker or Temporal Cloud)
-- [ ] Create workflow definitions in `apps/api/src/workflows/`:
-  - `scanDirectoryWorkflow` - Orchestrates directory scanning
-  - `processPhotoWorkflow` - Processes individual photos (metadata + thumbnails + embeddings)
-  - `generateThumbnailsWorkflow` - Generate thumbnails for existing photos
-- [ ] Create activity functions in `apps/api/src/activities/`:
-  - `scanDirectory` - List files in directory
-  - `extractMetadata` - Call Rust NAPI for metadata/EXIF
-  - `generateThumbnails` - Call Rust NAPI for thumbnail generation
-  - `generateEmbeddings` - Call Rust NAPI for CLIP embeddings
-  - `saveToDatabase` - Persist photo data
-- [ ] Create Temporal worker service (`apps/api/src/temporal/worker.ts`)
-- [ ] Update scan endpoint to start Temporal workflows instead of blocking
-- [ ] Add workflow status endpoint: `GET /api/workflows/:id/status`
-- [ ] Add frontend polling for workflow progress with live updates
-- [ ] Display processing status in UI (queued, running, completed, failed)
-- [ ] Add workflow retry policies for resilience
+**Completed Implementation:**
+- [x] BullMQ-based job queue system (replaced Temporal approach with simpler BullMQ)
+- [x] Separate worker process (`apps/worker`) for job processing
+- [x] Queue definitions for scan, phash, and embedding jobs
+- [x] SSE-based real-time progress reporting (`onTaskProgress` tRPC subscription)
+- [x] Frontend live progress updates during scan/processing
+- [x] Redis/Valkey backend for job persistence
+- [x] Deferred CLIP embeddings — generated as post-scan batch job (~70% faster scanning)
 
-**Temporal Benefits:**
-- Durable execution (survives server restarts)
-- Built-in retry logic with exponential backoff
-- Workflow versioning for safe updates
-- Observable execution with Temporal UI
-- Easy to add complex orchestration later (parallel processing, conditionals)
+**Architecture:** API enqueues jobs → Redis → Worker dequeues and processes → SSE streams progress to frontend
 
-**Estimated time:** 3-4 hours (includes Temporal setup)
-**Files to create:**
-- `apps/api/src/workflows/scanDirectory.ts`
-- `apps/api/src/workflows/processPhoto.ts`
-- `apps/api/src/activities/photoActivities.ts`
-- `apps/api/src/temporal/worker.ts`
-- `apps/api/src/temporal/client.ts`
-
-**Files to modify:** `apps/api/src/routes/scan.ts`, `apps/web/src/pages/Dashboard.tsx`
-
-**Setup:**
-```bash
-# Start Temporal dev server (in Docker)
-temporal server start-dev
-
-# Or use Temporal Cloud for production
-```
+**Files created:** `apps/worker/` (entire worker app), queue/worker definitions
+**Files modified:** `apps/api/src/trpc/router.ts` (scan mutation, progress subscription)
 
 ---
 
@@ -349,19 +325,26 @@ Lens corrections compensate for optical imperfections in camera lenses:
 
 ## Phase 3: Mobile & Backup
 
-### 3.1 Mobile Applications
+### 3.1 Mobile Applications ✅ **PARTIALLY COMPLETED**
 **Inspired by Immich's automatic backup**
 
-- [ ] **React Native mobile app** (iOS + Android)
-  - Native camera roll access
-  - Background photo upload
-  - Push notifications for upload completion
+- [x] **React Native mobile app** (iOS + Android) with full feature parity
+  - LoupeView with swipe navigation
+  - MetadataPanel with collapsible EXIF sections
+  - Filmstrip for thumbnail navigation
+  - ActivityBar for scan/embedding progress
+  - Theme system with dark/light mode
+  - Semantic search via SearchBar
+  - Expo web export for web deployment
+- [ ] Native camera roll access
+- [ ] Background photo upload
+- [ ] Push notifications for upload completion
 - [ ] **Automatic backup service**
   - Periodic background sync
   - Only upload new photos
   - Configurable backup quality (original vs compressed)
   - WiFi-only option
-- [ ] **Mobile gallery browser**
+- [ ] **Offline support**
   - Offline caching of thumbnails
   - Full-resolution download on demand
 
@@ -532,12 +515,15 @@ Lens corrections compensate for optical imperfections in camera lenses:
 ## Technical Debt & Infrastructure
 
 ### DevOps
-- [ ] **Docker containerization**
-  - Multi-stage builds
-  - Docker Compose for easy deployment
-- [ ] **CI/CD pipeline**
-  - Automated tests
-  - Automated builds and releases
+- [x] **Docker containerization**
+  - Multi-stage Dockerfile (6 stages: builder, api, worker, web-builder, web, mobile)
+  - Expo web export built outside Docker (avoids ZFS bottleneck)
+  - Linux-specific `.node` module copying
+- [x] **CI/CD pipeline**
+  - GitHub Actions workflow builds all Docker images
+  - Pushes to `registry.ericj5.com`
+  - ArgoCD GitOps deployment (api, worker, web, mobile)
+- [ ] **Docker Compose for easy local deployment**
 - [ ] **Documentation**
   - API documentation (OpenAPI/Swagger)
   - User guide
@@ -641,4 +627,4 @@ For RAW support implementation, refer to:
 4. **Lightweight footprint** - SQLite for easy deployment
 5. **RAW-first workflow** - Professional photographer focus
 
-Last Updated: 2026-01-08
+Last Updated: 2026-01-28

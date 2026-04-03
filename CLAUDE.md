@@ -47,9 +47,16 @@ photobrain/
 │   │       ├── lib/         # Utilities (trpc client, thumbnails)
 │   │       └── main.tsx     # App entry point
 │   │
-│   └── mobile/              # React Native Expo app
+│   └── mobile/              # React Native Expo app (+ Expo web export)
+│       ├── metro.config.js  # Metro bundler config (stubs native modules)
 │       └── src/
 │           ├── components/  # React Native components
+│           │   ├── ActivityBar.tsx   # Real-time scan/embedding progress
+│           │   ├── Filmstrip.tsx     # Horizontal thumbnail strip
+│           │   ├── LoupeView.tsx     # Full-screen photo viewer with swipe
+│           │   ├── MetadataPanel.tsx  # EXIF metadata display
+│           │   ├── PhotoGrid.tsx     # Thumbnail grid
+│           │   └── SearchBar.tsx     # Semantic search input
 │           ├── screens/     # Main screens
 │           ├── navigation/  # Navigation setup
 │           └── config.ts    # App configuration
@@ -69,15 +76,18 @@ photobrain/
 │   │       └── index.ts       # Database connection
 │   │
 │   └── image-processing/    # Rust NAPI native module
+│       ├── browser.js       # Browser/Metro stub (prevents bundling native code)
 │       └── src/
-│           ├── lib.rs       # Module entry point
-│           ├── batch.rs     # Unified photo processing (all types)
-│           ├── raw.rs       # RAW image processing (LibRaw)
-│           ├── clip.rs      # CLIP text/image embeddings
-│           ├── exif.rs      # EXIF metadata extraction
-│           ├── heif.rs      # HEIF/HEIC image decoding
-│           ├── metadata.rs  # Photo metadata extraction
-│           ├── phash.rs     # Perceptual hashing
+│           ├── lib.rs        # Module entry point
+│           ├── batch.rs      # Unified photo processing (all types)
+│           ├── clip.rs       # CLIP text/image embeddings (batch generation)
+│           ├── discovery.rs  # Parallel photo file discovery (walkdir)
+│           ├── exif.rs       # EXIF metadata extraction
+│           ├── heif.rs       # HEIF/HEIC image decoding
+│           ├── orientation.rs # EXIF orientation correction
+│           ├── phash.rs      # Perceptual hashing
+│           ├── preview.rs    # Embedded preview extraction
+│           ├── raw.rs        # RAW image processing (LibRaw)
 │           └── thumbnails.rs # WebP thumbnail generation (parallel)
 │
 ├── biome.json               # Code formatter/linter config
@@ -114,15 +124,21 @@ photobrain/
 
 ### Mobile Frontend (`apps/mobile`)
 - **React Native** v0.81 - Cross-platform mobile framework
-- **Expo** v54 - React Native development platform
+- **Expo** v54 - React Native development platform (+ Expo web export)
 - **React Navigation** v7 - Native navigation
 - **expo-image** v3.0 - Optimized image component
+- **react-native-gesture-handler** - Swipe/gesture support
+- **react-native-reanimated** - Fluid animations
+- **react-native-web** - Web rendering layer for Expo web export
+- **@react-native-async-storage/async-storage** - Local storage
+- **expo-haptics** - Haptic feedback
 
 ### Image Processing (`packages/image-processing`)
 - **Rust** with NAPI bindings
 - **rsraw** v0.1 - RAW image processing (LibRaw bindings)
 - **rayon** v1.10 - Parallel processing
-- **fastembed** v4.4 - CLIP embeddings
+- **fastembed** v4.4 - CLIP embeddings (batch generation, deferred post-scan)
+- **walkdir** v2 - Parallel file discovery
 - **image** v0.25 - Image decoding and resizing
 - **image_hasher** v2.0 - Perceptual hashing
 - **kamadak-exif** v0.5 - EXIF metadata extraction
@@ -360,16 +376,21 @@ large:  1600px, 90% quality  // Full view
 - **REST** for binary file streaming (tRPC doesn't handle streaming well)
 
 ### Unified Image Processing Pipeline
-All image processing happens in Rust via a single function call. The scanner collects file paths and passes them to `processPhotosBatch()` which:
+Image processing is split into two phases for faster scanning:
+
+**Phase 1: Scan (thumbnails, EXIF, phash)**
+The scanner uses `discoverPhotos()` for parallel file discovery, then `processPhotosBatch()` which:
 
 1. Detects file type by extension (RAW, HEIF, or standard)
 2. Routes to appropriate processor
 3. Processes all files in parallel using Rayon
-4. Returns unified results
+4. Returns unified results (thumbnails, EXIF, phash — but NOT embeddings)
+
+**Phase 2: Deferred CLIP Embeddings**
+CLIP embeddings are generated in a separate post-scan batch job via `batchGenerateClipEmbeddings()`. This reduces scan time by ~70%, allowing users to browse photos immediately while embeddings generate in the background.
 
 **For standard images (JPEG, PNG, etc.):**
 - Decode image, apply EXIF orientation
-- Generate CLIP embeddings (512-dim vector)
 - Compute perceptual hash
 - Generate WebP thumbnails (all 4 sizes in parallel)
 
@@ -377,12 +398,12 @@ All image processing happens in Rust via a single function call. The scanner col
 - Extract EXIF from RAW file
 - Demosaic using LibRaw (rsraw)
 - Apply histogram matching from embedded preview for accurate colors
-- Generate CLIP, phash, and thumbnails
+- Generate phash and thumbnails
 - No temp files - all processing in memory
 
 **Supported RAW formats:** CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2, PEF, SRW, X3F, 3FR, IIQ, RWL
 
-**Performance:** ~586ms per photo average (mixed RAW and standard images)
+**Magic byte detection:** HEIC files with incorrect extensions are detected by magic bytes and processed correctly.
 
 **RAW file serving:** For RAW photos, `/api/photos/:id/file` serves the large thumbnail (1600px WebP) since the original RAW cannot be displayed in browsers.
 
@@ -393,8 +414,12 @@ Key functions exported from `@photobrain/image-processing`:
 |----------|---------|
 | `processPhotosBatch(paths, relativePaths, thumbDir)` | Process multiple photos in parallel (any type) |
 | `processPhoto(path, relativePath, thumbDir)` | Process single photo (any type) |
-| `getSupportedExtensions()` | Get list of supported file extensions |
+| `processPhotosWithCallback(paths, relativePaths, thumbDir, cb)` | Process with per-photo progress callback |
+| `discoverPhotos(directory, extensions)` | Parallel file discovery using walkdir |
+| `batchGenerateClipEmbeddings(imagePaths)` | Generate CLIP embeddings for multiple photos (post-scan) |
 | `clipTextEmbedding(text)` | Generate CLIP embedding for search query |
+| `getSupportedExtensions()` | Get list of supported file extensions |
+| `isSupportedImage(path)` | Check if file extension is supported |
 
 ### Deterministic Thumbnail Paths
 Thumbnails use predictable paths: `/thumbnails/{size}/{photo-path-hash}.webp`
@@ -449,18 +474,22 @@ Currently no test suite is implemented. Validation is done via:
 ## Deployment
 
 ### Docker
-Multi-stage Dockerfile with 5 stages:
+Multi-stage Dockerfile with 6 stages:
 1. **builder** - Rust toolchain, build NAPI module
 2. **api** - Bun runtime with API code
 3. **worker** - Bun runtime with BullMQ job worker
 4. **web-builder** - Vite frontend build
 5. **web** - Static file server for frontend
+6. **mobile** - Serves pre-built Expo web export
+
+**Note:** The mobile Docker image does not build Expo inside Docker. The Expo web export (`expo export --platform web`) runs on the CI runner first, then the built `dist/` is copied into the Docker image. This avoids ZFS layer commit bottlenecks during Docker builds.
 
 ### CI/CD
 GitHub Actions workflow:
-- Builds Docker images for api, worker, and web
+- Builds Docker images for api, worker, web, and mobile
+- Mobile job: installs Bun, runs `expo export --platform web`, then builds Docker image
 - Pushes to `registry.ericj5.com`
-- Updates ArgoCD for GitOps deployment
+- Updates ArgoCD for GitOps deployment (includes `values-mobile.yaml`)
 
 ### Production Dependencies
 - **Redis/Valkey** - Required for BullMQ job queues
@@ -515,6 +544,11 @@ bun run dev
 See `ROADMAP.md` for planned features including:
 - ~~Async processing with BullMQ~~ (implemented)
 - ~~RAW format support~~ (implemented)
+- ~~HEIF/HEIC support~~ (implemented)
+- ~~Deferred CLIP embeddings~~ (implemented)
+- ~~Mobile feature parity~~ (implemented)
+- ~~Expo web export~~ (implemented)
+- ~~Folder navigation~~ (implemented)
 - EXIF-based filtering
 - Map view with GPS data
 - Duplicate detection UI
