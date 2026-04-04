@@ -1,26 +1,45 @@
 {
-	"expo": {
-		"name": "PhotoBrain",
-		"slug": "photobrain",
-		"version": "0.1.0",
-		"scheme": "photobrain",
-		"orientation": "portrait",
-		"userInterfaceStyle": "automatic",
-		"assetBundlePatterns": ["**/*"],
-		"ios": {
-			"supportsTablet": true,
-			"bundleIdentifier": "com.photobrain.app"
-		},
-		"android": {
-			"adaptiveIcon": {
-				"backgroundColor": "#ffffff"
-			},
-			"package": "com.photobrain.app"
-		},
-		"web": {
-			"bundler": "metro",
-			"output": "single"
-		},
-		"plugins": ["expo-router"]
-	}
+  "expo": {
+    "name": "PhotoBrain",
+    "slug": "photobrain",
+    "version": "0.1.0",
+    "scheme": "photobrain",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.photobrain.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.photobrain.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-updates"
+    ],
+    "updates": {
+      "url": "https://u.expo.dev/5fcc4958-f697-46c6-9cfc-cd2ce0ac695c",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5fcc4958-f697-46c6-9cfc-cd2ce0ac695c"
+      }
+    }
+  }
 }
