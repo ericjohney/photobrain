@@ -4,6 +4,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { useOTAUpdates } from "@/hooks";
 import { trpc } from "@/lib/trpc";
 import { trpcClient } from "@/lib/trpc-client";
 import AboutScreen from "@/screens/AboutScreen";
@@ -11,7 +12,6 @@ import CollectionsScreen from "@/screens/CollectionsScreen";
 import DashboardScreen from "@/screens/DashboardScreen";
 import PreferencesScreen from "@/screens/PreferencesScreen";
 import { ThemeProvider, useColors, useTheme } from "@/theme";
-import { useOTAUpdates } from "@/hooks";
 
 const Tab = createBottomTabNavigator();
 const queryClient = new QueryClient();

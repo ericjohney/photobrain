@@ -1,6 +1,6 @@
+import * as Updates from "expo-updates";
 import { useEffect } from "react";
 import { Alert, Platform } from "react-native";
-import * as Updates from "expo-updates";
 
 export function useOTAUpdates() {
 	useEffect(() => {
