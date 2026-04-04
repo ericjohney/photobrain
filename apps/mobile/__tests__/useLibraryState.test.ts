@@ -1,0 +1,257 @@
+import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { useLibraryState } from "@/hooks/use-library-state";
+import { MOCK_PHOTOS } from "./fixtures";
+
+describe("useLibraryState", () => {
+	it("initializes with grid view mode", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		expect(result.current.viewMode).toBe("grid");
+		expect(result.current.selectedCount).toBe(0);
+		expect(result.current.hasSelection).toBe(false);
+		expect(result.current.totalPhotos).toBe(5);
+		expect(result.current.activePhoto).toBeNull();
+	});
+
+	it("selectPhoto sets active photo and selection", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.selectPhoto(MOCK_PHOTOS[0]);
+		});
+
+		expect(result.current.activePhoto?.id).toBe(1);
+		expect(result.current.selectedPhotos.has(1)).toBe(true);
+		expect(result.current.selectedCount).toBe(1);
+	});
+
+	it("selectPhoto with toggle adds to selection", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.selectPhoto(MOCK_PHOTOS[0]);
+		});
+		act(() => {
+			result.current.selectPhoto(MOCK_PHOTOS[1], { toggle: true });
+		});
+
+		expect(result.current.selectedPhotos.has(1)).toBe(true);
+		expect(result.current.selectedPhotos.has(2)).toBe(true);
+		expect(result.current.selectedCount).toBe(2);
+	});
+
+	it("selectPhoto with toggle removes already-selected photo", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.selectPhoto(MOCK_PHOTOS[0]);
+		});
+		act(() => {
+			result.current.selectPhoto(MOCK_PHOTOS[0], { toggle: true });
+		});
+
+		expect(result.current.selectedPhotos.has(1)).toBe(false);
+		expect(result.current.selectedCount).toBe(0);
+	});
+
+	it("selectAll selects all photos", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.selectAll();
+		});
+
+		expect(result.current.selectedCount).toBe(5);
+		expect(result.current.selectedPhotos.has(1)).toBe(true);
+		expect(result.current.selectedPhotos.has(5)).toBe(true);
+	});
+
+	it("clearSelection empties selection and active photo", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.selectAll();
+		});
+		act(() => {
+			result.current.clearSelection();
+		});
+
+		expect(result.current.selectedCount).toBe(0);
+		expect(result.current.activePhoto).toBeNull();
+	});
+
+	it("openInLoupe sets view mode, active photo, and selection", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[2]);
+		});
+
+		expect(result.current.viewMode).toBe("loupe");
+		expect(result.current.activePhoto?.id).toBe(3);
+		expect(result.current.selectedPhotos.has(3)).toBe(true);
+	});
+
+	it("closeLoupe returns to grid view", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[2]);
+		});
+		act(() => {
+			result.current.closeLoupe();
+		});
+
+		expect(result.current.viewMode).toBe("grid");
+	});
+
+	it("navigatePhoto moves to next photo", async () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[0]);
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhotoIndex).toBe(0);
+		});
+
+		act(() => {
+			result.current.navigatePhoto("next");
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhoto?.id).toBe(2);
+			expect(result.current.activePhotoIndex).toBe(1);
+		});
+	});
+
+	it("navigatePhoto moves to previous photo", async () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[2]);
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhotoIndex).toBe(2);
+		});
+
+		act(() => {
+			result.current.navigatePhoto("prev");
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhoto?.id).toBe(2);
+			expect(result.current.activePhotoIndex).toBe(1);
+		});
+	});
+
+	it("navigatePhoto does not go past the last photo", async () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[4]);
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhotoIndex).toBe(4);
+		});
+
+		act(() => {
+			result.current.navigatePhoto("next");
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhoto?.id).toBe(5);
+			expect(result.current.activePhotoIndex).toBe(4);
+		});
+	});
+
+	it("navigatePhoto does not go before the first photo", async () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[0]);
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhotoIndex).toBe(0);
+		});
+
+		act(() => {
+			result.current.navigatePhoto("prev");
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhoto?.id).toBe(1);
+			expect(result.current.activePhotoIndex).toBe(0);
+		});
+	});
+
+	it("hasPrev and hasNext reflect navigation bounds", async () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		// No active photo: both false
+		expect(result.current.hasPrev).toBe(false);
+		expect(result.current.hasNext).toBe(false);
+
+		// First photo: hasPrev=false, hasNext=true
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[0]);
+		});
+		await waitFor(() => {
+			expect(result.current.activePhotoIndex).toBe(0);
+		});
+		expect(result.current.hasPrev).toBe(false);
+		expect(result.current.hasNext).toBe(true);
+
+		// Last photo: hasPrev=true, hasNext=false
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[4]);
+		});
+		await waitFor(() => {
+			expect(result.current.activePhotoIndex).toBe(4);
+		});
+		expect(result.current.hasPrev).toBe(true);
+		expect(result.current.hasNext).toBe(false);
+
+		// Middle photo: both true
+		act(() => {
+			result.current.openInLoupe(MOCK_PHOTOS[2]);
+		});
+		await waitFor(() => {
+			expect(result.current.activePhotoIndex).toBe(2);
+		});
+		expect(result.current.hasPrev).toBe(true);
+		expect(result.current.hasNext).toBe(true);
+	});
+
+	it("navigateToIndex sets the correct photo", async () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.navigateToIndex(3);
+		});
+
+		await waitFor(() => {
+			expect(result.current.activePhoto?.id).toBe(4);
+			expect(result.current.activePhotoIndex).toBe(3);
+		});
+		expect(result.current.selectedPhotos.has(4)).toBe(true);
+	});
+
+	it("navigateToIndex ignores out-of-bounds indices", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => {
+			result.current.navigateToIndex(100);
+		});
+		expect(result.current.activePhoto).toBeNull();
+
+		act(() => {
+			result.current.navigateToIndex(-1);
+		});
+		expect(result.current.activePhoto).toBeNull();
+	});
+});

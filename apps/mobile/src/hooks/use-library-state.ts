@@ -148,10 +148,11 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 	const openInLoupe = useCallback(
 		(photo: PhotoMetadata) => {
 			setActivePhoto(photo);
+			setActivePhotoIndex(photos.findIndex((p) => p.id === photo.id));
 			setSelectedPhotos(new Set([photo.id]));
 			setViewMode("loupe");
 		},
-		[setViewMode],
+		[photos, setViewMode],
 	);
 
 	const closeLoupe = useCallback(() => {
