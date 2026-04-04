@@ -77,11 +77,11 @@ Behavior:
 4. Show `Alert.alert()` with title "Update Available", message "A new version of PhotoBrain is ready. Restart now?", buttons: "Later" (dismiss) and "Restart" (`Updates.reloadAsync()`)
 5. All errors are silently caught — OTA should never crash the app
 
-### 4. Integration Point: Root Layout
+### 4. Integration Point: Root App Component
 
-**File:** `apps/mobile/src/app/_layout.tsx`
+**File:** `apps/mobile/App.tsx`
 
-Call `useOTAUpdates()` at the top level of the root layout component. This ensures the check runs once on every app launch.
+Call `useOTAUpdates()` at the top level of the root `App()` component. This ensures the check runs once on every app launch.
 
 ### 5. Web/Dev Safety
 
@@ -96,8 +96,8 @@ Call `useOTAUpdates()` at the top level of the root layout component. This ensur
 | `apps/mobile/package.json` | Modify | Add `expo-updates` dependency |
 | `apps/mobile/app.json` | Modify | Add `updates` config and `runtimeVersion` |
 | `apps/mobile/eas.json` | Modify | Add `channel` to all 4 build profiles |
-| `apps/mobile/src/hooks/useOTAUpdates.ts` | Create | New hook (~30 lines) |
-| `apps/mobile/src/app/_layout.tsx` | Modify | Call `useOTAUpdates()` |
+| `apps/mobile/src/hooks/use-ota-updates.ts` | Create | New hook (~30 lines) |
+| `apps/mobile/App.tsx` | Modify | Call `useOTAUpdates()` |
 | `CLAUDE.md` | Modify | Document OTA update workflow |
 
 ## Pushing Updates (Workflow)
