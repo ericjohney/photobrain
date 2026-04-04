@@ -93,6 +93,68 @@ describe("LoupeView", () => {
 		expect(hasLargeThumbnail).toBe(true);
 	});
 
+	it("does not call onIndexChange on initial render", async () => {
+		// Fix: replaced onViewableItemsChanged (which could fire with wrong
+		// index during mount) with onMomentumScrollEnd (only fires on swipe).
+		// This ensures no spurious index updates on initial render.
+		const { getByText } = renderWithProviders(
+			<LoupeView {...defaultProps} initialIndex={3} />,
+		);
+
+		await waitFor(() => {
+			expect(getByText("Info")).toBeTruthy();
+		});
+
+		// onMomentumScrollEnd only fires on user swipe, never on mount.
+		// With the old onViewableItemsChanged, this could fire with index 0.
+		expect(mockOnIndexChange).not.toHaveBeenCalled();
+	});
+
+	it("shows correct metadata for non-zero initialIndex", async () => {
+		const { getByText, queryByText } = renderWithProviders(
+			<LoupeView {...defaultProps} initialIndex={3} />,
+		);
+
+		// Should show macro.cr2 data (index 3): 5472×3648, 28.6 MB
+		await waitFor(() => {
+			expect(getByText(/5472 × 3648/)).toBeTruthy();
+			expect(getByText(/28\.6 MB/)).toBeTruthy();
+		});
+
+		// Should NOT show sunset.jpg data (index 0)
+		expect(queryByText(/4\.3 MB/)).toBeNull();
+	});
+
+	it("updates metadata when swiped to next photo via momentum scroll", async () => {
+		const { FlatList } = require("react-native");
+		const { getByText, UNSAFE_getByType } = renderWithProviders(
+			<LoupeView {...defaultProps} initialIndex={0} />,
+		);
+
+		// Initially shows sunset.jpg (index 0): 6000×4000
+		await waitFor(() => {
+			expect(getByText(/6000 × 4000/)).toBeTruthy();
+			expect(getByText(/4\.3 MB/)).toBeTruthy();
+		});
+
+		// Simulate swipe to index 1 by firing onMomentumScrollEnd
+		// with contentOffset.x = 1 * SCREEN_WIDTH (375 in test env)
+		const flatList = UNSAFE_getByType(FlatList);
+		fireEvent(flatList, "momentumScrollEnd", {
+			nativeEvent: {
+				contentOffset: { x: 375, y: 0 },
+				contentSize: { width: 1875, height: 800 },
+				layoutMeasurement: { width: 375, height: 800 },
+			},
+		});
+
+		// Should now show portrait.arw (index 1): 6000×4000, 23.8 MB
+		await waitFor(() => {
+			expect(getByText(/23\.8 MB/)).toBeTruthy();
+		});
+		expect(mockOnIndexChange).toHaveBeenCalledWith(1);
+	});
+
 	it("triggers haptic feedback on Share button press", async () => {
 		const { getByText } = renderWithProviders(<LoupeView {...defaultProps} />);
 

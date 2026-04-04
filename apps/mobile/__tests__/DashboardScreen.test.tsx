@@ -124,6 +124,58 @@ describe("DashboardScreen", () => {
 		});
 	});
 
+	it("shows correct data when opening loupe on different photos sequentially", async () => {
+		// Bug: opening loupe on photo A, closing, then opening on photo B
+		// would sometimes show photo A's metadata due to stale FlatList state.
+		const { getAllByTestId, getByText, getByTestId, queryByText } =
+			renderWithProviders(<DashboardScreen />);
+
+		await waitFor(() => {
+			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
+		});
+
+		// Tap first photo in grid (street.jpg, id=5 — newest first)
+		const images = getAllByTestId("expo-image");
+		const firstPhoto = images.find((img) => {
+			const label = img.props.accessibilityLabel || "";
+			return label.includes("/api/photos/5/thumbnail/tiny");
+		});
+		expect(firstPhoto).toBeTruthy();
+		fireEvent.press(firstPhoto!);
+
+		// Verify street.jpg data: 4000×6000, 3.1 MB
+		await waitFor(() => {
+			expect(getByText(/4000 × 6000/)).toBeTruthy();
+			expect(getByText(/3\.1 MB/)).toBeTruthy();
+		});
+
+		// Close loupe
+		fireEvent.press(getByTestId("icon-chevron-back"));
+
+		// Wait for grid to reappear
+		await waitFor(() => {
+			expect(getByText("PhotoBrain")).toBeTruthy();
+		});
+
+		// Now tap a DIFFERENT photo — find sunset.jpg (id=1)
+		const images2 = getAllByTestId("expo-image");
+		const secondPhoto = images2.find((img) => {
+			const label = img.props.accessibilityLabel || "";
+			return label.includes("/api/photos/1/thumbnail/tiny");
+		});
+		expect(secondPhoto).toBeTruthy();
+		fireEvent.press(secondPhoto!);
+
+		// Verify sunset.jpg data: 6000×4000, 4.3 MB — NOT street.jpg's data
+		await waitFor(() => {
+			expect(getByText(/6000 × 4000/)).toBeTruthy();
+			expect(getByText(/4\.3 MB/)).toBeTruthy();
+		});
+
+		// Confirm street.jpg's unique dimensions are NOT shown
+		expect(queryByText(/4000 × 6000/)).toBeNull();
+	});
+
 	it("triggers haptic feedback on long press", async () => {
 		const { getAllByTestId } = renderWithProviders(<DashboardScreen />);
 		await waitFor(() => {

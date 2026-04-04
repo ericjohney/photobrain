@@ -8,11 +8,12 @@ import React, { useCallback, useRef, useState } from "react";
 import {
 	Dimensions,
 	FlatList,
+	type NativeScrollEvent,
+	type NativeSyntheticEvent,
 	Pressable,
 	StyleSheet,
 	Text,
 	View,
-	type ViewToken,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -44,20 +45,17 @@ export default function LoupeView({
 	const [currentIndex, setCurrentIndex] = useState(initialIndex);
 	const currentPhoto = photos[currentIndex];
 
-	const handleViewableItemsChanged = useCallback(
-		({ viewableItems }: { viewableItems: ViewToken[] }) => {
-			if (viewableItems.length > 0) {
-				const index = viewableItems[0].index ?? 0;
+	const handleMomentumScrollEnd = useCallback(
+		(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+			const offsetX = event.nativeEvent.contentOffset.x;
+			const index = Math.round(offsetX / SCREEN_WIDTH);
+			if (index >= 0 && index < photos.length) {
 				setCurrentIndex(index);
 				onIndexChange(index);
 			}
 		},
-		[onIndexChange],
+		[onIndexChange, photos.length],
 	);
-
-	const viewabilityConfig = useRef({
-		itemVisiblePercentThreshold: 50,
-	}).current;
 
 	const renderPhoto = useCallback(
 		({ item }: { item: PhotoMetadata }) => (
@@ -117,8 +115,7 @@ export default function LoupeView({
 				showsHorizontalScrollIndicator={false}
 				initialScrollIndex={initialIndex}
 				getItemLayout={getItemLayout}
-				onViewableItemsChanged={handleViewableItemsChanged}
-				viewabilityConfig={viewabilityConfig}
+				onMomentumScrollEnd={handleMomentumScrollEnd}
 				decelerationRate="fast"
 				bounces={false}
 			/>
