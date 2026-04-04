@@ -508,6 +508,28 @@ cd apps/mobile && eas build --platform ios --profile preview
 cd apps/mobile && eas build --platform ios --profile development-simulator
 ```
 
+### OTA Updates (EAS Update)
+The mobile app supports over-the-air JavaScript updates via [EAS Update](https://docs.expo.dev/eas-update/introduction/).
+- **Update check:** On every app launch, checks for available updates (non-blocking)
+- **User prompt:** Native alert asks user to restart when an update is downloaded
+- **Runtime version:** Tied to `version` in `app.json` via `appVersion` policy
+- **Channels:** `development`, `preview`, `production` (maps to EAS build profiles)
+
+```bash
+# Push a JS-only update (no native rebuild needed)
+cd apps/mobile && eas update --branch preview --message "Fix search bar"
+cd apps/mobile && eas update --branch production --message "v0.1.1 hotfix"
+
+# List published updates
+cd apps/mobile && eas update:list
+```
+
+**When you need a native rebuild instead of OTA:**
+- Adding/removing native dependencies
+- Bumping Expo SDK version
+- Changing `app.json` native config (bundle ID, permissions)
+- Bumping `version` in `app.json` (creates new runtime version)
+
 ### Production Dependencies
 - **Redis/Valkey** - Required for BullMQ job queues
 - Worker and API must share access to the same SQLite database file
