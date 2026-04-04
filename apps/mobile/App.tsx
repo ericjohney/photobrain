@@ -11,6 +11,7 @@ import CollectionsScreen from "@/screens/CollectionsScreen";
 import DashboardScreen from "@/screens/DashboardScreen";
 import PreferencesScreen from "@/screens/PreferencesScreen";
 import { ThemeProvider, useColors, useTheme } from "@/theme";
+import { useOTAUpdates } from "@/hooks";
 
 const Tab = createBottomTabNavigator();
 const queryClient = new QueryClient();
@@ -69,6 +70,8 @@ function AppContent() {
 }
 
 export default function App() {
+	useOTAUpdates();
+
 	return (
 		<GestureHandlerRootView style={{ flex: 1 }}>
 			<trpc.Provider client={trpcClient} queryClient={queryClient}>
