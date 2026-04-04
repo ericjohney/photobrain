@@ -26,8 +26,8 @@ export function useOTAUpdates() {
 						},
 					],
 				);
-			} catch {
-				// Silently ignore — OTA should never crash the app
+			} catch (error) {
+				console.warn("[OTA] Update check failed:", error);
 			}
 		}
 
