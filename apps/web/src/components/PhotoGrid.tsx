@@ -49,7 +49,10 @@ export function PhotoGrid({
 
 	if (photos.length === 0) {
 		return (
-			<div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+			<div
+				data-testid="photo-grid-empty"
+				className="flex h-full flex-col items-center justify-center text-muted-foreground"
+			>
 				<ImageIcon className="h-16 w-16 mb-4 opacity-20" />
 				<p className="text-sm font-medium">No photos found</p>
 				<p className="text-xs">Try adjusting your search or add some photos</p>
@@ -60,7 +63,7 @@ export function PhotoGrid({
 	return (
 		<ScrollArea className={cn("h-full", className)}>
 			<div className="p-1">
-				<div className="grid" style={gridStyle}>
+				<div data-testid="photo-grid" className="grid" style={gridStyle}>
 					{photos.map((photo) => {
 						const isSelected = selectedPhotos.has(photo.id);
 						const isActive = activePhotoId === photo.id;
