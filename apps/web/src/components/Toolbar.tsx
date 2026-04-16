@@ -109,6 +109,9 @@ export function Toolbar({
 							size="icon"
 							className="h-7 w-7"
 							onClick={onToggleLeftPanel}
+							aria-label={
+								leftPanelVisible ? "Hide left panel" : "Show left panel"
+							}
 						>
 							{leftPanelVisible ? (
 								<PanelLeftClose className="h-4 w-4" />
@@ -257,6 +260,9 @@ export function Toolbar({
 							size="icon"
 							className="h-7 w-7"
 							onClick={onToggleRightPanel}
+							aria-label={
+								rightPanelVisible ? "Hide right panel" : "Show right panel"
+							}
 						>
 							{rightPanelVisible ? (
 								<PanelRightClose className="h-4 w-4" />

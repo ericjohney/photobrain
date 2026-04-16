@@ -35,7 +35,10 @@ export function PanelLayout({
 			<div className="flex flex-1 overflow-hidden">
 				{/* Left Panel */}
 				{leftPanel && leftPanelVisible && (
-					<div className="w-64 flex-shrink-0 border-r border-border bg-panel overflow-hidden">
+					<div
+						data-testid="left-panel"
+						className="w-64 flex-shrink-0 border-r border-border bg-panel overflow-hidden"
+					>
 						{leftPanel}
 					</div>
 				)}
@@ -55,7 +58,10 @@ export function PanelLayout({
 
 				{/* Right Panel */}
 				{rightPanel && rightPanelVisible && (
-					<div className="w-72 flex-shrink-0 border-l border-border bg-panel overflow-hidden">
+					<div
+						data-testid="right-panel"
+						className="w-72 flex-shrink-0 border-l border-border bg-panel overflow-hidden"
+					>
 						{rightPanel}
 					</div>
 				)}
