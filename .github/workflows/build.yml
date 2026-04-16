@@ -11,8 +11,46 @@ permissions:
   packages: write
 
 jobs:
+  test-web:
+    runs-on: ericjohney-org-runners
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Playwright Chromium
+        run: cd apps/web && bunx playwright install --with-deps chromium
+
+      - name: Run web E2E tests
+        run: cd apps/web && bun run test:e2e
+
+  test-mobile:
+    runs-on: ericjohney-org-runners
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run mobile unit tests
+        run: cd apps/mobile && bun run test
+
   docker-api:
     runs-on: ericjohney-org-runners
+    needs: [test-web, test-mobile]
 
     steps:
       - name: Checkout code
@@ -44,6 +82,7 @@ jobs:
 
   docker-web:
     runs-on: ericjohney-org-runners
+    needs: [test-web, test-mobile]
 
     steps:
       - name: Checkout code
@@ -75,6 +114,7 @@ jobs:
 
   docker-mobile:
     runs-on: ericjohney-org-runners
+    needs: [test-web, test-mobile]
 
     steps:
       - name: Checkout code
