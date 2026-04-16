@@ -75,18 +75,19 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Set up EAS CLI
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
 
       - name: Publish to preview (push to main)
         if: github.ref == 'refs/heads/main'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: cd apps/mobile && eas update --branch preview --message "main@${GITHUB_SHA::7}" --non-interactive
 
       - name: Publish to production (tagged release)
         if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: cd apps/mobile && eas update --branch production --message "${{ github.ref_name }}" --non-interactive
 
   docker-api:
