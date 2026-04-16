@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -52,6 +53,41 @@ jobs:
 
       - name: Run mobile unit tests
         run: cd apps/mobile && npx jest --forceExit
+
+  eas-update:
+    runs-on: ericjohney-org-runners
+    needs: [test-web, test-mobile]
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Set up EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish to preview (push to main)
+        if: github.ref == 'refs/heads/main'
+        run: cd apps/mobile && eas update --branch preview --message "main@${GITHUB_SHA::7}" --non-interactive
+
+      - name: Publish to production (tagged release)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: cd apps/mobile && eas update --branch production --message "${{ github.ref_name }}" --non-interactive
 
   docker-api:
     runs-on: ericjohney-org-runners
