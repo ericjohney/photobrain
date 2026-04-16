@@ -6,8 +6,8 @@ export type FixturePhoto = {
 	width: number;
 	height: number;
 	mimeType: string;
-	createdAt: string;
-	modifiedAt: string;
+	createdAt: Date;
+	modifiedAt: Date;
 	isRaw: boolean;
 	rawFormat: string | null;
 	rawStatus: string | null;
@@ -43,8 +43,8 @@ function makePhoto(id: number, overrides: Partial<FixturePhoto> = {}): FixturePh
 		width: 4000,
 		height: 3000,
 		mimeType: "image/jpeg",
-		createdAt: "2024-06-15T12:00:00.000Z",
-		modifiedAt: "2024-06-15T12:00:00.000Z",
+		createdAt: new Date("2024-06-15T12:00:00.000Z"),
+		modifiedAt: new Date("2024-06-15T12:00:00.000Z"),
 		isRaw: false,
 		rawFormat: null,
 		rawStatus: null,

@@ -6,8 +6,8 @@ export type MockPhoto = {
 	width: number;
 	height: number;
 	mimeType: string;
-	createdAt: string;
-	modifiedAt: string;
+	createdAt: Date;
+	modifiedAt: Date;
 	isRaw: boolean;
 	rawFormat: string | null;
 	rawStatus: string | null;
@@ -43,8 +43,8 @@ export const MOCK_PHOTOS: MockPhoto[] = [
 		width: 6000,
 		height: 4000,
 		mimeType: "image/jpeg",
-		createdAt: "2024-06-15T18:30:00.000Z",
-		modifiedAt: "2024-06-15T18:30:00.000Z",
+		createdAt: new Date("2024-06-15T18:30:00.000Z"),
+		modifiedAt: new Date("2024-06-15T18:30:00.000Z"),
 		isRaw: false,
 		rawFormat: null,
 		rawStatus: null,
@@ -70,8 +70,8 @@ export const MOCK_PHOTOS: MockPhoto[] = [
 		width: 6000,
 		height: 4000,
 		mimeType: "image/x-sony-arw",
-		createdAt: "2024-06-15T14:00:00.000Z",
-		modifiedAt: "2024-06-15T14:00:00.000Z",
+		createdAt: new Date("2024-06-15T14:00:00.000Z"),
+		modifiedAt: new Date("2024-06-15T14:00:00.000Z"),
 		isRaw: true,
 		rawFormat: "ARW",
 		rawStatus: "converted",
@@ -97,8 +97,8 @@ export const MOCK_PHOTOS: MockPhoto[] = [
 		width: 7360,
 		height: 4912,
 		mimeType: "image/jpeg",
-		createdAt: "2024-07-20T08:15:00.000Z",
-		modifiedAt: "2024-07-20T08:15:00.000Z",
+		createdAt: new Date("2024-07-20T08:15:00.000Z"),
+		modifiedAt: new Date("2024-07-20T08:15:00.000Z"),
 		isRaw: false,
 		rawFormat: null,
 		rawStatus: null,
@@ -124,8 +124,8 @@ export const MOCK_PHOTOS: MockPhoto[] = [
 		width: 5472,
 		height: 3648,
 		mimeType: "image/x-canon-cr2",
-		createdAt: "2024-07-20T10:30:00.000Z",
-		modifiedAt: "2024-07-20T10:30:00.000Z",
+		createdAt: new Date("2024-07-20T10:30:00.000Z"),
+		modifiedAt: new Date("2024-07-20T10:30:00.000Z"),
 		isRaw: true,
 		rawFormat: "CR2",
 		rawStatus: "converted",
@@ -151,8 +151,8 @@ export const MOCK_PHOTOS: MockPhoto[] = [
 		width: 4000,
 		height: 6000,
 		mimeType: "image/jpeg",
-		createdAt: "2024-08-05T20:45:00.000Z",
-		modifiedAt: "2024-08-05T20:45:00.000Z",
+		createdAt: new Date("2024-08-05T20:45:00.000Z"),
+		modifiedAt: new Date("2024-08-05T20:45:00.000Z"),
 		isRaw: false,
 		rawFormat: null,
 		rawStatus: null,

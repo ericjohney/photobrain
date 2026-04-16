@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import superjson from "superjson";
 import { FIXTURE_FOLDERS, FIXTURE_PHOTOS, searchPhotosByQuery } from "./photos";
 import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
 
@@ -67,8 +68,14 @@ export async function installTrpcHandlers(
 						},
 					};
 				}
-				// superjson response envelope: { result: { data: { json: value } } }
-				return { result: { data: { json: await handler(input) } } };
+				// superjson response envelope preserves Date/undefined/etc via meta
+				const value = await handler(input);
+				const serialized = superjson.serialize(value);
+				return {
+					result: {
+						data: { json: serialized.json, meta: serialized.meta },
+					},
+				};
 			}),
 		);
 		await route.fulfill({
