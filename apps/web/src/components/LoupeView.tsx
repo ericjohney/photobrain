@@ -95,6 +95,7 @@ export function LoupeView({
 
 	return (
 		<div
+			data-testid="loupe-view"
 			className={cn(
 				"relative flex h-full w-full items-center justify-center overflow-hidden bg-background",
 				className,
