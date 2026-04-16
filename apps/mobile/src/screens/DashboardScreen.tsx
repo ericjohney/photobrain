@@ -38,6 +38,13 @@ type SectionItem =
 	| { type: "date-header"; title: string; key: string }
 	| { type: "photo-row"; photos: PhotoMetadata[]; key: string };
 
+// EXIF DateTimeOriginal uses "YYYY:MM:DD HH:MM:SS" format which
+// JavaScript's Date constructor can't parse. Convert to ISO 8601.
+function parseDate(dateStr: string): Date {
+	const parsed = new Date(dateStr.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3"));
+	return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 function groupPhotosByDate(photos: PhotoMetadata[]): SectionItem[] {
 	if (photos.length === 0) return [];
 
@@ -45,7 +52,7 @@ function groupPhotosByDate(photos: PhotoMetadata[]): SectionItem[] {
 	const sorted = [...photos].sort((a, b) => {
 		const dateA = a.exif?.dateTaken || a.modifiedAt || a.createdAt;
 		const dateB = b.exif?.dateTaken || b.modifiedAt || b.createdAt;
-		return new Date(dateB).getTime() - new Date(dateA).getTime();
+		return parseDate(dateB).getTime() - parseDate(dateA).getTime();
 	});
 
 	const items: SectionItem[] = [];
@@ -66,7 +73,7 @@ function groupPhotosByDate(photos: PhotoMetadata[]): SectionItem[] {
 
 	for (const photo of sorted) {
 		const dateStr = photo.exif?.dateTaken || photo.modifiedAt || photo.createdAt;
-		const date = new Date(dateStr);
+		const date = parseDate(dateStr);
 		const monthKey = date.toLocaleDateString("en-US", {
 			year: "numeric",
 			month: "long",
