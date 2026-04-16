@@ -37,6 +37,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -46,7 +51,7 @@ jobs:
         run: bun install
 
       - name: Run mobile unit tests
-        run: cd apps/mobile && bun run test
+        run: cd apps/mobile && npx jest --forceExit
 
   docker-api:
     runs-on: ericjohney-org-runners
