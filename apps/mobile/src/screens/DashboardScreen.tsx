@@ -149,13 +149,21 @@ export default function DashboardScreen() {
 	// Library state for selection and view mode
 	const library = useLibraryState(photos);
 
-	// Hide tab bar when in loupe mode
+	// Hide tab bar when in loupe mode. When restoring, re-apply the themed
+	// style explicitly — setting undefined reverts to RN Navigation defaults
+	// (always light) instead of the global options from App.tsx.
 	const navigation = useNavigation();
 	useEffect(() => {
 		navigation.setOptions({
-			tabBarStyle: library.viewMode === "loupe" ? { display: "none" } : undefined,
+			tabBarStyle:
+				library.viewMode === "loupe"
+					? { display: "none" }
+					: {
+							backgroundColor: colors.toolbar,
+							borderTopColor: colors.border,
+						},
 		});
-	}, [library.viewMode, navigation]);
+	}, [library.viewMode, navigation, colors.toolbar, colors.border]);
 
 	// Group photos by date
 	const sections = useMemo(() => groupPhotosByDate(photos), [photos]);
