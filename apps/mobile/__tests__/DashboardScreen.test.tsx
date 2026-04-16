@@ -207,29 +207,31 @@ describe("DashboardScreen", () => {
 			refetch: refetchMock,
 		});
 
-		const { getByTestId, UNSAFE_root } = renderWithProviders(
-			<DashboardScreen />,
-		);
+		try {
+			const { getByTestId, UNSAFE_root } = renderWithProviders(
+				<DashboardScreen />,
+			);
 
-		await waitFor(() => {
-			expect(getByTestId("activity-bar")).toBeTruthy();
-		});
+			await waitFor(() => {
+				expect(getByTestId("activity-bar")).toBeTruthy();
+			});
 
-		// Find the FlatList's RefreshControl by firing the refresh event on it
-		const { RefreshControl } = require("react-native");
-		const flatList = UNSAFE_root.findAllByType(
-			require("react-native").FlatList,
-		);
-		expect(flatList.length).toBeGreaterThan(0);
+			// Find the FlatList's RefreshControl by firing the refresh event on it
+			const { RefreshControl } = require("react-native");
+			const flatList = UNSAFE_root.findAllByType(
+				require("react-native").FlatList,
+			);
+			expect(flatList.length).toBeGreaterThan(0);
 
-		// Trigger the onRefresh callback via the FlatList props
-		const onRefresh = flatList[0].props.refreshControl?.props?.onRefresh;
-		expect(onRefresh).toBeDefined();
-		onRefresh();
+			// Trigger the onRefresh callback via the FlatList props
+			const onRefresh = flatList[0].props.refreshControl?.props?.onRefresh;
+			expect(onRefresh).toBeDefined();
+			onRefresh();
 
-		expect(refetchMock).toHaveBeenCalled();
-
-		// Restore original mock
-		trpcModule.trpc.photos.useQuery = originalUseQuery;
+			expect(refetchMock).toHaveBeenCalled();
+		} finally {
+			// Restore original mock even if test throws
+			trpcModule.trpc.photos.useQuery = originalUseQuery;
+		}
 	});
 });

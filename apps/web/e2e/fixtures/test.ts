@@ -10,6 +10,7 @@ export const test = base.extend<Fixtures>({
 		let installed = false;
 		const fn = async (overrides: HandlerOverrides = {}) => {
 			if (installed) throw new Error("mockBackend called twice");
+			await page.unrouteAll();
 			await installTrpcHandlers(page, overrides);
 			installed = true;
 		};

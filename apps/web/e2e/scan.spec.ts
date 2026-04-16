@@ -31,4 +31,6 @@ test("refresh button is disabled while scan pending", async ({
 	await button.click();
 	await expect(button).toBeDisabled();
 	resolveScan?.(null);
+	// Wait for mutation to settle
+	await expect(button).toBeEnabled({ timeout: 5000 });
 });
