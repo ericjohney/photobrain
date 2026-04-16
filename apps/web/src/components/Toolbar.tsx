@@ -216,6 +216,7 @@ export function Toolbar({
 							className="h-7 w-7"
 							onClick={onRefresh}
 							disabled={isRefreshing || hasActiveJobs}
+							aria-label="Scan for new photos"
 						>
 							<RefreshCw
 								className={cn("h-4 w-4", isRefreshing && "animate-spin")}
