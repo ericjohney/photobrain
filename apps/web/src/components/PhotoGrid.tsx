@@ -72,6 +72,7 @@ export function PhotoGrid({
 						return (
 							<div
 								key={photo.id}
+								data-photo-id={photo.id}
 								className={cn(
 									"group relative aspect-square cursor-pointer overflow-hidden bg-muted",
 									"transition-all duration-75",
