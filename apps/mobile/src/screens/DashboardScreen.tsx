@@ -40,8 +40,12 @@ type SectionItem =
 
 // EXIF DateTimeOriginal uses "YYYY:MM:DD HH:MM:SS" format which
 // JavaScript's Date constructor can't parse. Convert to ISO 8601.
-function parseDate(dateStr: string): Date {
-	const parsed = new Date(dateStr.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3"));
+// createdAt/modifiedAt come through as Date objects via superjson,
+// while exif.dateTaken is a raw string — handle both.
+function parseDate(value: Date | string | null | undefined): Date {
+	if (!value) return new Date();
+	if (value instanceof Date) return value;
+	const parsed = new Date(value.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3"));
 	return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
