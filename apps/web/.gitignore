@@ -26,3 +26,7 @@ dist-ssr
 # Environment
 .env
 .env.local
+
+test-results/
+playwright-report/
+e2e/.auth/
