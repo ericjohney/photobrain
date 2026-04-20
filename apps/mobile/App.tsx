@@ -1,5 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import {
+	type BottomTabBarProps,
+	createBottomTabNavigator,
+} from "@react-navigation/bottom-tabs";
+import { BottomTabBar } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
@@ -11,21 +15,23 @@ import AboutScreen from "@/screens/AboutScreen";
 import CollectionsScreen from "@/screens/CollectionsScreen";
 import DashboardScreen from "@/screens/DashboardScreen";
 import PreferencesScreen from "@/screens/PreferencesScreen";
-import { ThemeProvider, useColors, useTabBarStyle, useTheme } from "@/theme";
+import { ThemeProvider, useColors, useTheme } from "@/theme";
 
 const Tab = createBottomTabNavigator();
 const queryClient = new QueryClient();
 
 function AppContent() {
 	const colors = useColors();
-	const { isDark } = useTheme();
-	const tabBarStyle = useTabBarStyle();
+	const { isDark, tabBarHidden } = useTheme();
 
 	return (
 		<>
 			<StatusBar style={isDark ? "light" : "dark"} />
 			<NavigationContainer>
 				<Tab.Navigator
+					tabBar={(props: BottomTabBarProps) =>
+						tabBarHidden ? null : <BottomTabBar {...props} />
+					}
 					screenOptions={({ route }) => ({
 						tabBarIcon: ({ focused, color, size }) => {
 							let iconName: keyof typeof Ionicons.glyphMap = "home";
@@ -46,7 +52,10 @@ function AppContent() {
 						},
 						tabBarActiveTintColor: colors.primary,
 						tabBarInactiveTintColor: colors.mutedForeground,
-						tabBarStyle,
+						tabBarStyle: {
+							backgroundColor: colors.toolbar,
+							borderTopColor: colors.border,
+						},
 						headerStyle: {
 							backgroundColor: colors.toolbar,
 						},

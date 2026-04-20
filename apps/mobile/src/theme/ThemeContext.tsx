@@ -5,7 +5,6 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
-	useMemo,
 	useState,
 } from "react";
 import { useColorScheme } from "react-native";
@@ -113,18 +112,3 @@ export function useColors(): ThemeColors {
 	return useTheme().colors;
 }
 
-// Single source of truth for tab bar style — used ONLY in App.tsx's
-// screenOptions. Screens toggle visibility via setTabBarHidden() from
-// useTheme(), never via navigation.setOptions(). This eliminates the
-// per-screen override that caused layout shifts when switching tabs.
-export function useTabBarStyle() {
-	const { colors, tabBarHidden } = useTheme();
-	return useMemo(
-		() => ({
-			backgroundColor: colors.toolbar,
-			borderTopColor: colors.border,
-			display: (tabBarHidden ? "none" : "flex") as "none" | "flex",
-		}),
-		[colors.toolbar, colors.border, tabBarHidden],
-	);
-}
