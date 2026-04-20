@@ -1,9 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import {
-	type BottomTabBarProps,
-	createBottomTabNavigator,
-} from "@react-navigation/bottom-tabs";
-import { BottomTabBar } from "@react-navigation/bottom-tabs";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
@@ -22,16 +18,13 @@ const queryClient = new QueryClient();
 
 function AppContent() {
 	const colors = useColors();
-	const { isDark, tabBarHidden } = useTheme();
+	const { isDark } = useTheme();
 
 	return (
 		<>
 			<StatusBar style={isDark ? "light" : "dark"} />
 			<NavigationContainer>
 				<Tab.Navigator
-					tabBar={(props: BottomTabBarProps) =>
-						tabBarHidden ? null : <BottomTabBar {...props} />
-					}
 					screenOptions={({ route }) => ({
 						tabBarIcon: ({ focused, color, size }) => {
 							let iconName: keyof typeof Ionicons.glyphMap = "home";

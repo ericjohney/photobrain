@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
 	ActivityIndicator,
 	Dimensions,
@@ -23,12 +23,13 @@ import { API_URL } from "@/config";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { trpc } from "@/lib/trpc";
-import { useColors, useTheme } from "@/theme";
+import { useColors } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
+	Dimensions.get("window");
 const COLUMNS = 4;
 const SPACING = 1.5;
 const ITEM_SIZE = (SCREEN_WIDTH - SPACING * (COLUMNS - 1)) / COLUMNS;
@@ -149,14 +150,6 @@ export default function DashboardScreen() {
 	// Library state for selection and view mode
 	const library = useLibraryState(photos);
 
-	// Hide tab bar in loupe mode via shared context — NOT setOptions.
-	// setOptions creates a per-screen style override that causes layout
-	// shifts when switching tabs (different code path than screenOptions).
-	const { setTabBarHidden } = useTheme();
-	useEffect(() => {
-		setTabBarHidden(library.viewMode === "loupe");
-		return () => setTabBarHidden(false);
-	}, [library.viewMode, setTabBarHidden]);
 
 	// Group photos by date
 	const sections = useMemo(() => groupPhotosByDate(photos), [photos]);
@@ -219,29 +212,9 @@ export default function DashboardScreen() {
 		);
 	}
 
-	// Loupe view (full screen)
-	if (library.viewMode === "loupe") {
-		return (
-			<>
-				<LoupeView
-					photos={photos}
-					initialIndex={
-						library.activePhotoIndex >= 0 ? library.activePhotoIndex : 0
-					}
-					apiUrl={API_URL}
-					onClose={handleLoupeClose}
-					onIndexChange={handleLoupeIndexChange}
-					onShowMetadata={handleShowMetadata}
-				/>
-				<MetadataPanel
-					visible={metadataPhoto !== null}
-					photo={metadataPhoto}
-					apiUrl={API_URL}
-					onClose={handleCloseMetadata}
-				/>
-			</>
-		);
-	}
+	// Grid view is always rendered so scroll position is preserved.
+	// Loupe renders as a full-screen overlay on top (covering the tab bar).
+	const showLoupe = library.viewMode === "loupe";
 
 	const renderItem = ({ item }: { item: SectionItem }) => {
 		if (item.type === "month-header") {
@@ -475,6 +448,22 @@ export default function DashboardScreen() {
 				removeClippedSubviews
 			/>
 
+			{/* Loupe overlay — positioned over entire window including tab bar */}
+			{showLoupe && (
+				<View style={styles.loupeOverlay}>
+					<LoupeView
+						photos={photos}
+						initialIndex={
+							library.activePhotoIndex >= 0 ? library.activePhotoIndex : 0
+						}
+						apiUrl={API_URL}
+						onClose={handleLoupeClose}
+						onIndexChange={handleLoupeIndexChange}
+						onShowMetadata={handleShowMetadata}
+					/>
+				</View>
+			)}
+
 			{/* Metadata panel */}
 			<MetadataPanel
 				visible={metadataPhoto !== null}
@@ -489,6 +478,15 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
+	},
+	loupeOverlay: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		width: SCREEN_WIDTH,
+		height: SCREEN_HEIGHT,
+		zIndex: 1000,
+		elevation: 1000,
 	},
 	centerContainer: {
 		flex: 1,
