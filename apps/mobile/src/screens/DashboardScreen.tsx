@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
-import { useNavigation } from "expo-router";
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	ActivityIndicator,
@@ -23,7 +23,7 @@ import { API_URL } from "@/config";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { trpc } from "@/lib/trpc";
-import { useColors, useTabBarStyle } from "@/theme";
+import { useColors, useTheme } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -149,18 +149,14 @@ export default function DashboardScreen() {
 	// Library state for selection and view mode
 	const library = useLibraryState(photos);
 
-	// Hide tab bar in loupe mode. Uses the shared useTabBarStyle() hook so the
-	// style is identical to App.tsx's screenOptions — prevents layout shifts.
-	const navigation = useNavigation();
-	const tabBarStyle = useTabBarStyle();
+	// Hide tab bar in loupe mode via shared context — NOT setOptions.
+	// setOptions creates a per-screen style override that causes layout
+	// shifts when switching tabs (different code path than screenOptions).
+	const { setTabBarHidden } = useTheme();
 	useEffect(() => {
-		navigation.setOptions({
-			tabBarStyle:
-				library.viewMode === "loupe"
-					? { display: "none" as const }
-					: tabBarStyle,
-		});
-	}, [library.viewMode, navigation, tabBarStyle]);
+		setTabBarHidden(library.viewMode === "loupe");
+		return () => setTabBarHidden(false);
+	}, [library.viewMode, setTabBarHidden]);
 
 	// Group photos by date
 	const sections = useMemo(() => groupPhotosByDate(photos), [photos]);

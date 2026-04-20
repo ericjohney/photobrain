@@ -22,6 +22,8 @@ interface ThemeContextValue {
 	setThemePreference: (preference: ThemePreference) => void;
 	toggleTheme: () => void;
 	isDark: boolean;
+	tabBarHidden: boolean;
+	setTabBarHidden: (hidden: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -35,6 +37,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 	const [themePreference, setThemePreferenceState] =
 		useState<ThemePreference>("system");
 	const [isLoaded, setIsLoaded] = useState(false);
+	const [tabBarHidden, setTabBarHidden] = useState(false);
 
 	// Determine actual theme based on preference and system setting
 	const theme: ColorTheme =
@@ -88,6 +91,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 				setThemePreference,
 				toggleTheme,
 				isDark,
+				tabBarHidden,
+				setTabBarHidden,
 			}}
 		>
 			{children}
@@ -108,15 +113,18 @@ export function useColors(): ThemeColors {
 	return useTheme().colors;
 }
 
-// Shared tab bar style — used by both App.tsx navigator and per-screen
-// overrides so the tab bar never shifts when switching tabs.
+// Single source of truth for tab bar style — used ONLY in App.tsx's
+// screenOptions. Screens toggle visibility via setTabBarHidden() from
+// useTheme(), never via navigation.setOptions(). This eliminates the
+// per-screen override that caused layout shifts when switching tabs.
 export function useTabBarStyle() {
-	const colors = useColors();
+	const { colors, tabBarHidden } = useTheme();
 	return useMemo(
 		() => ({
 			backgroundColor: colors.toolbar,
 			borderTopColor: colors.border,
+			display: (tabBarHidden ? "none" : "flex") as "none" | "flex",
 		}),
-		[colors.toolbar, colors.border],
+		[colors.toolbar, colors.border, tabBarHidden],
 	);
 }
