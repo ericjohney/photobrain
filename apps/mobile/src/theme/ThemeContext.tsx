@@ -5,6 +5,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useMemo,
 	useState,
 } from "react";
 import { useColorScheme } from "react-native";
@@ -111,8 +112,11 @@ export function useColors(): ThemeColors {
 // overrides so the tab bar never shifts when switching tabs.
 export function useTabBarStyle() {
 	const colors = useColors();
-	return {
-		backgroundColor: colors.toolbar,
-		borderTopColor: colors.border,
-	};
+	return useMemo(
+		() => ({
+			backgroundColor: colors.toolbar,
+			borderTopColor: colors.border,
+		}),
+		[colors.toolbar, colors.border],
+	);
 }

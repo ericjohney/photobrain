@@ -46,6 +46,10 @@ function AppContent() {
 						},
 						tabBarActiveTintColor: colors.primary,
 						tabBarInactiveTintColor: colors.mutedForeground,
+						tabBarIconStyle: {
+							width: 28,
+							height: 28,
+						},
 						tabBarStyle,
 						headerStyle: {
 							backgroundColor: colors.toolbar,
