@@ -11,7 +11,7 @@ import AboutScreen from "@/screens/AboutScreen";
 import CollectionsScreen from "@/screens/CollectionsScreen";
 import DashboardScreen from "@/screens/DashboardScreen";
 import PreferencesScreen from "@/screens/PreferencesScreen";
-import { ThemeProvider, useColors, useTheme } from "@/theme";
+import { ThemeProvider, useColors, useTabBarStyle, useTheme } from "@/theme";
 
 const Tab = createBottomTabNavigator();
 const queryClient = new QueryClient();
@@ -19,6 +19,7 @@ const queryClient = new QueryClient();
 function AppContent() {
 	const colors = useColors();
 	const { isDark } = useTheme();
+	const tabBarStyle = useTabBarStyle();
 
 	return (
 		<>
@@ -45,10 +46,7 @@ function AppContent() {
 						},
 						tabBarActiveTintColor: colors.primary,
 						tabBarInactiveTintColor: colors.mutedForeground,
-						tabBarStyle: {
-							backgroundColor: colors.toolbar,
-							borderTopColor: colors.border,
-						},
+						tabBarStyle,
 						headerStyle: {
 							backgroundColor: colors.toolbar,
 						},

@@ -106,3 +106,13 @@ export function useTheme(): ThemeContextValue {
 export function useColors(): ThemeColors {
 	return useTheme().colors;
 }
+
+// Shared tab bar style — used by both App.tsx navigator and per-screen
+// overrides so the tab bar never shifts when switching tabs.
+export function useTabBarStyle() {
+	const colors = useColors();
+	return {
+		backgroundColor: colors.toolbar,
+		borderTopColor: colors.border,
+	};
+}

@@ -23,7 +23,7 @@ import { API_URL } from "@/config";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { trpc } from "@/lib/trpc";
-import { useColors } from "@/theme";
+import { useColors, useTabBarStyle } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -149,21 +149,18 @@ export default function DashboardScreen() {
 	// Library state for selection and view mode
 	const library = useLibraryState(photos);
 
-	// Hide tab bar when in loupe mode. When restoring, re-apply the themed
-	// style explicitly — setting undefined reverts to RN Navigation defaults
-	// (always light) instead of the global options from App.tsx.
+	// Hide tab bar in loupe mode. Uses the shared useTabBarStyle() hook so the
+	// style is identical to App.tsx's screenOptions — prevents layout shifts.
 	const navigation = useNavigation();
+	const tabBarStyle = useTabBarStyle();
 	useEffect(() => {
 		navigation.setOptions({
 			tabBarStyle:
 				library.viewMode === "loupe"
-					? { display: "none" }
-					: {
-							backgroundColor: colors.toolbar,
-							borderTopColor: colors.border,
-						},
+					? { display: "none" as const }
+					: tabBarStyle,
 		});
-	}, [library.viewMode, navigation, colors.toolbar, colors.border]);
+	}, [library.viewMode, navigation, tabBarStyle]);
 
 	// Group photos by date
 	const sections = useMemo(() => groupPhotosByDate(photos), [photos]);
