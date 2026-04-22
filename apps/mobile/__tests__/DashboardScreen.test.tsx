@@ -176,6 +176,44 @@ describe("DashboardScreen", () => {
 		expect(queryByText(/4000 × 6000/)).toBeNull();
 	});
 
+	it("renders loupe in a Modal when photo is tapped", async () => {
+		const { getAllByTestId, getByText, UNSAFE_queryByType } = renderWithProviders(
+			<DashboardScreen />,
+		);
+		await waitFor(() => {
+			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
+		});
+
+		// Modal should not be visible initially
+		const { Modal } = require("react-native");
+		const modalBefore = UNSAFE_queryByType(Modal);
+		expect(
+			!modalBefore || modalBefore.props.visible === false,
+		).toBe(true);
+
+		// Tap a photo to open loupe
+		const images = getAllByTestId("expo-image");
+		const photoImage = images.find((img) => {
+			const label = img.props.accessibilityLabel || "";
+			return label.includes("/api/photos/") && label.includes("/thumbnail/tiny");
+		});
+		expect(photoImage).toBeTruthy();
+		fireEvent.press(photoImage!);
+
+		// Modal should now be visible with loupe action buttons
+		await waitFor(() => {
+			const modal = UNSAFE_queryByType(Modal);
+			expect(modal).toBeTruthy();
+			expect(modal!.props.visible).toBe(true);
+		});
+
+		// Loupe action buttons should be present
+		await waitFor(() => {
+			expect(getByText("Share")).toBeTruthy();
+			expect(getByText("Info")).toBeTruthy();
+		});
+	});
+
 	it("triggers haptic feedback on long press", async () => {
 		const { getAllByTestId } = renderWithProviders(<DashboardScreen />);
 		await waitFor(() => {
