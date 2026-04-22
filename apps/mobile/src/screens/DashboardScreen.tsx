@@ -7,6 +7,7 @@ import {
 	ActivityIndicator,
 	Dimensions,
 	FlatList,
+	Modal,
 	Pressable,
 	RefreshControl,
 	StyleSheet,
@@ -28,8 +29,7 @@ import { useColors } from "@/theme";
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
-	Dimensions.get("window");
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const COLUMNS = 4;
 const SPACING = 1.5;
 const ITEM_SIZE = (SCREEN_WIDTH - SPACING * (COLUMNS - 1)) / COLUMNS;
@@ -448,29 +448,31 @@ export default function DashboardScreen() {
 				removeClippedSubviews
 			/>
 
-			{/* Loupe overlay — positioned over entire window including tab bar */}
-			{showLoupe && (
-				<View style={styles.loupeOverlay}>
-					<LoupeView
-						photos={photos}
-						initialIndex={
-							library.activePhotoIndex >= 0 ? library.activePhotoIndex : 0
-						}
-						apiUrl={API_URL}
-						onClose={handleLoupeClose}
-						onIndexChange={handleLoupeIndexChange}
-						onShowMetadata={handleShowMetadata}
-					/>
-				</View>
-			)}
-
-			{/* Metadata panel */}
-			<MetadataPanel
-				visible={metadataPhoto !== null}
-				photo={metadataPhoto}
-				apiUrl={API_URL}
-				onClose={handleCloseMetadata}
-			/>
+			{/* Loupe renders in a Modal to cover the entire screen including tab bar.
+			    Modal sits above the native view hierarchy — no zIndex needed. */}
+			<Modal
+				visible={showLoupe}
+				animationType="fade"
+				statusBarTranslucent
+				onRequestClose={handleLoupeClose}
+			>
+				<LoupeView
+					photos={photos}
+					initialIndex={
+						library.activePhotoIndex >= 0 ? library.activePhotoIndex : 0
+					}
+					apiUrl={API_URL}
+					onClose={handleLoupeClose}
+					onIndexChange={handleLoupeIndexChange}
+					onShowMetadata={handleShowMetadata}
+				/>
+				<MetadataPanel
+					visible={metadataPhoto !== null}
+					photo={metadataPhoto}
+					apiUrl={API_URL}
+					onClose={handleCloseMetadata}
+				/>
+			</Modal>
 		</View>
 	);
 }
@@ -479,16 +481,7 @@ const styles = StyleSheet.create({
 	container: {
 		flex: 1,
 	},
-	loupeOverlay: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		width: SCREEN_WIDTH,
-		height: SCREEN_HEIGHT,
-		zIndex: 1000,
-		elevation: 1000,
-	},
-	centerContainer: {
+centerContainer: {
 		flex: 1,
 		justifyContent: "center",
 		alignItems: "center",
