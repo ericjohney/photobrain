@@ -214,6 +214,37 @@ describe("DashboardScreen", () => {
 		});
 	});
 
+	it("closes the Modal when back button is pressed in loupe", async () => {
+		const { getAllByTestId, getByTestId, UNSAFE_queryByType } =
+			renderWithProviders(<DashboardScreen />);
+		await waitFor(() => {
+			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
+		});
+
+		// Open loupe
+		const images = getAllByTestId("expo-image");
+		const photoImage = images.find((img) => {
+			const label = img.props.accessibilityLabel || "";
+			return label.includes("/api/photos/") && label.includes("/thumbnail/tiny");
+		});
+		fireEvent.press(photoImage!);
+
+		const { Modal } = require("react-native");
+		await waitFor(() => {
+			const modal = UNSAFE_queryByType(Modal);
+			expect(modal?.props.visible).toBe(true);
+		});
+
+		// Press back button to close
+		fireEvent.press(getByTestId("icon-chevron-back"));
+
+		// Modal should be hidden
+		await waitFor(() => {
+			const modal = UNSAFE_queryByType(Modal);
+			expect(!modal || modal.props.visible === false).toBe(true);
+		});
+	});
+
 	it("triggers haptic feedback on long press", async () => {
 		const { getAllByTestId } = renderWithProviders(<DashboardScreen />);
 		await waitFor(() => {
