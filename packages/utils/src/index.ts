@@ -10,10 +10,24 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
+ * Parse a date value that may be an EXIF string ("YYYY:MM:DD HH:MM:SS"),
+ * an ISO string, or a Date object (from Drizzle timestamps via superjson).
+ * Returns a valid Date, falling back to current date for unparseable values.
+ */
+export function parseDate(value: Date | string | null | undefined): Date {
+	if (!value) return new Date();
+	if (value instanceof Date) return value;
+	const parsed = new Date(
+		value.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3"),
+	);
+	return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+/**
  * Format date to readable string
  */
 export function formatDate(dateString: string): string {
-	const date = new Date(dateString);
+	const date = parseDate(dateString);
 	return date.toLocaleDateString(undefined, {
 		year: "numeric",
 		month: "short",

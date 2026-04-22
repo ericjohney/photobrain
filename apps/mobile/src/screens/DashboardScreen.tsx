@@ -24,6 +24,7 @@ import { API_URL } from "@/config";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { trpc } from "@/lib/trpc";
+import { parseDate } from "@photobrain/utils";
 import { useColors } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -38,17 +39,6 @@ type SectionItem =
 	| { type: "month-header"; title: string; key: string }
 	| { type: "date-header"; title: string; key: string }
 	| { type: "photo-row"; photos: PhotoMetadata[]; key: string };
-
-// EXIF DateTimeOriginal uses "YYYY:MM:DD HH:MM:SS" format which
-// JavaScript's Date constructor can't parse. Convert to ISO 8601.
-// createdAt/modifiedAt come through as Date objects via superjson,
-// while exif.dateTaken is a raw string — handle both.
-function parseDate(value: Date | string | null | undefined): Date {
-	if (!value) return new Date();
-	if (value instanceof Date) return value;
-	const parsed = new Date(value.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3"));
-	return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
 
 function groupPhotosByDate(photos: PhotoMetadata[]): SectionItem[] {
 	if (photos.length === 0) return [];

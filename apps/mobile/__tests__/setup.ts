@@ -83,6 +83,14 @@ jest.mock("@photobrain/utils", () => ({
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	},
 	formatDate: (dateStr: string) => dateStr,
+	parseDate: (value: Date | string | null | undefined) => {
+		if (!value) return new Date();
+		if (value instanceof Date) return value;
+		const parsed = new Date(
+			value.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3"),
+		);
+		return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+	},
 }));
 
 // Mock useJobProgress hook (not under test)

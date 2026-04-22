@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
-import { formatDate, formatFileSize } from "@photobrain/utils";
+import { formatDate, formatFileSize, parseDate } from "@photobrain/utils";
 import type { inferRouterOutputs } from "@trpc/server";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
@@ -86,7 +86,7 @@ export default function LoupeView({
 
 	// Format the date nicely
 	const photoDate = currentPhoto?.exif?.dateTaken || currentPhoto?.modifiedAt;
-	const dateObj = photoDate ? new Date(photoDate) : null;
+	const dateObj = photoDate ? parseDate(photoDate) : null;
 	const formattedDate = dateObj
 		? dateObj.toLocaleDateString("en-US", {
 				weekday: "short",
