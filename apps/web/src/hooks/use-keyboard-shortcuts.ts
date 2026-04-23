@@ -7,8 +7,6 @@ interface KeyboardShortcutsOptions {
 	toggleAllPanels: () => void;
 	toggleFilmstrip: () => void;
 	navigatePhoto: (direction: "prev" | "next") => void;
-	clearSelection: () => void;
-	selectAll: () => void;
 	hasActivePhoto: boolean;
 	enabled?: boolean;
 }
@@ -19,8 +17,6 @@ export function useKeyboardShortcuts({
 	toggleAllPanels,
 	toggleFilmstrip,
 	navigatePhoto,
-	clearSelection,
-	selectAll,
 	hasActivePhoto,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
@@ -83,20 +79,10 @@ export function useKeyboardShortcuts({
 					}
 					break;
 
-				// Selection
 				case "escape":
-					e.preventDefault();
 					if (viewMode === "loupe") {
-						setViewMode("grid");
-					} else {
-						clearSelection();
-					}
-					break;
-
-				case "a":
-					if (isCtrlOrCmd) {
 						e.preventDefault();
-						selectAll();
+						setViewMode("grid");
 					}
 					break;
 			}
@@ -111,8 +97,6 @@ export function useKeyboardShortcuts({
 		toggleAllPanels,
 		toggleFilmstrip,
 		navigatePhoto,
-		clearSelection,
-		selectAll,
 		hasActivePhoto,
 	]);
 }
