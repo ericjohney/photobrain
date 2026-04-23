@@ -181,8 +181,14 @@ fn process_photo_internal(
 	// Process the decoded image
 	match decode_result {
 		Ok(img) => {
-			// Apply EXIF orientation
-			let img = apply_orientation(img, orientation);
+			// Apply EXIF orientation — skip for HEIF because libheif already
+			// applies irot/imir transforms during decode. Applying again would
+			// double-rotate the image.
+			let img = if is_heif {
+				img
+			} else {
+				apply_orientation(img, orientation)
+			};
 			let width = img.width();
 			let height = img.height();
 
