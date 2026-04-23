@@ -12,6 +12,28 @@ const MIN_SCALE = 1;
 const MAX_SCALE = 5;
 const DOUBLE_TAP_SCALE = 2.5;
 
+/** Clamp scale to [MIN_SCALE, MAX_SCALE]. Exported for testing. */
+export function clampScale(value: number): number {
+	"worklet";
+	return Math.min(Math.max(value, MIN_SCALE), MAX_SCALE);
+}
+
+/**
+ * Clamp translation so the image edge can't move past viewport center.
+ * At scale <= 1 (fit-to-screen), no translation is allowed.
+ * Exported for testing.
+ */
+export function clampTranslation(
+	value: number,
+	dimension: number,
+	currentScale: number,
+): number {
+	"worklet";
+	if (currentScale <= 1) return 0;
+	const maxTranslate = (dimension * (currentScale - 1)) / 2;
+	return Math.min(Math.max(value, -maxTranslate), maxTranslate);
+}
+
 interface ZoomablePhotoProps {
 	uri: string;
 	placeholderUri?: string;
@@ -32,44 +54,19 @@ export default function ZoomablePhoto({
 	const savedTranslateX = useSharedValue(0);
 	const savedTranslateY = useSharedValue(0);
 
-	const clampTranslation = (
-		value: number,
-		dimension: number,
-		currentScale: number,
-	) => {
-		"worklet";
-		const maxTranslate = (dimension * (currentScale - 1)) / 2;
-		return Math.min(Math.max(value, -maxTranslate), maxTranslate);
-	};
-
 	const pinchGesture = Gesture.Pinch()
 		.onUpdate((e) => {
 			"worklet";
-			const newScale = savedScale.value * e.scale;
-			scale.value = Math.min(Math.max(newScale, MIN_SCALE * 0.5), MAX_SCALE);
+			// Clamp to [1x, 5x] — no rubber-band below fit-to-screen
+			scale.value = clampScale(savedScale.value * e.scale);
 		})
 		.onEnd(() => {
 			"worklet";
-			if (scale.value < MIN_SCALE) {
-				scale.value = withTiming(MIN_SCALE);
-				translateX.value = withTiming(0);
-				translateY.value = withTiming(0);
-				savedTranslateX.value = 0;
-				savedTranslateY.value = 0;
-			} else if (scale.value > MAX_SCALE) {
-				scale.value = withTiming(MAX_SCALE);
-			}
+			scale.value = clampScale(scale.value);
 			savedScale.value = scale.value;
-			translateX.value = clampTranslation(
-				translateX.value,
-				width,
-				scale.value,
-			);
-			translateY.value = clampTranslation(
-				translateY.value,
-				height,
-				scale.value,
-			);
+			// At 1x, translation resets to center; otherwise clamp to bounds
+			translateX.value = clampTranslation(translateX.value, width, scale.value);
+			translateY.value = clampTranslation(translateY.value, height, scale.value);
 			savedTranslateX.value = translateX.value;
 			savedTranslateY.value = translateY.value;
 		});
