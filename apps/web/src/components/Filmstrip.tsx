@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 interface FilmstripProps {
 	photos: PhotoMetadata[];
 	activePhotoId?: number | null;
-	selectedPhotos?: Set<number>;
 	onPhotoClick?: (photo: PhotoMetadata) => void;
 	className?: string;
 }
@@ -15,7 +14,6 @@ interface FilmstripProps {
 export function Filmstrip({
 	photos,
 	activePhotoId,
-	selectedPhotos = new Set(),
 	onPhotoClick,
 	className,
 }: FilmstripProps) {
@@ -63,7 +61,6 @@ export function Filmstrip({
 		>
 			{photos.map((photo) => {
 				const isActive = activePhotoId === photo.id;
-				const isSelected = selectedPhotos.has(photo.id);
 				const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
 
 				return (
@@ -78,10 +75,7 @@ export function Filmstrip({
 							"transition-all duration-75",
 							"ring-inset focus:outline-none",
 							isActive && "ring-2 ring-selection brightness-110",
-							isSelected && !isActive && "ring-1 ring-selection/70",
-							!isActive &&
-								!isSelected &&
-								"opacity-70 hover:opacity-100 hover:ring-1 hover:ring-thumbnail-border",
+							!isActive && "opacity-70 hover:opacity-100 hover:ring-1 hover:ring-thumbnail-border",
 						)}
 					>
 						{isFailedRaw ? (

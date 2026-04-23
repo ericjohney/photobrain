@@ -53,8 +53,6 @@ interface ToolbarProps {
 
 	// Stats
 	photoCount?: number;
-	selectedCount?: number;
-
 	className?: string;
 }
 
@@ -75,7 +73,6 @@ export function Toolbar({
 	hasActiveJobs,
 	processingProgress,
 	photoCount = 0,
-	selectedCount = 0,
 	className,
 }: ToolbarProps) {
 	const [isDarkMode, setIsDarkMode] = useState(false);
@@ -186,13 +183,7 @@ export function Toolbar({
 
 				{/* Stats */}
 				<div className="flex items-center gap-1 text-2xs text-muted-foreground">
-					{selectedCount > 0 ? (
-						<span>
-							{selectedCount} of {photoCount} selected
-						</span>
-					) : (
-						<span>{photoCount} photos</span>
-					)}
+					<span>{photoCount} photos</span>
 				</div>
 
 				<Separator orientation="vertical" className="h-5" />

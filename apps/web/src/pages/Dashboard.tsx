@@ -70,19 +70,14 @@ export function Dashboard() {
 		toggleAllPanels: panels.toggleAllPanels,
 		toggleFilmstrip: panels.toggleFilmstrip,
 		navigatePhoto: library.navigatePhoto,
-		clearSelection: library.clearSelection,
-		selectAll: library.selectAll,
 		hasActivePhoto: library.activePhoto !== null,
 	});
 
 	const handlePhotoClick = useCallback(
-		(photo: PhotoMetadata, event: React.MouseEvent) => {
-			library.selectPhoto(photo, {
-				shift: event.shiftKey,
-				ctrl: event.ctrlKey || event.metaKey,
-			});
+		(photo: PhotoMetadata) => {
+			library.setActivePhoto(photo);
 		},
-		[library.selectPhoto],
+		[library.setActivePhoto],
 	);
 
 	const handlePhotoDoubleClick = useCallback(
@@ -94,9 +89,9 @@ export function Dashboard() {
 
 	const handleFilmstripClick = useCallback(
 		(photo: PhotoMetadata) => {
-			library.selectPhoto(photo);
+			library.setActivePhoto(photo);
 		},
-		[library.selectPhoto],
+		[library.setActivePhoto],
 	);
 
 	const handleSearch = useCallback(() => {
@@ -169,7 +164,6 @@ export function Dashboard() {
 		return (
 			<PhotoGrid
 				photos={photos}
-				selectedPhotos={library.selectedPhotos}
 				activePhotoId={library.activePhoto?.id}
 				thumbnailSize={library.thumbnailSize}
 				onPhotoClick={handlePhotoClick}
@@ -201,7 +195,6 @@ export function Dashboard() {
 						total: jobProgress.progress.total,
 					}}
 					photoCount={photos.length}
-					selectedCount={library.selectedCount}
 				/>
 			}
 			leftPanel={
@@ -227,7 +220,6 @@ export function Dashboard() {
 				<Filmstrip
 					photos={photos}
 					activePhotoId={library.activePhoto?.id}
-					selectedPhotos={library.selectedPhotos}
 					onPhotoClick={handleFilmstripClick}
 				/>
 			}

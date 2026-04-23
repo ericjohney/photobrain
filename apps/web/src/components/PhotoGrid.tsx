@@ -7,17 +7,15 @@ import { cn } from "@/lib/utils";
 
 interface PhotoGridProps {
 	photos: PhotoMetadata[];
-	selectedPhotos?: Set<number>;
 	activePhotoId?: number | null;
 	thumbnailSize?: number;
-	onPhotoClick?: (photo: PhotoMetadata, event: React.MouseEvent) => void;
+	onPhotoClick?: (photo: PhotoMetadata) => void;
 	onPhotoDoubleClick?: (photo: PhotoMetadata) => void;
 	className?: string;
 }
 
 export function PhotoGrid({
 	photos,
-	selectedPhotos = new Set(),
 	activePhotoId = null,
 	thumbnailSize = 200,
 	onPhotoClick,
@@ -25,8 +23,8 @@ export function PhotoGrid({
 	className,
 }: PhotoGridProps) {
 	const handleClick = useCallback(
-		(photo: PhotoMetadata, event: React.MouseEvent) => {
-			onPhotoClick?.(photo, event);
+		(photo: PhotoMetadata) => {
+			onPhotoClick?.(photo);
 		},
 		[onPhotoClick],
 	);
@@ -65,7 +63,6 @@ export function PhotoGrid({
 			<div className="p-1">
 				<div data-testid="photo-grid" className="grid" style={gridStyle}>
 					{photos.map((photo) => {
-						const isSelected = selectedPhotos.has(photo.id);
 						const isActive = activePhotoId === photo.id;
 						const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
 
@@ -77,13 +74,10 @@ export function PhotoGrid({
 									"group relative aspect-square cursor-pointer overflow-hidden bg-muted",
 									"transition-all duration-75",
 									"ring-inset",
-									isSelected && "ring-2 ring-selection",
 									isActive && "ring-2 ring-selection brightness-110",
-									!isSelected &&
-										!isActive &&
-										"hover:ring-1 hover:ring-thumbnail-border",
+									!isActive && "hover:ring-1 hover:ring-thumbnail-border",
 								)}
-								onClick={(e) => handleClick(photo, e)}
+								onClick={() => handleClick(photo)}
 								onDoubleClick={() => handleDoubleClick(photo)}
 							>
 								{/* Thumbnail */}
@@ -113,7 +107,6 @@ export function PhotoGrid({
 									className={cn(
 										"absolute inset-0 transition-colors pointer-events-none",
 										"group-hover:bg-black/10",
-										isSelected && "bg-selection/10",
 									)}
 								/>
 
