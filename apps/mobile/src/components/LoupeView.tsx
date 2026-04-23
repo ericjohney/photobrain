@@ -106,6 +106,7 @@ export default function LoupeView({
 		<View style={styles.container}>
 			{/* Photo viewer */}
 			<FlatList
+				testID="loupe-flatlist"
 				ref={flatListRef}
 				data={photos}
 				renderItem={renderPhoto}

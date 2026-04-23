@@ -134,14 +134,26 @@ export default function DashboardScreen() {
 	// Job progress tracking
 	const jobProgress = useJobProgress(activeJobId);
 
-	const photos = photosQuery.data?.photos ?? [];
+	const rawPhotos = photosQuery.data?.photos ?? [];
 	const loading = photosQuery.isLoading;
+
+	// Sort photos by date (newest first) — this is the canonical display order
+	// used by the grid, loupe, and selection. Sorting once here ensures the
+	// loupe swipe order matches what the user sees in the grid.
+	const photos = useMemo(
+		() =>
+			[...rawPhotos].sort((a, b) => {
+				const dateA = a.exif?.dateTaken || a.modifiedAt || a.createdAt;
+				const dateB = b.exif?.dateTaken || b.modifiedAt || b.createdAt;
+				return parseDate(dateB).getTime() - parseDate(dateA).getTime();
+			}),
+		[rawPhotos],
+	);
 
 	// Library state for selection and view mode
 	const library = useLibraryState(photos);
 
-
-	// Group photos by date
+	// Group photos by date (receives pre-sorted array)
 	const sections = useMemo(() => groupPhotosByDate(photos), [photos]);
 
 	// Handlers

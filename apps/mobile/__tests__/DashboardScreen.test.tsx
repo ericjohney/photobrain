@@ -269,19 +269,21 @@ describe("DashboardScreen", () => {
 			expect(getByText(/7360 × 4912/)).toBeTruthy();
 		});
 
-		// Simulate swipe to next photo (scroll right by one page width)
-		// Two FlatLists exist: grid + loupe. The loupe's is horizontal.
+		// Simulate swipe to next photo — must use UNSAFE_getAllByType to get
+		// the FlatList component (not the host View) for events to dispatch.
 		const { FlatList } = require("react-native");
-		const flatLists = UNSAFE_getAllByType(FlatList);
-		const flatList = flatLists.find(
-			(fl: any) => fl.props.horizontal === true,
+		const allFlatLists = UNSAFE_getAllByType(FlatList);
+		const loupeFlatList = allFlatLists.find(
+			(fl: any) => fl.props.testID === "loupe-flatlist",
 		);
-		expect(flatList).toBeTruthy();
-		fireEvent(flatList, "momentumScrollEnd", {
+		expect(loupeFlatList).toBeTruthy();
+		// landscape is at sorted index 2. Swiping one page right → index 3.
+		// SCREEN_WIDTH is 750 in jest-expo. offset = (2+1) * 750 = 2250
+		fireEvent(loupeFlatList!, "momentumScrollEnd", {
 			nativeEvent: {
-				contentOffset: { x: 375, y: 0 },
-				contentSize: { width: 1875, height: 800 },
-				layoutMeasurement: { width: 375, height: 800 },
+				contentOffset: { x: 2250, y: 0 },
+				contentSize: { width: 3750, height: 800 },
+				layoutMeasurement: { width: 750, height: 800 },
 			},
 		});
 
