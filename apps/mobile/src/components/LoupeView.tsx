@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import ZoomablePhoto from "@/components/ZoomablePhoto";
 import type { AppRouter } from "@photobrain/api";
 import { formatDate, formatFileSize, parseDate } from "@photobrain/utils";
 import type { inferRouterOutputs } from "@trpc/server";
 import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
 import React, { useCallback, useRef, useState } from "react";
 import {
 	Dimensions,
@@ -60,15 +60,11 @@ export default function LoupeView({
 	const renderPhoto = useCallback(
 		({ item }: { item: PhotoMetadata }) => (
 			<View style={styles.photoContainer}>
-				<Image
-					source={{ uri: `${apiUrl}/api/photos/${item.id}/thumbnail/large` }}
-					placeholder={{
-						uri: `${apiUrl}/api/photos/${item.id}/thumbnail/small`,
-					}}
-					style={styles.photo}
-					contentFit="contain"
-					priority="high"
-					cachePolicy="memory-disk"
+				<ZoomablePhoto
+					uri={`${apiUrl}/api/photos/${item.id}/thumbnail/large`}
+					placeholderUri={`${apiUrl}/api/photos/${item.id}/thumbnail/small`}
+					width={SCREEN_WIDTH}
+					height={SCREEN_HEIGHT}
 				/>
 			</View>
 		),
@@ -221,10 +217,6 @@ const styles = StyleSheet.create({
 		height: SCREEN_HEIGHT,
 		justifyContent: "center",
 		alignItems: "center",
-	},
-	photo: {
-		width: SCREEN_WIDTH,
-		height: "100%",
 	},
 	topBar: {
 		position: "absolute",

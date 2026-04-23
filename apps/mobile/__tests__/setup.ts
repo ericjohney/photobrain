@@ -1,8 +1,21 @@
-// Mock react-native-reanimated
+// Mock react-native-reanimated (manual mock — /mock entry point requires native worklets)
 jest.mock("react-native-reanimated", () => {
-	const Reanimated = require("react-native-reanimated/mock");
-	Reanimated.default.call = () => {};
-	return Reanimated;
+	const { View } = require("react-native");
+	return {
+		__esModule: true,
+		default: {
+			createAnimatedComponent: (component: any) => component,
+			View,
+			call: () => {},
+		},
+		useSharedValue: (init: any) => ({ value: init }),
+		useAnimatedStyle: (fn: () => any) => fn(),
+		withTiming: (value: any) => value,
+		withSpring: (value: any) => value,
+		withDecay: (value: any) => value,
+		Easing: { linear: (x: any) => x, ease: (x: any) => x },
+		createAnimatedComponent: (component: any) => component,
+	};
 });
 
 // Mock react-native-gesture-handler Gesture API
