@@ -3,6 +3,7 @@ import type { AppRouter } from "@photobrain/api";
 import { formatDate, formatFileSize } from "@photobrain/utils";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Image } from "expo-image";
+import { thumbnailUrl } from "@/config";
 import type React from "react";
 import { useCallback, useState } from "react";
 import {
@@ -142,7 +143,7 @@ export default function MetadataPanel({
 					>
 						<Image
 							source={{
-								uri: `${apiUrl}/api/photos/${photo.id}/thumbnail/small`,
+								uri: thumbnailUrl(photo.id, "small"),
 							}}
 							style={styles.preview}
 							contentFit="contain"

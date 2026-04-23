@@ -8,6 +8,7 @@ import React, { useCallback, useState } from "react";
 import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Gallery } from "react-native-zoom-toolkit";
+import { thumbnailUrl } from "@/config";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -47,9 +48,9 @@ export default function LoupeView({
 	const renderItem = useCallback(
 		(item: PhotoMetadata, _index: number) => (
 			<Image
-				source={{ uri: `${apiUrl}/api/photos/${item.id}/thumbnail/large` }}
+				source={{ uri: thumbnailUrl(item.id, "large") }}
 				placeholder={{
-					uri: `${apiUrl}/api/photos/${item.id}/thumbnail/small`,
+					uri: thumbnailUrl(item.id, "small"),
 				}}
 				style={styles.image}
 				contentFit="contain"
@@ -57,7 +58,7 @@ export default function LoupeView({
 				cachePolicy="memory-disk"
 			/>
 		),
-		[apiUrl],
+		[],
 	);
 
 	const keyExtractor = useCallback(

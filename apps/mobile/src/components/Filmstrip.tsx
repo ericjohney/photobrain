@@ -3,6 +3,7 @@ import type { inferRouterOutputs } from "@trpc/server";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import React, { useCallback, useEffect, useRef } from "react";
+import { thumbnailUrl } from "@/config";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { useColors } from "@/theme";
 
@@ -64,7 +65,7 @@ export default function Filmstrip({
 					]}
 				>
 					<Image
-						source={{ uri: `${apiUrl}/api/photos/${item.id}/thumbnail/tiny` }}
+						source={{ uri: thumbnailUrl(item.id, "tiny") }}
 						style={styles.thumbnailImage}
 						contentFit="cover"
 						cachePolicy="memory-disk"

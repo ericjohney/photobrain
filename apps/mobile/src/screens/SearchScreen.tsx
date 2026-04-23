@@ -17,7 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
-import { API_URL } from "@/config";
+import { API_URL, thumbnailUrl } from "@/config";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/theme";
@@ -198,7 +198,7 @@ export default function SearchScreen() {
 						>
 							<Image
 								source={{
-									uri: `${API_URL}/api/photos/${item.id}/thumbnail/tiny`,
+									uri: thumbnailUrl(item.id, "tiny"),
 								}}
 								style={styles.photo}
 								contentFit="cover"

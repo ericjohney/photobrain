@@ -3,6 +3,7 @@ import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
+import { thumbnailUrl } from "@/config";
 import React, { useCallback } from "react";
 import {
 	Dimensions,
@@ -92,7 +93,7 @@ export default function PhotoGrid({
 						</View>
 					) : (
 						<Image
-							source={{ uri: `${apiUrl}/api/photos/${item.id}/thumbnail/tiny` }}
+							source={{ uri: thumbnailUrl(item.id, "tiny") }}
 							style={styles.photo}
 							contentFit="cover"
 							transition={200}

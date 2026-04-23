@@ -20,7 +20,7 @@ import { Image } from "expo-image";
 import ActivityBar from "@/components/ActivityBar";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
-import { API_URL } from "@/config";
+import { API_URL, thumbnailUrl } from "@/config";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { trpc } from "@/lib/trpc";
@@ -249,7 +249,7 @@ export default function DashboardScreen() {
 						>
 							<Image
 								source={{
-									uri: `${API_URL}/api/photos/${photo.id}/thumbnail/tiny`,
+									uri: thumbnailUrl(photo.id, "tiny"),
 								}}
 								style={styles.photo}
 								contentFit="cover"
