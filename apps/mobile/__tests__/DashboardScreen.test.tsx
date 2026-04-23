@@ -272,7 +272,7 @@ describe("DashboardScreen", () => {
 		const { FlatList } = require("react-native");
 		const allFlatLists = UNSAFE_getAllByType(FlatList);
 		const loupeFlatList = allFlatLists.find(
-			(fl: any) => fl.props.testID === "loupe-flatlist",
+			(fl: any) => fl.props.testID === "loupe-gallery",
 		);
 		expect(loupeFlatList).toBeTruthy();
 		// landscape is at sorted index 2. Swiping one page right → index 3.

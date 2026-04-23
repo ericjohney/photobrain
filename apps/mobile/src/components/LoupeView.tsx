@@ -1,21 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import ZoomablePhoto from "@/components/ZoomablePhoto";
 import type { AppRouter } from "@photobrain/api";
-import { formatDate, formatFileSize, parseDate } from "@photobrain/utils";
+import { formatFileSize, parseDate } from "@photobrain/utils";
 import type { inferRouterOutputs } from "@trpc/server";
 import * as Haptics from "expo-haptics";
-import React, { useCallback, useRef, useState } from "react";
-import {
-	Dimensions,
-	FlatList,
-	type NativeScrollEvent,
-	type NativeSyntheticEvent,
-	Pressable,
-	StyleSheet,
-	Text,
-	View,
-} from "react-native";
+import { Image } from "expo-image";
+import React, { useCallback, useState } from "react";
+import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Gallery } from "react-native-zoom-toolkit";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -41,42 +33,35 @@ export default function LoupeView({
 	onShowMetadata,
 }: LoupeViewProps) {
 	const insets = useSafeAreaInsets();
-	const flatListRef = useRef<FlatList>(null);
 	const [currentIndex, setCurrentIndex] = useState(initialIndex);
 	const currentPhoto = photos[currentIndex];
 
-	const handleMomentumScrollEnd = useCallback(
-		(event: NativeSyntheticEvent<NativeScrollEvent>) => {
-			const offsetX = event.nativeEvent.contentOffset.x;
-			const index = Math.round(offsetX / SCREEN_WIDTH);
-			if (index >= 0 && index < photos.length) {
-				setCurrentIndex(index);
-				onIndexChange(index);
-			}
+	const handleIndexChange = useCallback(
+		(index: number) => {
+			setCurrentIndex(index);
+			onIndexChange(index);
 		},
-		[onIndexChange, photos.length],
+		[onIndexChange],
 	);
 
-	const renderPhoto = useCallback(
-		({ item }: { item: PhotoMetadata }) => (
-			<View style={styles.photoContainer}>
-				<ZoomablePhoto
-					uri={`${apiUrl}/api/photos/${item.id}/thumbnail/large`}
-					placeholderUri={`${apiUrl}/api/photos/${item.id}/thumbnail/small`}
-					width={SCREEN_WIDTH}
-					height={SCREEN_HEIGHT}
-				/>
-			</View>
+	const renderItem = useCallback(
+		(item: PhotoMetadata, _index: number) => (
+			<Image
+				source={{ uri: `${apiUrl}/api/photos/${item.id}/thumbnail/large` }}
+				placeholder={{
+					uri: `${apiUrl}/api/photos/${item.id}/thumbnail/small`,
+				}}
+				style={styles.image}
+				contentFit="contain"
+				priority="high"
+				cachePolicy="memory-disk"
+			/>
 		),
 		[apiUrl],
 	);
 
-	const getItemLayout = useCallback(
-		(_: unknown, index: number) => ({
-			length: SCREEN_WIDTH,
-			offset: SCREEN_WIDTH * index,
-			index,
-		}),
+	const keyExtractor = useCallback(
+		(item: PhotoMetadata, _index: number) => item.id.toString(),
 		[],
 	);
 
@@ -100,25 +85,25 @@ export default function LoupeView({
 
 	return (
 		<View style={styles.container}>
-			{/* Photo viewer */}
-			<FlatList
-				testID="loupe-flatlist"
-				ref={flatListRef}
+			{/* Photo viewer with built-in pinch/pan/double-tap zoom */}
+			<Gallery
 				data={photos}
-				renderItem={renderPhoto}
-				keyExtractor={(item) => item.id.toString()}
-				horizontal
-				pagingEnabled
-				showsHorizontalScrollIndicator={false}
-				initialScrollIndex={initialIndex}
-				getItemLayout={getItemLayout}
-				onMomentumScrollEnd={handleMomentumScrollEnd}
-				decelerationRate="fast"
-				bounces={false}
+				renderItem={renderItem}
+				keyExtractor={keyExtractor}
+				initialIndex={initialIndex}
+				onIndexChange={handleIndexChange}
+				maxScale={5}
+				pinchMode="clamp"
+				allowPinchPanning
+				tapOnEdgeToItem
+				zoomEnabled
 			/>
 
 			{/* Top overlay controls */}
-			<View style={[styles.topBar, { paddingTop: insets.top + 4 }]}>
+			<View
+				style={[styles.topBar, { paddingTop: insets.top + 4 }]}
+				pointerEvents="box-none"
+			>
 				<Pressable onPress={onClose} style={styles.topButton}>
 					<Ionicons name="chevron-back" size={28} color="#ffffff" />
 				</Pressable>
@@ -138,7 +123,10 @@ export default function LoupeView({
 			</View>
 
 			{/* Bottom overlay */}
-			<View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+			<View
+				style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}
+				pointerEvents="box-none"
+			>
 				{/* Date and info */}
 				<View style={styles.dateRow}>
 					<View>
@@ -212,11 +200,9 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: "#000000",
 	},
-	photoContainer: {
+	image: {
 		width: SCREEN_WIDTH,
 		height: SCREEN_HEIGHT,
-		justifyContent: "center",
-		alignItems: "center",
 	},
 	topBar: {
 		position: "absolute",
@@ -243,7 +229,6 @@ const styles = StyleSheet.create({
 		right: 0,
 		paddingHorizontal: 16,
 		paddingTop: 16,
-		background: "transparent",
 	},
 	dateRow: {
 		marginBottom: 16,

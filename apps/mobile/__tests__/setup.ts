@@ -41,6 +41,67 @@ jest.mock("react-native-gesture-handler", () => {
 	};
 });
 
+// Mock react-native-zoom-toolkit — Gallery renders children directly
+jest.mock("react-native-zoom-toolkit", () => {
+	const React = require("react");
+	const { View, FlatList } = require("react-native");
+	return {
+		Gallery: ({
+			data,
+			renderItem,
+			keyExtractor,
+			initialIndex,
+			onIndexChange,
+			...rest
+		}: any) => {
+			const [currentIndex, setCurrentIndex] = React.useState(
+				initialIndex || 0,
+			);
+			return React.createElement(
+				FlatList,
+				{
+					testID: "loupe-gallery",
+					data,
+					horizontal: true,
+					pagingEnabled: true,
+					initialScrollIndex: initialIndex,
+					keyExtractor: (item: any, index: number) =>
+						keyExtractor ? keyExtractor(item, index) : index.toString(),
+					renderItem: ({ item, index }: any) =>
+						React.createElement(View, { key: index }, renderItem(item, index)),
+					onMomentumScrollEnd: (e: any) => {
+						const offsetX = e.nativeEvent?.contentOffset?.x ?? 0;
+						const index = Math.round(offsetX / 750);
+						if (onIndexChange && index !== currentIndex) {
+							setCurrentIndex(index);
+							onIndexChange(index);
+						}
+					},
+					getItemLayout: (_: any, index: number) => ({
+						length: 750,
+						offset: 750 * index,
+						index,
+					}),
+				},
+				null,
+			);
+		},
+		fitContainer: (aspectRatio: number, container: any) => {
+			const containerAspect = container.width / container.height;
+			if (aspectRatio > containerAspect) {
+				return {
+					width: container.width,
+					height: container.width / aspectRatio,
+				};
+			}
+			return {
+				width: container.height * aspectRatio,
+				height: container.height,
+			};
+		},
+	};
+});
+
 // Mock expo-haptics
 jest.mock("expo-haptics", () => ({
 	selectionAsync: jest.fn(),
