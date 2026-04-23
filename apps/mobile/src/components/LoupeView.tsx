@@ -93,6 +93,7 @@ export default function LoupeView({
 				initialIndex={initialIndex}
 				onIndexChange={handleIndexChange}
 				maxScale={5}
+				gap={20}
 				pinchMode="clamp"
 				allowPinchPanning
 				tapOnEdgeToItem
