@@ -23,7 +23,7 @@ jest.mock("react-native-gesture-handler", () => {
 	const View = require("react-native").View;
 	const createChainableGesture = () => {
 		const gesture: any = {};
-		const methods = ["onUpdate", "onEnd", "onStart", "minPointers", "numberOfTaps", "maxDuration"];
+		const methods = ["onUpdate", "onEnd", "onStart", "minPointers", "numberOfTaps", "maxDuration", "manualActivation", "onTouchesMove"];
 		for (const method of methods) {
 			gesture[method] = (..._args: any[]) => gesture;
 		}

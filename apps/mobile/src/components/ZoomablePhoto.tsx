@@ -74,11 +74,22 @@ export default function ZoomablePhoto({
 			savedTranslateY.value = translateY.value;
 		});
 
+	// Pan uses manualActivation so it only activates when zoomed in.
+	// At 1x scale, the gesture fails and the touch passes through to the
+	// FlatList's native scroll handler, allowing horizontal swipe-to-page.
 	const panGesture = Gesture.Pan()
 		.minPointers(1)
+		.manualActivation(true)
+		.onTouchesMove((_e, stateManager) => {
+			"worklet";
+			if (scale.value > 1) {
+				stateManager.activate();
+			} else {
+				stateManager.fail();
+			}
+		})
 		.onUpdate((e) => {
 			"worklet";
-			if (scale.value <= 1) return;
 			const newX = savedTranslateX.value + e.translationX;
 			const newY = savedTranslateY.value + e.translationY;
 			translateX.value = clampTranslation(newX, width, scale.value);
