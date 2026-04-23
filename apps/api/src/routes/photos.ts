@@ -155,8 +155,8 @@ router.get("/:id/thumbnail/:size", async (c) => {
 			status: 200,
 			headers: {
 				"Content-Type": "image/webp",
-				// Aggressive caching for thumbnails (1 year) since they're immutable
-				"Cache-Control": "public, max-age=31536000, immutable",
+				// Cache thumbnails for 1 day — they can change on re-processing
+				"Cache-Control": "public, max-age=86400",
 				"Content-Length": file.size.toString(),
 			},
 		});
