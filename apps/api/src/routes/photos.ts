@@ -1,8 +1,13 @@
 import { join } from "node:path";
+import {
+	processPhotosWithCallback,
+} from "@photobrain/image-processing";
 import { THUMBNAIL_CONFIG, type ThumbnailSize } from "@photobrain/utils";
+import { eq, like, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { config } from "@/config";
 import { db } from "@/db";
+import { photos } from "@/db/schema";
 
 const router = new Hono();
 
@@ -158,6 +163,67 @@ router.get("/:id/thumbnail/:size", async (c) => {
 	} catch (error) {
 		console.error("Error serving thumbnail:", error);
 		return c.json({ error: "Failed to serve thumbnail" }, 500);
+	}
+});
+
+// One-off endpoint to re-process HEIC thumbnails with the orientation fix.
+// Call via: POST /api/photos/reprocess-heic
+// Remove this endpoint after running it once.
+router.post("/reprocess-heic", async (c) => {
+	try {
+		const heicPhotos = await db
+			.select({ id: photos.id, path: photos.path })
+			.from(photos)
+			.where(
+				or(
+					like(photos.path, "%.heic"),
+					like(photos.path, "%.HEIC"),
+					like(photos.path, "%.heif"),
+					like(photos.path, "%.HEIF"),
+				),
+			)
+			.all();
+
+		if (heicPhotos.length === 0) {
+			return c.json({ message: "No HEIC photos found", count: 0 });
+		}
+
+		const absolutePaths = heicPhotos.map((p) =>
+			join(config.PHOTO_DIRECTORY, p.path),
+		);
+		const relativePaths = heicPhotos.map((p) => p.path);
+		const thumbsDir = config.THUMBNAILS_DIRECTORY;
+
+		let processed = 0;
+		processPhotosWithCallback(
+			absolutePaths,
+			relativePaths,
+			thumbsDir,
+			(result) => {
+				processed++;
+				if (result.width && result.height) {
+					db.update(photos)
+						.set({
+							width: result.width,
+							height: result.height,
+							thumbnailStatus: "completed",
+						})
+						.where(eq(photos.path, result.path))
+						.run();
+				}
+			},
+		);
+
+		return c.json({
+			message: `Re-processed ${heicPhotos.length} HEIC photos`,
+			count: heicPhotos.length,
+		});
+	} catch (error) {
+		console.error("HEIC reprocess error:", error);
+		return c.json(
+			{ error: error instanceof Error ? error.message : "Unknown error" },
+			500,
+		);
 	}
 });
 
