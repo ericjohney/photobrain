@@ -12,7 +12,6 @@ type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 interface FilmstripProps {
 	photos: PhotoMetadata[];
 	activePhotoId: number | null;
-	selectedPhotos: Set<number>;
 	apiUrl: string;
 	onPhotoPress: (photo: PhotoMetadata) => void;
 }
@@ -23,7 +22,6 @@ const THUMBNAIL_SPACING = 2;
 export default function Filmstrip({
 	photos,
 	activePhotoId,
-	selectedPhotos,
 	apiUrl,
 	onPhotoPress,
 }: FilmstripProps) {
@@ -55,7 +53,6 @@ export default function Filmstrip({
 	const renderItem = useCallback(
 		({ item }: { item: PhotoMetadata }) => {
 			const isActive = activePhotoId === item.id;
-			const isSelected = selectedPhotos.has(item.id);
 
 			return (
 				<Pressable
@@ -64,11 +61,6 @@ export default function Filmstrip({
 						styles.thumbnail,
 						{ backgroundColor: colors.muted },
 						isActive && { borderColor: colors.selection, borderWidth: 2 },
-						isSelected &&
-							!isActive && {
-								borderColor: colors.selectionMuted,
-								borderWidth: 1,
-							},
 					]}
 				>
 					<Image
@@ -86,7 +78,7 @@ export default function Filmstrip({
 				</Pressable>
 			);
 		},
-		[activePhotoId, selectedPhotos, apiUrl, colors, handlePress],
+		[activePhotoId, apiUrl, colors, handlePress],
 	);
 
 	const getItemLayout = useCallback(

@@ -7,80 +7,11 @@ describe("useLibraryState", () => {
 		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
 
 		expect(result.current.viewMode).toBe("grid");
-		expect(result.current.selectedCount).toBe(0);
-		expect(result.current.hasSelection).toBe(false);
 		expect(result.current.totalPhotos).toBe(5);
 		expect(result.current.activePhoto).toBeNull();
 	});
 
-	it("selectPhoto sets active photo and selection", () => {
-		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
-
-		act(() => {
-			result.current.selectPhoto(MOCK_PHOTOS[0]);
-		});
-
-		expect(result.current.activePhoto?.id).toBe(1);
-		expect(result.current.selectedPhotos.has(1)).toBe(true);
-		expect(result.current.selectedCount).toBe(1);
-	});
-
-	it("selectPhoto with toggle adds to selection", () => {
-		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
-
-		act(() => {
-			result.current.selectPhoto(MOCK_PHOTOS[0]);
-		});
-		act(() => {
-			result.current.selectPhoto(MOCK_PHOTOS[1], { toggle: true });
-		});
-
-		expect(result.current.selectedPhotos.has(1)).toBe(true);
-		expect(result.current.selectedPhotos.has(2)).toBe(true);
-		expect(result.current.selectedCount).toBe(2);
-	});
-
-	it("selectPhoto with toggle removes already-selected photo", () => {
-		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
-
-		act(() => {
-			result.current.selectPhoto(MOCK_PHOTOS[0]);
-		});
-		act(() => {
-			result.current.selectPhoto(MOCK_PHOTOS[0], { toggle: true });
-		});
-
-		expect(result.current.selectedPhotos.has(1)).toBe(false);
-		expect(result.current.selectedCount).toBe(0);
-	});
-
-	it("selectAll selects all photos", () => {
-		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
-
-		act(() => {
-			result.current.selectAll();
-		});
-
-		expect(result.current.selectedCount).toBe(5);
-		expect(result.current.selectedPhotos.has(1)).toBe(true);
-		expect(result.current.selectedPhotos.has(5)).toBe(true);
-	});
-
-	it("clearSelection empties selection and active photo", () => {
-		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
-
-		act(() => {
-			result.current.selectAll();
-		});
-		act(() => {
-			result.current.clearSelection();
-		});
-
-		expect(result.current.selectedCount).toBe(0);
-		expect(result.current.activePhoto).toBeNull();
-	});
-
-	it("openInLoupe sets view mode, active photo, and selection", () => {
+	it("openInLoupe sets view mode and active photo", () => {
 		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
 
 		act(() => {
@@ -89,7 +20,6 @@ describe("useLibraryState", () => {
 
 		expect(result.current.viewMode).toBe("loupe");
 		expect(result.current.activePhoto?.id).toBe(3);
-		expect(result.current.selectedPhotos.has(3)).toBe(true);
 	});
 
 	it("closeLoupe returns to grid view", () => {
@@ -238,7 +168,6 @@ describe("useLibraryState", () => {
 			expect(result.current.activePhoto?.id).toBe(4);
 			expect(result.current.activePhotoIndex).toBe(3);
 		});
-		expect(result.current.selectedPhotos.has(4)).toBe(true);
 	});
 
 	it("navigateToIndex ignores out-of-bounds indices", () => {

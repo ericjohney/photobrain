@@ -19,7 +19,6 @@ type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 interface PhotoGridProps {
 	photos: PhotoMetadata[];
-	selectedPhotos?: Set<number>;
 	activePhotoId?: number | null;
 	onPhotoPress: (photo: PhotoMetadata) => void;
 	onPhotoLongPress?: (photo: PhotoMetadata) => void;
@@ -34,7 +33,6 @@ const ITEM_SIZE = (SCREEN_WIDTH - SPACING * (COLUMNS + 1)) / COLUMNS;
 
 export default function PhotoGrid({
 	photos,
-	selectedPhotos = new Set(),
 	activePhotoId = null,
 	onPhotoPress,
 	onPhotoLongPress,
@@ -63,7 +61,6 @@ export default function PhotoGrid({
 
 	const renderItem = useCallback(
 		({ item }: { item: PhotoMetadata }) => {
-			const isSelected = selectedPhotos.has(item.id);
 			const isActive = activePhotoId === item.id;
 			const isFailedRaw = item.isRaw && item.rawStatus !== "converted";
 
@@ -74,15 +71,10 @@ export default function PhotoGrid({
 					style={[
 						styles.photoContainer,
 						{ backgroundColor: colors.muted },
-						isSelected && {
-							borderColor: colors.selection,
+						isActive && {
+							borderColor: colors.selectionMuted,
 							borderWidth: 2,
 						},
-						isActive &&
-							!isSelected && {
-								borderColor: colors.selectionMuted,
-								borderWidth: 2,
-							},
 					]}
 				>
 					{isFailedRaw ? (
@@ -123,35 +115,10 @@ export default function PhotoGrid({
 						</View>
 					)}
 
-					{/* Selection overlay */}
-					{isSelected && (
-						<View
-							style={[
-								styles.selectionOverlay,
-								{ backgroundColor: `${colors.selection}20` },
-							]}
-						>
-							<View
-								style={[
-									styles.checkmark,
-									{ backgroundColor: colors.selection },
-								]}
-							>
-								<Ionicons name="checkmark" size={14} color="#ffffff" />
-							</View>
-						</View>
-					)}
 				</Pressable>
 			);
 		},
-		[
-			selectedPhotos,
-			activePhotoId,
-			apiUrl,
-			colors,
-			handlePress,
-			handleLongPress,
-		],
+		[activePhotoId, apiUrl, colors, handlePress, handleLongPress],
 	);
 
 	const keyExtractor = useCallback(
@@ -238,19 +205,6 @@ const styles = StyleSheet.create({
 		position: "absolute",
 		top: 4,
 		right: 4,
-	},
-	selectionOverlay: {
-		...StyleSheet.absoluteFillObject,
-	},
-	checkmark: {
-		position: "absolute",
-		bottom: 4,
-		right: 4,
-		width: 20,
-		height: 20,
-		borderRadius: 10,
-		justifyContent: "center",
-		alignItems: "center",
 	},
 	emptyContainer: {
 		flex: 1,

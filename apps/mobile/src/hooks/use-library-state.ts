@@ -10,7 +10,6 @@ export type ViewMode = "grid" | "loupe";
 
 interface LibraryState {
 	viewMode: ViewMode;
-	selectedPhotos: Set<number>;
 	activePhoto: PhotoMetadata | null;
 	activePhotoIndex: number;
 }
@@ -49,7 +48,6 @@ async function saveToStorage(state: Partial<LibraryState>): Promise<void> {
 
 export function useLibraryState(photos: PhotoMetadata[] = []) {
 	const [viewMode, setViewModeInternal] = useState<ViewMode>("grid");
-	const [selectedPhotos, setSelectedPhotos] = useState<Set<number>>(new Set());
 	const [activePhoto, setActivePhoto] = useState<PhotoMetadata | null>(null);
 	const [activePhotoIndex, setActivePhotoIndex] = useState(-1);
 	const [isLoaded, setIsLoaded] = useState(false);
@@ -79,37 +77,6 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 		saveToStorage({ viewMode: mode });
 	}, []);
 
-	const selectPhoto = useCallback(
-		(photo: PhotoMetadata, options?: { toggle?: boolean }) => {
-			if (options?.toggle) {
-				// Toggle selection
-				setSelectedPhotos((prev) => {
-					const next = new Set(prev);
-					if (next.has(photo.id)) {
-						next.delete(photo.id);
-					} else {
-						next.add(photo.id);
-					}
-					return next;
-				});
-			} else {
-				// Single selection
-				setSelectedPhotos(new Set([photo.id]));
-			}
-			setActivePhoto(photo);
-		},
-		[],
-	);
-
-	const selectAll = useCallback(() => {
-		setSelectedPhotos(new Set(photos.map((p) => p.id)));
-	}, [photos]);
-
-	const clearSelection = useCallback(() => {
-		setSelectedPhotos(new Set());
-		setActivePhoto(null);
-	}, []);
-
 	const navigatePhoto = useCallback(
 		(direction: "prev" | "next") => {
 			if (photos.length === 0) return;
@@ -128,7 +95,6 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 			const newPhoto = photos[newIndex];
 			if (newPhoto) {
 				setActivePhoto(newPhoto);
-				setSelectedPhotos(new Set([newPhoto.id]));
 			}
 		},
 		[activePhotoIndex, photos],
@@ -139,7 +105,6 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 			if (index >= 0 && index < photos.length) {
 				const photo = photos[index];
 				setActivePhoto(photo);
-				setSelectedPhotos(new Set([photo.id]));
 			}
 		},
 		[photos],
@@ -149,7 +114,6 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 		(photo: PhotoMetadata) => {
 			setActivePhoto(photo);
 			setActivePhotoIndex(photos.findIndex((p) => p.id === photo.id));
-			setSelectedPhotos(new Set([photo.id]));
 			setViewMode("loupe");
 		},
 		[photos, setViewMode],
@@ -171,14 +135,10 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 		viewMode,
 		setViewMode,
 
-		// Selection state
-		selectedPhotos,
+		// Active photo state
 		activePhoto,
 		activePhotoIndex,
 		setActivePhoto,
-		selectPhoto,
-		selectAll,
-		clearSelection,
 
 		// Navigation
 		navigatePhoto,
@@ -189,8 +149,6 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 		hasNext,
 
 		// Computed
-		selectedCount: selectedPhotos.size,
-		hasSelection: selectedPhotos.size > 0,
 		totalPhotos: photos.length,
 	};
 }

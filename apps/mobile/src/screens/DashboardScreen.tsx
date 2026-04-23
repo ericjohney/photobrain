@@ -173,14 +173,6 @@ export default function DashboardScreen() {
 		[library],
 	);
 
-	const handlePhotoLongPress = useCallback(
-		(photo: PhotoMetadata) => {
-			Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-			library.selectPhoto(photo);
-		},
-		[library],
-	);
-
 	const handleLoupeClose = useCallback(() => {
 		library.closeLoupe();
 	}, [library]);
@@ -237,22 +229,6 @@ export default function DashboardScreen() {
 					>
 						{item.title}
 					</Text>
-					<Pressable
-						style={[
-							styles.selectCircle,
-							{ borderColor: colors.mutedForeground },
-						]}
-						onPress={() => {
-							Haptics.selectionAsync();
-						}}
-					>
-						<Ionicons
-							name="checkmark"
-							size={14}
-							color={colors.mutedForeground}
-							style={{ opacity: 0.4 }}
-						/>
-					</Pressable>
 				</View>
 			);
 		}
@@ -262,12 +238,10 @@ export default function DashboardScreen() {
 		return (
 			<View style={styles.photoRow}>
 				{rowPhotos.map((photo) => {
-					const isSelected = library.selectedPhotos.has(photo.id);
 					return (
 						<Pressable
 							key={photo.id}
 							onPress={() => handlePhotoPress(photo)}
-							onLongPress={() => handlePhotoLongPress(photo)}
 							style={[
 								styles.photoContainer,
 								{ backgroundColor: colors.muted },
@@ -290,25 +264,6 @@ export default function DashboardScreen() {
 									<Text style={styles.rawBadgeText}>
 										{photo.rawFormat || "RAW"}
 									</Text>
-								</View>
-							)}
-
-							{/* Selection overlay */}
-							{isSelected && (
-								<View
-									style={[
-										styles.selectionOverlay,
-										{ backgroundColor: `${colors.selection}30` },
-									]}
-								>
-									<View
-										style={[
-											styles.checkmark,
-											{ backgroundColor: colors.selection },
-										]}
-									>
-										<Ionicons name="checkmark" size={14} color="#ffffff" />
-									</View>
 								</View>
 							)}
 						</Pressable>
@@ -559,14 +514,6 @@ centerContainer: {
 		fontSize: 14,
 		fontWeight: "500",
 	},
-	selectCircle: {
-		width: 24,
-		height: 24,
-		borderRadius: 12,
-		borderWidth: 1.5,
-		justifyContent: "center",
-		alignItems: "center",
-	},
 	photoRow: {
 		flexDirection: "row",
 		gap: SPACING,
@@ -594,22 +541,6 @@ centerContainer: {
 		color: "#ffffff",
 		fontSize: 9,
 		fontWeight: "700",
-	},
-	selectionOverlay: {
-		...StyleSheet.absoluteFillObject,
-		borderRadius: 0,
-	},
-	checkmark: {
-		position: "absolute",
-		bottom: 6,
-		right: 6,
-		width: 22,
-		height: 22,
-		borderRadius: 11,
-		justifyContent: "center",
-		alignItems: "center",
-		borderWidth: 1.5,
-		borderColor: "#ffffff",
 	},
 	emptyContainer: {
 		flex: 1,

@@ -1,7 +1,5 @@
 import React from "react";
 import { fireEvent, waitFor } from "@testing-library/react-native";
-import * as Haptics from "expo-haptics";
-
 // tRPC mock — must go BEFORE the component import
 jest.mock("@/lib/trpc", () => ({
 	trpc: {
@@ -293,28 +291,6 @@ describe("DashboardScreen", () => {
 			expect(getByText(/4\.3 MB/)).toBeTruthy();
 			expect(getByText(/6000 × 4000/)).toBeTruthy();
 		});
-	});
-
-	it("triggers haptic feedback on long press", async () => {
-		const { getAllByTestId } = renderWithProviders(<DashboardScreen />);
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
-		});
-
-		const images = getAllByTestId("expo-image");
-		const photoImage = images.find((img) => {
-			const label = img.props.accessibilityLabel || "";
-			return (
-				label.includes("/api/photos/") && label.includes("/thumbnail/tiny")
-			);
-		});
-		expect(photoImage).toBeTruthy();
-
-		fireEvent(photoImage!, "longPress");
-
-		expect(Haptics.impactAsync).toHaveBeenCalledWith(
-			Haptics.ImpactFeedbackStyle.Medium,
-		);
 	});
 
 	it("pull-to-refresh calls refetch", async () => {
