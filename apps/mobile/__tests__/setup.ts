@@ -1,3 +1,33 @@
+// Mock react-native-reanimated
+jest.mock("react-native-reanimated", () => {
+	const Reanimated = require("react-native-reanimated/mock");
+	Reanimated.default.call = () => {};
+	return Reanimated;
+});
+
+// Mock react-native-gesture-handler Gesture API
+jest.mock("react-native-gesture-handler", () => {
+	const View = require("react-native").View;
+	const createChainableGesture = () => {
+		const gesture: any = {};
+		const methods = ["onUpdate", "onEnd", "onStart", "minPointers", "numberOfTaps", "maxDuration"];
+		for (const method of methods) {
+			gesture[method] = (..._args: any[]) => gesture;
+		}
+		return gesture;
+	};
+	return {
+		GestureHandlerRootView: View,
+		GestureDetector: ({ children }: { children: React.ReactNode }) => children,
+		Gesture: {
+			Pinch: () => createChainableGesture(),
+			Pan: () => createChainableGesture(),
+			Tap: () => createChainableGesture(),
+			Simultaneous: (...args: any[]) => args[0],
+		},
+	};
+});
+
 // Mock expo-haptics
 jest.mock("expo-haptics", () => ({
 	selectionAsync: jest.fn(),
