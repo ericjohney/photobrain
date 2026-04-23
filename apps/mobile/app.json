@@ -4,6 +4,7 @@
 		"slug": "photobrain",
 		"version": "0.1.0",
 		"scheme": "photobrain",
+		"icon": "./assets/icon.png",
 		"orientation": "portrait",
 		"userInterfaceStyle": "automatic",
 		"assetBundlePatterns": ["**/*"],
@@ -13,7 +14,8 @@
 		},
 		"android": {
 			"adaptiveIcon": {
-				"backgroundColor": "#ffffff"
+				"foregroundImage": "./assets/adaptive-icon.png",
+				"backgroundColor": "#0066cc"
 			},
 			"package": "com.photobrain.app"
 		},
