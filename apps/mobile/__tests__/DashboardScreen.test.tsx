@@ -245,6 +245,54 @@ describe("DashboardScreen", () => {
 		});
 	});
 
+	it("swiping in loupe follows the grid's date order, not API order", async () => {
+		// Photos in API order: sunset(1,Jun15), portrait(2,Jun15), landscape(3,Jul20), macro(4,Jul20), street(5,Aug5)
+		// Grid sorts newest-first: street(5), macro(4), landscape(3), sunset(1), portrait(2)
+		// Tapping landscape(3) and swiping to next should show sunset(1), NOT macro(4)
+		const { getAllByTestId, getByText, UNSAFE_getAllByType } =
+			renderWithProviders(<DashboardScreen />);
+		await waitFor(() => {
+			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
+		});
+
+		// Tap landscape.jpg (id=3)
+		const images = getAllByTestId("expo-image");
+		const landscape = images.find((img) => {
+			const label = img.props.accessibilityLabel || "";
+			return label.includes("/api/photos/3/thumbnail/tiny");
+		});
+		expect(landscape).toBeTruthy();
+		fireEvent.press(landscape!);
+
+		// Verify loupe opens showing landscape.jpg: 7360×4912
+		await waitFor(() => {
+			expect(getByText(/7360 × 4912/)).toBeTruthy();
+		});
+
+		// Simulate swipe to next photo (scroll right by one page width)
+		// Two FlatLists exist: grid + loupe. The loupe's is horizontal.
+		const { FlatList } = require("react-native");
+		const flatLists = UNSAFE_getAllByType(FlatList);
+		const flatList = flatLists.find(
+			(fl: any) => fl.props.horizontal === true,
+		);
+		expect(flatList).toBeTruthy();
+		fireEvent(flatList, "momentumScrollEnd", {
+			nativeEvent: {
+				contentOffset: { x: 375, y: 0 },
+				contentSize: { width: 1875, height: 800 },
+				layoutMeasurement: { width: 375, height: 800 },
+			},
+		});
+
+		// Next photo in date order after landscape(Jul20 8:15) is sunset(Jun15 18:30): 6000×4000, 4.3 MB
+		// NOT macro(Jul20 10:30) which would be API-order neighbor
+		await waitFor(() => {
+			expect(getByText(/4\.3 MB/)).toBeTruthy();
+			expect(getByText(/6000 × 4000/)).toBeTruthy();
+		});
+	});
+
 	it("triggers haptic feedback on long press", async () => {
 		const { getAllByTestId } = renderWithProviders(<DashboardScreen />);
 		await waitFor(() => {
