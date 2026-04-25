@@ -3,7 +3,7 @@ import { getSubscriptionToken } from "@inngest/realtime";
 import { eq, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "@/config";
-import { photos as photosTable } from "@/db/schema";
+import { photoExif, photos as photosTable } from "@/db/schema";
 import { inngest } from "@/inngest";
 import { searchPhotosByText } from "@/services/vector-search";
 import { publicProcedure, router } from "./trpc";
@@ -95,6 +95,65 @@ export const appRouter = router({
 		};
 	}),
 
+	// Get distinct EXIF values for filter dropdowns
+	filterOptions: publicProcedure
+		.input(
+			z
+				.object({
+					folder: z.string().optional(),
+				})
+				.optional(),
+		)
+		.query(async ({ ctx, input }) => {
+			const folder = input?.folder;
+			const folderCondition = folder
+				? sql` AND ${photosTable.path} LIKE ${`${folder}/%`}`
+				: sql``;
+
+			const camerasResult = await ctx.db.all<{ camera: string }>(sql`
+				SELECT DISTINCT
+					CASE
+						WHEN ${photoExif.cameraModel} LIKE ${photoExif.cameraMake} || '%' THEN ${photoExif.cameraModel}
+						ELSE ${photoExif.cameraMake} || ' ' || ${photoExif.cameraModel}
+					END as camera
+				FROM ${photoExif}
+				INNER JOIN ${photosTable} ON ${photosTable.id} = ${photoExif.photoId}
+				WHERE ${photoExif.cameraMake} IS NOT NULL AND ${photoExif.cameraModel} IS NOT NULL${folderCondition}
+				ORDER BY camera
+			`);
+
+			const lensesResult = await ctx.db.all<{ lens: string }>(sql`
+				SELECT DISTINCT ${photoExif.lensModel} as lens
+				FROM ${photoExif}
+				INNER JOIN ${photosTable} ON ${photosTable.id} = ${photoExif.photoId}
+				WHERE ${photoExif.lensModel} IS NOT NULL${folderCondition}
+				ORDER BY lens
+			`);
+
+			const isosResult = await ctx.db.all<{ iso: number }>(sql`
+				SELECT DISTINCT ${photoExif.iso} as iso
+				FROM ${photoExif}
+				INNER JOIN ${photosTable} ON ${photosTable.id} = ${photoExif.photoId}
+				WHERE ${photoExif.iso} IS NOT NULL${folderCondition}
+				ORDER BY iso
+			`);
+
+			const datesResult = await ctx.db.all<{ month: string }>(sql`
+				SELECT DISTINCT substr(${photoExif.dateTaken}, 1, 7) as month
+				FROM ${photoExif}
+				INNER JOIN ${photosTable} ON ${photosTable.id} = ${photoExif.photoId}
+				WHERE ${photoExif.dateTaken} IS NOT NULL${folderCondition}
+				ORDER BY month
+			`);
+
+			return {
+				cameras: camerasResult.map((r) => r.camera),
+				lenses: lensesResult.map((r) => r.lens),
+				isos: isosResult.map((r) => r.iso),
+				dates: datesResult.map((r) => r.month),
+			};
+		}),
+
 	// Get all photos with EXIF data
 	photos: publicProcedure
 		.input(
@@ -102,6 +161,10 @@ export const appRouter = router({
 				.object({
 					filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
 					folder: z.string().optional(),
+					camera: z.string().optional(),
+					lens: z.string().optional(),
+					iso: z.number().optional(),
+					dateMonth: z.string().optional(),
 				})
 				.optional(),
 		)
@@ -122,6 +185,35 @@ export const appRouter = router({
 				// Match photos in this folder (path starts with folder/ but not in subfolders)
 				// e.g., folder "01" matches "01/photo.jpg" but not "01/sub/photo.jpg"
 				conditions.push(like(photosTable.path, `${folder}/%`));
+			}
+
+			if (input?.camera) {
+				conditions.push(
+					sql`EXISTS (SELECT 1 FROM ${photoExif} WHERE ${photoExif.photoId} = ${photosTable.id} AND (
+						CASE WHEN ${photoExif.cameraModel} LIKE ${photoExif.cameraMake} || '%'
+							THEN ${photoExif.cameraModel}
+							ELSE ${photoExif.cameraMake} || ' ' || ${photoExif.cameraModel}
+						END = ${input.camera}
+					))`,
+				);
+			}
+
+			if (input?.lens) {
+				conditions.push(
+					sql`EXISTS (SELECT 1 FROM ${photoExif} WHERE ${photoExif.photoId} = ${photosTable.id} AND ${photoExif.lensModel} = ${input.lens})`,
+				);
+			}
+
+			if (input?.iso) {
+				conditions.push(
+					sql`EXISTS (SELECT 1 FROM ${photoExif} WHERE ${photoExif.photoId} = ${photosTable.id} AND ${photoExif.iso} = ${input.iso})`,
+				);
+			}
+
+			if (input?.dateMonth) {
+				conditions.push(
+					sql`EXISTS (SELECT 1 FROM ${photoExif} WHERE ${photoExif.photoId} = ${photosTable.id} AND substr(${photoExif.dateTaken}, 1, 7) = ${input.dateMonth})`,
+				);
 			}
 
 			const photosList = await ctx.db.query.photos.findMany({
