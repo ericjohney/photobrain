@@ -181,19 +181,20 @@ Lens corrections compensate for optical imperfections in camera lenses:
 
 ---
 
-### Session 7: EXIF-Based Filtering 🔍
+### Session 7: EXIF-Based Filtering 🔍 ✅ **COMPLETED**
 **Goal:** Filter photos by camera metadata
 
-**Deliverables:**
-- [ ] Add filter UI components (dropdowns for camera, lens, ISO range)
-- [ ] Create API endpoint: `GET /api/photos?camera=...&lens=...&isoMin=...&isoMax=...`
-- [ ] Add database query filters
-- [ ] Show unique cameras/lenses in filter options
-- [ ] Add date range picker
-- [ ] Combine filters with existing search
+**Completed:**
+- [x] `filterOptions` tRPC procedure returns distinct cameras, lenses, ISOs, date months
+- [x] `photos` procedure extended with camera, lens, iso, dateMonth filter params
+- [x] DB indexes on EXIF columns for fast filtering
+- [x] Web: interactive Filter By sidebar with collapsible Camera/Lens/ISO/Date sections
+- [x] Mobile: FilterSheet bottom sheet with filter icon in header
+- [x] Filters combine with folder selection (AND logic), hidden during search
+- [x] Web E2E tests (3) + mobile unit tests (7) for filter functionality
 
-**Estimated time:** 2-3 hours
-**Files to modify:** `apps/api/src/routes/photos.ts`, `apps/web/src/components/FilterPanel.tsx`
+**Files created:** `apps/mobile/src/components/FilterSheet.tsx`, `apps/web/e2e/filter.spec.ts`
+**Files modified:** `apps/api/src/trpc/router.ts`, `apps/web/src/pages/Dashboard.tsx`, `apps/web/src/components/panels/LibraryPanel.tsx`, `apps/mobile/src/screens/DashboardScreen.tsx`, `packages/db/src/schema.ts`
 
 ---
 
