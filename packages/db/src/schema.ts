@@ -1,5 +1,11 @@
 import { relations } from "drizzle-orm";
-import { blob, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+	blob,
+	index,
+	integer,
+	sqliteTable,
+	text,
+} from "drizzle-orm/sqlite-core";
 
 export const photos = sqliteTable("photos", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
@@ -22,36 +28,46 @@ export const photos = sqliteTable("photos", {
 	phashStatus: text("phash_status").default("pending"),
 });
 
-export const photoExif = sqliteTable("photo_exif", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
-	photoId: integer("photo_id")
-		.notNull()
-		.unique()
-		.references(() => photos.id, { onDelete: "cascade" }),
+export const photoExif = sqliteTable(
+	"photo_exif",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		photoId: integer("photo_id")
+			.notNull()
+			.unique()
+			.references(() => photos.id, { onDelete: "cascade" }),
 
-	// Camera info
-	cameraMake: text("camera_make"),
-	cameraModel: text("camera_model"),
+		// Camera info
+		cameraMake: text("camera_make"),
+		cameraModel: text("camera_model"),
 
-	// Lens info
-	lensMake: text("lens_make"),
-	lensModel: text("lens_model"),
-	focalLength: integer("focal_length"), // in mm
+		// Lens info
+		lensMake: text("lens_make"),
+		lensModel: text("lens_model"),
+		focalLength: integer("focal_length"), // in mm
 
-	// Exposure settings
-	iso: integer("iso"),
-	aperture: text("aperture"), // e.g., "f/2.8"
-	shutterSpeed: text("shutter_speed"), // e.g., "1/250"
-	exposureBias: text("exposure_bias"), // e.g., "+0.3 EV"
+		// Exposure settings
+		iso: integer("iso"),
+		aperture: text("aperture"), // e.g., "f/2.8"
+		shutterSpeed: text("shutter_speed"), // e.g., "1/250"
+		exposureBias: text("exposure_bias"), // e.g., "+0.3 EV"
 
-	// DateTime
-	dateTaken: text("date_taken"), // ISO 8601 format
+		// DateTime
+		dateTaken: text("date_taken"), // ISO 8601 format
 
-	// GPS coordinates
-	gpsLatitude: text("gps_latitude"), // stored as text for precision
-	gpsLongitude: text("gps_longitude"),
-	gpsAltitude: text("gps_altitude"),
-});
+		// GPS coordinates
+		gpsLatitude: text("gps_latitude"), // stored as text for precision
+		gpsLongitude: text("gps_longitude"),
+		gpsAltitude: text("gps_altitude"),
+	},
+	(table) => [
+		index("idx_exif_camera_make").on(table.cameraMake),
+		index("idx_exif_camera_model").on(table.cameraModel),
+		index("idx_exif_lens_model").on(table.lensModel),
+		index("idx_exif_iso").on(table.iso),
+		index("idx_exif_date_taken").on(table.dateTaken),
+	],
+);
 
 // Define relations
 export const photosRelations = relations(photos, ({ one }) => ({
