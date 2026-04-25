@@ -1,5 +1,5 @@
-import React from "react";
-import { render, fireEvent, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import type React from "react";
 
 // tRPC mock — must go BEFORE the component import
 jest.mock("@/lib/trpc", () => ({
@@ -11,6 +11,11 @@ jest.mock("@/lib/trpc", () => ({
 				isLoading: false,
 				isFetching: false,
 				refetch: jest.fn(),
+			}),
+		},
+		filterOptions: {
+			useQuery: () => ({
+				data: { cameras: [], lenses: [], isos: [], dates: [] },
 			}),
 		},
 		scan: {

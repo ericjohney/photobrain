@@ -1,11 +1,14 @@
-import React from "react";
 import { fireEvent, waitFor } from "@testing-library/react-native";
+import React from "react";
 
 // tRPC mock — must go BEFORE the component import
 jest.mock("@/lib/trpc", () => ({
 	trpc: {
 		searchPhotos: {
-			useQuery: (input: { query: string; limit: number }, opts: { enabled: boolean }) => {
+			useQuery: (
+				input: { query: string; limit: number },
+				opts: { enabled: boolean },
+			) => {
 				if (!opts.enabled || !input.query.trim()) {
 					return { data: undefined, isFetching: false };
 				}
@@ -32,13 +35,17 @@ describe("SearchScreen", () => {
 	it("shows the search prompt when no query is entered", async () => {
 		const { getByText } = renderWithProviders(<SearchScreen />);
 		await waitFor(() => {
-			expect(getByText("Search your photos using natural language")).toBeTruthy();
+			expect(
+				getByText("Search your photos using natural language"),
+			).toBeTruthy();
 		});
 	});
 
 	it("shows search input with placeholder", async () => {
 		const { findByPlaceholderText } = renderWithProviders(<SearchScreen />);
-		expect(await findByPlaceholderText("Search photos with AI...")).toBeTruthy();
+		expect(
+			await findByPlaceholderText("Search photos with AI..."),
+		).toBeTruthy();
 	});
 
 	it("renders search results when a query is entered", async () => {
@@ -82,7 +89,9 @@ describe("SearchScreen", () => {
 		fireEvent.press(getByTestId("icon-close-circle"));
 
 		await waitFor(() => {
-			expect(getByText("Search your photos using natural language")).toBeTruthy();
+			expect(
+				getByText("Search your photos using natural language"),
+			).toBeTruthy();
 		});
 	});
 

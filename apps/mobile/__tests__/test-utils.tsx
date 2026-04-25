@@ -1,6 +1,6 @@
-import React from "react";
-import { render, type RenderOptions } from "@testing-library/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { type RenderOptions, render } from "@testing-library/react-native";
+import type React from "react";
 import { ThemeProvider } from "@/theme";
 
 function createTestQueryClient() {

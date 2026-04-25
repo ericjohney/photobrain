@@ -1,5 +1,5 @@
 import { test as base, expect } from "@playwright/test";
-import { installTrpcHandlers, type HandlerOverrides } from "./handlers";
+import { type HandlerOverrides, installTrpcHandlers } from "./handlers";
 
 type Fixtures = {
 	mockBackend: (overrides?: HandlerOverrides) => Promise<void>;

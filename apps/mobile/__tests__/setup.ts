@@ -23,7 +23,16 @@ jest.mock("react-native-gesture-handler", () => {
 	const View = require("react-native").View;
 	const createChainableGesture = () => {
 		const gesture: any = {};
-		const methods = ["onUpdate", "onEnd", "onStart", "minPointers", "numberOfTaps", "maxDuration", "manualActivation", "onTouchesMove"];
+		const methods = [
+			"onUpdate",
+			"onEnd",
+			"onStart",
+			"minPointers",
+			"numberOfTaps",
+			"maxDuration",
+			"manualActivation",
+			"onTouchesMove",
+		];
 		for (const method of methods) {
 			gesture[method] = (..._args: any[]) => gesture;
 		}
@@ -54,9 +63,7 @@ jest.mock("react-native-zoom-toolkit", () => {
 			onIndexChange,
 			...rest
 		}: any) => {
-			const [currentIndex, setCurrentIndex] = React.useState(
-				initialIndex || 0,
-			);
+			const [currentIndex, setCurrentIndex] = React.useState(initialIndex || 0);
 			return React.createElement(
 				FlatList,
 				{
@@ -121,7 +128,8 @@ jest.mock("expo-image", () => {
 			const { testID, source, ...rest } = props;
 			return require("react").createElement(View, {
 				testID: testID || "expo-image",
-				accessibilityLabel: typeof source?.uri === "string" ? source.uri : undefined,
+				accessibilityLabel:
+					typeof source?.uri === "string" ? source.uri : undefined,
 				...rest,
 			});
 		},
@@ -177,7 +185,11 @@ jest.mock("@expo/vector-icons", () => {
 	const { Text } = require("react-native");
 	return {
 		Ionicons: ({ name, ...props }: any) =>
-			require("react").createElement(Text, { ...props, testID: `icon-${name}` }, name),
+			require("react").createElement(
+				Text,
+				{ ...props, testID: `icon-${name}` },
+				name,
+			),
 	};
 });
 
@@ -215,7 +227,8 @@ jest.mock("@/components/ActivityBar", () => {
 	const { View } = require("react-native");
 	return {
 		__esModule: true,
-		default: () => require("react").createElement(View, { testID: "activity-bar" }),
+		default: () =>
+			require("react").createElement(View, { testID: "activity-bar" }),
 	};
 });
 

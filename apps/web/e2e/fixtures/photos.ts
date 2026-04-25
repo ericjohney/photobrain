@@ -34,7 +34,10 @@ export type FixturePhoto = {
 	} | null;
 };
 
-function makePhoto(id: number, overrides: Partial<FixturePhoto> = {}): FixturePhoto {
+function makePhoto(
+	id: number,
+	overrides: Partial<FixturePhoto> = {},
+): FixturePhoto {
 	return {
 		id,
 		path: `photos/2024/photo-${id}.jpg`,
@@ -95,10 +98,25 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 			gpsAltitude: "52",
 		},
 	}),
-	makePhoto(4, { name: "macro.cr2", path: "photos/2024/macro.cr2", isRaw: true, rawFormat: "CR2", mimeType: "image/x-canon-cr2" }),
-	makePhoto(5, { name: "street.jpg", path: "photos/2024/street.jpg", width: 4000, height: 6000 }),
+	makePhoto(4, {
+		name: "macro.cr2",
+		path: "photos/2024/macro.cr2",
+		isRaw: true,
+		rawFormat: "CR2",
+		mimeType: "image/x-canon-cr2",
+	}),
+	makePhoto(5, {
+		name: "street.jpg",
+		path: "photos/2024/street.jpg",
+		width: 4000,
+		height: 6000,
+	}),
 	makePhoto(6, { name: "beach.jpg", path: "photos/2024/beach.jpg" }),
-	makePhoto(7, { name: "mountain.heic", path: "photos/2024/mountain.heic", mimeType: "image/heic" }),
+	makePhoto(7, {
+		name: "mountain.heic",
+		path: "photos/2024/mountain.heic",
+		mimeType: "image/heic",
+	}),
 	makePhoto(8, { name: "forest.jpg", path: "photos/2024/forest.jpg" }),
 	makePhoto(9, { name: "city.jpg", path: "photos/2024/city.jpg" }),
 	makePhoto(10, { name: "flower.jpg", path: "photos/2024/flower.jpg" }),

@@ -1,7 +1,10 @@
-import { expect, test } from "./fixtures/test";
 import { FIXTURE_PHOTOS } from "./fixtures/photos";
+import { expect, test } from "./fixtures/test";
 
-test("typing a query triggers searchPhotos call and renders filtered results", async ({ page, mockBackend }) => {
+test("typing a query triggers searchPhotos call and renders filtered results", async ({
+	page,
+	mockBackend,
+}) => {
 	const queries: string[] = [];
 	await mockBackend({
 		searchPhotos: (input) => {

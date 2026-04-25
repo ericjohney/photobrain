@@ -1,6 +1,9 @@
 import { expect, test } from "./fixtures/test";
 
-test("clicking refresh triggers scan mutation", async ({ page, mockBackend }) => {
+test("clicking refresh triggers scan mutation", async ({
+	page,
+	mockBackend,
+}) => {
 	let scanCalled = false;
 	await mockBackend({
 		scan: () => {

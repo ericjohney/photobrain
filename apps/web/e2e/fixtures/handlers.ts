@@ -1,7 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 import superjson from "superjson";
-import { FIXTURE_FOLDERS, FIXTURE_PHOTOS, searchPhotosByQuery } from "./photos";
 import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
+import { FIXTURE_FOLDERS, FIXTURE_PHOTOS, searchPhotosByQuery } from "./photos";
 
 function parseTrpcBatchRequest(
 	url: URL,
@@ -44,6 +44,12 @@ export const DEFAULT_HANDLERS: Record<string, Handler> = {
 		const photos = searchPhotosByQuery(q);
 		return { photos, total: photos.length, query: q };
 	},
+	filterOptions: () => ({
+		cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
+		lenses: ["FE 24-70mm f/2.8 GM", "FE 85mm f/1.4 GM", "RF 15-35mm f/2.8L IS USM"],
+		isos: [100, 200, 400, 800, 3200],
+		dates: ["2024-06", "2024-07", "2024-08"],
+	}),
 	scan: () => ({ success: true, jobId: "test-job-123" }),
 	realtimeToken: () => ({ token: "test-token-xyz" }),
 };

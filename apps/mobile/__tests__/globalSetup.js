@@ -2,7 +2,11 @@
 // Without these, the lazy require() calls fail with "outside of the scope" errors.
 
 if (typeof globalThis.__ExpoImportMetaRegistry === "undefined") {
-	globalThis.__ExpoImportMetaRegistry = { get url() { return null; } };
+	globalThis.__ExpoImportMetaRegistry = {
+		get url() {
+			return null;
+		},
+	};
 }
 
 if (typeof globalThis.structuredClone === "undefined") {

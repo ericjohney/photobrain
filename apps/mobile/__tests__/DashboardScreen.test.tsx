@@ -1,5 +1,6 @@
-import React from "react";
 import { fireEvent, waitFor } from "@testing-library/react-native";
+import React from "react";
+
 // tRPC mock — must go BEFORE the component import
 jest.mock("@/lib/trpc", () => ({
 	trpc: {
@@ -9,6 +10,16 @@ jest.mock("@/lib/trpc", () => ({
 				isLoading: false,
 				isFetching: false,
 				refetch: jest.fn(),
+			}),
+		},
+		filterOptions: {
+			useQuery: () => ({
+				data: {
+					cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
+					lenses: ["FE 24-70mm f/2.8 GM", "FE 85mm f/1.4 GM", "RF 15-35mm f/2.8L IS USM"],
+					isos: [100, 200, 400, 800, 3200],
+					dates: ["2024-06", "2024-07", "2024-08"],
+				},
 			}),
 		},
 		scan: {
@@ -175,32 +186,37 @@ describe("DashboardScreen", () => {
 	});
 
 	it("renders loupe in a Modal when photo is tapped", async () => {
-		const { getAllByTestId, getByText, UNSAFE_queryByType } = renderWithProviders(
-			<DashboardScreen />,
-		);
+		const { getAllByTestId, getByText, UNSAFE_getAllByType } =
+			renderWithProviders(<DashboardScreen />);
 		await waitFor(() => {
 			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
 		});
 
-		// Modal should not be visible initially
+		// Find the loupe Modal (animationType="fade") — FilterSheet uses "slide"
 		const { Modal } = require("react-native");
-		const modalBefore = UNSAFE_queryByType(Modal);
-		expect(
-			!modalBefore || modalBefore.props.visible === false,
-		).toBe(true);
+		const findLoupeModal = () =>
+			UNSAFE_getAllByType(Modal).find(
+				(m: any) => m.props.animationType === "fade",
+			);
+
+		// Modal should not be visible initially
+		const modalBefore = findLoupeModal();
+		expect(!modalBefore || modalBefore.props.visible === false).toBe(true);
 
 		// Tap a photo to open loupe
 		const images = getAllByTestId("expo-image");
 		const photoImage = images.find((img) => {
 			const label = img.props.accessibilityLabel || "";
-			return label.includes("/api/photos/") && label.includes("/thumbnail/tiny");
+			return (
+				label.includes("/api/photos/") && label.includes("/thumbnail/tiny")
+			);
 		});
 		expect(photoImage).toBeTruthy();
 		fireEvent.press(photoImage!);
 
 		// Modal should now be visible with loupe action buttons
 		await waitFor(() => {
-			const modal = UNSAFE_queryByType(Modal);
+			const modal = findLoupeModal();
 			expect(modal).toBeTruthy();
 			expect(modal!.props.visible).toBe(true);
 		});
@@ -213,7 +229,7 @@ describe("DashboardScreen", () => {
 	});
 
 	it("closes the Modal when back button is pressed in loupe", async () => {
-		const { getAllByTestId, getByTestId, UNSAFE_queryByType } =
+		const { getAllByTestId, getByTestId, UNSAFE_getAllByType } =
 			renderWithProviders(<DashboardScreen />);
 		await waitFor(() => {
 			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
@@ -223,13 +239,20 @@ describe("DashboardScreen", () => {
 		const images = getAllByTestId("expo-image");
 		const photoImage = images.find((img) => {
 			const label = img.props.accessibilityLabel || "";
-			return label.includes("/api/photos/") && label.includes("/thumbnail/tiny");
+			return (
+				label.includes("/api/photos/") && label.includes("/thumbnail/tiny")
+			);
 		});
 		fireEvent.press(photoImage!);
 
 		const { Modal } = require("react-native");
+		const findLoupeModal = () =>
+			UNSAFE_getAllByType(Modal).find(
+				(m: any) => m.props.animationType === "fade",
+			);
+
 		await waitFor(() => {
-			const modal = UNSAFE_queryByType(Modal);
+			const modal = findLoupeModal();
 			expect(modal?.props.visible).toBe(true);
 		});
 
@@ -238,7 +261,7 @@ describe("DashboardScreen", () => {
 
 		// Modal should be hidden
 		await waitFor(() => {
-			const modal = UNSAFE_queryByType(Modal);
+			const modal = findLoupeModal();
 			expect(!modal || modal.props.visible === false).toBe(true);
 		});
 	});

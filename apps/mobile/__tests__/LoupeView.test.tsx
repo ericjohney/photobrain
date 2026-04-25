@@ -1,8 +1,8 @@
-import React from "react";
 import { fireEvent, waitFor } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
-import { renderWithProviders, MOCK_PHOTOS } from "./test-utils";
+import React from "react";
 import LoupeView from "@/components/LoupeView";
+import { MOCK_PHOTOS, renderWithProviders } from "./test-utils";
 
 const mockOnClose = jest.fn();
 const mockOnIndexChange = jest.fn();
