@@ -189,10 +189,10 @@ export const appRouter = router({
 
 			if (input?.camera) {
 				conditions.push(
-					sql`EXISTS (SELECT 1 FROM ${photoExif} WHERE ${photoExif.photoId} = ${photosTable.id} AND (
-						CASE WHEN ${photoExif.cameraModel} LIKE ${photoExif.cameraMake} || '%'
-							THEN ${photoExif.cameraModel}
-							ELSE ${photoExif.cameraMake} || ' ' || ${photoExif.cameraModel}
+					sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND (
+						CASE WHEN photo_exif.camera_model LIKE photo_exif.camera_make || '%'
+							THEN photo_exif.camera_model
+							ELSE photo_exif.camera_make || ' ' || photo_exif.camera_model
 						END = ${input.camera}
 					))`,
 				);
@@ -200,19 +200,19 @@ export const appRouter = router({
 
 			if (input?.lens) {
 				conditions.push(
-					sql`EXISTS (SELECT 1 FROM ${photoExif} WHERE ${photoExif.photoId} = ${photosTable.id} AND ${photoExif.lensModel} = ${input.lens})`,
+					sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND photo_exif.lens_model = ${input.lens})`,
 				);
 			}
 
 			if (input?.iso) {
 				conditions.push(
-					sql`EXISTS (SELECT 1 FROM ${photoExif} WHERE ${photoExif.photoId} = ${photosTable.id} AND ${photoExif.iso} = ${input.iso})`,
+					sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND photo_exif.iso = ${input.iso})`,
 				);
 			}
 
 			if (input?.dateMonth) {
 				conditions.push(
-					sql`EXISTS (SELECT 1 FROM ${photoExif} WHERE ${photoExif.photoId} = ${photosTable.id} AND substr(${photoExif.dateTaken}, 1, 7) = ${input.dateMonth})`,
+					sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND substr(photo_exif.date_taken, 1, 7) = ${input.dateMonth})`,
 				);
 			}
 
