@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
+import { parseDate } from "@photobrain/utils";
 import type { inferRouterOutputs } from "@trpc/server";
-
+import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import React, { useCallback, useMemo, useState } from "react";
 import {
 	ActivityIndicator,
@@ -15,16 +17,14 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
 import ActivityBar from "@/components/ActivityBar";
+import FilterSheet from "@/components/FilterSheet";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
 import { API_URL, thumbnailUrl } from "@/config";
-import { useLibraryState } from "@/hooks/use-library-state";
 import { useJobProgress } from "@/hooks/use-job-progress";
+import { useLibraryState } from "@/hooks/use-library-state";
 import { trpc } from "@/lib/trpc";
-import { parseDate } from "@photobrain/utils";
 import { useColors } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -67,7 +67,8 @@ function groupPhotosByDate(photos: PhotoMetadata[]): SectionItem[] {
 	};
 
 	for (const photo of sorted) {
-		const dateStr = photo.exif?.dateTaken || photo.modifiedAt || photo.createdAt;
+		const dateStr =
+			photo.exif?.dateTaken || photo.modifiedAt || photo.createdAt;
 		const date = parseDate(dateStr);
 		const monthKey = date.toLocaleDateString("en-US", {
 			year: "numeric",
@@ -118,9 +119,22 @@ export default function DashboardScreen() {
 		null,
 	);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
+	const [filters, setFilters] = useState<{
+		camera: string | null;
+		lens: string | null;
+		iso: number | null;
+		dateMonth: string | null;
+	}>({ camera: null, lens: null, iso: null, dateMonth: null });
+	const [filterVisible, setFilterVisible] = useState(false);
 
 	// tRPC queries
-	const photosQuery = trpc.photos.useQuery();
+	const photosQuery = trpc.photos.useQuery({
+		camera: filters.camera ?? undefined,
+		lens: filters.lens ?? undefined,
+		iso: filters.iso ?? undefined,
+		dateMonth: filters.dateMonth ?? undefined,
+	});
+	const filterOptionsQuery = trpc.filterOptions.useQuery({});
 
 	const scanMutation = trpc.scan.useMutation({
 		onSuccess: (data) => {
@@ -192,6 +206,12 @@ export default function DashboardScreen() {
 		setMetadataPhoto(null);
 	}, []);
 
+	const hasActiveFilters =
+		filters.camera !== null ||
+		filters.lens !== null ||
+		filters.iso !== null ||
+		filters.dateMonth !== null;
+
 	// Loading state
 	if (loading && !library.isLoaded) {
 		return (
@@ -242,10 +262,7 @@ export default function DashboardScreen() {
 						<Pressable
 							key={photo.id}
 							onPress={() => handlePhotoPress(photo)}
-							style={[
-								styles.photoContainer,
-								{ backgroundColor: colors.muted },
-							]}
+							style={[styles.photoContainer, { backgroundColor: colors.muted }]}
 						>
 							<Image
 								source={{
@@ -274,7 +291,10 @@ export default function DashboardScreen() {
 					Array.from({ length: COLUMNS - rowPhotos.length }).map((_, i) => (
 						<View
 							key={`spacer-${i}`}
-							style={[styles.photoContainer, { backgroundColor: "transparent" }]}
+							style={[
+								styles.photoContainer,
+								{ backgroundColor: "transparent" },
+							]}
 						/>
 					))}
 			</View>
@@ -284,9 +304,7 @@ export default function DashboardScreen() {
 	// Empty state
 	if (photos.length === 0 && !loading) {
 		return (
-			<View
-				style={[styles.container, { backgroundColor: colors.background }]}
-			>
+			<View style={[styles.container, { backgroundColor: colors.background }]}>
 				<ActivityBar
 					progress={jobProgress.progress}
 					isActive={jobProgress.isActive}
@@ -344,10 +362,7 @@ export default function DashboardScreen() {
 					<View style={styles.appHeader}>
 						<View style={styles.logoRow}>
 							<View
-								style={[
-									styles.logoCircle,
-									{ backgroundColor: colors.primary },
-								]}
+								style={[styles.logoCircle, { backgroundColor: colors.primary }]}
 							>
 								<Ionicons name="images" size={16} color="#ffffff" />
 							</View>
@@ -357,12 +372,21 @@ export default function DashboardScreen() {
 						</View>
 						<View style={styles.headerActions}>
 							<Pressable
+								onPress={() => setFilterVisible(true)}
+								style={[styles.headerButton, { backgroundColor: colors.muted }]}
+							>
+								<Ionicons
+									name={hasActiveFilters ? "funnel" : "funnel-outline"}
+									size={20}
+									color={
+										hasActiveFilters ? colors.primary : colors.foreground
+									}
+								/>
+							</Pressable>
+							<Pressable
 								onPress={handleScan}
 								disabled={scanMutation.isPending || jobProgress.isActive}
-								style={[
-									styles.headerButton,
-									{ backgroundColor: colors.muted },
-								]}
+								style={[styles.headerButton, { backgroundColor: colors.muted }]}
 							>
 								{scanMutation.isPending || jobProgress.isActive ? (
 									<ActivityIndicator size="small" color={colors.foreground} />
@@ -430,6 +454,14 @@ export default function DashboardScreen() {
 					onClose={handleCloseMetadata}
 				/>
 			</Modal>
+
+			<FilterSheet
+				visible={filterVisible}
+				onClose={() => setFilterVisible(false)}
+				filterOptions={filterOptionsQuery.data}
+				activeFilters={filters}
+				onFilterChange={setFilters}
+			/>
 		</View>
 	);
 }
@@ -438,7 +470,7 @@ const styles = StyleSheet.create({
 	container: {
 		flex: 1,
 	},
-centerContainer: {
+	centerContainer: {
 		flex: 1,
 		justifyContent: "center",
 		alignItems: "center",
