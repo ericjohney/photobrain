@@ -32,9 +32,6 @@ export const config = loadConfig();
 // For backwards compatibility
 export const API_URL = config.API_URL;
 
-// Increment when thumbnails are regenerated to bust client caches
-export const THUMB_VERSION = 2;
-
 export function thumbnailUrl(photoId: number, size: string): string {
-	return `${API_URL}/api/photos/${photoId}/thumbnail/${size}?v=${THUMB_VERSION}`;
+	return `${API_URL}/api/photos/${photoId}/thumbnail/${size}`;
 }

@@ -430,8 +430,8 @@ Key functions exported from `@photobrain/image-processing`:
 Thumbnails use predictable paths: `/thumbnails/{size}/{photo-path-hash}.webp`
 - No database column needed
 - Paths computed from photo path + size
-- Cache-busted via `?v=THUMB_VERSION` query param (increment `THUMB_VERSION` in `apps/web/src/lib/thumbnails.ts` and `apps/mobile/src/config.ts` when thumbnails are regenerated)
-- Use `thumbnailUrl()` helper in mobile (`@/config`) for consistent cache-busted URLs
+- Cache handled via `ETag` (file mtime + size) — browser auto-revalidates after 24h, gets 304 if unchanged
+- Use `thumbnailUrl()` helper in mobile (`@/config`) for consistent URLs
 
 ### Temporary Endpoints (remove after use)
 - `POST /api/photos/reprocess-heic` — re-processes HEIC thumbnails with the orientation fix. Remove from `apps/api/src/routes/photos.ts` after running.

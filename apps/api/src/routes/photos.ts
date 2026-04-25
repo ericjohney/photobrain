@@ -148,6 +148,16 @@ router.get("/:id/thumbnail/:size", async (c) => {
 			return c.redirect(`/api/photos/${id}/file`);
 		}
 
+		// ETag based on file mtime + size — changes when thumbnail is regenerated
+		const mtime = file.lastModified;
+		const etag = `"${mtime}-${file.size}"`;
+
+		// Check conditional request — return 304 if thumbnail hasn't changed
+		const ifNoneMatch = c.req.header("if-none-match");
+		if (ifNoneMatch === etag) {
+			return new Response(null, { status: 304 });
+		}
+
 		// Stream the thumbnail
 		const stream = file.stream();
 
@@ -155,9 +165,10 @@ router.get("/:id/thumbnail/:size", async (c) => {
 			status: 200,
 			headers: {
 				"Content-Type": "image/webp",
-				// Cache thumbnails for 1 day — they can change on re-processing
 				"Cache-Control": "public, max-age=86400",
 				"Content-Length": file.size.toString(),
+				ETag: etag,
+				"Last-Modified": new Date(mtime).toUTCString(),
 			},
 		});
 	} catch (error) {

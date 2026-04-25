@@ -144,9 +144,8 @@ jest.mock("@/config", () => ({
 		NODE_ENV: "test",
 	},
 	API_URL: "http://test-api:3000",
-	THUMB_VERSION: 2,
 	thumbnailUrl: (photoId: number, size: string) =>
-		`http://test-api:3000/api/photos/${photoId}/thumbnail/${size}?v=2`,
+		`http://test-api:3000/api/photos/${photoId}/thumbnail/${size}`,
 }));
 
 // Mock expo-router

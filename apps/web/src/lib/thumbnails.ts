@@ -6,11 +6,8 @@ import { config } from "@/lib/config";
  * The API endpoint resolves the photo path from the database
  * and serves the corresponding thumbnail file
  */
-// Cache-bust version — increment when thumbnails are regenerated
-const THUMB_VERSION = 2;
-
 export function getThumbnailUrl(photoId: number, size: ThumbnailSize): string {
-	return `${config.apiUrl}/api/photos/${photoId}/thumbnail/${size}?v=${THUMB_VERSION}`;
+	return `${config.apiUrl}/api/photos/${photoId}/thumbnail/${size}`;
 }
 
 /**
