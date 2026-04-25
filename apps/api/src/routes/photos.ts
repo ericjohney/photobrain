@@ -165,7 +165,7 @@ router.get("/:id/thumbnail/:size", async (c) => {
 			status: 200,
 			headers: {
 				"Content-Type": "image/webp",
-				"Cache-Control": "public, max-age=86400",
+				"Cache-Control": "public, no-cache",
 				"Content-Length": file.size.toString(),
 				ETag: etag,
 				"Last-Modified": new Date(mtime).toUTCString(),
