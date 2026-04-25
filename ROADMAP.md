@@ -229,20 +229,6 @@ Lens corrections compensate for optical imperfections in camera lenses:
 
 ---
 
-### Session 10: Favorites & Starring ⭐
-**Goal:** Mark and filter favorite photos
-
-**Deliverables:**
-- [ ] Add `isFavorite: boolean` to database
-- [ ] Add star icon to photo grid items
-- [ ] Toggle favorite on click
-- [ ] Add favorites filter/view
-- [ ] Show favorite count in sidebar
-- [ ] Keyboard shortcut for starring (F key)
-
-**Estimated time:** 1-2 hours
-**Files to modify:** `apps/api/src/db/schema.ts`, `apps/web/src/components/PhotoGrid.tsx`
-
 ---
 
 ## Phase 1: RAW Support & Image Processing ✅ **COMPLETED**
@@ -286,9 +272,6 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - Manual album creation
   - Automatic smart albums (based on date, location, tags)
   - Nested album support
-- [ ] **Favorites/Starring**
-  - Mark photos as favorites
-  - Filter by starred photos
 - [ ] **Date-based browsing**
   - Timeline view (group by year/month/day)
   - Calendar view with photo counts

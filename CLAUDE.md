@@ -600,7 +600,6 @@ See `ROADMAP.md` for planned features including:
 - EXIF-based filtering
 - Map view with GPS data
 - Duplicate detection UI
-- Favorites/starring system
 
 ## Important Notes
 
