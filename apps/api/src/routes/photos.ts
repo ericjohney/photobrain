@@ -3,7 +3,7 @@ import {
 	processPhotosWithCallback,
 } from "@photobrain/image-processing";
 import { THUMBNAIL_CONFIG, type ThumbnailSize } from "@photobrain/utils";
-import { eq, like, or } from "drizzle-orm";
+import { eq, like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { config } from "@/config";
 import { db } from "@/db";
@@ -232,6 +232,29 @@ router.post("/reprocess-heic", async (c) => {
 		});
 	} catch (error) {
 		console.error("HEIC reprocess error:", error);
+		return c.json(
+			{ error: error instanceof Error ? error.message : "Unknown error" },
+			500,
+		);
+	}
+});
+
+// One-off: backfill thumbnailUpdatedAt for photos that have completed
+// thumbnails but no timestamp. Remove after running once.
+router.post("/backfill-thumbnail-timestamps", async (c) => {
+	try {
+		const result = db
+			.update(photos)
+			.set({ thumbnailUpdatedAt: new Date() })
+			.where(
+				sql`${photos.thumbnailStatus} = 'completed' AND ${photos.thumbnailUpdatedAt} IS NULL`,
+			)
+			.run();
+		return c.json({
+			message: `Updated ${result.changes} photos with thumbnailUpdatedAt`,
+			count: result.changes,
+		});
+	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : "Unknown error" },
 			500,
