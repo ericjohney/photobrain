@@ -20,12 +20,29 @@ export function Dashboard() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
+	const [filters, setFilters] = useState<{
+		camera: string | null;
+		lens: string | null;
+		iso: number | null;
+		dateMonth: string | null;
+	}>({ camera: null, lens: null, iso: null, dateMonth: null });
 
 	// tRPC queries
 	const foldersQuery = trpc.folders.useQuery();
 
-	const photosQuery = trpc.photos.useQuery(
+	const filterOptionsQuery = trpc.filterOptions.useQuery(
 		{ folder: selectedFolder ?? undefined },
+		{ enabled: !searchQuery },
+	);
+
+	const photosQuery = trpc.photos.useQuery(
+		{
+			folder: selectedFolder ?? undefined,
+			camera: filters.camera ?? undefined,
+			lens: filters.lens ?? undefined,
+			iso: filters.iso ?? undefined,
+			dateMonth: filters.dateMonth ?? undefined,
+		},
 		{
 			enabled: !searchQuery,
 		},
@@ -206,6 +223,9 @@ export function Dashboard() {
 							folders={foldersQuery.data?.folders}
 							selectedFolder={selectedFolder}
 							onFolderSelect={handleFolderSelect}
+							filterOptions={filterOptionsQuery.data}
+							activeFilters={filters}
+							onFilterChange={setFilters}
 						/>
 					</div>
 					<ActivityPanel

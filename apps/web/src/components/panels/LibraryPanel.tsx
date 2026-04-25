@@ -5,10 +5,7 @@ import {
 	Clock,
 	Folder,
 	FolderOpen,
-	Heart,
-	Image,
 	Images,
-	MapPin,
 	Star,
 } from "lucide-react";
 import { useState } from "react";
@@ -28,6 +25,24 @@ interface LibraryPanelProps {
 	folders?: FolderNode[];
 	selectedFolder: string | null;
 	onFolderSelect: (folder: string | null) => void;
+	filterOptions?: {
+		cameras: string[];
+		lenses: string[];
+		isos: number[];
+		dates: string[];
+	};
+	activeFilters: {
+		camera: string | null;
+		lens: string | null;
+		iso: number | null;
+		dateMonth: string | null;
+	};
+	onFilterChange: (filters: {
+		camera: string | null;
+		lens: string | null;
+		iso: number | null;
+		dateMonth: string | null;
+	}) => void;
 }
 
 interface NavItemProps {
@@ -183,6 +198,9 @@ export function LibraryPanel({
 	folders = [],
 	selectedFolder,
 	onFolderSelect,
+	filterOptions,
+	activeFilters,
+	onFilterChange,
 }: LibraryPanelProps) {
 	const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
 		new Set(),
@@ -250,26 +268,118 @@ export function LibraryPanel({
 					)}
 				</Section>
 
-				{/* Collections Section */}
-				<Section title="Collections" defaultOpen={false}>
-					<NavItem
-						icon={<Heart className="h-4 w-4" />}
-						label="Favorites"
-						count={0}
-					/>
-					<NavItem
-						icon={<Image className="h-4 w-4" />}
-						label="Portfolio"
-						count={0}
-					/>
-				</Section>
+				{/* Filter By Section — hidden during search */}
+				{!searchQuery && (
+					<Section title="Filter By" defaultOpen={false}>
+						{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
+							<Section title="Camera" defaultOpen={false}>
+								{filterOptions.cameras.map((cam) => (
+									<NavItem
+										key={cam}
+										icon={<Camera className="h-4 w-4" />}
+										label={cam}
+										active={activeFilters.camera === cam}
+										onClick={() =>
+											onFilterChange({
+												...activeFilters,
+												camera: activeFilters.camera === cam ? null : cam,
+											})
+										}
+									/>
+								))}
+							</Section>
+						)}
+						{filterOptions?.lenses && filterOptions.lenses.length > 0 && (
+							<Section title="Lens" defaultOpen={false}>
+								{filterOptions.lenses.map((lens) => (
+									<NavItem
+										key={lens}
+										icon={<ChevronRight className="h-4 w-4" />}
+										label={lens}
+										active={activeFilters.lens === lens}
+										onClick={() =>
+											onFilterChange({
+												...activeFilters,
+												lens: activeFilters.lens === lens ? null : lens,
+											})
+										}
+									/>
+								))}
+							</Section>
+						)}
+						{filterOptions?.isos && filterOptions.isos.length > 0 && (
+							<Section title="ISO" defaultOpen={false}>
+								{filterOptions.isos.map((iso) => (
+									<NavItem
+										key={iso}
+										icon={<ChevronRight className="h-4 w-4" />}
+										label={`ISO ${iso}`}
+										active={activeFilters.iso === iso}
+										onClick={() =>
+											onFilterChange({
+												...activeFilters,
+												iso: activeFilters.iso === iso ? null : iso,
+											})
+										}
+									/>
+								))}
+							</Section>
+						)}
+						{filterOptions?.dates && filterOptions.dates.length > 0 && (
+							<Section title="Date" defaultOpen={false}>
+								{filterOptions.dates.map((d) => {
+									const [year, month] = d.split("-");
+									const label = new Date(
+										Number(year),
+										Number(month) - 1,
+									).toLocaleDateString("en-US", {
+										year: "numeric",
+										month: "long",
+									});
+									return (
+										<NavItem
+											key={d}
+											icon={<Calendar className="h-4 w-4" />}
+											label={label}
+											active={activeFilters.dateMonth === d}
+											onClick={() =>
+												onFilterChange({
+													...activeFilters,
+													dateMonth:
+														activeFilters.dateMonth === d ? null : d,
+												})
+											}
+										/>
+									);
+								})}
+							</Section>
+						)}
+					</Section>
+				)}
 
-				{/* Filter By Section */}
-				<Section title="Filter By" defaultOpen={false}>
-					<NavItem icon={<Calendar className="h-4 w-4" />} label="Date" />
-					<NavItem icon={<Camera className="h-4 w-4" />} label="Camera" />
-					<NavItem icon={<MapPin className="h-4 w-4" />} label="Location" />
-				</Section>
+				{/* Active filters indicator */}
+				{(activeFilters.camera ||
+					activeFilters.lens ||
+					activeFilters.iso ||
+					activeFilters.dateMonth) && (
+					<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary flex items-center justify-between">
+						<span>Filters active</span>
+						<button
+							type="button"
+							className="underline cursor-pointer"
+							onClick={() =>
+								onFilterChange({
+									camera: null,
+									lens: null,
+									iso: null,
+									dateMonth: null,
+								})
+							}
+						>
+							Clear all
+						</button>
+					</div>
+				)}
 
 				{/* Search results indicator */}
 				{searchQuery && (
