@@ -394,6 +394,11 @@ CLIP embeddings are generated in a separate post-scan batch job via `batchGenera
 - Compute perceptual hash
 - Generate WebP thumbnails (all 4 sizes in parallel)
 
+**For HEIC/HEIF images:**
+- Decode using libheif (auto-applies EXIF orientation — do NOT call `apply_orientation`)
+- Compute perceptual hash and generate thumbnails from already-rotated pixels
+- Magic byte detection handles mislabeled files (e.g., iOS saving HEIC as .JPEG)
+
 **For RAW images:**
 - Extract EXIF from RAW file
 - Demosaic using LibRaw (rsraw)
@@ -425,7 +430,11 @@ Key functions exported from `@photobrain/image-processing`:
 Thumbnails use predictable paths: `/thumbnails/{size}/{photo-path-hash}.webp`
 - No database column needed
 - Paths computed from photo path + size
-- Enables cache-friendly URLs
+- Cache-busted via `?v=THUMB_VERSION` query param (increment `THUMB_VERSION` in `apps/web/src/lib/thumbnails.ts` and `apps/mobile/src/config.ts` when thumbnails are regenerated)
+- Use `thumbnailUrl()` helper in mobile (`@/config`) for consistent cache-busted URLs
+
+### Temporary Endpoints (remove after use)
+- `POST /api/photos/reprocess-heic` — re-processes HEIC thumbnails with the orientation fix. Remove from `apps/api/src/routes/photos.ts` after running.
 
 ### Type Sharing
 API types are exported from `@photobrain/api` and consumed by clients:
