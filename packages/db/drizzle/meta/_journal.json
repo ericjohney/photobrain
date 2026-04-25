@@ -15,6 +15,13 @@
       "when": 1777083805012,
       "tag": "0001_busy_mockingbird",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777084000000,
+      "tag": "0002_minor_giant_girl",
+      "breakpoints": true
     }
   ]
 }
