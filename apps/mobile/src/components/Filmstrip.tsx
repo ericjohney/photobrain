@@ -65,7 +65,7 @@ export default function Filmstrip({
 					]}
 				>
 					<Image
-						source={{ uri: thumbnailUrl(item.id, "tiny") }}
+						source={{ uri: thumbnailUrl(item.id, "tiny", item.thumbnailUpdatedAt) }}
 						style={styles.thumbnailImage}
 						contentFit="cover"
 						cachePolicy="memory-disk"

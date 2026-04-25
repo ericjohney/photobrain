@@ -92,8 +92,8 @@ export function PhotoGrid({
 									</div>
 								) : (
 									<img
-										src={getThumbnailUrl(photo.id, "small")}
-										srcSet={getThumbnailSrcSet(photo.id)}
+										src={getThumbnailUrl(photo.id, "small", photo.thumbnailUpdatedAt)}
+										srcSet={getThumbnailSrcSet(photo.id, photo.thumbnailUpdatedAt)}
 										sizes={`${thumbnailSize}px`}
 										alt={photo.name}
 										className="h-full w-full object-cover"

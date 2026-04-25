@@ -69,6 +69,7 @@ async function saveRustPhotoToDb(
 				rawStatus: result.rawStatus ?? null,
 				rawError: result.rawError ?? null,
 				thumbnailStatus: "completed",
+				thumbnailUpdatedAt: new Date(),
 				embeddingStatus: "pending",
 				phashStatus: result.phash ? "completed" : "failed",
 			})
@@ -91,6 +92,7 @@ async function saveRustPhotoToDb(
 				rawStatus: result.rawStatus ?? null,
 				rawError: result.rawError ?? null,
 				thumbnailStatus: "completed",
+				thumbnailUpdatedAt: new Date(),
 				embeddingStatus: "pending",
 				phashStatus: result.phash ? "completed" : "failed",
 			})

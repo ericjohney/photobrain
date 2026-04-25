@@ -48,9 +48,9 @@ export default function LoupeView({
 	const renderItem = useCallback(
 		(item: PhotoMetadata, _index: number) => (
 			<Image
-				source={{ uri: thumbnailUrl(item.id, "large") }}
+				source={{ uri: thumbnailUrl(item.id, "large", item.thumbnailUpdatedAt) }}
 				placeholder={{
-					uri: thumbnailUrl(item.id, "small"),
+					uri: thumbnailUrl(item.id, "small", item.thumbnailUpdatedAt),
 				}}
 				style={styles.image}
 				contentFit="contain"

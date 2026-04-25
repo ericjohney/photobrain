@@ -32,6 +32,9 @@ export const config = loadConfig();
 // For backwards compatibility
 export const API_URL = config.API_URL;
 
-export function thumbnailUrl(photoId: number, size: string): string {
-	return `${API_URL}/api/photos/${photoId}/thumbnail/${size}`;
+export function thumbnailUrl(photoId: number, size: string, updatedAt?: Date | string | null): string {
+	const base = `${API_URL}/api/photos/${photoId}/thumbnail/${size}`;
+	if (!updatedAt) return base;
+	const ts = updatedAt instanceof Date ? updatedAt.getTime() : new Date(updatedAt).getTime();
+	return `${base}?v=${ts}`;
 }

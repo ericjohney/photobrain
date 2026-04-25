@@ -55,10 +55,10 @@ export function Lightbox({ photo, onClose }: LightboxProps) {
 						</div>
 					) : (
 						<img
-							src={getThumbnailUrl(photo.id, "large")}
+							src={getThumbnailUrl(photo.id, "large", photo.thumbnailUpdatedAt)}
 							srcSet={`
-								${getThumbnailUrl(photo.id, "medium")} 800w,
-								${getThumbnailUrl(photo.id, "large")} 1600w,
+								${getThumbnailUrl(photo.id, "medium", photo.thumbnailUpdatedAt)} 800w,
+								${getThumbnailUrl(photo.id, "large", photo.thumbnailUpdatedAt)} 1600w,
 								${getFullImageUrl(photo.id)} 4000w
 							`}
 							sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"

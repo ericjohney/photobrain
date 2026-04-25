@@ -77,7 +77,7 @@ export function LoupeView({
 		if (zoomLevel === "100") {
 			return getFullImageUrl(photo.id);
 		}
-		return getThumbnailUrl(photo.id, "large");
+		return getThumbnailUrl(photo.id, "large", photo.thumbnailUpdatedAt);
 	};
 
 	const getImageClass = () => {
@@ -123,7 +123,7 @@ export function LoupeView({
 					{/* Loading placeholder */}
 					{!imageLoaded && (
 						<img
-							src={getThumbnailUrl(photo.id, "medium")}
+							src={getThumbnailUrl(photo.id, "medium", photo.thumbnailUpdatedAt)}
 							alt=""
 							className="absolute max-h-full max-w-full object-contain blur-sm"
 						/>

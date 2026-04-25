@@ -198,7 +198,7 @@ export default function SearchScreen() {
 						>
 							<Image
 								source={{
-									uri: thumbnailUrl(item.id, "tiny"),
+									uri: thumbnailUrl(item.id, "tiny", item.thumbnailUpdatedAt),
 								}}
 								style={styles.photo}
 								contentFit="cover"

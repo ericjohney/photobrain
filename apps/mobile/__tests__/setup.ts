@@ -152,8 +152,12 @@ jest.mock("@/config", () => ({
 		NODE_ENV: "test",
 	},
 	API_URL: "http://test-api:3000",
-	thumbnailUrl: (photoId: number, size: string) =>
-		`http://test-api:3000/api/photos/${photoId}/thumbnail/${size}`,
+	thumbnailUrl: (photoId: number, size: string, updatedAt?: any) => {
+		const base = `http://test-api:3000/api/photos/${photoId}/thumbnail/${size}`;
+		if (!updatedAt) return base;
+		const ts = updatedAt instanceof Date ? updatedAt.getTime() : new Date(updatedAt).getTime();
+		return `${base}?v=${ts}`;
+	},
 }));
 
 // Mock expo-router

@@ -93,7 +93,7 @@ export default function PhotoGrid({
 						</View>
 					) : (
 						<Image
-							source={{ uri: thumbnailUrl(item.id, "tiny") }}
+							source={{ uri: thumbnailUrl(item.id, "tiny", item.thumbnailUpdatedAt) }}
 							style={styles.photo}
 							contentFit="cover"
 							transition={200}

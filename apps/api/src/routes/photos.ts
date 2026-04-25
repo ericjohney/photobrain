@@ -165,7 +165,7 @@ router.get("/:id/thumbnail/:size", async (c) => {
 			status: 200,
 			headers: {
 				"Content-Type": "image/webp",
-				"Cache-Control": "public, no-cache",
+				"Cache-Control": "public, max-age=31536000, immutable",
 				"Content-Length": file.size.toString(),
 				ETag: etag,
 				"Last-Modified": new Date(mtime).toUTCString(),
@@ -218,6 +218,7 @@ router.post("/reprocess-heic", async (c) => {
 							width: result.width,
 							height: result.height,
 							thumbnailStatus: "completed",
+						thumbnailUpdatedAt: new Date(),
 						})
 						.where(eq(photos.path, result.path))
 						.run();

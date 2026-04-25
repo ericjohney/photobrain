@@ -24,6 +24,7 @@ export const photos = sqliteTable("photos", {
 	rawError: text("raw_error"), // Error message if conversion failed
 	// Processing status columns
 	thumbnailStatus: text("thumbnail_status").default("pending"),
+	thumbnailUpdatedAt: integer("thumbnail_updated_at", { mode: "timestamp" }),
 	embeddingStatus: text("embedding_status").default("pending"),
 	phashStatus: text("phash_status").default("pending"),
 });

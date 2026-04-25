@@ -84,7 +84,7 @@ export function Filmstrip({
 							</div>
 						) : (
 							<img
-								src={getThumbnailUrl(photo.id, "tiny")}
+								src={getThumbnailUrl(photo.id, "tiny", photo.thumbnailUpdatedAt)}
 								alt={photo.name}
 								className="h-full w-full object-cover"
 								loading="lazy"

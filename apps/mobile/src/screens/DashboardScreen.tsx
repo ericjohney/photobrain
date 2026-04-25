@@ -266,7 +266,7 @@ export default function DashboardScreen() {
 						>
 							<Image
 								source={{
-									uri: thumbnailUrl(photo.id, "tiny"),
+									uri: thumbnailUrl(photo.id, "tiny", photo.thumbnailUpdatedAt),
 								}}
 								style={styles.photo}
 								contentFit="cover"

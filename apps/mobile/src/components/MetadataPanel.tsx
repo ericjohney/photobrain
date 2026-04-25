@@ -143,7 +143,7 @@ export default function MetadataPanel({
 					>
 						<Image
 							source={{
-								uri: thumbnailUrl(photo.id, "small"),
+								uri: thumbnailUrl(photo.id, "small", photo.thumbnailUpdatedAt),
 							}}
 							style={styles.preview}
 							contentFit="contain"
