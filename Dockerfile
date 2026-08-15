@@ -1,5 +1,5 @@
 # =============================================================================
-# Stage 1: Builder - Install dependencies and build Rust/WASM
+# Stage 1: Builder - Install dependencies and build the Rust N-API addon
 # =============================================================================
 FROM oven/bun:1.3.5-debian AS builder
 WORKDIR /app

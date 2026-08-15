@@ -1,166 +1,81 @@
 # PhotoBrain Mobile
 
-React Native Expo mobile app for PhotoBrain - AI-powered photo management.
+The mobile application is an Expo/React Native client for PhotoBrain with native iOS/Android support and an Expo web target.
 
-## Features
+Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../CLAUDE.md`](../../CLAUDE.md) for repository-wide rules.
 
-- 📱 Native iOS and Android support
-- 🔍 Semantic photo search using CLIP embeddings
-- 🖼️ Fast photo grid with optimized image loading
-- 🔄 Pull-to-refresh and directory scanning
-- 📸 Full-screen photo viewer with metadata
-- 🎨 Native UI components and smooth animations
+## Active Entrypoint and Routes
 
-## Prerequisites
+`package.json` uses `expo-router/entry`. The active route files are under `app/`:
 
-- [Bun](https://bun.sh/) installed
-- [Expo CLI](https://docs.expo.dev/get-started/installation/) installed globally
-- [Expo Go](https://expo.dev/client) app on your mobile device (for testing)
-- PhotoBrain API server running (default: http://localhost:3000)
+- `index.tsx`: Photos tab.
+- `search.tsx`: Search tab.
+- `collections.tsx`: Albums placeholder.
+- `preferences.tsx`: Library/preferences tab.
+- `about.tsx`: hidden route.
+- `_layout.tsx`: providers and tab configuration.
 
-## Setup
+`App.tsx` is a legacy React Navigation entrypoint used by some tests. It is not the configured production entrypoint.
 
-1. Install dependencies:
+## Setup and Development
+
+From the repository root:
 
 ```bash
 bun install
+bun run dev:mobile
 ```
 
-2. Configure API URL:
-
-Copy `.env.example` to `.env` and update the API URL:
-
-```bash
-cp .env.example .env
-```
-
-For **iOS Simulator**: Use `http://localhost:3000`
-For **Android Emulator**: Use `http://10.0.2.2:3000`
-For **Physical Device**: Use `http://<your-computer-ip>:3000`
-
-## Development
-
-### Start Expo development server:
+From this directory:
 
 ```bash
 bun run start
-```
-
-### Run on iOS:
-
-```bash
 bun run ios
-```
-
-### Run on Android:
-
-```bash
 bun run android
-```
-
-### Run on Web:
-
-```bash
 bun run web
+bun run build:web
 ```
 
-## Shared Code
+Set the API URL in `.env`:
 
-This mobile app shares code with the web app through workspace packages:
-
-- `@photobrain/api` - tRPC API with end-to-end type safety
-- `@photobrain/utils` - Shared utility functions (formatFileSize, formatDate, etc.)
-
-Types are automatically inferred from the tRPC router, eliminating the need for manual type definitions.
-
-## Project Structure
-
-```
-apps/mobile/
-├── src/
-│   ├── components/       # Reusable UI components
-│   │   ├── PhotoGrid.tsx
-│   │   ├── SearchBar.tsx
-│   │   └── PhotoModal.tsx
-│   ├── screens/          # Main app screens
-│   │   ├── DashboardScreen.tsx
-│   │   ├── CollectionsScreen.tsx
-│   │   ├── PreferencesScreen.tsx
-│   │   └── AboutScreen.tsx
-│   └── config.ts         # App configuration
-├── App.tsx               # Main app entry point
-├── app.json              # Expo configuration
-└── package.json
+```env
+EXPO_PUBLIC_API_URL=http://localhost:3000
 ```
 
-## Technology Stack
+Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN address for a physical device. EAS profiles set `https://photobrain-api.ericj5.com` by default.
 
-- **React Native** - Cross-platform mobile framework
-- **Expo** - React Native development platform
-- **React Navigation** - Navigation library
-- **expo-image** - Optimized image component
-- **TypeScript** - Type safety
+## Current Behavior
 
-## Screens
+- Photos are sorted newest-first, grouped by month/date, and displayed in a four-column grid.
+- The Photos tab supports EXIF camera/lens/ISO/month filters, pull-to-refresh, scan initiation, and Inngest progress.
+- The Search tab sends non-empty natural-language queries directly to `searchPhotos` with no debounce.
+- Tapping a photo opens a modal loupe with pinch/pan/zoom, swipe navigation, haptics, and metadata.
+- The loupe uses the `large` thumbnail URL; it does not request the original file route.
+- Collections remains a placeholder.
+- Preferences persists light/dark/system themes. Grid-column and haptic settings are currently disabled or hardcoded.
+- Loupe share/like/delete/star/overflow controls are placeholders unless their implementation is changed.
 
-### Dashboard
+The app uses tRPC for metadata, filters, search, scan, and Realtime tokens. REST is used for image and thumbnail URLs.
 
-- Photo grid with responsive layout (3 columns)
-- Semantic search bar with debounced input
-- Pull-to-refresh functionality
-- Scan button for triggering directory scans
-- Tap photos to view in full-screen
-
-### Collections
-
-- Placeholder for future collections feature
-
-### Preferences
-
-- Placeholder for app settings and preferences
-
-### About
-
-- App version and information
-- Technology stack details
-- Feature list
-
-## API Integration
-
-The mobile app connects to the PhotoBrain backend API and supports:
-
-- `GET /api/photos` - Fetch all photos
-- `GET /api/photos/search?q=query` - Semantic search
-- `GET /api/photos/:id/file` - Fetch photo file
-- `POST /api/scan` - Trigger directory scan
-
-## Troubleshooting
-
-### Cannot connect to API
-
-1. Ensure the backend API is running on port 3000
-2. Check your `.env` file has the correct API URL
-3. For physical devices, ensure your phone and computer are on the same network
-4. For Android emulator, use `http://10.0.2.2:3000` instead of `localhost`
-
-### Images not loading
-
-1. Verify API URL is correct
-2. Check network permissions in Expo
-3. Ensure photos exist in the backend database
-
-## Building for Production
-
-### iOS
+## Scripts and Tests
 
 ```bash
-eas build --platform ios
+bun run start
+bun run android
+bun run ios
+bun run web
+bun run build:web
+bun run test
 ```
 
-### Android
+Jest uses `jest-expo` and mocks native modules, tRPC, Realtime, AsyncStorage, images, zoom, and haptics. CI runs `npx jest --forceExit` from this directory. Tests cover dashboard, search, filters, loupe, library state, and legacy navigation. They do not cover the active Expo Router layout, real API calls, Preferences, Collections, About, or OTA behavior.
 
-```bash
-eas build --platform android
-```
+The `typecheck` script currently prints an informational message and does not run TypeScript checking.
 
-Refer to [Expo's build documentation](https://docs.expo.dev/build/introduction/) for detailed instructions.
+## EAS and OTA
+
+`eas.json` defines `development`, `development-simulator`, `preview`, and `production` build profiles with matching EAS channels. `app.json` configures `expo-updates` with an `appVersion` runtime policy and on-load checks.
+
+The GitHub Actions workflow publishes OTA updates on pushes to `main` and version tags after web/mobile tests. The manual `useOTAUpdates` hook is used by legacy `App.tsx`, not the active Expo Router layout; do not document an alert/restart flow as active without wiring it into the active layout.
+
+The Docker `mobile` target runs the Expo development server on port 8081. It is not a static Expo web-export image.

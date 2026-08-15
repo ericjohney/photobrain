@@ -54,12 +54,6 @@ coverage/
 .cache/
 .nx/
 
-# Optional: Rust worker (future)
-rust-worker/target/
-rust-worker/Cargo.lock
-
 # Test photos
 /tmp/test-photos/
 temp-photos/
-</parameter>
-</write_to_file>

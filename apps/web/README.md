@@ -1,82 +1,71 @@
-# PhotoBrain Web Interface
+# PhotoBrain Web
 
-A modern React photo gallery interface built with Vite, React, and shadcn/ui components.
+The web application is a React/Vite browser client for the PhotoBrain API. It provides the primary grid/loupe library interface, folders, EXIF filters, CLIP search, metadata, scan progress, and keyboard navigation.
 
-## Features
+Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../CLAUDE.md`](../../CLAUDE.md) for repository-wide rules.
 
-- Modern, responsive photo grid layout
-- Search functionality to filter photos by name
-- Click to view photos in fullscreen lightbox
-- Hover effects and smooth animations
-- Dark mode support (via Tailwind CSS)
-- Real-time photo scanning stats
+## Development
 
-## Getting Started
-
-### Prerequisites
-
-- Bun 1.1.0 or higher
-- PhotoBrain API running on port 3000
-
-### Installation
-
-Dependencies are managed at the monorepo root level:
+From the repository root:
 
 ```bash
-# From the monorepo root
 bun install
-```
-
-### Development
-
-Start the development server:
-
-```bash
-# From the monorepo root
 bun run dev:web
-
-# Or from this directory
-bun run dev
 ```
 
-The app will be available at http://localhost:3001
+The Vite server listens on `http://localhost:3001`. From this directory, the equivalent command is `bun run dev`.
 
-### Environment Variables
+## Configuration
 
-Create a `.env` file based on `.env.example`:
+Development reads `VITE_API_URL`:
 
 ```env
 VITE_API_URL=http://localhost:3000
 ```
 
-### Building for Production
+The production server is `serve.ts`. It reads `API_URL`, `HOST`, and `PORT`, serves `dist`, provides SPA fallback routing, and injects the API URL into HTML at runtime. The production defaults are `http://localhost:3000`, `0.0.0.0`, and `3001`.
+
+## Application Structure
+
+- `src/main.tsx`: React Query and tRPC providers.
+- `src/App.tsx`: routes `/`, `/collections`, `/preferences`, and `/about`.
+- `src/pages/Dashboard.tsx`: primary data and state composition.
+- `src/components/`: toolbar, grid, loupe, filmstrip, metadata, panels, and UI primitives.
+- `src/hooks/`: library, panels, shortcuts, and Inngest Realtime progress state.
+- `src/lib/`: tRPC client, runtime configuration, thumbnail URLs, and shared types.
+- `e2e/`: Playwright specs and mocked network fixtures.
+
+The dashboard uses tRPC at `/api/trpc` for metadata, folders, filters, search, scan, and Realtime tokens. REST is used for original files and thumbnails.
+
+## Current Behavior
+
+- Grid and loupe views use one active photo; multi-selection is not implemented.
+- `G` switches to grid, `E` opens loupe when a photo is active, `Tab` toggles panels, `Shift+Space` toggles the filmstrip, arrows navigate, and `Escape` returns to grid.
+- The dashboard uses fixed left/right panel dimensions even though panel dimensions are persisted in localStorage.
+- Search runs reactively on each non-empty input change; it is not debounced.
+- `Lightbox.tsx` and `SearchBar.tsx` are legacy/unreferenced by the active dashboard. Verify imports before extending them.
+
+## Scripts
 
 ```bash
+bun run dev
 bun run build
+bun run test:e2e
+bun run test:e2e:ui
 ```
 
-The built files will be in the `dist` directory.
+The Playwright suite runs Chromium against a Vite server at `http://localhost:3001`. Fixtures mock tRPC responses, image routes, and Inngest requests, so the suite does not require a running API or Inngest service.
 
-## Tech Stack
+## Thumbnails
 
-- **React 18** - UI framework
-- **Vite** - Build tool and dev server
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **shadcn/ui** - UI components
-- **Lucide React** - Icons
+Use `src/lib/thumbnails.ts` for image URLs:
 
-## Components
+- `getThumbnailUrl(id, size, thumbnailUpdatedAt?)`
+- `getThumbnailSrcSet(id, thumbnailUpdatedAt?)`
+- `getFullImageUrl(id)`
 
-- `PhotoGrid` - Responsive grid layout with lightbox view
-- `SearchBar` - Search input with icon
-- `Button`, `Input`, `Card` - shadcn/ui components
+Thumbnail URLs are `/api/photos/:id/thumbnail/:size` with optional `?v=` cache busting from `thumbnailUpdatedAt`. The API resolves mirrored WebP paths from the photo row.
 
-## API Integration
+## Production
 
-The app connects to the PhotoBrain API at the configured `VITE_API_URL`:
-
-- `GET /api/photos` - Fetch all photos
-- `GET /api/photos/search?q=<query>` - Semantic search using CLIP embeddings
-- `GET /api/photos/:id` - Get photo metadata
-- `GET /api/photos/:id/file` - Serve image file
+Build the Vite app with `bun run build`; output is `dist/`. The Docker `web` target runs the Bun static server on port 3001 and supports runtime API configuration without rebuilding.

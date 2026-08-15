@@ -1,131 +1,105 @@
 # PhotoBrain API
 
-A Hono-based REST API for managing and serving photos with SQLite database storage.
+The API is a Hono/Bun server exposing typed tRPC procedures, REST image streaming routes, and Inngest functions for scanning and CLIP embedding generation.
 
-## Tech Stack
+Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../CLAUDE.md`](../../CLAUDE.md) for repository-wide rules.
 
-- **Hono** - Fast, lightweight web framework
-- **Drizzle ORM** - Type-safe ORM for SQLite
-- **Bun SQLite** - Native SQLite driver for Bun
-- **TypeScript** - Type safety
+## Development
 
-## Project Structure
-
-```
-src/
-├── db/
-│   ├── schema.ts      # Drizzle schema definitions
-│   ├── index.ts       # Database connection
-│   └── migrate.ts     # Migration runner
-├── routes/
-│   ├── health.ts      # Health check endpoints
-│   ├── photos.ts      # Photo CRUD operations
-│   ├── images.ts      # Image file serving
-│   └── scan.ts        # Directory scanning
-├── scanner.ts         # File system scanner
-├── types.ts           # TypeScript types
-└── index.ts           # Main application entry
-```
-
-## Setup
-
-### Database Migration
-
-Run migrations to create the database schema:
+From the repository root:
 
 ```bash
-bun run db:migrate
+bun install
+cd packages/image-processing && bun run build
 ```
 
-### Development
+Then, from the repository root in a new terminal:
 
-Start the development server:
+```bash
+bun run dev:api
+```
+
+The server listens on `http://localhost:3000` by default. The API package scripts are:
 
 ```bash
 bun run dev
+bun test
 ```
 
-## API Endpoints
+There is no API-local worker process. An Inngest development/runtime service must invoke `/api/inngest` for scan and embedding events to execute.
 
-### Health
+## Configuration
 
-- `GET /api/health` - Health check
+Variables are parsed in `src/config.ts`:
 
-### Photos
+| Variable | Default |
+|---|---|
+| `HOST` | `0.0.0.0` |
+| `PORT` | `3000` |
+| `DATABASE_URL` | `./photobrain.db` |
+| `PHOTO_DIRECTORY` | `../../temp-photos` |
+| `THUMBNAILS_DIRECTORY` | `./thumbnails` |
+| `NODE_ENV` | `development` |
+| `RUN_DB_INIT` | `false` |
 
-- `GET /api/photos` - Get all photos from database
-- `GET /api/photos?q=search` - Search photos by name
-- `GET /api/photos/:id` - Get single photo by ID
+`DATABASE_URL`, `PHOTO_DIRECTORY`, and `THUMBNAILS_DIRECTORY` are relative to the API process working directory. Set `RUN_DB_INIT=true` to apply migrations from `packages/db/drizzle` on startup, or use the database package scripts directly.
 
-### Scan
+`FASTEMBED_CACHE_DIR` is consumed by the native image-processing package. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and are not active RAW dependencies.
 
-- `POST /api/scan` - Scan photo directory and populate database
+## HTTP API
 
-Response:
-```json
-{
-  "success": true,
-  "scanned": 150,
-  "inserted": 10,
-  "updated": 5,
-  "skipped": 135,
-  "duration": 1250,
-  "scanDuration": 850,
-  "directory": "/path/to/photos"
-}
-```
+Registered routes:
 
-### Images
+- `GET /api/health`
+- `GET|POST /api/trpc/*`
+- `GET /api/photos/:id/file`
+- `GET /api/photos/:id/thumbnail/:size`
+- `POST /api/photos/reprocess-heic` (one-off maintenance)
+- `POST /api/photos/backfill-thumbnail-timestamps` (one-off maintenance)
+- `GET|PUT|POST /api/inngest`
 
-- `GET /api/image/:filename` - Serve image file
+Photo metadata, folders, filters, search, scans, and Realtime token creation are tRPC procedures in `src/trpc/router.ts`:
 
-## Environment Variables
+- `folders`
+- `filterOptions`
+- `photos`
+- `photo`
+- `searchPhotos`
+- `scan`
+- `realtimeToken`
 
-```env
-PORT=3000
-PHOTO_DIRECTORY=../../temp-photos
-DATABASE_URL=./photobrain.db
-```
+There are no REST `GET /api/photos`, `GET /api/photos/:id`, `POST /api/scan`, or `GET /api/image/:filename` endpoints.
 
-## Database Schema
+All procedures and file routes are currently public and unauthenticated.
 
-### photos
+## Background Processing
 
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | INTEGER | PRIMARY KEY AUTOINCREMENT |
-| path | TEXT | NOT NULL, UNIQUE |
-| name | TEXT | NOT NULL |
-| size | INTEGER | NOT NULL |
-| createdAt | INTEGER (timestamp) | NOT NULL |
-| modifiedAt | INTEGER (timestamp) | NOT NULL |
-| width | INTEGER | NULLABLE |
-| height | INTEGER | NULLABLE |
-| mimeType | TEXT | NULLABLE |
+`scan` sends `photos/scan.requested` with absolute photo and thumbnail directories plus a job ID. The registered Inngest scan function:
 
-## Workflow
+1. Discovers supported files with the Rust addon.
+2. Processes files in batches of 20.
+3. Persists successful photo, EXIF, and pHash results.
+4. Publishes progress on `job:{jobId}`.
+5. Sends pending photo IDs to `photos/embeddings.requested`.
 
-1. **Initial Setup**: Run `bun run db:migrate` to create the database
-2. **Scan Photos**: POST to `/api/scan` to scan the photo directory and populate the database
-3. **Query Photos**: GET `/api/photos` to retrieve photos from the database (no scanning on every request)
-4. **Serve Images**: Access images via `/api/image/:filename`
+The embedding function reads `large` WebP thumbnails in batches of 16, stores CLIP vectors in `photo_embedding`, and publishes `embedding`/`completed` progress. Clients obtain subscription tokens through `realtimeToken`.
 
-## Database Commands
+## Database
+
+The authoritative schema is `packages/db/src/schema.ts`; `src/db/schema.ts` only re-exports it. Migrations and Drizzle Kit commands are in `packages/db`:
 
 ```bash
-# Generate new migration
-bun run db:generate
-
-# Run migrations
-bun run db:migrate
-
-# Open Drizzle Studio (database GUI)
-bun run db:studio
+cd packages/db && bun run db:generate
+cd packages/db && bun run db:migrate
+cd packages/db && bun run db:studio
 ```
 
-## Notes
+The API loads `sqlite-vec` at runtime for `vec_distance_L2` semantic search. See [`../../packages/db/AGENTS.md`](../../packages/db/AGENTS.md) for migration and lifecycle caveats.
 
-- Photos are now stored in SQLite database instead of being scanned on every request
-- The scan route intelligently updates only changed files
-- Image serving remains filesystem-based for performance
-- Search is now database-powered with SQL LIKE queries
+## Tests
+
+```bash
+bun test
+```
+
+The current API tests use an in-memory SQLite database with the shared migrations and cover folder-scoped filter options and EXIF/raw/camera/lens/ISO/date filtering. REST, Inngest function, vector-search, and migration-startup coverage is not currently present.

@@ -1,614 +1,313 @@
-# CLAUDE.md - AI Assistant Guide for PhotoBrain
+# CLAUDE.md - PhotoBrain Agent Guide
 
-This document provides essential context for AI assistants working with the PhotoBrain codebase.
+This is the current implementation guide for agents working in PhotoBrain. Prefer the source tree and the scoped guides linked below over older roadmap notes or generated artifacts.
 
-## Project Overview
+## Read First
 
-**PhotoBrain** is a modern, AI-powered self-hosted photo management application with cross-platform support (Web & Mobile). It combines semantic search capabilities using CLIP embeddings, efficient Rust-based image processing, and a responsive React UI.
+- This repository is a Bun/Turbo monorepo with three applications and four shared packages.
+- There is no `apps/worker` directory, BullMQ consumer, or Redis requirement in the current implementation.
+- Background scan and embedding functions are Inngest functions registered by the API at `/api/inngest`.
+- Image processing is a native Rust N-API addon. It is not an active WASM implementation.
+- EXIF extraction and RAW preview extraction invoke the external `exiftool` executable.
+- The shared database schema is authoritative. `apps/api/src/db/schema.ts` only re-exports it.
+- `README.md` is for user/developer setup. `ROADMAP.md` is forward-looking and may contain historical session notes. The scoped `AGENTS.md` files below are the detailed agent guides.
 
-- **Version:** 0.1.0
-- **Package Manager:** Bun 1.1.0+
-- **Build System:** Turbo (monorepo orchestration)
-- **Code Quality:** Biome (linting/formatting), TypeScript
+## Documentation Map
 
-## Repository Structure
+Read the guide for the area being changed:
 
-```
-photobrain/
-├── apps/
-│   ├── api/                 # Backend API (Hono + tRPC + Bun)
-│   │   └── src/
-│   │       ├── db/          # Drizzle ORM migrations
-│   │       ├── routes/      # REST endpoints (photos, health)
-│   │       ├── services/    # Business logic
-│   │       │   └── vector-search.ts  # CLIP similarity search
-│   │       ├── trpc/        # tRPC router and context
-│   │       ├── config.ts    # Environment configuration
-│   │       └── index.ts     # Server entry point
-│   │
-│   ├── worker/              # BullMQ job worker (Bun)
-│   │   └── src/
-│   │       ├── queues/      # Queue definitions (scan, phash, embedding)
-│   │       ├── workers/     # Job processors
-│   │       ├── activities/  # Shared activities (scan, phash, embedding)
-│   │       └── index.ts     # Worker entry point
-│   │
-│   ├── web/                 # React web app (Vite)
-│   │   └── src/
-│   │       ├── components/  # React components
-│   │       │   ├── panels/  # Panel system (PanelLayout, MetadataPanel)
-│   │       │   ├── ui/      # shadcn/ui primitives
-│   │       │   ├── PhotoGrid.tsx    # Thumbnail grid with selection
-│   │       │   ├── Filmstrip.tsx    # Horizontal thumbnail strip
-│   │       │   ├── LoupeView.tsx    # Single photo view with zoom
-│   │       │   └── Toolbar.tsx      # Top toolbar with controls
-│   │       ├── hooks/       # State management hooks
-│   │       ├── pages/       # Route pages
-│   │       ├── lib/         # Utilities (trpc client, thumbnails)
-│   │       └── main.tsx     # App entry point
-│   │
-│   └── mobile/              # React Native Expo app (+ Expo web export)
-│       ├── metro.config.js  # Metro bundler config (stubs native modules)
-│       └── src/
-│           ├── components/  # React Native components
-│           │   ├── ActivityBar.tsx   # Real-time scan/embedding progress
-│           │   ├── Filmstrip.tsx     # Horizontal thumbnail strip
-│           │   ├── LoupeView.tsx     # Full-screen photo viewer with swipe
-│           │   ├── MetadataPanel.tsx  # EXIF metadata display
-│           │   ├── PhotoGrid.tsx     # Thumbnail grid
-│           │   └── SearchBar.tsx     # Semantic search input
-│           ├── screens/     # Main screens
-│           ├── navigation/  # Navigation setup
-│           └── config.ts    # App configuration
-│
-├── packages/
-│   ├── utils/               # Shared TypeScript utilities
-│   │   └── src/
-│   │       ├── thumbnails.ts  # Thumbnail size configuration
-│   │       └── tasks.ts       # Task type definitions for job progress
-│   │
-│   ├── config/              # Shared TypeScript configuration
-│   │
-│   ├── db/                  # Shared database schema (Drizzle ORM)
-│   │   ├── drizzle/           # Database migrations
-│   │   └── src/
-│   │       ├── schema.ts      # Table definitions
-│   │       └── index.ts       # Database connection
-│   │
-│   └── image-processing/    # Rust NAPI native module
-│       ├── browser.js       # Browser/Metro stub (prevents bundling native code)
-│       └── src/
-│           ├── lib.rs        # Module entry point
-│           ├── batch.rs      # Unified photo processing (all types)
-│           ├── clip.rs       # CLIP text/image embeddings (batch generation)
-│           ├── discovery.rs  # Parallel photo file discovery (walkdir)
-│           ├── exif.rs       # EXIF metadata extraction
-│           ├── heif.rs       # HEIF/HEIC image decoding
-│           ├── orientation.rs # EXIF orientation correction
-│           ├── phash.rs      # Perceptual hashing
-│           ├── preview.rs    # Embedded preview extraction
-│           ├── raw.rs        # RAW image processing (LibRaw)
-│           └── thumbnails.rs # WebP thumbnail generation (parallel)
-│
-├── biome.json               # Code formatter/linter config
-├── turbo.json               # Monorepo build orchestration
-├── Dockerfile               # Multi-stage production builds
-└── .github/workflows/       # CI/CD pipeline
+- [API and background jobs](apps/api/AGENTS.md)
+- [Web application](apps/web/AGENTS.md)
+- [Mobile application](apps/mobile/AGENTS.md)
+- [Rust image processing](packages/image-processing/AGENTS.md)
+- [Database and migrations](packages/db/AGENTS.md)
+- [Shared utilities](packages/utils/AGENTS.md)
+- [Shared TypeScript configuration](packages/config/AGENTS.md)
+
+Historical implementation plans live under `docs/superpowers/`. They document past decisions and are not a substitute for checking the current source.
+
+## Repository Map
+
+```text
+apps/
+  api/                    Hono server, tRPC router, REST file routes, Inngest functions
+  web/                    React/Vite browser application
+  mobile/                 Expo/React Native application using Expo Router
+packages/
+  config/                 Shared TypeScript configuration package
+  db/                     Drizzle schema and migration files
+  image-processing/       Rust N-API addon and browser/Metro stubs
+  utils/                  Shared TypeScript helpers and thumbnail configuration
+docs/
+  superpowers/            Historical design specifications and implementation plans
+.github/workflows/        CI tests, Docker builds, EAS updates, and ArgoCD tag updates
+Dockerfile                Five targets: builder, api, web-builder, web, mobile
 ```
 
-## Tech Stack
+## Runtime Architecture
 
-### Backend (`apps/api`)
-- **Hono** v4.11 - Lightweight TypeScript-first web framework
-- **tRPC** v11 - End-to-end type-safe API layer
-- **Drizzle ORM** v0.45 - Type-safe database toolkit
-- **SQLite** with `sqlite-vec` - Vector similarity search
-- **BullMQ** v5.x - Job queue for async processing
-- **Redis/Valkey** - Queue storage backend
-- **Bun** - JavaScript runtime (server execution)
+### API and jobs
 
-### Worker (`apps/worker`)
-- **BullMQ** v5.x - Job queue processing
-- **Bun** - JavaScript runtime
-- Processes scan, phash, and embedding jobs asynchronously
-- Shares database schema via `@photobrain/db` package
+The API entrypoint is `apps/api/src/index.ts`:
 
-### Web Frontend (`apps/web`)
-- **React** v18.3 - UI library
-- **Vite** v6.0 - Build tool and dev server
-- **TailwindCSS** v3.4 - Utility-first CSS framework
-- **Radix UI** - Accessible component primitives (shadcn/ui)
-- **React Router** v7.11 - Client-side routing
-- **React Query** v5.62 - Data fetching and caching
-- **react-resizable-panels** v4.3 - Resizable panel layout
+1. Hono serves `/api/health`.
+2. tRPC handles `/api/trpc/*` using the router in `apps/api/src/trpc/router.ts`.
+3. REST routes under `/api/photos/*` stream original files and generated thumbnails.
+4. Inngest serves `GET`, `PUT`, and `POST /api/inngest` and registers the scan and embedding functions.
 
-### Mobile Frontend (`apps/mobile`)
-- **React Native** v0.81 - Cross-platform mobile framework
-- **Expo** v54 - React Native development platform (+ Expo web export)
-- **React Navigation** v7 - Native navigation
-- **expo-image** v3.0 - Optimized image component
-- **react-native-gesture-handler** - Swipe/gesture support
-- **react-native-reanimated** - Fluid animations
-- **react-native-web** - Web rendering layer for Expo web export
-- **@react-native-async-storage/async-storage** - Local storage
-- **expo-haptics** - Haptic feedback
+The scan flow is:
 
-### Image Processing (`packages/image-processing`)
-- **Rust** with NAPI bindings
-- **rsraw** v0.1 - RAW image processing (LibRaw bindings)
-- **rayon** v1.10 - Parallel processing
-- **fastembed** v4.4 - CLIP embeddings (batch generation, deferred post-scan)
-- **walkdir** v2 - Parallel file discovery
-- **image** v0.25 - Image decoding and resizing
-- **image_hasher** v2.0 - Perceptual hashing
-- **kamadak-exif** v0.5 - EXIF metadata extraction
-- **libheif-rs** v0.22 - HEIF/HEIC image decoding
+1. `trpc.scan` creates a UUID and sends `photos/scan.requested`.
+2. The Inngest scan function discovers supported files with Rust `discoverPhotos`.
+3. Files are processed in batches of 20 with Rust `processPhotosBatch`.
+4. Successful results update `photos`, `photo_exif`, and `photo_phash`.
+5. Pending photo IDs trigger `photos/embeddings.requested`.
+6. The embedding function reads `large` WebP thumbnails in batches of 16, generates CLIP embeddings, and updates `photo_embedding` and `embeddingStatus`.
+7. Both functions publish progress to the Inngest Realtime channel `job:{jobId}`.
 
-## System Dependencies
+The web and mobile clients obtain a Realtime token through `trpc.realtimeToken` and subscribe directly with `@inngest/realtime`.
 
-For local development, the following system packages are required:
+There is no repository-local worker process. Running the API alone exposes the Inngest handler, but an Inngest development/runtime service must deliver events to that handler for asynchronous jobs to execute. This repository has no `dev:worker` script.
 
-### Linux (Debian/Ubuntu)
-```bash
-# Required for Rust native module compilation
-apt-get install -y build-essential pkg-config libssl-dev libheif-dev libclang-dev
+### Image processing
 
-# Install Bun
-curl -fsSL https://bun.sh/install | bash
+`packages/image-processing` is a Rust `cdylib` built with N-API. The normal scan pipeline is:
 
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+1. Walk the photo directory, skip hidden entries, and retain supported extensions.
+2. Read filesystem metadata.
+3. Extract EXIF with `exiftool`.
+4. Detect HEIF by extension or magic bytes and decode it with `libheif-rs`.
+5. For RAW files, extract an embedded JPEG preview with `exiftool -b -PreviewImage`, falling back to `-JpgFromRaw`.
+6. Decode standard images with the Rust `image` crate.
+7. Apply EXIF orientation except for HEIF, whose decoder applies container transforms.
+8. Generate a double-gradient perceptual hash and four WebP thumbnails.
+9. Defer CLIP image embeddings to the Inngest embedding function.
 
-### Docker Build Dependencies
-The Dockerfile requires these packages in the builder stage:
-- `libheif-dev` - HEIF/HEIC encoding/decoding headers
-- `libclang-dev` - Required by bindgen for FFI generation
+RAW files are not demosaiced with LibRaw or `rsraw` in this checkout. There is no current histogram-matching implementation.
 
-The API runtime stage requires:
-- `libheif1` - HEIF runtime library
+### Database and vectors
 
-## Development Commands
+SQLite is opened with Bun and `sqlite-vec` in `apps/api/src/db/setup.ts`. Drizzle uses the schema from `packages/db/src/schema.ts`.
+
+The tables are:
+
+- `photos`: file identity, dimensions, timestamps, RAW metadata, and processing statuses.
+- `photo_exif`: one-to-one camera, lens, exposure, date, and GPS metadata.
+- `photo_embedding`: one CLIP embedding blob per photo.
+- `photo_phash`: one perceptual hash per photo.
+
+Semantic search creates a CLIP text embedding and queries `photo_embedding` with `vec_distance_L2`. The embedding model is `ClipVitB32`; the database does not enforce a vector dimension.
+
+## Commands
+
+Run commands from the repository root unless a command includes a directory change.
+
+### Install and native build
 
 ```bash
-# Install dependencies
 bun install
-
-# Build Rust image-processing module (required first time)
-cd packages/image-processing && bun run build && cd ../..
-
-# Start all apps in parallel
-bun run dev
-
-# Start individual apps
-bun run dev:api      # Backend API (port 3000)
-bun run dev:web      # Web frontend (port 3001)
-bun run dev:worker   # BullMQ job worker
-bun run dev:mobile   # Expo dev server
-
-# Code quality
-bun run typecheck    # Type check all packages
-bun run check        # Biome check and auto-fix
-bun run lint         # Lint all packages
-bun run format       # Format with Biome
-
-# Build for production
-bun run build
+cd packages/image-processing && bun run build
 ```
 
-## Code Style & Conventions
+Native development also requires Rust/Cargo, a C toolchain, `pkg-config`, OpenSSL development headers, `libheif-dev`, `libclang-dev`, and the `exiftool` executable. Debian/Ubuntu runtime images need `libheif1` and `libimage-exiftool-perl`.
 
-### Formatting (Biome)
-- **Indentation:** Tabs (not spaces)
-- **Quotes:** Double quotes for JavaScript/TypeScript
-- **Imports:** Auto-organized on save
-- **TailwindCSS:** Directives enabled in CSS parser
+The first CLIP operation may download the FastEmbed model. Set `FASTEMBED_CACHE_DIR` to control the cache location.
 
-Run `bun run check` to auto-fix formatting issues before committing.
+### Development servers
 
-### TypeScript
-- Strict mode enabled
-- Use explicit types for function parameters and return values
-- Prefer `type` over `interface` for object types (project convention)
-- Export types from `apps/api/src/types.ts` for client consumption
-
-### File Naming
-- Components: PascalCase (e.g., `PhotoGrid.tsx`)
-- Utilities/services: camelCase (e.g., `vector-search.ts`)
-- Config files: lowercase with dashes (e.g., `biome.json`)
-
-### Component Patterns
-- React components use functional style with hooks
-- Data fetching via tRPC hooks (`trpc.photos.useQuery()`)
-- Styling with TailwindCSS utility classes
-- Icons from `lucide-react`
-
-## Web UI Design System
-
-The web app uses an **Adobe Lightroom-inspired design** with a professional photo management layout.
-
-### Layout Architecture
-```
-+------------------+------------------------+------------------+
-|  Left Panel      |     Center Content     |   Right Panel    |
-|  (Navigation)    |     (Grid/Loupe)       |   (Metadata)     |
-+------------------+------------------------+------------------+
-|                      Filmstrip                               |
-+--------------------------------------------------------------+
+```bash
+bun run dev              # Turbo starts packages/apps that define a dev script; currently API and web
+bun run dev:api          # API on port 3000
+bun run dev:web          # Web on port 3001
+bun run dev:mobile       # Expo development server
 ```
 
-### Color Palette (CSS Variables in `index.css`)
-- **Light mode**: Clean professional look (light gray backgrounds)
-- **Dark mode**: Lightroom-style dark theme (`#1d1d1d` backgrounds)
-- **Accent color**: Blue (`hsl(210 100% 50%)`) for selection states
-- Custom tokens: `--panel`, `--toolbar`, `--filmstrip`, `--selection`
+The root `dev` command does not start mobile because mobile defines `start`, not `dev`. There is no worker command. Configure an Inngest development/runtime service separately when testing scan execution locally.
 
-### Key Components
+### Quality and tests
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| `PanelLayout` | `components/panels/PanelLayout.tsx` | Three-panel resizable layout |
-| `MetadataPanel` | `components/panels/MetadataPanel.tsx` | EXIF display with collapsible sections |
-| `PhotoGrid` | `components/PhotoGrid.tsx` | Dense thumbnail grid with selection |
-| `Filmstrip` | `components/Filmstrip.tsx` | Horizontal thumbnail navigation |
-| `LoupeView` | `components/LoupeView.tsx` | Full-bleed single photo view |
-| `Toolbar` | `components/Toolbar.tsx` | View controls, search, actions |
-
-### State Management Hooks
-
-| Hook | File | Purpose |
-|------|------|---------|
-| `useLibraryState` | `hooks/use-library-state.ts` | View mode, selection, thumbnail size |
-| `usePanelState` | `hooks/use-panel-state.ts` | Panel visibility with localStorage |
-| `useKeyboardShortcuts` | `hooks/use-keyboard-shortcuts.ts` | Lightroom-style shortcuts |
-
-### Keyboard Shortcuts
-- `G` - Grid view
-- `E` - Loupe view
-- `Tab` - Toggle all panels
-- `Shift+Space` - Toggle filmstrip
-- `Arrow keys` - Navigate photos
-- `Escape` - Return to grid / clear selection
-- `Ctrl/Cmd+A` - Select all
-
-### Selection Behavior
-- **Single click**: Select photo
-- **Shift+click**: Range selection
-- **Ctrl/Cmd+click**: Toggle selection
-- **Double-click**: Open in loupe view
-
-## Database Schema
-
-The database uses SQLite with sidecar tables for computed data (embeddings, hashes).
-
-### `photos` table
-```typescript
-{
-  id: integer (PRIMARY KEY, auto-increment)
-  path: text (UNIQUE, relative path)
-  name: text (filename)
-  size: integer (bytes)
-  width: integer (pixels)
-  height: integer (pixels)
-  mimeType: text
-  createdAt: timestamp
-  modifiedAt: timestamp
-  // RAW file support
-  isRaw: boolean (default false)
-  rawFormat: text (e.g., "CR2", "NEF", "ARW")
-  rawStatus: text ("converted", "failed", "no_converter")
-  rawError: text (error message if conversion failed)
-  // Processing status tracking
-  thumbnailStatus: text ("pending", "completed", "failed")
-  embeddingStatus: text ("pending", "completed", "failed")
-  phashStatus: text ("pending", "completed", "failed")
-}
+```bash
+bun run check            # Biome check with --write; modifies files
+bun run ci:check         # Read-only Biome CI check
+bun run format           # Biome format with --write; modifies files
+bun run lint             # Turbo lint tasks where package scripts exist
+bun run typecheck        # Turbo tasks; mobile's current script is only an informational echo
+cd apps/api && bun test
+cd apps/web && bun run test:e2e
+cd apps/web && bun run test:e2e:ui
+cd apps/mobile && bun run test
+cd packages/image-processing && cargo test
 ```
 
-### `photo_exif` table
-```typescript
-{
-  id: integer (PRIMARY KEY)
-  photoId: integer (FOREIGN KEY → photos.id, CASCADE delete)
-  cameraMake, cameraModel: text
-  lensMake, lensModel: text
-  focalLength: integer (mm)
-  iso, aperture, shutterSpeed, exposureBias: text/integer
-  dateTaken: text (ISO 8601)
-  gpsLatitude, gpsLongitude, gpsAltitude: text
-}
-```
+Web E2E tests use Playwright with mocked tRPC, image, and Inngest requests. Mobile tests use Jest Expo and heavily mocked native/API dependencies. API tests use an in-memory SQLite database and the shared migrations.
 
-### `photo_embedding` table (sidecar)
-```typescript
-{
-  id: integer (PRIMARY KEY)
-  photoId: integer (FOREIGN KEY → photos.id, CASCADE delete, UNIQUE)
-  embedding: blob (Float32Array, 512 dimensions)
-  modelVersion: text (default "clip-vit-b32")
-  createdAt: timestamp
-}
-```
+## Environment
 
-### `photo_phash` table (sidecar)
-```typescript
-{
-  id: integer (PRIMARY KEY)
-  photoId: integer (FOREIGN KEY → photos.id, CASCADE delete, UNIQUE)
-  hash: text (64-char hex)
-  algorithm: text (default "double_gradient_8x8")
-  createdAt: timestamp
-}
-```
+### API
 
-**Vector Search:** Uses `sqlite-vec` extension with L2 distance querying `photo_embedding` table.
+The schema and defaults are in `apps/api/src/config.ts`:
 
-## API Structure
+| Variable | Default | Notes |
+|---|---|---|
+| `HOST` | `0.0.0.0` | Bun server host |
+| `PORT` | `3000` | API port |
+| `DATABASE_URL` | `./photobrain.db` | Relative to the API process working directory |
+| `PHOTO_DIRECTORY` | `../../temp-photos` | Directory scanned by Inngest |
+| `THUMBNAILS_DIRECTORY` | `./thumbnails` | Generated WebP root |
+| `NODE_ENV` | `development` | `development`, `production`, or `test` |
+| `RUN_DB_INIT` | `false` | `true` or `1` runs shared migrations on API startup |
+| `FASTEMBED_CACHE_DIR` | unset | Optional Rust/FastEmbed model cache |
 
-### tRPC Endpoints (type-safe)
-| Endpoint | Type | Purpose |
-|----------|------|---------|
-| `photos` | Query | Get all photos with EXIF |
-| `photo` | Query | Get single photo by ID |
-| `searchPhotos` | Query | Semantic search with CLIP |
-| `scan` | Mutation | Start async scan job (BullMQ) |
-| `onTaskProgress` | Subscription | SSE stream for job progress (scan, phash, embedding) |
+`DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are still parsed as legacy configuration but are not used by the current Rust preview pipeline. Do not document them as active RAW dependencies.
 
-### REST Endpoints (file streaming)
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/health` | GET | Health check |
-| `/api/photos/:id/file` | GET | Stream full-resolution photo |
-| `/api/photos/:id/thumbnail/:size` | GET | Get thumbnail (tiny/small/medium/large) |
+The tracked `.envrc` sets `PHOTO_DIRECTORY=/photos`, `PORT=3000`, and `VITE_API_URL=http://localhost:3000` when direnv loads it. Check the shell environment before diagnosing path behavior.
 
-### Thumbnail Sizes
-```typescript
-tiny:   150px,  80% quality  // Grid views
-small:  400px,  85% quality  // Modal previews
-medium: 800px,  85% quality  // Lightbox
-large:  1600px, 90% quality  // Full view
-```
+### Web
 
-## Key Patterns
+Development reads `VITE_API_URL`, defaulting to `http://localhost:3000`.
 
-### Hybrid API Design
-- **tRPC** for typed RPC calls (metadata, search)
-- **REST** for binary file streaming (tRPC doesn't handle streaming well)
+The production Bun server in `apps/web/serve.ts` reads:
 
-### Unified Image Processing Pipeline
-Image processing is split into two phases for faster scanning:
+- `API_URL`, default `http://localhost:3000`
+- `HOST`, default `0.0.0.0`
+- `PORT`, default `3001`
 
-**Phase 1: Scan (thumbnails, EXIF, phash)**
-The scanner uses `discoverPhotos()` for parallel file discovery, then `processPhotosBatch()` which:
+It injects `window.__CONFIG__` into `index.html`, allowing the API URL to change without rebuilding the Vite bundle.
 
-1. Detects file type by extension (RAW, HEIF, or standard)
-2. Routes to appropriate processor
-3. Processes all files in parallel using Rayon
-4. Returns unified results (thumbnails, EXIF, phash — but NOT embeddings)
+### Mobile
 
-**Phase 2: Deferred CLIP Embeddings**
-CLIP embeddings are generated in a separate post-scan batch job via `batchGenerateClipEmbeddings()`. This reduces scan time by ~70%, allowing users to browse photos immediately while embeddings generate in the background.
+`EXPO_PUBLIC_API_URL` is read by `apps/mobile/src/config.ts`, with a fallback to `http://localhost:3000`. EAS profiles currently set `https://photobrain-api.ericj5.com` in `apps/mobile/eas.json`.
 
-**For standard images (JPEG, PNG, etc.):**
-- Decode image, apply EXIF orientation
-- Compute perceptual hash
-- Generate WebP thumbnails (all 4 sizes in parallel)
+## API Contract Summary
 
-**For HEIC/HEIF images:**
-- Decode using libheif (auto-applies EXIF orientation — do NOT call `apply_orientation`)
-- Compute perceptual hash and generate thumbnails from already-rotated pixels
-- Magic byte detection handles mislabeled files (e.g., iOS saving HEIC as .JPEG)
+All tRPC procedures are public; there is no authentication or authorization middleware.
 
-**For RAW images:**
-- Extract EXIF from RAW file
-- Demosaic using LibRaw (rsraw)
-- Apply histogram matching from embedded preview for accurate colors
-- Generate phash and thumbnails
-- No temp files - all processing in memory
+| Procedure | Type | Purpose |
+|---|---|---|
+| `folders` | query | Builds a sorted folder tree and counts direct-child photos |
+| `filterOptions` | query | Distinct camera, lens, ISO, and `YYYY-MM` values, optionally folder-scoped |
+| `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, and month filters |
+| `photo` | query | Returns one photo with EXIF by numeric ID |
+| `searchPhotos` | query | CLIP text search, limit 1-100 |
+| `scan` | mutation | Sends an Inngest scan event and returns `{ success, jobId }` |
+| `realtimeToken` | query | Returns an Inngest Realtime token for a job ID |
 
-**Supported RAW formats:** CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2, PEF, SRW, X3F, 3FR, IIQ, RWL
+REST routes under `/api/photos`:
 
-**Magic byte detection:** HEIC files with incorrect extensions are detected by magic bytes and processed correctly.
+- `GET /api/photos/:id/file`: streams the original standard image; serves the `large` WebP for converted RAW files.
+- `GET /api/photos/:id/thumbnail/:size`: serves `tiny`, `small`, `medium`, or `large` WebP and falls back to the file route when missing.
+- `POST /api/photos/reprocess-heic`: one-off maintenance route; still present and should be removed after its operational use.
+- `POST /api/photos/backfill-thumbnail-timestamps`: one-off maintenance route for missing `thumbnailUpdatedAt` values.
 
-**RAW file serving:** For RAW photos, `/api/photos/:id/file` serves the large thumbnail (1600px WebP) since the original RAW cannot be displayed in browsers.
+Thumbnail files mirror the relative photo path under `{thumbnailsRoot}/{size}`. For example, `2024/trip/photo.jpg` becomes `large/2024/trip/photo.webp`. API responses use long-lived immutable caching and file mtime/size ETags; clients add `?v={thumbnailUpdatedAt}` for cache busting.
 
-### Rust NAPI Functions
-Key functions exported from `@photobrain/image-processing`:
+## Frontend Behavior
 
-| Function | Purpose |
-|----------|---------|
-| `processPhotosBatch(paths, relativePaths, thumbDir)` | Process multiple photos in parallel (any type) |
-| `processPhoto(path, relativePath, thumbDir)` | Process single photo (any type) |
-| `processPhotosWithCallback(paths, relativePaths, thumbDir, cb)` | Process with per-photo progress callback |
-| `discoverPhotos(directory, extensions)` | Parallel file discovery using walkdir |
-| `batchGenerateClipEmbeddings(imagePaths)` | Generate CLIP embeddings for multiple photos (post-scan) |
-| `clipTextEmbedding(text)` | Generate CLIP embedding for search query |
-| `getSupportedExtensions()` | Get list of supported file extensions |
-| `isSupportedImage(path)` | Check if file extension is supported |
+### Web
 
-### Deterministic Thumbnail Paths
-Thumbnails use predictable paths: `/thumbnails/{size}/{photo-path-hash}.webp`
-- No database column needed
-- Paths computed from photo path + size
-- Cache handled via `ETag` (file mtime + size) — browser auto-revalidates after 24h, gets 304 if unchanged
-- Use `thumbnailUrl()` helper in mobile (`@/config`) for consistent URLs
+The active route tree is in `apps/web/src/App.tsx`:
 
-### Temporary Endpoints (remove after use)
-- `POST /api/photos/reprocess-heic` — re-processes HEIC thumbnails with the orientation fix. Remove from `apps/api/src/routes/photos.ts` after running.
+- `/` -> `Dashboard`
+- `/collections` -> placeholder page
+- `/preferences` -> placeholder page
+- `/about` -> informational page
 
-### Type Sharing
-API types are exported from `@photobrain/api` and consumed by clients:
-```typescript
-import type { AppRouter } from "@photobrain/api";
-import type { inferRouterOutputs } from "@trpc/server";
-```
+The dashboard combines folder navigation, EXIF filters, semantic search, grid/loupe views, metadata, scan progress, and a loupe filmstrip. The web uses single active-photo state, not multi-selection.
 
-## Environment Configuration
+Implemented keyboard shortcuts:
 
-### API (`apps/api`)
-```env
-HOST=localhost          # Server host
-PORT=3000               # Server port
-DATABASE_URL=./photobrain.db
-PHOTO_DIRECTORY=../../temp-photos
-THUMBNAILS_DIRECTORY=./thumbnails
-REDIS_URL=redis://localhost:6379
-RUN_DB_INIT=true        # Run migrations on startup
-```
+- `G`: grid view
+- `E`: loupe view when a photo is active
+- `Tab`: toggle all panels
+- `Shift+Space`: toggle filmstrip
+- Left/right arrows: navigate in loupe or with an active photo
+- `Escape`: return from loupe to grid
 
-### Worker (`apps/worker`)
-```env
-REDIS_URL=redis://localhost:6379
-DATABASE_PATH=../api/photobrain.db
-THUMBNAILS_DIR=../api/thumbnails
-```
+Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width/height values are persisted by `usePanelState`, but `PanelLayout` currently renders fixed dimensions.
 
-### Web (`apps/web`)
-```env
-VITE_API_URL=http://localhost:3000
-```
+### Mobile
 
-### Mobile (`apps/mobile`)
-```env
-EXPO_PUBLIC_API_URL=http://localhost:3000
-```
+The active entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint used by some tests and is not the configured production entrypoint.
 
-## Testing
-
-Currently no test suite is implemented. Validation is done via:
-- `bun run typecheck` - Type checking
-- `bun run check` - Biome code quality
-- Manual testing via dev servers
+The active tabs are Photos, Search, Albums, and Library. The dashboard has a four-column date-grouped grid, EXIF filter sheet, scan progress, metadata, and a modal loupe with pinch/pan/zoom and swipe navigation. Search is a separate tab and queries CLIP on each non-empty input change without a debounce. Collections remains a placeholder. Preferences persist light/dark/system theme selection; some display/behavior controls are currently disabled or hardcoded.
 
 ## Deployment
 
-### Docker
-Multi-stage Dockerfile with 6 stages:
-1. **builder** - Rust toolchain, build NAPI module
-2. **api** - Bun runtime with API code
-3. **worker** - Bun runtime with BullMQ job worker
-4. **web-builder** - Vite frontend build
-5. **web** - Static file server for frontend
-6. **mobile** - Serves pre-built Expo web export
+The current `Dockerfile` has five stages:
 
-**Note:** The mobile Docker image does not build Expo inside Docker. The Expo web export (`expo export --platform web`) runs on the CI runner first, then the built `dist/` is copied into the Docker image. This avoids ZFS layer commit bottlenecks during Docker builds.
+1. `builder`: installs Bun/Rust/native dependencies and builds the N-API addon.
+2. `api`: runs the Hono/Bun API on port 3000.
+3. `web-builder`: builds the Vite web app.
+4. `web`: runs the Bun static server on port 3001 with runtime API configuration.
+5. `mobile`: installs the workspace and runs the Expo development server on port 8081.
 
-### CI/CD
-GitHub Actions workflow:
-- Builds Docker images for api, worker, web, and mobile
-- Mobile job: installs Bun, runs `expo export --platform web`, then builds Docker image
-- Pushes to `registry.ericj5.com`
-- Updates ArgoCD for GitOps deployment (includes `values-mobile.yaml`)
+There is no worker image and the mobile Docker target is not a static Expo web-export image. `apps/mobile/package.json` does provide `bun run build:web` for manual Expo web export.
 
-### iOS App (EAS Build)
-The mobile app is built and distributed via [EAS Build](https://docs.expo.dev/build/introduction/).
-- **EAS project**: `@ericjohney/photobrain` (ID: `5fcc4958-f697-46c6-9cfc-cd2ce0ac695c`)
-- **Bundle ID**: `com.photobrain.app`
-- **Apple Team**: `27ZLS4MK3J` (Eric Johney, Individual)
-- **Production API URL**: `https://photobrain-api.ericj5.com` (configured in `eas.json` env)
-- **Build profiles**: `development` (dev client), `development-simulator`, `preview` (internal distribution), `production`
-- **`.easignore`**: Located at `apps/mobile/.easignore` — keeps upload under control (without it, archive is ~1.4 GB)
+`.github/workflows/build.yml` currently:
 
-```bash
-# Build for physical iPhone (internal distribution)
-cd apps/mobile && eas build --platform ios --profile preview
+- Runs web Playwright E2E tests.
+- Runs mobile Jest tests.
+- Publishes EAS OTA updates on pushes to `main` and version tags.
+- Builds and pushes API, web, and mobile Docker targets.
+- Updates API/web/mobile image tags in the external ArgoCD repository on pushes to `main`.
 
-# Build for simulator
-cd apps/mobile && eas build --platform ios --profile development-simulator
-```
+The API and worker must not be described as separate services unless a future change actually introduces a worker. Production still requires a reachable Inngest runtime for asynchronous processing and shared access to the SQLite database, photo directory, and thumbnail directory.
 
-### OTA Updates (EAS Update)
-The mobile app supports over-the-air JavaScript updates via [EAS Update](https://docs.expo.dev/eas-update/introduction/).
-- **Update check:** On every app launch, checks for available updates (non-blocking)
-- **User prompt:** Native alert asks user to restart when an update is downloaded
-- **Runtime version:** Tied to `version` in `app.json` via `appVersion` policy
-- **Channels:** `development`, `preview`, `production` (maps to EAS build profiles)
+## Change Recipes
 
-```bash
-# Push a JS-only update (no native rebuild needed)
-cd apps/mobile && eas update --branch preview --message "Fix search bar"
-cd apps/mobile && eas update --branch production --message "v0.1.1 hotfix"
+### Add or change an API capability
 
-# List published updates
-cd apps/mobile && eas update:list
-```
+1. Add typed procedures to `apps/api/src/trpc/router.ts` for metadata/query/mutation behavior.
+2. Add binary streaming behavior to `apps/api/src/routes/photos.ts` only when tRPC is unsuitable.
+3. Keep client types inferred from `@photobrain/api`; do not hand-maintain duplicate DTOs.
+4. Add or update API tests using the in-memory database setup when behavior is query/filter related.
 
-**When you need a native rebuild instead of OTA:**
-- Adding/removing native dependencies
-- Bumping Expo SDK version
-- Changing `app.json` native config (bundle ID, permissions)
-- Bumping `version` in `app.json` (creates new runtime version)
+### Change the schema
 
-### Production Dependencies
-- **Redis/Valkey** - Required for BullMQ job queues
-- Worker and API must share access to the same SQLite database file
-- Worker needs read access to photo directory and write access to thumbnails directory
+1. Update `packages/db/src/schema.ts`.
+2. Generate a migration from `packages/db` with `bun run db:generate`.
+3. Review the generated SQL and migration journal.
+4. Run `bun run db:migrate` or start the API with `RUN_DB_INIT=true`.
+5. Update the API, worker-related wording, and client behavior together. There is no current worker package.
 
-## Common Tasks for AI Assistants
+### Change image processing
 
-### Adding a New API Endpoint
-1. Add tRPC procedure in `apps/api/src/trpc/router.ts`
-2. Update types export in `apps/api/src/types.ts` if needed
-3. For file streaming, add REST route in `apps/api/src/routes/`
+1. Update the relevant Rust module under `packages/image-processing/src/`.
+2. Re-export public N-API functions from `src/lib.rs`.
+3. Rebuild with `cd packages/image-processing && bun run build`.
+4. Update `browser.js` if a client-side package import needs a matching browser/Metro stub.
+5. Include or update Rust tests where the behavior can be tested without real camera files.
 
-### Adding a New Database Column
-1. Update schema in `packages/db/src/schema.ts`
-2. Generate migration: `cd packages/db && bun run db:generate`
-3. Migration files are created in `packages/db/drizzle/`
-4. Run migration: API auto-migrates on startup if `RUN_DB_INIT=true`
+### Change web or mobile behavior
 
-### Adding a New React Component
-1. Create component in `apps/web/src/components/`
-2. Use TailwindCSS for styling
-3. Use tRPC hooks for data fetching
-4. Follow existing component patterns
+1. Use the current app entrypoint and route tree, not legacy components or `App.tsx` on mobile.
+2. Use the generated tRPC types and existing thumbnail URL helpers.
+3. Add/update the appropriate mocked E2E or Jest test.
+4. Test both a normal image and a RAW/HEIF fixture when changing media display or URL logic.
 
-### Adding Rust Image Processing
-1. Add function in `packages/image-processing/src/`
-2. Export from `lib.rs`
-3. Rebuild: `cd packages/image-processing && bun run build`
-4. Import in API: `import { newFunction } from "@photobrain/image-processing"`
+## Invariants and Known Gaps
 
-### Running the Full Stack
-```bash
-# Terminal 1: Start Redis (required for job queues)
-docker run -p 6379:6379 valkey/valkey:8-alpine
+- `discoverPhotos` returns index-aligned `filePaths` and `relativePaths`; preserve that pairing.
+- The Rust batch processor uses a Rayon pool capped at four threads. Callback completion order is not input order.
+- Thumbnail generation can log a warning while a photo result remains successful; verify files before treating `thumbnailStatus` as reliable.
+- Scans do not delete database rows for files removed from disk.
+- A successful scan resets processed photos to `embeddingStatus: "pending"`, even when a source file is unchanged.
+- EXIF and pHash sidecar writes are not one transaction with the photo row.
+- Missing later EXIF or pHash data does not currently remove an old sidecar row.
+- Thumbnail paths are extension-stripped and path-based; different source files with the same relative stem can collide.
+- The pHash is the Rust `DoubleGradient` output serialized as base64, not a guaranteed 64-character hexadecimal value.
+- Embedding blobs and pHash strings have no database dimension/format constraints.
+- `packages/utils/src/queues.ts` and `tasks.ts` describe an older BullMQ-style task model and are not consumed by the current API/Inngest flow. Treat them as legacy until deliberately migrated or removed.
+- All API and file-serving routes are unauthenticated.
+- The API's `src/db/migrate.ts`, old app READMEs, and historical roadmap sections contain stale assumptions; verify them against the current scoped guides before copying instructions.
 
-# Terminal 2: Start API
-bun run dev:api
+## Documentation Maintenance
 
-# Terminal 3: Start Worker
-bun run dev:worker
+When changing architecture, update these locations in the same change:
 
-# Terminal 4: Start Web
-bun run dev:web
+- The relevant scoped `AGENTS.md`.
+- Root `CLAUDE.md` if commands, boundaries, or cross-package invariants change.
+- `README.md` or an app README if setup, deployment, or user-visible behavior changes.
+- `ROADMAP.md` only for roadmap status; do not use it as the implementation source of truth.
 
-# Or start API, Worker, and Web together:
-bun run dev
-```
-
-## Roadmap Reference
-
-See `ROADMAP.md` for planned features including:
-- ~~Async processing with BullMQ~~ (implemented)
-- ~~RAW format support~~ (implemented)
-- ~~HEIF/HEIC support~~ (implemented)
-- ~~Deferred CLIP embeddings~~ (implemented)
-- ~~Mobile feature parity~~ (implemented)
-- ~~Expo web export~~ (implemented)
-- ~~Folder navigation~~ (implemented)
-- EXIF-based filtering
-- Map view with GPS data
-- Duplicate detection UI
-
-## Important Notes
-
-1. **Always rebuild Rust module** after changes: `cd packages/image-processing && bun run build`
-2. **Run `bun run check`** before committing to fix formatting
-3. **Thumbnail paths are deterministic** - no database migration needed for path changes
-4. **tRPC types are auto-inferred** - no manual type definitions needed for API calls
-5. **SQLite file** is at `apps/api/photobrain.db` by default
-6. **Thumbnails directory** is at `apps/api/thumbnails/` by default
-7. **Redis/Valkey required** - BullMQ needs Redis for job queues; start with `docker run -p 6379:6379 valkey/valkey:8-alpine`
-8. **Worker processes jobs async** - Scan, phash, and embedding jobs run in the worker process, not the API
-9. **Database schema is shared** - Schema lives in `packages/db`, used by both API and worker
+Before finishing documentation work, check links, run `git diff --check`, and search for stale terms such as `apps/worker`, `BullMQ`, `REDIS_URL`, and `onTaskProgress` in current (non-historical) documentation.

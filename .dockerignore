@@ -3,8 +3,6 @@ node_modules
 apps/api/.fastembed_cache
 apps/api/photobrain.db
 apps/api/thumbnails
-apps/worker/.fastembed_cache
-apps/worker/thumbnails
 packages/image-processing/.fastembed_cache
 packages/image-processing/target
 temp-photos
