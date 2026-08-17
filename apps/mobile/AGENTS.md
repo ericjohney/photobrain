@@ -89,6 +89,8 @@ Metro watches the monorepo and redirects `@photobrain/image-processing` to `pack
 
 The CI workflow publishes preview OTA updates with EAS on pushes to `main` and production iOS updates on version tags after API/web/mobile tests. A version tag first waits for a production iOS EAS build so native dependency changes have a matching binary. It does not run an Expo web export. The Docker `mobile` target copies source and starts Expo on port 8081; it is not a static exported web image.
 
+The manual `EAS Preview iOS Build` GitHub Actions workflow creates an internal-distribution build from the `preview` profile and waits for EAS to return an installable artifact. Use it when a native fingerprint change prevents an existing preview binary from receiving OTA updates.
+
 ## Tests
 
 Jest uses the `jest-expo` preset, `__tests__/setup.ts`, and mocks for Expo, native modules, tRPC, AsyncStorage, zoom, haptics, and Realtime. Current suites cover the active native tab routes, dashboard behavior, debounced search, filters, loupe, library state, durable progress, Liquid Glass fallback, and theme propagation.

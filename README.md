@@ -209,6 +209,8 @@ The API image applies shared migrations on startup and runs on port 3000. The we
 
 The GitHub Actions workflow runs API tests/typecheck, web Playwright tests, and mobile Jest tests; publishes preview EAS OTA updates for pushes to `main`; builds production iOS artifacts and publishes matching updates for tags; builds API/web/mobile images; and updates image tags in the external ArgoCD repository on pushes to `main`.
 
+The manual `EAS Preview iOS Build` workflow creates an installable internal iOS preview when native changes require a new runtime fingerprint.
+
 For native mobile builds and OTA updates, see `apps/mobile/eas.json` and [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md).
 
 ## Roadmap and Historical Notes

@@ -84,4 +84,6 @@ The current native stack uses Expo SDK 57 and an iOS deployment target of 26.0. 
 
 The GitHub Actions workflow publishes preview OTA updates on pushes to `main` and production iOS updates on version tags after API/web/mobile tests. Tagged releases first wait for a production iOS EAS build so native dependency changes have a matching binary. The manual `useOTAUpdates` hook is used by legacy `App.tsx`, not the active Expo Router layout; do not document an alert/restart flow as active without wiring it into the active layout.
 
+Run the manual `EAS Preview iOS Build` GitHub Actions workflow to create an internal iOS installation after native dependency or runtime fingerprint changes.
+
 The Docker `mobile` target runs the Expo development server on port 8081. It is not a static Expo web-export image.

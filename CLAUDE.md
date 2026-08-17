@@ -251,6 +251,7 @@ There is no worker image and the mobile Docker target is not a static Expo web-e
 - Runs web Playwright E2E tests.
 - Runs mobile Jest tests.
 - Publishes preview EAS OTA updates on pushes to `main`; version tags first wait for a production iOS EAS build, then publish an iOS production update.
+- Provides a manual EAS workflow for installable internal iOS preview builds.
 - Builds and pushes API, web, and mobile Docker targets.
 - Updates API/web/mobile image tags in the external ArgoCD repository on pushes to `main`.
 
