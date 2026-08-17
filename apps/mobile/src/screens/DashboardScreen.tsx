@@ -3,7 +3,6 @@ import type { AppRouter } from "@photobrain/api";
 import { parseDate } from "@photobrain/utils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { inferRouterOutputs } from "@trpc/server";
-import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,7 +17,6 @@ import {
 	useWindowDimensions,
 	View,
 } from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ActivityBar from "@/components/ActivityBar";
 import FilterSheet from "@/components/FilterSheet";
@@ -284,7 +282,6 @@ export default function DashboardScreen() {
 
 	const handlePhotoPress = useCallback(
 		(photo: PhotoMetadata) => {
-			void Haptics.selectionAsync();
 			library.openInLoupe(photo);
 		},
 		[library],
@@ -578,7 +575,7 @@ export default function DashboardScreen() {
 				supportedOrientations={["portrait", "landscape"]}
 				onRequestClose={library.closeLoupe}
 			>
-				<GestureHandlerRootView style={styles.loupeRoot}>
+				<View style={styles.loupeRoot}>
 					<LoupeView
 						key={library.loupeSession}
 						photos={photos}
@@ -592,7 +589,7 @@ export default function DashboardScreen() {
 						photo={metadataPhoto}
 						onClose={() => setMetadataPhoto(null)}
 					/>
-				</GestureHandlerRootView>
+				</View>
 			</Modal>
 
 			<FilterSheet

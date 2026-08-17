@@ -6,16 +6,19 @@ import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+	FlatList,
+	type NativeScrollEvent,
+	type NativeSyntheticEvent,
+	Platform,
 	Pressable,
+	ScrollView,
 	StyleSheet,
 	Text,
 	useWindowDimensions,
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Gallery, type GalleryRefType } from "react-native-zoom-toolkit";
 import { thumbnailUrl } from "@/config";
-import GlassSurface from "./GlassSurface";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -48,7 +51,7 @@ export default function LoupeView({
 	);
 	const photosRef = useRef(photos);
 	photosRef.current = photos;
-	const galleryRef = useRef<GalleryRefType>(null);
+	const galleryRef = useRef<FlatList<PhotoMetadata>>(null);
 	const onIndexChangeRef = useRef(onIndexChange);
 	onIndexChangeRef.current = onIndexChange;
 	const [chromeVisible, setChromeVisible] = useState(true);
@@ -76,11 +79,25 @@ export default function LoupeView({
 		}
 		currentIndexRef.current = safeCurrentIndex;
 		setCurrentIndex(safeCurrentIndex);
-		galleryRef.current?.setIndex(safeCurrentIndex);
+		if (width > 0) {
+			galleryRef.current?.scrollToOffset({
+				offset: safeCurrentIndex * width,
+				animated: false,
+			});
+		}
 		onIndexChangeRef.current(safeCurrentIndex);
-	}, [currentPhoto, safeCurrentIndex]);
+	}, [currentPhoto, safeCurrentIndex, width]);
+
+	useEffect(() => {
+		if (width === 0 || photosRef.current.length === 0) return;
+		galleryRef.current?.scrollToOffset({
+			offset: currentIndexRef.current * width,
+			animated: false,
+		});
+	}, [width]);
 
 	const handleIndexChange = useCallback((index: number) => {
+		if (index < 0 || index >= photosRef.current.length) return;
 		if (index === currentIndexRef.current) return;
 		currentIndexRef.current = index;
 		currentPhotoIdRef.current = photosRef.current[index]?.id ?? null;
@@ -88,24 +105,60 @@ export default function LoupeView({
 		onIndexChangeRef.current(index);
 		void Haptics.selectionAsync();
 	}, []);
+	const handlePageSettled = useCallback(
+		(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+			if (width === 0) return;
+			const offset =
+				event.nativeEvent.targetContentOffset?.x ??
+				event.nativeEvent.contentOffset.x;
+			handleIndexChange(Math.round(offset / width));
+		},
+		[handleIndexChange, width],
+	);
 
 	const renderItem = useCallback(
-		(item: PhotoMetadata) => (
-			<Image
-				source={{
-					uri: thumbnailUrl(item.id, "large", item.thumbnailUpdatedAt),
-				}}
-				placeholder={{
-					uri: thumbnailUrl(item.id, "small", item.thumbnailUpdatedAt),
-				}}
-				style={{ width, height }}
-				contentFit="contain"
-				priority="high"
-				cachePolicy="memory-disk"
-				accessibilityLabel={item.name}
-				accessibilityIgnoresInvertColors
-			/>
-		),
+		({ item }: { item: PhotoMetadata }) => {
+			const photo = (
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel={item.name}
+					onPress={() => setChromeVisible((visible) => !visible)}
+					style={{ width, height }}
+				>
+					<Image
+						source={{
+							uri: thumbnailUrl(item.id, "large", item.thumbnailUpdatedAt),
+						}}
+						placeholder={{
+							uri: thumbnailUrl(item.id, "small", item.thumbnailUpdatedAt),
+						}}
+						style={styles.photo}
+						contentFit="contain"
+						priority="high"
+						cachePolicy="memory-disk"
+						accessibilityIgnoresInvertColors
+					/>
+				</Pressable>
+			);
+
+			if (Platform.OS !== "ios") return photo;
+
+			return (
+				<ScrollView
+					testID={`loupe-zoom-${item.id}`}
+					style={{ width, height }}
+					contentContainerStyle={{ width, height }}
+					minimumZoomScale={1}
+					maximumZoomScale={5}
+					bouncesZoom
+					centerContent
+					showsHorizontalScrollIndicator={false}
+					showsVerticalScrollIndicator={false}
+				>
+					{photo}
+				</ScrollView>
+			);
+		},
 		[height, width],
 	);
 
@@ -113,13 +166,7 @@ export default function LoupeView({
 		return (
 			<View style={styles.container} testID="loupe-view">
 				<View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-					<GlassSurface
-						style={styles.roundButton}
-						fallbackStyle={styles.darkGlassFallback}
-						glassEffectStyle="clear"
-						colorScheme="dark"
-						isInteractive
-					>
+					<View style={[styles.roundButton, styles.chromeSurface]}>
 						<Pressable
 							accessibilityRole="button"
 							accessibilityLabel="Close photo"
@@ -128,7 +175,7 @@ export default function LoupeView({
 						>
 							<Ionicons name="chevron-down" size={23} color="#ffffff" />
 						</Pressable>
-					</GlassSurface>
+					</View>
 				</View>
 			</View>
 		);
@@ -152,20 +199,28 @@ export default function LoupeView({
 
 	return (
 		<View style={styles.container} testID="loupe-view">
-			<Gallery
+			<FlatList
 				ref={galleryRef}
+				testID="loupe-gallery"
 				data={photos}
 				renderItem={renderItem}
 				keyExtractor={(photo) => photo.id.toString()}
-				initialIndex={safeCurrentIndex}
-				onIndexChange={handleIndexChange}
-				onTap={() => setChromeVisible((visible) => !visible)}
-				maxScale={5}
-				gap={20}
-				pinchMode="clamp"
-				allowPinchPanning
-				tapOnEdgeToItem
-				zoomEnabled
+				horizontal
+				pagingEnabled
+				showsHorizontalScrollIndicator={false}
+				initialScrollIndex={safeCurrentIndex}
+				getItemLayout={(_, index) => ({
+					length: width,
+					offset: width * index,
+					index,
+				})}
+				onScrollEndDrag={handlePageSettled}
+				onMomentumScrollEnd={handlePageSettled}
+				decelerationRate="fast"
+				bounces={false}
+				initialNumToRender={1}
+				maxToRenderPerBatch={2}
+				windowSize={3}
 			/>
 
 			{chromeVisible && (
@@ -174,13 +229,7 @@ export default function LoupeView({
 						style={[styles.topBar, { paddingTop: insets.top + 8 }]}
 						pointerEvents="box-none"
 					>
-						<GlassSurface
-							style={styles.roundButton}
-							fallbackStyle={styles.darkGlassFallback}
-							glassEffectStyle="clear"
-							colorScheme="dark"
-							isInteractive
-						>
+						<View style={[styles.roundButton, styles.chromeSurface]}>
 							<Pressable
 								accessibilityRole="button"
 								accessibilityLabel="Close photo"
@@ -189,29 +238,19 @@ export default function LoupeView({
 							>
 								<Ionicons name="chevron-down" size={23} color="#ffffff" />
 							</Pressable>
-						</GlassSurface>
-						<GlassSurface
-							style={styles.counterPill}
-							fallbackStyle={styles.darkGlassFallback}
-							glassEffectStyle="clear"
-							colorScheme="dark"
-						>
+						</View>
+						<View style={[styles.counterPill, styles.chromeSurface]}>
 							<Text style={styles.counterText}>
 								{safeCurrentIndex + 1} of {photos.length}
 							</Text>
-						</GlassSurface>
+						</View>
 					</View>
 
 					<View
 						style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}
 						pointerEvents="box-none"
 					>
-						<GlassSurface
-							style={styles.infoCard}
-							fallbackStyle={styles.darkGlassFallback}
-							glassEffectStyle="regular"
-							colorScheme="dark"
-						>
+						<View style={[styles.infoCard, styles.chromeSurface]}>
 							<View style={styles.photoInfo}>
 								<Text style={styles.dateText}>{formattedDate}</Text>
 								<Text style={styles.detailText} numberOfLines={1}>
@@ -234,7 +273,7 @@ export default function LoupeView({
 								<Ionicons name="information-circle" size={26} color="#ffffff" />
 								<Text style={styles.infoLabel}>Info</Text>
 							</Pressable>
-						</GlassSurface>
+						</View>
 					</View>
 				</>
 			)}
@@ -244,7 +283,8 @@ export default function LoupeView({
 
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: "#000000" },
-	darkGlassFallback: { backgroundColor: "rgba(28,28,30,0.9)" },
+	photo: { width: "100%", height: "100%" },
+	chromeSurface: { backgroundColor: "rgba(28,28,30,0.9)" },
 	topBar: {
 		position: "absolute",
 		top: 0,

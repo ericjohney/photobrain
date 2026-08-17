@@ -1,5 +1,6 @@
 import { fireEvent, waitFor } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
+import { Platform } from "react-native";
 import LoupeView from "@/components/LoupeView";
 import { MOCK_PHOTOS, renderWithProviders } from "./test-utils";
 
@@ -72,14 +73,31 @@ describe("LoupeView", () => {
 		expect(mockOnIndexChange).not.toHaveBeenCalled();
 	});
 
-	it("loads large thumbnails for the gallery", async () => {
+	it("loads only the opening large thumbnail initially", async () => {
 		const { getAllByTestId } = renderWithProviders(
 			<LoupeView {...defaultProps} />,
 		);
-		await waitFor(() => expect(getAllByTestId("expo-image").length).toBe(5));
+		await waitFor(() => expect(getAllByTestId("expo-image").length).toBe(1));
 
-		for (const image of getAllByTestId("expo-image")) {
-			expect(image.props.sourceUri).toContain("/thumbnail/large");
+		expect(getAllByTestId("expo-image")[0].props.sourceUri).toContain(
+			"/thumbnail/large",
+		);
+	});
+
+	it("uses the core paged viewer and native iOS zoom", async () => {
+		const { getByTestId } = renderWithProviders(
+			<LoupeView {...defaultProps} />,
+		);
+		const gallery = await waitFor(() => getByTestId("loupe-gallery"));
+
+		expect(gallery.props.horizontal).toBe(true);
+		expect(gallery.props.pagingEnabled).toBe(true);
+		expect(gallery.props.initialNumToRender).toBe(1);
+		expect(gallery.props.maxToRenderPerBatch).toBe(2);
+		if (Platform.OS === "ios") {
+			const zoom = getByTestId(`loupe-zoom-${MOCK_PHOTOS[0].id}`);
+			expect(zoom.props.minimumZoomScale).toBe(1);
+			expect(zoom.props.maximumZoomScale).toBe(5);
 		}
 	});
 
@@ -98,6 +116,24 @@ describe("LoupeView", () => {
 		expect(getByText("2 of 5")).toBeTruthy();
 		expect(mockOnIndexChange).toHaveBeenCalledWith(1);
 		expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+	});
+
+	it("uses the drag target when a page settles without momentum", async () => {
+		const { FlatList } = require("react-native");
+		const { getByText, UNSAFE_getByType } = renderWithProviders(
+			<LoupeView {...defaultProps} />,
+		);
+		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
+
+		fireEvent(UNSAFE_getByType(FlatList), "scrollEndDrag", {
+			nativeEvent: {
+				contentOffset: { x: 300, y: 0 },
+				targetContentOffset: { x: 750, y: 0 },
+			},
+		});
+
+		await waitFor(() => expect(getByText("2 of 5")).toBeTruthy());
+		expect(mockOnIndexChange).toHaveBeenCalledWith(1);
 	});
 
 	it("can navigate back to the opening photo", async () => {

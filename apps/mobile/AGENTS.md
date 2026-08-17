@@ -25,7 +25,7 @@ Scope: `apps/mobile`.
 - `src/screens/CollectionsScreen.tsx`: placeholder.
 - `src/screens/AboutScreen.tsx`: app/about content.
 - `src/components/GlassSurface.tsx`: native Liquid Glass with platform and Reduce Transparency fallbacks.
-- `src/components/LoupeView.tsx`: zoom, pan, swipe, haptics, and the implemented metadata action.
+- `src/components/LoupeView.tsx`: core paged swipe viewer, native iOS zoom, haptics, and the implemented metadata action.
 - `src/components/MetadataPanel.tsx`: EXIF/RAW metadata modal.
 - `src/components/FilterSheet.tsx`: camera/lens/ISO/month filters.
 - `src/components/ActivityBar.tsx`: Inngest progress display.
@@ -71,7 +71,7 @@ Dashboard behavior:
 
 The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, and metadata. Collections is still a placeholder and is not shown as a tab. Preferences persists theme selection and propagates it through React Native `Appearance`; grid-column and haptic controls remain disabled/hardcoded.
 
-On iOS, tab chrome, header search, and custom chrome use native controls. `GlassSurface` renders `expo-glass-effect` only when the iOS APIs are available and Reduce Transparency is disabled; other environments receive an opaque semantic-color fallback.
+On iOS, tab chrome, header search, and library chrome use native controls. `GlassSurface` renders `expo-glass-effect` only when the iOS APIs are available and Reduce Transparency is disabled; other environments receive an opaque semantic-color fallback. The modal loupe deliberately uses React Native's paged `FlatList`, opaque controls, and native iOS `ScrollView` zoom instead of a third-party Reanimated gallery; keep its thumbnail-tap tests on the real implementation rather than mocking the viewer.
 
 ## Runtime Configuration
 

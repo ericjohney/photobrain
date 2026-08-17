@@ -1,5 +1,3 @@
-import type { ForwardedRef } from "react";
-
 // Mock react-native-reanimated (manual mock — /mock entry point requires native worklets)
 jest.mock("react-native-reanimated", () => {
 	const { View } = require("react-native");
@@ -48,85 +46,6 @@ jest.mock("react-native-gesture-handler", () => {
 			Pan: () => createChainableGesture(),
 			Tap: () => createChainableGesture(),
 			Simultaneous: (...args: any[]) => args[0],
-		},
-	};
-});
-
-// Mock react-native-zoom-toolkit — Gallery renders children directly
-jest.mock("react-native-zoom-toolkit", () => {
-	const React = require("react");
-	const { View, FlatList } = require("react-native");
-	const Gallery = React.forwardRef(
-		(
-			{
-				data,
-				renderItem,
-				keyExtractor,
-				initialIndex,
-				onIndexChange,
-				...rest
-			}: any,
-			ref: ForwardedRef<{
-				setIndex: (index: number) => void;
-				reset: () => void;
-				getState: () => Record<string, never>;
-			}>,
-		) => {
-			const [currentIndex, setCurrentIndex] = React.useState(initialIndex || 0);
-			const initialOnIndexChange = React.useRef(onIndexChange);
-			React.useImperativeHandle(ref, () => ({
-				setIndex: setCurrentIndex,
-				reset: jest.fn(),
-				getState: () => ({}),
-			}));
-			React.useEffect(() => {
-				initialOnIndexChange.current?.(currentIndex);
-			}, []);
-			return React.createElement(
-				FlatList,
-				{
-					...rest,
-					testID: "loupe-gallery",
-					data,
-					horizontal: true,
-					pagingEnabled: true,
-					initialScrollIndex: initialIndex,
-					keyExtractor: (item: any, index: number) =>
-						keyExtractor ? keyExtractor(item, index) : index.toString(),
-					renderItem: ({ item, index }: any) =>
-						React.createElement(View, { key: index }, renderItem(item, index)),
-					onMomentumScrollEnd: (e: any) => {
-						const offsetX = e.nativeEvent?.contentOffset?.x ?? 0;
-						const index = Math.round(offsetX / 750);
-						if (initialOnIndexChange.current && index !== currentIndex) {
-							setCurrentIndex(index);
-							initialOnIndexChange.current(index);
-						}
-					},
-					getItemLayout: (_: any, index: number) => ({
-						length: 750,
-						offset: 750 * index,
-						index,
-					}),
-				},
-				null,
-			);
-		},
-	);
-	return {
-		Gallery,
-		fitContainer: (aspectRatio: number, container: any) => {
-			const containerAspect = container.width / container.height;
-			if (aspectRatio > containerAspect) {
-				return {
-					width: container.width,
-					height: container.width / aspectRatio,
-				};
-			}
-			return {
-				width: container.height * aspectRatio,
-				height: container.height,
-			};
 		},
 	};
 });

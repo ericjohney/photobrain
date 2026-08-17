@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
-import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { Stack } from "expo-router";
 import { useCallback, useRef, useState } from "react";
@@ -17,7 +16,6 @@ import {
 	useWindowDimensions,
 	View,
 } from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SearchBarCommands } from "react-native-screens";
 import GlassSurface from "@/components/GlassSurface";
@@ -66,7 +64,6 @@ export default function SearchScreen() {
 
 	const handlePhotoPress = useCallback(
 		(photo: SearchPhoto) => {
-			void Haptics.selectionAsync();
 			library.openInLoupe(photo);
 		},
 		[library],
@@ -265,7 +262,7 @@ export default function SearchScreen() {
 				supportedOrientations={["portrait", "landscape"]}
 				onRequestClose={library.closeLoupe}
 			>
-				<GestureHandlerRootView style={styles.loupeRoot}>
+				<View style={styles.loupeRoot}>
 					<LoupeView
 						key={library.loupeSession}
 						photos={photos}
@@ -279,7 +276,7 @@ export default function SearchScreen() {
 						photo={metadataPhoto}
 						onClose={() => setMetadataPhoto(null)}
 					/>
-				</GestureHandlerRootView>
+				</View>
 			</Modal>
 		</View>
 	);
