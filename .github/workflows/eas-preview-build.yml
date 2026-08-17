@@ -38,6 +38,5 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
-          EXPO_PUBLIC_STARTUP_DIAGNOSTICS: "true"
         run: eas build --platform ios --profile preview --message "preview@${GITHUB_SHA::7}" --non-interactive --wait
         working-directory: apps/mobile

@@ -1,11 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
-import { useIsFocused } from "@react-navigation/native";
 import type { inferRouterOutputs } from "@trpc/server";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { Stack } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	FlatList,
@@ -45,13 +44,13 @@ export default function SearchScreen() {
 	const [metadataPhoto, setMetadataPhoto] = useState<SearchPhoto | null>(null);
 	const searchBarRef = useRef<SearchBarCommands>(null);
 	const debouncedQuery = useDebouncedValue(searchQuery.trim(), 350);
-	const isFocused = useIsFocused();
 	const utils = trpc.useUtils();
 
+	// NativeTabs can mount this route before a React Navigation context exists.
 	const searchPhotosQuery = trpc.searchPhotos.useQuery(
 		{ query: debouncedQuery, limit: 50 },
 		{
-			enabled: isFocused && debouncedQuery.length > 0,
+			enabled: debouncedQuery.length > 0,
 			trpc: { abortOnUnmount: true },
 		},
 	);
@@ -64,10 +63,6 @@ export default function SearchScreen() {
 	const cancelSearch = useCallback(() => {
 		void utils.searchPhotos.cancel();
 	}, [utils.searchPhotos]);
-
-	useEffect(() => {
-		if (!isFocused) cancelSearch();
-	}, [cancelSearch, isFocused]);
 
 	const handlePhotoPress = useCallback(
 		(photo: SearchPhoto) => {

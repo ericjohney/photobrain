@@ -115,7 +115,6 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
-          EXPO_PUBLIC_STARTUP_DIAGNOSTICS: "true"
         run: cd apps/mobile && eas update --branch preview --environment preview --message "main@${GITHUB_SHA::7}" --non-interactive
 
       - name: Build production iOS app (tagged release)

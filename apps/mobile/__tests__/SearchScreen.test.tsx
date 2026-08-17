@@ -7,11 +7,6 @@ type SearchOptions = {
 };
 
 const mockSearchCancel = jest.fn();
-let mockIsFocused = true;
-
-jest.mock("@react-navigation/native", () => ({
-	useIsFocused: () => mockIsFocused,
-}));
 
 const mockSearchUseQuery = jest.fn(
 	(input: SearchInput, options: SearchOptions) => {
@@ -86,10 +81,9 @@ import { renderWithProviders } from "./test-utils";
 describe("SearchScreen", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
-		mockIsFocused = true;
 	});
 
-	it("renders the native search field and semantic-search guidance", async () => {
+	it("renders without requiring a React Navigation context", async () => {
 		const { getByLabelText, getByText } = renderWithProviders(<SearchScreen />);
 
 		await waitFor(() => expect(getByLabelText("Search photos")).toBeTruthy());
@@ -157,32 +151,6 @@ describe("SearchScreen", () => {
 		await waitFor(() => expect(getAllByTestId("expo-image")).toHaveLength(2), {
 			timeout: 1500,
 		});
-	});
-
-	it("pauses searches while unfocused and restarts them on focus", async () => {
-		mockIsFocused = false;
-		const { getByLabelText, rerender } = renderWithProviders(<SearchScreen />);
-		const input = await waitFor(() => getByLabelText("Search photos"));
-		fireEvent.changeText(input, "sunset beach");
-
-		await waitFor(
-			() =>
-				expect(mockSearchUseQuery).toHaveBeenCalledWith(
-					{ query: "sunset beach", limit: 50 },
-					expect.objectContaining({ enabled: false }),
-				),
-			{ timeout: 1500 },
-		);
-		expect(mockSearchCancel).toHaveBeenCalled();
-
-		mockIsFocused = true;
-		rerender(<SearchScreen />);
-		await waitFor(() =>
-			expect(mockSearchUseQuery).toHaveBeenCalledWith(
-				{ query: "sunset beach", limit: 50 },
-				expect.objectContaining({ enabled: true }),
-			),
-		);
 	});
 
 	it("keeps cached results visible when a background refetch fails", async () => {
