@@ -1,8 +1,7 @@
 import { clipTextEmbedding } from "@photobrain/image-processing";
 import { inArray, sql } from "drizzle-orm";
-import { db } from "@/db";
-import type { Photo } from "@/db/schema";
-import { photos as photosTable } from "@/db/schema";
+import { db } from "../db";
+import { photos as photosTable } from "../db/schema";
 
 /**
  * Find similar photos using CLIP embedding vector similarity
@@ -14,7 +13,7 @@ import { photos as photosTable } from "@/db/schema";
 export async function findSimilarPhotos(
 	embedding: Float32Array | number[],
 	limit = 10,
-): Promise<Photo[]> {
+) {
 	const embeddingBlob =
 		embedding instanceof Float32Array
 			? Buffer.from(embedding.buffer)
@@ -36,18 +35,18 @@ export async function findSimilarPhotos(
 	const photoIds = results.map((r) => r.photo_id);
 	const photosList =
 		photoIds.length > 0
-			? await db
-					.select()
-					.from(photosTable)
-					.where(inArray(photosTable.id, photoIds))
-					.all()
+			? await db.query.photos.findMany({
+					where: inArray(photosTable.id, photoIds),
+					with: { exif: true },
+				})
 			: [];
 
 	// Sort photos by similarity distance
 	const photosMap = new Map(photosList.map((p) => [p.id, p]));
-	const sortedPhotos = results
-		.map((r) => photosMap.get(r.photo_id))
-		.filter((p): p is Photo => p !== undefined);
+	const sortedPhotos = results.flatMap((result) => {
+		const photo = photosMap.get(result.photo_id);
+		return photo ? [photo] : [];
+	});
 
 	return sortedPhotos;
 }
@@ -58,10 +57,7 @@ export async function findSimilarPhotos(
  * @param limit - Maximum number of results to return
  * @returns Array of photos sorted by semantic similarity
  */
-export async function searchPhotosByText(
-	text: string,
-	limit = 20,
-): Promise<Photo[]> {
+export async function searchPhotosByText(text: string, limit = 20) {
 	const textEmbedding = clipTextEmbedding(text);
 	return findSimilarPhotos(textEmbedding, limit);
 }

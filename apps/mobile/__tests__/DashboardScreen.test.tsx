@@ -1,32 +1,53 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { fireEvent, waitFor } from "@testing-library/react-native";
-import React from "react";
 
-// tRPC mock — must go BEFORE the component import
+const mockPhotosRefetch = jest.fn();
+const mockFilterOptionsRefetch = jest.fn();
+let mockPhotosError = false;
+let mockPhotosHaveData = true;
+let mockScanResult: {
+	success: boolean;
+	jobId?: string;
+	error?: string;
+} = { success: true, jobId: "test-job-123" };
+
 jest.mock("@/lib/trpc", () => ({
 	trpc: {
 		photos: {
-			useQuery: () => ({
-				data: { photos: require("./fixtures").MOCK_PHOTOS },
-				isLoading: false,
-				isFetching: false,
-				refetch: jest.fn(),
+			useQuery: jest.fn((input: { camera?: string }) => {
+				const photos = input.camera ? [] : require("./fixtures").MOCK_PHOTOS;
+				return {
+					data: mockPhotosHaveData
+						? { photos, total: photos.length, rawCount: 2 }
+						: undefined,
+					isLoading: false,
+					isFetching: false,
+					isError: mockPhotosError,
+					error: mockPhotosError ? new Error("Server unavailable") : null,
+					refetch: mockPhotosRefetch,
+				};
 			}),
 		},
 		filterOptions: {
 			useQuery: () => ({
 				data: {
 					cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
-					lenses: ["FE 24-70mm f/2.8 GM", "FE 85mm f/1.4 GM", "RF 15-35mm f/2.8L IS USM"],
+					lenses: [
+						"FE 24-70mm f/2.8 GM",
+						"FE 85mm f/1.4 GM",
+						"RF 15-35mm f/2.8L IS USM",
+					],
 					isos: [100, 200, 400, 800, 3200],
 					dates: ["2024-06", "2024-07", "2024-08"],
 				},
+				refetch: mockFilterOptionsRefetch,
 			}),
 		},
 		scan: {
-			useMutation: (opts?: any) => ({
-				mutate: jest.fn((...args: any[]) => {
-					opts?.onSuccess?.({ jobId: "test-job-123" });
-				}),
+			useMutation: (options?: {
+				onSuccess?: (result: typeof mockScanResult) => void;
+			}) => ({
+				mutate: jest.fn(() => options?.onSuccess?.(mockScanResult)),
 				isPending: false,
 			}),
 		},
@@ -39,317 +60,172 @@ import { renderWithProviders } from "./test-utils";
 describe("DashboardScreen", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
+		mockPhotosError = false;
+		mockPhotosHaveData = true;
+		mockScanResult = { success: true, jobId: "test-job-123" };
 	});
 
-	it("renders the PhotoBrain header", async () => {
+	it("renders the library summary and date timeline", async () => {
 		const { getByText } = renderWithProviders(<DashboardScreen />);
-		await waitFor(() => {
-			expect(getByText("PhotoBrain")).toBeTruthy();
-		});
+
+		await waitFor(() => expect(getByText("Library")).toBeTruthy());
+		expect(getByText("5 Photos")).toBeTruthy();
+		expect(getByText("August 2024")).toBeTruthy();
+		expect(getByText("July 2024")).toBeTruthy();
+		expect(getByText("June 2024")).toBeTruthy();
 	});
 
-	it("renders month headers from photo dates", async () => {
-		const { getByText } = renderWithProviders(<DashboardScreen />);
-		await waitFor(() => {
-			expect(getByText("August 2024")).toBeTruthy();
-			expect(getByText("July 2024")).toBeTruthy();
-			expect(getByText("June 2024")).toBeTruthy();
-		});
-	});
-
-	it("renders photo thumbnails with correct URIs", async () => {
-		const { getAllByTestId } = renderWithProviders(<DashboardScreen />);
-		await waitFor(() => {
-			const images = getAllByTestId("expo-image");
-			const photoImages = images.filter((img) => {
-				const label = img.props.accessibilityLabel || "";
-				return (
-					label.includes("/api/photos/") && label.includes("/thumbnail/tiny")
-				);
-			});
-			expect(photoImages.length).toBe(5);
-		});
-	});
-
-	it("shows RAW badge on RAW photos", async () => {
-		const { getByText } = renderWithProviders(<DashboardScreen />);
-		await waitFor(() => {
-			expect(getByText("ARW")).toBeTruthy();
-			expect(getByText("CR2")).toBeTruthy();
-		});
-	});
-
-	it("opens loupe view when a photo is tapped", async () => {
+	it("renders tiny thumbnails and RAW badges", async () => {
 		const { getAllByTestId, getByText } = renderWithProviders(
 			<DashboardScreen />,
 		);
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
-		});
 
-		const images = getAllByTestId("expo-image");
-		const photoImage = images.find((img) => {
-			const label = img.props.accessibilityLabel || "";
-			return (
-				label.includes("/api/photos/") && label.includes("/thumbnail/tiny")
-			);
-		});
-		expect(photoImage).toBeTruthy();
-
-		fireEvent.press(photoImage!);
-
-		await waitFor(() => {
-			expect(getByText("Share")).toBeTruthy();
-			expect(getByText("Like")).toBeTruthy();
-			expect(getByText("Info")).toBeTruthy();
-			expect(getByText("Delete")).toBeTruthy();
-		});
+		await waitFor(() => expect(getAllByTestId("expo-image")).toHaveLength(5));
+		for (const image of getAllByTestId("expo-image")) {
+			expect(image.props.sourceUri).toContain("/thumbnail/tiny");
+		}
+		expect(getByText("ARW")).toBeTruthy();
+		expect(getByText("CR2")).toBeTruthy();
 	});
 
-	it("shows correct photo data in loupe after tap", async () => {
-		const { getAllByTestId, getByText } = renderWithProviders(
-			<DashboardScreen />,
-		);
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
-		});
-
-		const images = getAllByTestId("expo-image");
-		// Tap the first photo thumbnail (street.jpg, id=5, sorted newest first in grid).
-		const photoImage = images.find((img) => {
-			const label = img.props.accessibilityLabel || "";
-			return (
-				label.includes("/api/photos/") && label.includes("/thumbnail/tiny")
-			);
-		});
-		expect(photoImage).toBeTruthy();
-
-		fireEvent.press(photoImage!);
-
-		// Verify loupe renders with photo dimensions and file size
-		await waitFor(() => {
-			expect(getByText(/4000 × 6000/)).toBeTruthy();
-			expect(getByText(/3\.1 MB/)).toBeTruthy();
-		});
-	});
-
-	it("shows correct data when opening loupe on different photos sequentially", async () => {
-		// Bug: opening loupe on photo A, closing, then opening on photo B
-		// would sometimes show photo A's metadata due to stale FlatList state.
-		const { getAllByTestId, getByText, getByTestId, queryByText } =
+	it("opens and closes the loupe with the selected photo", async () => {
+		const { getByLabelText, getByTestId, getByText, queryByTestId } =
 			renderWithProviders(<DashboardScreen />);
 
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
-		});
+		await waitFor(() => expect(getByTestId("photo-thumbnail-5")).toBeTruthy());
+		fireEvent.press(getByTestId("photo-thumbnail-5"));
 
-		// Tap first photo in grid (street.jpg, id=5 — newest first)
-		const images = getAllByTestId("expo-image");
-		const firstPhoto = images.find((img) => {
-			const label = img.props.accessibilityLabel || "";
-			return label.includes("/api/photos/5/thumbnail/tiny");
-		});
-		expect(firstPhoto).toBeTruthy();
-		fireEvent.press(firstPhoto!);
+		await waitFor(() => expect(getByTestId("loupe-view")).toBeTruthy());
+		expect(getByText("Info")).toBeTruthy();
+		expect(getByText(/4000 × 6000/)).toBeTruthy();
+		expect(getByText(/3\.1 MB/)).toBeTruthy();
 
-		// Verify street.jpg data: 4000×6000, 3.1 MB
-		await waitFor(() => {
-			expect(getByText(/4000 × 6000/)).toBeTruthy();
-			expect(getByText(/3\.1 MB/)).toBeTruthy();
-		});
+		fireEvent.press(getByLabelText("Close photo"));
+		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
+	});
 
-		// Close loupe
-		fireEvent.press(getByTestId("icon-chevron-back"));
+	it("does not retain stale loupe metadata between photos", async () => {
+		const { getByLabelText, getByTestId, getByText, queryByText } =
+			renderWithProviders(<DashboardScreen />);
 
-		// Wait for grid to reappear
-		await waitFor(() => {
-			expect(getByText("PhotoBrain")).toBeTruthy();
-		});
+		await waitFor(() => expect(getByTestId("photo-thumbnail-5")).toBeTruthy());
+		fireEvent.press(getByTestId("photo-thumbnail-5"));
+		await waitFor(() => expect(getByText(/3\.1 MB/)).toBeTruthy());
+		fireEvent.press(getByLabelText("Close photo"));
 
-		// Now tap a DIFFERENT photo — find sunset.jpg (id=1)
-		const images2 = getAllByTestId("expo-image");
-		const secondPhoto = images2.find((img) => {
-			const label = img.props.accessibilityLabel || "";
-			return label.includes("/api/photos/1/thumbnail/tiny");
-		});
-		expect(secondPhoto).toBeTruthy();
-		fireEvent.press(secondPhoto!);
-
-		// Verify sunset.jpg data: 6000×4000, 4.3 MB — NOT street.jpg's data
-		await waitFor(() => {
-			expect(getByText(/6000 × 4000/)).toBeTruthy();
-			expect(getByText(/4\.3 MB/)).toBeTruthy();
-		});
-
-		// Confirm street.jpg's unique dimensions are NOT shown
+		await waitFor(() => expect(getByTestId("photo-thumbnail-1")).toBeTruthy());
+		fireEvent.press(getByTestId("photo-thumbnail-1"));
+		await waitFor(() => expect(getByText(/4\.3 MB/)).toBeTruthy());
+		expect(getByText(/6000 × 4000/)).toBeTruthy();
 		expect(queryByText(/4000 × 6000/)).toBeNull();
 	});
 
-	it("renders loupe in a Modal when photo is tapped", async () => {
-		const { getAllByTestId, getByText, UNSAFE_getAllByType } =
-			renderWithProviders(<DashboardScreen />);
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
-		});
-
-		// Find the loupe Modal (animationType="fade") — FilterSheet uses "slide"
-		const { Modal } = require("react-native");
-		const findLoupeModal = () =>
-			UNSAFE_getAllByType(Modal).find(
-				(m: any) => m.props.animationType === "fade",
-			);
-
-		// Modal should not be visible initially
-		const modalBefore = findLoupeModal();
-		expect(!modalBefore || modalBefore.props.visible === false).toBe(true);
-
-		// Tap a photo to open loupe
-		const images = getAllByTestId("expo-image");
-		const photoImage = images.find((img) => {
-			const label = img.props.accessibilityLabel || "";
-			return (
-				label.includes("/api/photos/") && label.includes("/thumbnail/tiny")
-			);
-		});
-		expect(photoImage).toBeTruthy();
-		fireEvent.press(photoImage!);
-
-		// Modal should now be visible with loupe action buttons
-		await waitFor(() => {
-			const modal = findLoupeModal();
-			expect(modal).toBeTruthy();
-			expect(modal!.props.visible).toBe(true);
-		});
-
-		// Loupe action buttons should be present
-		await waitFor(() => {
-			expect(getByText("Share")).toBeTruthy();
-			expect(getByText("Info")).toBeTruthy();
-		});
-	});
-
-	it("closes the Modal when back button is pressed in loupe", async () => {
-		const { getAllByTestId, getByTestId, UNSAFE_getAllByType } =
-			renderWithProviders(<DashboardScreen />);
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
-		});
-
-		// Open loupe
-		const images = getAllByTestId("expo-image");
-		const photoImage = images.find((img) => {
-			const label = img.props.accessibilityLabel || "";
-			return (
-				label.includes("/api/photos/") && label.includes("/thumbnail/tiny")
-			);
-		});
-		fireEvent.press(photoImage!);
-
-		const { Modal } = require("react-native");
-		const findLoupeModal = () =>
-			UNSAFE_getAllByType(Modal).find(
-				(m: any) => m.props.animationType === "fade",
-			);
-
-		await waitFor(() => {
-			const modal = findLoupeModal();
-			expect(modal?.props.visible).toBe(true);
-		});
-
-		// Press back button to close
-		fireEvent.press(getByTestId("icon-chevron-back"));
-
-		// Modal should be hidden
-		await waitFor(() => {
-			const modal = findLoupeModal();
-			expect(!modal || modal.props.visible === false).toBe(true);
-		});
-	});
-
-	it("swiping in loupe follows the grid's date order, not API order", async () => {
-		// Photos in API order: sunset(1,Jun15), portrait(2,Jun15), landscape(3,Jul20), macro(4,Jul20), street(5,Aug5)
-		// Grid sorts newest-first: street(5), macro(4), landscape(3), sunset(1), portrait(2)
-		// Tapping landscape(3) and swiping to next should show sunset(1), NOT macro(4)
-		const { getAllByTestId, getByText, UNSAFE_getAllByType } =
-			renderWithProviders(<DashboardScreen />);
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBeGreaterThan(0);
-		});
-
-		// Tap landscape.jpg (id=3)
-		const images = getAllByTestId("expo-image");
-		const landscape = images.find((img) => {
-			const label = img.props.accessibilityLabel || "";
-			return label.includes("/api/photos/3/thumbnail/tiny");
-		});
-		expect(landscape).toBeTruthy();
-		fireEvent.press(landscape!);
-
-		// Verify loupe opens showing landscape.jpg: 7360×4912
-		await waitFor(() => {
-			expect(getByText(/7360 × 4912/)).toBeTruthy();
-		});
-
-		// Simulate swipe to next photo — must use UNSAFE_getAllByType to get
-		// the FlatList component (not the host View) for events to dispatch.
+	it("swipes through photos in the same newest-first order as the grid", async () => {
 		const { FlatList } = require("react-native");
-		const allFlatLists = UNSAFE_getAllByType(FlatList);
-		const loupeFlatList = allFlatLists.find(
-			(fl: any) => fl.props.testID === "loupe-gallery",
+		const { getByTestId, getByText, UNSAFE_getAllByType } = renderWithProviders(
+			<DashboardScreen />,
 		);
-		expect(loupeFlatList).toBeTruthy();
-		// landscape is at sorted index 2. Swiping one page right → index 3.
-		// SCREEN_WIDTH is 750 in jest-expo. offset = (2+1) * 750 = 2250
-		fireEvent(loupeFlatList!, "momentumScrollEnd", {
-			nativeEvent: {
-				contentOffset: { x: 2250, y: 0 },
-				contentSize: { width: 3750, height: 800 },
-				layoutMeasurement: { width: 750, height: 800 },
-			},
+
+		await waitFor(() => expect(getByTestId("photo-thumbnail-3")).toBeTruthy());
+		fireEvent.press(getByTestId("photo-thumbnail-3"));
+		await waitFor(() => expect(getByText(/7360 × 4912/)).toBeTruthy());
+
+		const gallery = UNSAFE_getAllByType(FlatList).find(
+			(list) => list.props.testID === "loupe-gallery",
+		);
+		expect(gallery).toBeTruthy();
+		if (!gallery) throw new Error("Expected loupe gallery");
+		fireEvent(gallery, "momentumScrollEnd", {
+			nativeEvent: { contentOffset: { x: 2250, y: 0 } },
 		});
 
-		// Next photo in date order after landscape(Jul20 8:15) is sunset(Jun15 18:30): 6000×4000, 4.3 MB
-		// NOT macro(Jul20 10:30) which would be API-order neighbor
-		await waitFor(() => {
-			expect(getByText(/4\.3 MB/)).toBeTruthy();
-			expect(getByText(/6000 × 4000/)).toBeTruthy();
-		});
+		await waitFor(() => expect(getByText(/4\.3 MB/)).toBeTruthy());
+		expect(getByText(/6000 × 4000/)).toBeTruthy();
 	});
 
-	it("pull-to-refresh calls refetch", async () => {
-		const refetchMock = jest.fn();
-		const trpcModule = require("@/lib/trpc");
-		const originalUseQuery = trpcModule.trpc.photos.useQuery;
-		trpcModule.trpc.photos.useQuery = () => ({
-			...originalUseQuery(),
-			refetch: refetchMock,
-		});
+	it("refreshes photos and filter options", async () => {
+		const { UNSAFE_root, getByText } = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(getByText("Library")).toBeTruthy());
 
-		try {
-			const { getByTestId, UNSAFE_root } = renderWithProviders(
-				<DashboardScreen />,
-			);
+		const flatList = UNSAFE_root.findAllByType(
+			require("react-native").FlatList,
+		)[0];
+		flatList.props.refreshControl.props.onRefresh();
 
-			await waitFor(() => {
-				expect(getByTestId("activity-bar")).toBeTruthy();
-			});
+		expect(mockPhotosRefetch).toHaveBeenCalledTimes(1);
+		expect(mockFilterOptionsRefetch).toHaveBeenCalledTimes(1);
+	});
 
-			// Find the FlatList's RefreshControl by firing the refresh event on it
-			const { RefreshControl } = require("react-native");
-			const flatList = UNSAFE_root.findAllByType(
-				require("react-native").FlatList,
-			);
-			expect(flatList.length).toBeGreaterThan(0);
+	it("shows a retry action when the library query fails", async () => {
+		mockPhotosError = true;
+		mockPhotosHaveData = false;
+		const { getByText } = renderWithProviders(<DashboardScreen />);
 
-			// Trigger the onRefresh callback via the FlatList props
-			const onRefresh = flatList[0].props.refreshControl?.props?.onRefresh;
-			expect(onRefresh).toBeDefined();
-			onRefresh();
+		await waitFor(() =>
+			expect(getByText("Couldn't Load Library")).toBeTruthy(),
+		);
+		fireEvent.press(getByText("Try Again"));
+		expect(mockPhotosRefetch).toHaveBeenCalledTimes(1);
+		expect(mockFilterOptionsRefetch).toHaveBeenCalledTimes(1);
+	});
 
-			expect(refetchMock).toHaveBeenCalled();
-		} finally {
-			// Restore original mock even if test throws
-			trpcModule.trpc.photos.useQuery = originalUseQuery;
-		}
+	it("keeps cached library data visible when a refetch fails", async () => {
+		mockPhotosError = true;
+		const { getByText, queryByText } = renderWithProviders(<DashboardScreen />);
+
+		await waitFor(() => expect(getByText("Library")).toBeTruthy());
+		expect(getByText("5 Photos")).toBeTruthy();
+		expect(queryByText("Couldn't Load Library")).toBeNull();
+	});
+
+	it("offers a clear action when filters produce an empty library", async () => {
+		const { getByLabelText, getByText } = renderWithProviders(
+			<DashboardScreen />,
+		);
+		await waitFor(() => expect(getByText("Library")).toBeTruthy());
+
+		fireEvent.press(getByLabelText("Filter photos"));
+		fireEvent.press(getByText("Sony A7III"));
+		fireEvent.press(getByLabelText("Apply filters"));
+
+		await waitFor(() =>
+			expect(getByText("No photos match your filters")).toBeTruthy(),
+		);
+		fireEvent.press(getByText("Clear Filters"));
+		await waitFor(() => expect(getByText("5 Photos")).toBeTruthy());
+	});
+
+	it("persists only successfully created scan jobs", async () => {
+		const successful = renderWithProviders(<DashboardScreen />);
+		await waitFor(() =>
+			expect(successful.getByLabelText("Scan library")).toBeTruthy(),
+		);
+		fireEvent.press(successful.getByLabelText("Scan library"));
+		await waitFor(() =>
+			expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+				"@photobrain/active-scan",
+				"test-job-123",
+			),
+		);
+		successful.unmount();
+
+		jest.mocked(AsyncStorage.setItem).mockClear();
+		mockScanResult = { success: false, error: "Database unavailable" };
+		const failed = renderWithProviders(<DashboardScreen />);
+		await waitFor(() =>
+			expect(failed.getByLabelText("Scan library")).toBeTruthy(),
+		);
+		fireEvent.press(failed.getByLabelText("Scan library"));
+		expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+		expect(failed.getByText("Database unavailable")).toBeTruthy();
+	});
+
+	it("opens settings from the library header", async () => {
+		const { __router } = require("expo-router");
+		const { getByLabelText } = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(getByLabelText("Open settings")).toBeTruthy());
+
+		fireEvent.press(getByLabelText("Open settings"));
+		expect(__router.push).toHaveBeenCalledWith("/preferences");
 	});
 });

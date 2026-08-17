@@ -7,12 +7,12 @@ import {
 	useEffect,
 	useState,
 } from "react";
-import { useColorScheme } from "react-native";
+import { Appearance, Platform, useColorScheme } from "react-native";
 import { type ColorTheme, colors, type ThemeColors } from "./colors";
 
 const THEME_STORAGE_KEY = "@photobrain/theme";
 
-type ThemePreference = "light" | "dark" | "system";
+export type ThemePreference = "light" | "dark" | "system";
 
 interface ThemeContextValue {
 	theme: ColorTheme;
@@ -62,6 +62,19 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 			});
 	}, []);
 
+	useEffect(() => {
+		if (
+			!isLoaded ||
+			Platform.OS === "web" ||
+			typeof Appearance.setColorScheme !== "function"
+		) {
+			return;
+		}
+		Appearance.setColorScheme(
+			themePreference === "system" ? "unspecified" : themePreference,
+		);
+	}, [isLoaded, themePreference]);
+
 	const setThemePreference = useCallback((preference: ThemePreference) => {
 		setThemePreferenceState(preference);
 		AsyncStorage.setItem(THEME_STORAGE_KEY, preference).catch(() => {
@@ -106,4 +119,3 @@ export function useTheme(): ThemeContextValue {
 export function useColors(): ThemeColors {
 	return useTheme().colors;
 }
-

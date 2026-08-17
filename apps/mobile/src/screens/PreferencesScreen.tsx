@@ -1,317 +1,191 @@
 import { Ionicons } from "@expo/vector-icons";
-import type React from "react";
-import {
-	Pressable,
-	ScrollView,
-	StyleSheet,
-	Switch,
-	Text,
-	View,
-} from "react-native";
-import { useColors, useTheme } from "@/theme";
+import Constants from "expo-constants";
+import { useRouter } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import GlassSurface from "@/components/GlassSurface";
+import { API_URL } from "@/config";
+import { type ThemePreference, useColors, useTheme } from "@/theme";
 
-interface SettingRowProps {
-	icon: keyof typeof Ionicons.glyphMap;
-	label: string;
-	description?: string;
-	children: React.ReactNode;
-}
-
-function SettingRow({ icon, label, description, children }: SettingRowProps) {
-	const colors = useColors();
-
-	return (
-		<View style={[styles.settingRow, { borderBottomColor: colors.border }]}>
-			<View style={styles.settingIcon}>
-				<Ionicons name={icon} size={22} color={colors.mutedForeground} />
-			</View>
-			<View style={styles.settingContent}>
-				<Text style={[styles.settingLabel, { color: colors.foreground }]}>
-					{label}
-				</Text>
-				{description && (
-					<Text
-						style={[
-							styles.settingDescription,
-							{ color: colors.mutedForeground },
-						]}
-					>
-						{description}
-					</Text>
-				)}
-			</View>
-			<View style={styles.settingAction}>{children}</View>
-		</View>
-	);
-}
-
-interface ThemeOptionProps {
-	value: "light" | "dark" | "system";
+const THEME_OPTIONS: Array<{
+	value: ThemePreference;
 	label: string;
 	icon: keyof typeof Ionicons.glyphMap;
-	selected: boolean;
-	onPress: () => void;
-}
-
-function ThemeOption({
-	value,
-	label,
-	icon,
-	selected,
-	onPress,
-}: ThemeOptionProps) {
-	const colors = useColors();
-
-	return (
-		<Pressable
-			onPress={onPress}
-			style={[
-				styles.themeOption,
-				{ backgroundColor: colors.card, borderColor: colors.border },
-				selected && {
-					borderColor: colors.primary,
-					backgroundColor: `${colors.primary}10`,
-				},
-			]}
-		>
-			<Ionicons
-				name={icon}
-				size={24}
-				color={selected ? colors.primary : colors.mutedForeground}
-			/>
-			<Text
-				style={[
-					styles.themeOptionLabel,
-					{ color: selected ? colors.primary : colors.foreground },
-				]}
-			>
-				{label}
-			</Text>
-			{selected && (
-				<Ionicons
-					name="checkmark-circle"
-					size={20}
-					color={colors.primary}
-					style={styles.themeOptionCheck}
-				/>
-			)}
-		</Pressable>
-	);
-}
+}> = [
+	{ value: "light", label: "Light", icon: "sunny" },
+	{ value: "dark", label: "Dark", icon: "moon" },
+	{ value: "system", label: "System", icon: "phone-portrait" },
+];
 
 export default function PreferencesScreen() {
 	const colors = useColors();
+	const router = useRouter();
 	const { themePreference, setThemePreference } = useTheme();
+	const version = Constants.expoConfig?.version ?? "0.2.0";
+	const serverHost = API_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
 	return (
 		<ScrollView
 			style={[styles.container, { backgroundColor: colors.background }]}
+			contentContainerStyle={styles.content}
+			contentInsetAdjustmentBehavior="automatic"
 		>
-			{/* Appearance Section */}
-			<View style={styles.section}>
-				<Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-					APPEARANCE
-				</Text>
-
-				<View style={[styles.sectionContent, { backgroundColor: colors.card }]}>
-					<View
-						style={[styles.themeSelector, { borderBottomColor: colors.border }]}
-					>
-						<Text
-							style={[styles.themeSelectorLabel, { color: colors.foreground }]}
+			<Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+				Appearance
+			</Text>
+			<GlassSurface style={styles.themeGroup} glassEffectStyle="clear">
+				{THEME_OPTIONS.map((option) => {
+					const selected = themePreference === option.value;
+					return (
+						<Pressable
+							key={option.value}
+							accessibilityRole="radio"
+							accessibilityState={{ checked: selected }}
+							onPress={() => setThemePreference(option.value)}
+							style={[
+								styles.themeOption,
+								selected && { backgroundColor: colors.foreground },
+							]}
 						>
-							Theme
+							<Ionicons
+								name={option.icon}
+								size={21}
+								color={selected ? colors.background : colors.foreground}
+							/>
+							<Text
+								style={[
+									styles.themeLabel,
+									{ color: selected ? colors.background : colors.foreground },
+								]}
+							>
+								{option.label}
+							</Text>
+						</Pressable>
+					);
+				})}
+			</GlassSurface>
+
+			<Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+				PhotoBrain
+			</Text>
+			<View style={[styles.group, { backgroundColor: colors.card }]}>
+				<View style={[styles.row, { borderBottomColor: colors.border }]}>
+					<View style={[styles.rowIcon, { backgroundColor: colors.primary }]}>
+						<Ionicons name="server-outline" size={17} color="#ffffff" />
+					</View>
+					<View style={styles.rowContent}>
+						<Text style={[styles.rowTitle, { color: colors.foreground }]}>
+							Server
 						</Text>
-						<View style={styles.themeOptions}>
-							<ThemeOption
-								value="light"
-								label="Light"
-								icon="sunny"
-								selected={themePreference === "light"}
-								onPress={() => setThemePreference("light")}
-							/>
-							<ThemeOption
-								value="dark"
-								label="Dark"
-								icon="moon"
-								selected={themePreference === "dark"}
-								onPress={() => setThemePreference("dark")}
-							/>
-							<ThemeOption
-								value="system"
-								label="System"
-								icon="phone-portrait"
-								selected={themePreference === "system"}
-								onPress={() => setThemePreference("system")}
-							/>
-						</View>
+						<Text
+							style={[styles.rowDetail, { color: colors.mutedForeground }]}
+							numberOfLines={1}
+						>
+							{serverHost}
+						</Text>
 					</View>
 				</View>
-			</View>
-
-			{/* Display Section */}
-			<View style={styles.section}>
-				<Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-					DISPLAY
-				</Text>
-
-				<View style={[styles.sectionContent, { backgroundColor: colors.card }]}>
-					<SettingRow
-						icon="grid-outline"
-						label="Grid Columns"
-						description="Number of columns in photo grid"
-					>
-						<Text
-							style={[styles.settingValue, { color: colors.mutedForeground }]}
-						>
-							3
+				<View style={[styles.row, { borderBottomColor: colors.border }]}>
+					<View style={[styles.rowIcon, { backgroundColor: colors.success }]}>
+						<Ionicons name="sparkles" size={17} color="#ffffff" />
+					</View>
+					<View style={styles.rowContent}>
+						<Text style={[styles.rowTitle, { color: colors.foreground }]}>
+							Interface
 						</Text>
-					</SettingRow>
-
-					<SettingRow
-						icon="expand-outline"
-						label="Show RAW Badges"
-						description="Display RAW format indicator on thumbnails"
-					>
-						<Switch
-							value={true}
-							trackColor={{ false: colors.muted, true: colors.primary }}
-							thumbColor="#ffffff"
-							disabled
-						/>
-					</SettingRow>
-				</View>
-			</View>
-
-			{/* Behavior Section */}
-			<View style={styles.section}>
-				<Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-					BEHAVIOR
-				</Text>
-
-				<View style={[styles.sectionContent, { backgroundColor: colors.card }]}>
-					<SettingRow
-						icon="hand-left-outline"
-						label="Haptic Feedback"
-						description="Vibrate on photo selection and navigation"
-					>
-						<Switch
-							value={true}
-							trackColor={{ false: colors.muted, true: colors.primary }}
-							thumbColor="#ffffff"
-							disabled
-						/>
-					</SettingRow>
-				</View>
-			</View>
-
-			{/* About Section */}
-			<View style={styles.section}>
-				<Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-					ABOUT
-				</Text>
-
-				<View style={[styles.sectionContent, { backgroundColor: colors.card }]}>
-					<SettingRow icon="information-circle-outline" label="Version">
-						<Text
-							style={[styles.settingValue, { color: colors.mutedForeground }]}
-						>
-							0.1.0
+						<Text style={[styles.rowDetail, { color: colors.mutedForeground }]}>
+							Native Liquid Glass on supported iOS devices
 						</Text>
-					</SettingRow>
-
-					<SettingRow
-						icon="logo-github"
-						label="Source Code"
-						description="View on GitHub"
-					>
-						<Ionicons
-							name="chevron-forward"
-							size={20}
-							color={colors.mutedForeground}
-						/>
-					</SettingRow>
+					</View>
 				</View>
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel="About PhotoBrain"
+					onPress={() => router.push("/about")}
+					style={styles.row}
+				>
+					<View
+						style={[
+							styles.rowIcon,
+							{ backgroundColor: colors.mutedForeground },
+						]}
+					>
+						<Ionicons name="information" size={18} color="#ffffff" />
+					</View>
+					<View style={styles.rowContent}>
+						<Text style={[styles.rowTitle, { color: colors.foreground }]}>
+							About
+						</Text>
+						<Text style={[styles.rowDetail, { color: colors.mutedForeground }]}>
+							Version {version}
+						</Text>
+					</View>
+					<Ionicons
+						name="chevron-forward"
+						size={18}
+						color={colors.mutedForeground}
+					/>
+				</Pressable>
 			</View>
+
+			<Text style={[styles.footer, { color: colors.mutedForeground }]}>
+				PhotoBrain connects to your self-hosted library. Photos remain on the
+				configured server.
+			</Text>
 		</ScrollView>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-	},
-	section: {
-		marginTop: 24,
-	},
+	container: { flex: 1 },
+	content: { paddingHorizontal: 16, paddingBottom: 36 },
 	sectionTitle: {
-		fontSize: 12,
-		fontWeight: "600",
-		letterSpacing: 0.5,
-		marginLeft: 16,
+		marginTop: 24,
+		marginLeft: 4,
 		marginBottom: 8,
+		fontSize: 13,
+		fontWeight: "600",
 	},
-	sectionContent: {
-		borderRadius: 12,
-		marginHorizontal: 16,
-		overflow: "hidden",
-	},
-	themeSelector: {
-		padding: 16,
-		borderBottomWidth: 1,
-	},
-	themeSelectorLabel: {
-		fontSize: 16,
-		fontWeight: "500",
-		marginBottom: 12,
-	},
-	themeOptions: {
+	themeGroup: {
 		flexDirection: "row",
-		gap: 8,
+		padding: 4,
+		borderRadius: 22,
+		borderCurve: "continuous",
+		gap: 3,
 	},
 	themeOption: {
 		flex: 1,
+		minHeight: 64,
+		borderRadius: 18,
+		borderCurve: "continuous",
 		alignItems: "center",
-		paddingVertical: 12,
-		paddingHorizontal: 8,
-		borderRadius: 8,
-		borderWidth: 1,
-		gap: 6,
+		justifyContent: "center",
+		gap: 5,
 	},
-	themeOptionLabel: {
-		fontSize: 13,
-		fontWeight: "500",
-	},
-	themeOptionCheck: {
-		position: "absolute",
-		top: 4,
-		right: 4,
-	},
-	settingRow: {
+	themeLabel: { fontSize: 13, fontWeight: "600" },
+	group: { borderRadius: 14, borderCurve: "continuous", overflow: "hidden" },
+	row: {
+		minHeight: 62,
 		flexDirection: "row",
 		alignItems: "center",
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		borderBottomWidth: 1,
+		paddingHorizontal: 14,
+		borderBottomWidth: StyleSheet.hairlineWidth,
 	},
-	settingIcon: {
-		width: 32,
+	rowIcon: {
+		width: 30,
+		height: 30,
+		borderRadius: 8,
+		alignItems: "center",
+		justifyContent: "center",
 		marginRight: 12,
 	},
-	settingContent: {
-		flex: 1,
-	},
-	settingLabel: {
-		fontSize: 16,
-	},
-	settingDescription: {
-		fontSize: 13,
-		marginTop: 2,
-	},
-	settingAction: {
-		marginLeft: 12,
-	},
-	settingValue: {
-		fontSize: 16,
+	rowContent: { flex: 1, paddingVertical: 10 },
+	rowTitle: { fontSize: 16, fontWeight: "500" },
+	rowDetail: { marginTop: 2, fontSize: 12 },
+	footer: {
+		marginTop: 22,
+		paddingHorizontal: 12,
+		fontSize: 12,
+		lineHeight: 17,
+		textAlign: "center",
 	},
 });

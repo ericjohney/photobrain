@@ -22,9 +22,10 @@ Scope: `apps/api`.
 ```bash
 cd apps/api && bun run dev
 cd apps/api && bun test
+cd apps/api && bun run typecheck
 ```
 
-The API package has no local worker script, build script, or typecheck script. Inngest functions are registered in this same API process at `/api/inngest`. A separate Inngest development/runtime service must invoke that endpoint.
+The API package has no local worker or build script. Inngest functions are registered in this same API process at `/api/inngest`. A separate Inngest development/runtime service must invoke that endpoint.
 
 ## HTTP Surface
 
@@ -49,7 +50,8 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `photos({ filterRaw?, folder?, camera?, lens?, iso?, dateMonth? })`: returns `{ photos, total, rawCount }` with EXIF relations. A folder query initially matches descendants, then JavaScript removes nested descendants so only direct files are returned.
 - `photo({ id })`: returns one photo with EXIF or throws `Photo not found`.
 - `searchPhotos({ query, limit? })`: generates a CLIP text embedding and returns nearest photo rows. `limit` is 1-100 and defaults to 20.
-- `scan()`: generates a UUID, resolves configured directories to absolute paths, sends `photos/scan.requested`, and returns `{ success, jobId }` or `{ success: false, error }`.
+- `scan()`: creates a durable queued `scan_jobs` row, sends an idempotently keyed `photos/scan.requested` event, and returns `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing.
+- `scanStatus({ jobId })`: returns the durable scan row or `null` when the UUID is unknown.
 - `realtimeToken({ jobId })`: returns a token for channel `job:{jobId}`, topic `progress`.
 
 Keep the router as the source of client types. `src/types.ts` exports `AppRouter` for workspace consumers.
@@ -71,12 +73,14 @@ Scan function details:
 - Concurrency limit is 1.
 - Discovery is a checkpointed step.
 - Processing uses Rust batches of 20.
-- Successful Rust results are persisted; failed results are logged and skipped.
+- Native processing and database persistence are separate checkpointed steps. Native failures are skipped; database failures escape the save step so Inngest can retry them.
 - Existing rows are matched by unique relative `photos.path`.
 - EXIF and pHash sidecars are deleted/reinserted only when new data exists.
 - Every successfully processed photo is marked `thumbnailStatus: "completed"`, `thumbnailUpdatedAt: new Date()`, and `embeddingStatus: "pending"`.
-- Any successful scan result triggers embedding for every currently pending photo, not only files from that scan.
-- Progress phases are `discovering`, `processing`, `scan-complete`, `embedding`, and `completed`.
+- A successful scan sends exactly the photo IDs saved by that scan to the embedding function.
+- Durable and Realtime progress phases are `queued`, `discovering`, `processing`, `scan-complete`, `embedding`, `completed`, and `failed`.
+- Terminal database states are monotonic. Each function's initial progress update acts as a durable claim and missing or terminal jobs exit before media work. Both functions mark exhausted retries failed and attempt to publish terminal Realtime progress; a nonempty all-failed scan is also failed.
+- `scan-complete` is persisted before dispatching the embedding child; the parent performs no progress writes after dispatch, preventing it from overwriting a fast child completion.
 
 Embedding function details:
 
@@ -85,6 +89,7 @@ Embedding function details:
 - Deletes and reinserts each `photo_embedding` row.
 - Converts the Rust number array to a `Float32Array` buffer before storage.
 - Marks each photo `completed` or `failed` and publishes progress.
+- Marks the scan job failed if no requested embedding can be generated; partial success still completes the job.
 
 ## Configuration
 
@@ -106,7 +111,8 @@ Active API variables are parsed in `src/config.ts`:
 
 - Use `@photobrain/db/schema` for schema changes.
 - Migrations live at `packages/db/drizzle`.
-- Startup migration is opt-in with `RUN_DB_INIT=true`.
+- `scan_jobs` is the durable source for mobile polling and recovery; preserve terminal-state monotonicity when changing job code.
+- Startup migration is opt-in with `RUN_DB_INIT=true` for direct API runs. The API Docker image enables it so deployed schema changes are applied before serving traffic.
 - The standalone `src/db/migrate.ts` is not the normal migration path and currently points at an API-local `./drizzle` directory that does not exist.
 - Do not assume scan removes rows for files deleted from disk.
 - Do not assume scan persistence is transactional across photo, EXIF, pHash, and embedding status updates.
@@ -126,6 +132,6 @@ The two POST maintenance routes are operational leftovers. Do not add new caller
 
 ## Tests
 
-`src/__tests__/filters.test.ts` uses `createTestDb()` from `src/__tests__/setup.ts`, an in-memory SQLite database with shared migrations and seeded EXIF data. It covers folder-scoped filter options and raw/camera/lens/ISO/date filters.
+`src/__tests__/filters.test.ts` uses `createTestDb()` from `src/__tests__/setup.ts`, an in-memory SQLite database with shared migrations and seeded EXIF data. It covers folder-scoped filter options, raw/camera/lens/ISO/date filters, durable scan creation/status, dispatch failures, and missing job IDs.
 
-There are no current API tests for REST serving, Inngest function execution, vector search, startup migrations, or thumbnail generation. Add focused tests when changing those areas.
+There are no current API tests that execute Inngest functions, REST serving, vector search, startup migrations, or thumbnail generation. Add focused tests when changing those areas.

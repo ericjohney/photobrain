@@ -57,15 +57,15 @@ The API entrypoint is `apps/api/src/index.ts`:
 
 The scan flow is:
 
-1. `trpc.scan` creates a UUID and sends `photos/scan.requested`.
+1. `trpc.scan` creates a durable queued `scan_jobs` row, then sends an idempotently keyed `photos/scan.requested` event.
 2. The Inngest scan function discovers supported files with Rust `discoverPhotos`.
 3. Files are processed in batches of 20 with Rust `processPhotosBatch`.
 4. Successful results update `photos`, `photo_exif`, and `photo_phash`.
-5. Pending photo IDs trigger `photos/embeddings.requested`.
+5. IDs successfully saved by that scan trigger `photos/embeddings.requested`.
 6. The embedding function reads `large` WebP thumbnails in batches of 16, generates CLIP embeddings, and updates `photo_embedding` and `embeddingStatus`.
-7. Both functions publish progress to the Inngest Realtime channel `job:{jobId}`.
+7. Both functions persist progress to `scan_jobs` and publish it to the Inngest Realtime channel `job:{jobId}`. Exhausted failures become terminal failed rows.
 
-The web and mobile clients obtain a Realtime token through `trpc.realtimeToken` and subscribe directly with `@inngest/realtime`.
+The mobile client obtains a Realtime token through `trpc.realtimeToken`, subscribes directly with `@inngest/realtime`, and polls `trpc.scanStatus` as a durable recovery/fallback path.
 
 There is no repository-local worker process. Running the API alone exposes the Inngest handler, but an Inngest development/runtime service must deliver events to that handler for asynchronous jobs to execute. This repository has no `dev:worker` script.
 
@@ -95,6 +95,7 @@ The tables are:
 - `photo_exif`: one-to-one camera, lens, exposure, date, and GPS metadata.
 - `photo_embedding`: one CLIP embedding blob per photo.
 - `photo_phash`: one perceptual hash per photo.
+- `scan_jobs`: durable scan/embedding phase, status, counts, errors, and timestamps.
 
 Semantic search creates a CLIP text embedding and queries `photo_embedding` with `vec_distance_L2`. The embedding model is `ClipVitB32`; the database does not enforce a vector dimension.
 
@@ -131,7 +132,7 @@ bun run check            # Biome check with --write; modifies files
 bun run ci:check         # Read-only Biome CI check
 bun run format           # Biome format with --write; modifies files
 bun run lint             # Turbo lint tasks where package scripts exist
-bun run typecheck        # Turbo tasks; mobile's current script is only an informational echo
+bun run typecheck        # Turbo TypeScript tasks, including API and active mobile routes
 cd apps/api && bun test
 cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui
@@ -189,7 +190,8 @@ All tRPC procedures are public; there is no authentication or authorization midd
 | `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, and month filters |
 | `photo` | query | Returns one photo with EXIF by numeric ID |
 | `searchPhotos` | query | CLIP text search, limit 1-100 |
-| `scan` | mutation | Sends an Inngest scan event and returns `{ success, jobId }` |
+| `scan` | mutation | Creates a durable job, sends an Inngest scan event, and returns `{ success, jobId? }` |
+| `scanStatus` | query | Returns durable progress for a scan UUID or `null` |
 | `realtimeToken` | query | Returns an Inngest Realtime token for a job ID |
 
 REST routes under `/api/photos`:
@@ -227,16 +229,16 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 
 ### Mobile
 
-The active entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint used by some tests and is not the configured production entrypoint.
+The active entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint and is not the configured production entrypoint or the target of active navigation tests.
 
-The active tabs are Photos, Search, Albums, and Library. The dashboard has a four-column date-grouped grid, EXIF filter sheet, scan progress, metadata, and a modal loupe with pinch/pan/zoom and swipe navigation. Search is a separate tab and queries CLIP on each non-empty input change without a debounce. Collections remains a placeholder. Preferences persist light/dark/system theme selection; some display/behavior controls are currently disabled or hardcoded.
+The active native tabs are Library and Search. Library has year/month/all-photo timelines, a responsive four-to-eight-column grid, EXIF filters, durable scan progress, metadata, and a modal loupe with pinch/pan/zoom and swipe navigation. Search uses a native iOS search bar and a 350 ms cancellable debounce. Custom chrome uses `expo-glass-effect` when Liquid Glass is available, with platform and Reduce Transparency fallbacks. Collections remains a non-tab placeholder route. Settings persists light/dark/system theme selection; some display/behavior controls remain disabled or hardcoded.
 
 ## Deployment
 
 The current `Dockerfile` has five stages:
 
 1. `builder`: installs Bun/Rust/native dependencies and builds the N-API addon.
-2. `api`: runs the Hono/Bun API on port 3000.
+2. `api`: applies shared migrations, then runs the Hono/Bun API on port 3000.
 3. `web-builder`: builds the Vite web app.
 4. `web`: runs the Bun static server on port 3001 with runtime API configuration.
 5. `mobile`: installs the workspace and runs the Expo development server on port 8081.
@@ -245,9 +247,10 @@ There is no worker image and the mobile Docker target is not a static Expo web-e
 
 `.github/workflows/build.yml` currently:
 
+- Runs API tests and typecheck.
 - Runs web Playwright E2E tests.
 - Runs mobile Jest tests.
-- Publishes EAS OTA updates on pushes to `main` and version tags.
+- Publishes preview EAS OTA updates on pushes to `main`; version tags first wait for a production iOS EAS build, then publish an iOS production update.
 - Builds and pushes API, web, and mobile Docker targets.
 - Updates API/web/mobile image tags in the external ArgoCD repository on pushes to `main`.
 
@@ -292,6 +295,7 @@ The API and worker must not be described as separate services unless a future ch
 - Thumbnail generation can log a warning while a photo result remains successful; verify files before treating `thumbnailStatus` as reliable.
 - Scans do not delete database rows for files removed from disk.
 - A successful scan resets processed photos to `embeddingStatus: "pending"`, even when a source file is unchanged.
+- `scan_jobs` terminal states are monotonic, but a process crash after inserting a queued row and before sending its Inngest event can still leave that row queued; there is no outbox reconciler.
 - EXIF and pHash sidecar writes are not one transaction with the photo row.
 - Missing later EXIF or pHash data does not currently remove an old sidecar row.
 - Thumbnail paths are extension-stripped and path-based; different source files with the same relative stem can collide.

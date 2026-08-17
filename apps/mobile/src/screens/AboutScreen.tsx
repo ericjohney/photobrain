@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import Constants from "expo-constants";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/theme";
 
@@ -10,6 +10,7 @@ export default function AboutScreen() {
 		<ScrollView
 			style={[styles.container, { backgroundColor: colors.background }]}
 			contentContainerStyle={styles.content}
+			contentInsetAdjustmentBehavior="automatic"
 		>
 			<View style={styles.header}>
 				<Ionicons name="images" size={64} color={colors.primary} />
@@ -17,7 +18,7 @@ export default function AboutScreen() {
 					PhotoBrain
 				</Text>
 				<Text style={[styles.version, { color: colors.mutedForeground }]}>
-					Version 0.1.0
+					Version {Constants.expoConfig?.version ?? "0.2.0"}
 				</Text>
 			</View>
 

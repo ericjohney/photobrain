@@ -2,11 +2,11 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "inngest/hono";
-import { config } from "@/config";
-import { functions, inngest } from "@/inngest";
-import photosRouter from "@/routes/photos";
-import { createContext } from "@/trpc/context";
-import { appRouter } from "@/trpc/router";
+import { config } from "./config";
+import { functions, inngest } from "./inngest";
+import photosRouter from "./routes/photos";
+import { createContext } from "./trpc/context";
+import { appRouter } from "./trpc/router";
 
 const app = new Hono();
 

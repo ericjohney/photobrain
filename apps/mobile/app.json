@@ -2,10 +2,10 @@
 	"expo": {
 		"name": "PhotoBrain",
 		"slug": "photobrain",
-		"version": "0.1.0",
+		"version": "0.2.0",
 		"scheme": "photobrain",
 		"icon": "./assets/icon.png",
-		"orientation": "portrait",
+		"orientation": "default",
 		"userInterfaceStyle": "automatic",
 		"assetBundlePatterns": ["**/*"],
 		"ios": {
@@ -23,14 +23,29 @@
 			"bundler": "metro",
 			"output": "single"
 		},
-		"plugins": ["expo-router", "expo-updates"],
+		"plugins": [
+			"expo-router",
+			"expo-updates",
+			"expo-image",
+			"expo-status-bar",
+			"expo-font",
+			"expo-asset",
+			[
+				"expo-build-properties",
+				{
+					"ios": {
+						"deploymentTarget": "26.0"
+					}
+				}
+			]
+		],
 		"updates": {
 			"url": "https://u.expo.dev/5fcc4958-f697-46c6-9cfc-cd2ce0ac695c",
 			"checkAutomatically": "ON_LOAD",
 			"fallbackToCacheTimeout": 0
 		},
 		"runtimeVersion": {
-			"policy": "appVersion"
+			"policy": "fingerprint"
 		},
 		"extra": {
 			"router": {},

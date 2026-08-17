@@ -1,3 +1,5 @@
+import type { ForwardedRef } from "react";
+
 // Mock react-native-reanimated (manual mock — /mock entry point requires native worklets)
 jest.mock("react-native-reanimated", () => {
 	const { View } = require("react-native");
@@ -54,19 +56,36 @@ jest.mock("react-native-gesture-handler", () => {
 jest.mock("react-native-zoom-toolkit", () => {
 	const React = require("react");
 	const { View, FlatList } = require("react-native");
-	return {
-		Gallery: ({
-			data,
-			renderItem,
-			keyExtractor,
-			initialIndex,
-			onIndexChange,
-			...rest
-		}: any) => {
+	const Gallery = React.forwardRef(
+		(
+			{
+				data,
+				renderItem,
+				keyExtractor,
+				initialIndex,
+				onIndexChange,
+				...rest
+			}: any,
+			ref: ForwardedRef<{
+				setIndex: (index: number) => void;
+				reset: () => void;
+				getState: () => Record<string, never>;
+			}>,
+		) => {
 			const [currentIndex, setCurrentIndex] = React.useState(initialIndex || 0);
+			const initialOnIndexChange = React.useRef(onIndexChange);
+			React.useImperativeHandle(ref, () => ({
+				setIndex: setCurrentIndex,
+				reset: jest.fn(),
+				getState: () => ({}),
+			}));
+			React.useEffect(() => {
+				initialOnIndexChange.current?.(currentIndex);
+			}, []);
 			return React.createElement(
 				FlatList,
 				{
+					...rest,
 					testID: "loupe-gallery",
 					data,
 					horizontal: true,
@@ -79,9 +98,9 @@ jest.mock("react-native-zoom-toolkit", () => {
 					onMomentumScrollEnd: (e: any) => {
 						const offsetX = e.nativeEvent?.contentOffset?.x ?? 0;
 						const index = Math.round(offsetX / 750);
-						if (onIndexChange && index !== currentIndex) {
+						if (initialOnIndexChange.current && index !== currentIndex) {
 							setCurrentIndex(index);
-							onIndexChange(index);
+							initialOnIndexChange.current(index);
 						}
 					},
 					getItemLayout: (_: any, index: number) => ({
@@ -93,6 +112,9 @@ jest.mock("react-native-zoom-toolkit", () => {
 				null,
 			);
 		},
+	);
+	return {
+		Gallery,
 		fitContainer: (aspectRatio: number, container: any) => {
 			const containerAspect = container.width / container.height;
 			if (aspectRatio > containerAspect) {
@@ -125,14 +147,37 @@ jest.mock("expo-image", () => {
 	const { View } = require("react-native");
 	return {
 		Image: (props: any) => {
-			const { testID, source, ...rest } = props;
+			const { testID, source, accessibilityLabel, ...rest } = props;
 			return require("react").createElement(View, {
 				testID: testID || "expo-image",
 				accessibilityLabel:
-					typeof source?.uri === "string" ? source.uri : undefined,
+					accessibilityLabel ??
+					(typeof source?.uri === "string" ? source.uri : undefined),
+				sourceUri: typeof source?.uri === "string" ? source.uri : undefined,
 				...rest,
 			});
 		},
+	};
+});
+
+// Mock Liquid Glass while preserving availability controls for component tests.
+jest.mock("expo-glass-effect", () => {
+	const { View } = require("react-native");
+	return {
+		GlassView: ({
+			children,
+			...props
+		}: { children?: React.ReactNode; testID?: string } & Record<
+			string,
+			unknown
+		>) =>
+			require("react").createElement(
+				View,
+				{ ...props, testID: props.testID ?? "native-glass" },
+				children,
+			),
+		isGlassEffectAPIAvailable: jest.fn(() => true),
+		isLiquidGlassAvailable: jest.fn(() => true),
 	};
 });
 
@@ -155,21 +200,96 @@ jest.mock("@/config", () => ({
 	thumbnailUrl: (photoId: number, size: string, updatedAt?: any) => {
 		const base = `http://test-api:3000/api/photos/${photoId}/thumbnail/${size}`;
 		if (!updatedAt) return base;
-		const ts = updatedAt instanceof Date ? updatedAt.getTime() : new Date(updatedAt).getTime();
+		const ts =
+			updatedAt instanceof Date
+				? updatedAt.getTime()
+				: new Date(updatedAt).getTime();
 		return `${base}?v=${ts}`;
 	},
 }));
 
 // Mock expo-router
-jest.mock("expo-router", () => ({
-	useNavigation: () => ({
-		setOptions: jest.fn(),
-	}),
-	useRouter: () => ({
-		push: jest.fn(),
-		back: jest.fn(),
-	}),
-}));
+jest.mock("expo-router", () => {
+	const React = require("react");
+	const { TextInput, View } = require("react-native");
+	const router = { push: jest.fn(), back: jest.fn() };
+	const navigation = { setOptions: jest.fn() };
+	const Stack = ({
+		children,
+		...props
+	}: { children?: React.ReactNode } & Record<string, unknown>) =>
+		React.createElement(View, { ...props, testID: "native-stack" }, children);
+	Stack.Screen = () => null;
+	Stack.SearchBar = ({
+		ref: _ref,
+		onChangeText,
+		...props
+	}: {
+		ref?: unknown;
+		onChangeText?: (event: { nativeEvent: { text: string } }) => void;
+	} & Record<string, unknown>) => {
+		return React.createElement(TextInput, {
+			...props,
+			testID: "native-search-bar",
+			accessibilityLabel: "Search photos",
+			onChangeText: (text: string) => onChangeText?.({ nativeEvent: { text } }),
+		});
+	};
+
+	return {
+		Stack,
+		DefaultTheme: {
+			dark: false,
+			colors: {
+				primary: "#007aff",
+				background: "#ffffff",
+				card: "#ffffff",
+				text: "#000000",
+				border: "#d1d1d6",
+				notification: "#ff3b30",
+			},
+		},
+		DarkTheme: {
+			dark: true,
+			colors: {
+				primary: "#0a84ff",
+				background: "#000000",
+				card: "#1c1c1e",
+				text: "#ffffff",
+				border: "#38383a",
+				notification: "#ff453a",
+			},
+		},
+		ThemeProvider: ({ children }: { children: React.ReactNode }) => children,
+		useFocusEffect: (effect: () => undefined | (() => void)) =>
+			React.useEffect(effect, [effect]),
+		useNavigation: () => navigation,
+		useRouter: () => router,
+		__router: router,
+		__navigation: navigation,
+	};
+});
+
+jest.mock("expo-router/unstable-native-tabs", () => {
+	const React = require("react");
+	const { Text, View } = require("react-native");
+	const NativeTabs = ({ children }: { children: React.ReactNode }) =>
+		React.createElement(View, { testID: "native-tabs" }, children);
+	NativeTabs.Trigger = ({
+		children,
+		name,
+		...props
+	}: { children?: React.ReactNode; name: string } & Record<string, unknown>) =>
+		React.createElement(
+			View,
+			{ ...props, testID: `native-tab-${name}` },
+			children,
+		);
+	NativeTabs.Trigger.Icon = () => null;
+	NativeTabs.Trigger.Label = ({ children }: { children: React.ReactNode }) =>
+		React.createElement(Text, null, children);
+	return { NativeTabs };
+});
 
 // Mock react-native-safe-area-context
 jest.mock("react-native-safe-area-context", () => ({
@@ -206,12 +326,12 @@ jest.mock("@photobrain/utils", () => ({
 	},
 	formatDate: (dateStr: string) => dateStr,
 	parseDate: (value: Date | string | null | undefined) => {
-		if (!value) return new Date();
+		if (!value) return new Date(0);
 		if (value instanceof Date) return value;
 		const parsed = new Date(
 			value.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3"),
 		);
-		return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+		return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
 	},
 }));
 
@@ -221,8 +341,11 @@ jest.mock("@/hooks/use-job-progress", () => ({
 		progress: null,
 		isActive: false,
 		isCompleted: false,
+		isFailed: false,
 		isConnected: false,
 		error: null,
+		failureMessage: null,
+		allMessages: [],
 	}),
 }));
 

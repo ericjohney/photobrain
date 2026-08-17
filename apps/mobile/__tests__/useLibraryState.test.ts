@@ -20,6 +20,19 @@ describe("useLibraryState", () => {
 
 		expect(result.current.viewMode).toBe("loupe");
 		expect(result.current.activePhoto?.id).toBe(3);
+		expect(result.current.loupeSession).toBe(1);
+	});
+
+	it("keeps the loupe session stable during swipe navigation", () => {
+		const { result } = renderHook(() => useLibraryState(MOCK_PHOTOS));
+
+		act(() => result.current.openInLoupe(MOCK_PHOTOS[0]));
+		act(() => result.current.navigateToIndex(1));
+		expect(result.current.loupeSession).toBe(1);
+
+		act(() => result.current.closeLoupe());
+		act(() => result.current.openInLoupe(MOCK_PHOTOS[2]));
+		expect(result.current.loupeSession).toBe(2);
 	});
 
 	it("closeLoupe returns to grid view", () => {

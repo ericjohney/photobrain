@@ -89,9 +89,10 @@ The embedding function reads `large` WebP thumbnails in batches of 16, stores CL
 The authoritative schema is `packages/db/src/schema.ts`; `src/db/schema.ts` only re-exports it. Migrations and Drizzle Kit commands are in `packages/db`:
 
 ```bash
-cd packages/db && bun run db:generate
-cd packages/db && bun run db:migrate
-cd packages/db && bun run db:studio
+cd packages/db
+bun run db:generate
+DATABASE_URL=../../apps/api/photobrain.db bun run db:migrate
+DATABASE_URL=../../apps/api/photobrain.db bun run db:studio
 ```
 
 The API loads `sqlite-vec` at runtime for `vec_distance_L2` semantic search. See [`../../packages/db/AGENTS.md`](../../packages/db/AGENTS.md) for migration and lifecycle caveats.

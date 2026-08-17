@@ -4,7 +4,7 @@ Scope: `packages/image-processing`.
 
 ## Package Boundary
 
-This package is a Rust `cdylib` exposed to JavaScript through N-API. The native artifact is generated under `dist/` and is ignored by Git. Build it before running API code that imports native functions.
+This private workspace package is a Rust `cdylib` exposed to JavaScript through N-API. The native artifact is generated under `dist/` and is ignored by Git. It is not published independently; build it before running API code that imports native functions.
 
 ```bash
 cd packages/image-processing && bun run build
@@ -23,9 +23,10 @@ Exports are re-exported from `src/lib.rs` and consumed by the API:
 - `getSupportedExtensions()`: extensions include the leading dot.
 - `processPhoto(path, relativePath, thumbnailsDir)`: synchronous single-file processing.
 - `processPhotosBatch(paths, relativePaths, thumbnailsDir)`: parallel processing with result order matching input paths.
-- `processPhotosWithCallback(paths, relativePaths, thumbnailsDir, callback)`: parallel processing with blocking callbacks; completion order can differ from input order.
+- `processPhotosWithCallback(paths, relativePaths, thumbnailsDir, callback)`: parallel processing with blocking callbacks; completion order can differ from input order, and the return value is the number of input paths.
 - `extractExif(path)`: returns `ExifData` or `null`.
 - `generatePhash(path)`: direct decodable-image pHash helper.
+- `perceptualHash(path)`: legacy alias for the same direct-file pHash helper.
 - `generateThumbnailsFromFile(path, relativePath, baseDir, orientation)`: single-file thumbnail helper.
 - `clipTextEmbedding(text)`: CLIP text vector.
 - `batchGenerateClipEmbeddings(paths)`: aligned result array with `null` for failed inputs.

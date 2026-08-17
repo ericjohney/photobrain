@@ -3,9 +3,8 @@ import type { AppRouter } from "@photobrain/api";
 import { formatDate, formatFileSize } from "@photobrain/utils";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Image } from "expo-image";
-import { thumbnailUrl } from "@/config";
 import type React from "react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import {
 	Modal,
 	Pressable,
@@ -14,6 +13,7 @@ import {
 	Text,
 	View,
 } from "react-native";
+import { thumbnailUrl } from "@/config";
 import { useColors } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -22,7 +22,6 @@ type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 interface MetadataPanelProps {
 	visible: boolean;
 	photo: PhotoMetadata | null;
-	apiUrl: string;
 	onClose: () => void;
 }
 
@@ -92,7 +91,6 @@ function MetadataRow({ label, value }: MetadataRowProps) {
 export default function MetadataPanel({
 	visible,
 	photo,
-	apiUrl,
 	onClose,
 }: MetadataPanelProps) {
 	const colors = useColors();
@@ -110,7 +108,11 @@ export default function MetadataPanel({
 
 	// Format exposure info
 	const focalLength = exif?.focalLength ? `${exif.focalLength}mm` : null;
-	const aperture = exif?.aperture ? `f/${exif.aperture}` : null;
+	const aperture = exif?.aperture
+		? exif.aperture.startsWith("f/")
+			? exif.aperture
+			: `f/${exif.aperture}`
+		: null;
 	const iso = exif?.iso ? `ISO ${exif.iso}` : null;
 	const shutterSpeed = exif?.shutterSpeed || null;
 
@@ -131,7 +133,12 @@ export default function MetadataPanel({
 					<Text style={[styles.headerTitle, { color: colors.foreground }]}>
 						Photo Info
 					</Text>
-					<Pressable onPress={onClose} style={styles.closeButton}>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel="Close photo info"
+						onPress={onClose}
+						style={[styles.closeButton, { backgroundColor: colors.muted }]}
+					>
 						<Ionicons name="close" size={24} color={colors.foreground} />
 					</Pressable>
 				</View>
@@ -247,8 +254,8 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		paddingTop: 16,
-		paddingBottom: 16,
+		paddingTop: 18,
+		paddingBottom: 12,
 		paddingHorizontal: 16,
 	},
 	headerTitle: {
@@ -256,7 +263,11 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 	closeButton: {
-		padding: 4,
+		width: 32,
+		height: 32,
+		borderRadius: 16,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	content: {
 		flex: 1,

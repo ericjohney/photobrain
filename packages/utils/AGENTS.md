@@ -26,7 +26,7 @@ The nominal quality values are shared configuration but the current Rust WebP sa
 
 ## Date and General Helpers
 
-`parseDate` accepts a `Date` or string, converts EXIF `YYYY:MM:DD` prefixes, and falls back to the current date for invalid input. Be careful when using the fallback for sorting or grouping because invalid metadata becomes "now".
+`parseDate` accepts a `Date` or string, converts EXIF `YYYY:MM:DD` prefixes, and falls back to the Unix epoch for missing or invalid input so malformed metadata does not sort as newest.
 
 `debounce` has no cancel or flush API.
 

@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { openDatabase } from "@/db/setup";
+import { openDatabase } from "./setup";
 
 const sqlite = openDatabase();
 const db = drizzle(sqlite);

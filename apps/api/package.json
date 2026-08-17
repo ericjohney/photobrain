@@ -9,7 +9,8 @@
 	},
 	"scripts": {
 		"dev": "bun run src/index.ts",
-		"test": "bun test"
+		"test": "bun test",
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@hono/node-server": "^1.19.7",
@@ -27,6 +28,7 @@
 	},
 	"devDependencies": {
 		"@photobrain/config": "workspace:*",
-		"bun-types": "latest"
+		"bun-types": "latest",
+		"typescript": "~6.0.3"
 	}
 }

@@ -109,6 +109,17 @@ export const photoPhash = sqliteTable("photo_phash", {
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+export const scanJobs = sqliteTable("scan_jobs", {
+	id: text("id").primaryKey(),
+	phase: text("phase").notNull().default("queued"),
+	current: integer("current").notNull().default(0),
+	total: integer("total").notNull().default(0),
+	status: text("status").notNull().default("queued"),
+	error: text("error"),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -133,3 +144,5 @@ export type PhotoEmbedding = typeof photoEmbedding.$inferSelect;
 export type NewPhotoEmbedding = typeof photoEmbedding.$inferInsert;
 export type PhotoPhash = typeof photoPhash.$inferSelect;
 export type NewPhotoPhash = typeof photoPhash.$inferInsert;
+export type ScanJob = typeof scanJobs.$inferSelect;
+export type NewScanJob = typeof scanJobs.$inferInsert;

@@ -1,25 +1,81 @@
 import { fireEvent, waitFor } from "@testing-library/react-native";
-import React from "react";
 
-// tRPC mock — must go BEFORE the component import
+type SearchInput = { query: string; limit: number };
+type SearchOptions = {
+	enabled: boolean;
+	trpc: { abortOnUnmount: boolean };
+};
+
+const mockSearchCancel = jest.fn();
+let mockIsFocused = true;
+
+jest.mock("@react-navigation/native", () => ({
+	useIsFocused: () => mockIsFocused,
+}));
+
+const mockSearchUseQuery = jest.fn(
+	(input: SearchInput, options: SearchOptions) => {
+		if (!options.enabled || !input.query.trim()) {
+			return {
+				data: undefined,
+				isFetching: false,
+				isError: false,
+				error: null,
+				refetch: jest.fn(),
+			};
+		}
+		if (input.query === "xyznotfound") {
+			return {
+				data: { photos: [] },
+				isFetching: false,
+				isError: false,
+				error: null,
+				refetch: jest.fn(),
+			};
+		}
+		if (input.query === "offline") {
+			return {
+				data: undefined,
+				isFetching: false,
+				isError: true,
+				error: new Error("Offline"),
+				refetch: jest.fn(),
+			};
+		}
+		if (input.query === "cached-error") {
+			return {
+				data: { photos: require("./fixtures").SEARCH_RESULTS_PHOTOS },
+				isFetching: false,
+				isError: true,
+				error: new Error("Refetch failed"),
+				refetch: jest.fn(),
+			};
+		}
+		if (input.query === "cached-fetching") {
+			return {
+				data: { photos: require("./fixtures").SEARCH_RESULTS_PHOTOS },
+				isFetching: true,
+				isError: false,
+				error: null,
+				refetch: jest.fn(),
+			};
+		}
+		return {
+			data: { photos: require("./fixtures").SEARCH_RESULTS_PHOTOS },
+			isFetching: false,
+			isError: false,
+			error: null,
+			refetch: jest.fn(),
+		};
+	},
+);
+
 jest.mock("@/lib/trpc", () => ({
 	trpc: {
+		useUtils: () => ({ searchPhotos: { cancel: mockSearchCancel } }),
 		searchPhotos: {
-			useQuery: (
-				input: { query: string; limit: number },
-				opts: { enabled: boolean },
-			) => {
-				if (!opts.enabled || !input.query.trim()) {
-					return { data: undefined, isFetching: false };
-				}
-				if (input.query === "xyznotfound") {
-					return { data: { photos: [] }, isFetching: false };
-				}
-				return {
-					data: { photos: require("./fixtures").SEARCH_RESULTS_PHOTOS },
-					isFetching: false,
-				};
-			},
+			useQuery: (input: SearchInput, options: SearchOptions) =>
+				mockSearchUseQuery(input, options),
 		},
 	},
 }));
@@ -30,110 +86,162 @@ import { renderWithProviders } from "./test-utils";
 describe("SearchScreen", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
+		mockIsFocused = true;
 	});
 
-	it("shows the search prompt when no query is entered", async () => {
-		const { getByText } = renderWithProviders(<SearchScreen />);
-		await waitFor(() => {
-			expect(
-				getByText("Search your photos using natural language"),
-			).toBeTruthy();
+	it("renders the native search field and semantic-search guidance", async () => {
+		const { getByLabelText, getByText } = renderWithProviders(<SearchScreen />);
+
+		await waitFor(() => expect(getByLabelText("Search photos")).toBeTruthy());
+		expect(getByLabelText("Search photos").props.placeholder).toBe(
+			"Search Photos",
+		);
+		expect(getByText("Search your library")).toBeTruthy();
+		expect(getByText(/visual meaning/)).toBeTruthy();
+	});
+
+	it("debounces rapid input and requests only the final phrase", async () => {
+		const { getByLabelText, getAllByTestId } = renderWithProviders(
+			<SearchScreen />,
+		);
+		const input = await waitFor(() => getByLabelText("Search photos"));
+
+		fireEvent.changeText(input, "sunset beach");
+		fireEvent.changeText(input, "mountains in winter");
+
+		await waitFor(() => expect(getAllByTestId("expo-image")).toHaveLength(2), {
+			timeout: 1500,
 		});
-	});
-
-	it("shows search input with placeholder", async () => {
-		const { findByPlaceholderText } = renderWithProviders(<SearchScreen />);
+		const enabledQueries = mockSearchUseQuery.mock.calls.filter(
+			([, options]) => options.enabled,
+		);
 		expect(
-			await findByPlaceholderText("Search photos with AI..."),
-		).toBeTruthy();
+			enabledQueries.some(([input]) => input.query === "sunset beach"),
+		).toBe(false);
+		expect(
+			enabledQueries.some(
+				([input, options]) =>
+					input.query === "mountains in winter" &&
+					options.trpc.abortOnUnmount === true,
+			),
+		).toBe(true);
 	});
 
-	it("renders search results when a query is entered", async () => {
-		const { findByPlaceholderText, getAllByTestId } = renderWithProviders(
-			<SearchScreen />,
-		);
+	it("shows an empty state for an unmatched phrase", async () => {
+		const { getByLabelText, getByText } = renderWithProviders(<SearchScreen />);
+		const input = await waitFor(() => getByLabelText("Search photos"));
 
-		const input = await findByPlaceholderText("Search photos with AI...");
-		fireEvent.changeText(input, "sunset beach");
-
-		await waitFor(() => {
-			const images = getAllByTestId("expo-image");
-			expect(images.length).toBe(2);
-		});
-	});
-
-	it("shows no results message for unmatched query", async () => {
-		const { findByPlaceholderText, getByText } = renderWithProviders(
-			<SearchScreen />,
-		);
-
-		const input = await findByPlaceholderText("Search photos with AI...");
 		fireEvent.changeText(input, "xyznotfound");
+		await waitFor(() => expect(getByText("No results")).toBeTruthy(), {
+			timeout: 1500,
+		});
+		expect(getByText(/broader description/)).toBeTruthy();
+	});
 
-		await waitFor(() => {
-			expect(getByText("No results found")).toBeTruthy();
+	it("clears search from the native cancel action", async () => {
+		const { getByLabelText, getByText } = renderWithProviders(<SearchScreen />);
+		const input = await waitFor(() => getByLabelText("Search photos"));
+		fireEvent.changeText(input, "sunset beach");
+		await waitFor(() => expect(getByText("Searching...")).toBeTruthy());
+
+		fireEvent(input, "cancelButtonPress", { nativeEvent: {} });
+		await waitFor(() => expect(getByText("Search your library")).toBeTruthy());
+		expect(mockSearchCancel).toHaveBeenCalled();
+	});
+
+	it("runs example searches", async () => {
+		const { getAllByTestId, getByText } = renderWithProviders(<SearchScreen />);
+		await waitFor(() => expect(getByText("red car")).toBeTruthy());
+
+		fireEvent.press(getByText("red car"));
+		await waitFor(() => expect(getAllByTestId("expo-image")).toHaveLength(2), {
+			timeout: 1500,
 		});
 	});
 
-	it("clears the search input when clear button is pressed", async () => {
-		const { findByPlaceholderText, getByTestId, getByText } =
-			renderWithProviders(<SearchScreen />);
-
-		const input = await findByPlaceholderText("Search photos with AI...");
+	it("pauses searches while unfocused and restarts them on focus", async () => {
+		mockIsFocused = false;
+		const { getByLabelText, rerender } = renderWithProviders(<SearchScreen />);
+		const input = await waitFor(() => getByLabelText("Search photos"));
 		fireEvent.changeText(input, "sunset beach");
 
-		await waitFor(() => {
-			expect(getByTestId("icon-close-circle")).toBeTruthy();
+		await waitFor(
+			() =>
+				expect(mockSearchUseQuery).toHaveBeenCalledWith(
+					{ query: "sunset beach", limit: 50 },
+					expect.objectContaining({ enabled: false }),
+				),
+			{ timeout: 1500 },
+		);
+		expect(mockSearchCancel).toHaveBeenCalled();
+
+		mockIsFocused = true;
+		rerender(<SearchScreen />);
+		await waitFor(() =>
+			expect(mockSearchUseQuery).toHaveBeenCalledWith(
+				{ query: "sunset beach", limit: 50 },
+				expect.objectContaining({ enabled: true }),
+			),
+		);
+	});
+
+	it("keeps cached results visible when a background refetch fails", async () => {
+		const { getAllByTestId, getByLabelText, queryByText } = renderWithProviders(
+			<SearchScreen />,
+		);
+		fireEvent.changeText(
+			await waitFor(() => getByLabelText("Search photos")),
+			"cached-error",
+		);
+
+		await waitFor(() => expect(getAllByTestId("expo-image")).toHaveLength(2), {
+			timeout: 1500,
 		});
+		expect(queryByText("Search unavailable")).toBeNull();
+	});
 
-		fireEvent.press(getByTestId("icon-close-circle"));
+	it("keeps cached results visible during a background refetch", async () => {
+		const { getAllByTestId, getByLabelText, queryByText } = renderWithProviders(
+			<SearchScreen />,
+		);
+		fireEvent.changeText(
+			await waitFor(() => getByLabelText("Search photos")),
+			"cached-fetching",
+		);
 
-		await waitFor(() => {
-			expect(
-				getByText("Search your photos using natural language"),
-			).toBeTruthy();
+		await waitFor(() => expect(getAllByTestId("expo-image")).toHaveLength(2), {
+			timeout: 1500,
+		});
+		expect(queryByText("Searching...")).toBeNull();
+	});
+
+	it("shows a blocking error when a search has no cached data", async () => {
+		const { getByLabelText, getByText } = renderWithProviders(<SearchScreen />);
+		fireEvent.changeText(
+			await waitFor(() => getByLabelText("Search photos")),
+			"offline",
+		);
+
+		await waitFor(() => expect(getByText("Search unavailable")).toBeTruthy(), {
+			timeout: 1500,
 		});
 	});
 
-	it("opens loupe view when a search result is tapped", async () => {
-		const { findByPlaceholderText, getAllByTestId, getByText } =
-			renderWithProviders(<SearchScreen />);
-
-		const input = await findByPlaceholderText("Search photos with AI...");
+	it("opens a result in the loupe with the correct metadata", async () => {
+		const { getByLabelText, getByTestId, getByText } = renderWithProviders(
+			<SearchScreen />,
+		);
+		const input = await waitFor(() => getByLabelText("Search photos"));
 		fireEvent.changeText(input, "sunset beach");
 
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBe(2);
+		await waitFor(() => expect(getByTestId("search-result-1")).toBeTruthy(), {
+			timeout: 1500,
 		});
+		fireEvent.press(getByTestId("search-result-1"));
 
-		const images = getAllByTestId("expo-image");
-		fireEvent.press(images[0]);
-
-		await waitFor(() => {
-			expect(getByText("Share")).toBeTruthy();
-			expect(getByText("Like")).toBeTruthy();
-			expect(getByText("Info")).toBeTruthy();
-			expect(getByText("Delete")).toBeTruthy();
-		});
-	});
-
-	it("shows correct photo data in loupe after tapping search result", async () => {
-		const { findByPlaceholderText, getAllByTestId, getByText } =
-			renderWithProviders(<SearchScreen />);
-
-		const input = await findByPlaceholderText("Search photos with AI...");
-		fireEvent.changeText(input, "sunset beach");
-
-		await waitFor(() => {
-			expect(getAllByTestId("expo-image").length).toBe(2);
-		});
-
-		const images = getAllByTestId("expo-image");
-		fireEvent.press(images[0]);
-
-		await waitFor(() => {
-			expect(getByText(/6000 × 4000/)).toBeTruthy();
-			expect(getByText(/4\.3 MB/)).toBeTruthy();
-		});
+		await waitFor(() => expect(getByTestId("loupe-view")).toBeTruthy());
+		expect(getByText("Info")).toBeTruthy();
+		expect(getByText(/6000 × 4000/)).toBeTruthy();
+		expect(getByText(/4\.3 MB/)).toBeTruthy();
 	});
 });

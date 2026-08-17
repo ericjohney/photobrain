@@ -4,11 +4,18 @@ import { formatFileSize, parseDate } from "@photobrain/utils";
 import type { inferRouterOutputs } from "@trpc/server";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import React, { useCallback, useState } from "react";
-import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	Pressable,
+	StyleSheet,
+	Text,
+	useWindowDimensions,
+	View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Gallery } from "react-native-zoom-toolkit";
+import { Gallery, type GalleryRefType } from "react-native-zoom-toolkit";
 import { thumbnailUrl } from "@/config";
+import GlassSurface from "./GlassSurface";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -16,83 +23,143 @@ type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 interface LoupeViewProps {
 	photos: PhotoMetadata[];
 	initialIndex: number;
-	apiUrl: string;
 	onClose: () => void;
 	onIndexChange: (index: number) => void;
 	onShowMetadata: (photo: PhotoMetadata) => void;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
-	Dimensions.get("window");
-
 export default function LoupeView({
 	photos,
 	initialIndex,
-	apiUrl,
 	onClose,
 	onIndexChange,
 	onShowMetadata,
 }: LoupeViewProps) {
 	const insets = useSafeAreaInsets();
-	const [currentIndex, setCurrentIndex] = useState(initialIndex);
-	const currentPhoto = photos[currentIndex];
-
-	const handleIndexChange = useCallback(
-		(index: number) => {
-			setCurrentIndex(index);
-			onIndexChange(index);
-		},
-		[onIndexChange],
+	const { width, height } = useWindowDimensions();
+	const openingIndex =
+		photos.length > 0
+			? Math.min(Math.max(initialIndex, 0), photos.length - 1)
+			: 0;
+	const [currentIndex, setCurrentIndex] = useState(openingIndex);
+	const currentIndexRef = useRef(openingIndex);
+	const currentPhotoIdRef = useRef<number | null>(
+		photos[openingIndex]?.id ?? null,
 	);
+	const photosRef = useRef(photos);
+	photosRef.current = photos;
+	const galleryRef = useRef<GalleryRefType>(null);
+	const onIndexChangeRef = useRef(onIndexChange);
+	onIndexChangeRef.current = onIndexChange;
+	const [chromeVisible, setChromeVisible] = useState(true);
+	const identityIndex = photos.findIndex(
+		(photo) => photo.id === currentPhotoIdRef.current,
+	);
+	const safeCurrentIndex =
+		photos.length > 0
+			? identityIndex >= 0
+				? identityIndex
+				: Math.min(currentIndex, photos.length - 1)
+			: 0;
+	const currentPhoto = photos[safeCurrentIndex];
+
+	useEffect(() => {
+		if (!currentPhoto) {
+			currentPhotoIdRef.current = null;
+			return;
+		}
+		const identityChanged = currentPhotoIdRef.current !== currentPhoto.id;
+		currentPhotoIdRef.current = currentPhoto.id;
+		if (safeCurrentIndex === currentIndexRef.current) {
+			if (identityChanged) onIndexChangeRef.current(safeCurrentIndex);
+			return;
+		}
+		currentIndexRef.current = safeCurrentIndex;
+		setCurrentIndex(safeCurrentIndex);
+		galleryRef.current?.setIndex(safeCurrentIndex);
+		onIndexChangeRef.current(safeCurrentIndex);
+	}, [currentPhoto, safeCurrentIndex]);
+
+	const handleIndexChange = useCallback((index: number) => {
+		if (index === currentIndexRef.current) return;
+		currentIndexRef.current = index;
+		currentPhotoIdRef.current = photosRef.current[index]?.id ?? null;
+		setCurrentIndex(index);
+		onIndexChangeRef.current(index);
+		void Haptics.selectionAsync();
+	}, []);
 
 	const renderItem = useCallback(
-		(item: PhotoMetadata, _index: number) => (
+		(item: PhotoMetadata) => (
 			<Image
-				source={{ uri: thumbnailUrl(item.id, "large", item.thumbnailUpdatedAt) }}
+				source={{
+					uri: thumbnailUrl(item.id, "large", item.thumbnailUpdatedAt),
+				}}
 				placeholder={{
 					uri: thumbnailUrl(item.id, "small", item.thumbnailUpdatedAt),
 				}}
-				style={styles.image}
+				style={{ width, height }}
 				contentFit="contain"
 				priority="high"
 				cachePolicy="memory-disk"
+				accessibilityLabel={item.name}
+				accessibilityIgnoresInvertColors
 			/>
 		),
-		[],
+		[height, width],
 	);
 
-	const keyExtractor = useCallback(
-		(item: PhotoMetadata, _index: number) => item.id.toString(),
-		[],
-	);
+	if (!currentPhoto) {
+		return (
+			<View style={styles.container} testID="loupe-view">
+				<View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+					<GlassSurface
+						style={styles.roundButton}
+						fallbackStyle={styles.darkGlassFallback}
+						glassEffectStyle="clear"
+						colorScheme="dark"
+						isInteractive
+					>
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel="Close photo"
+							onPress={onClose}
+							style={styles.buttonHitArea}
+						>
+							<Ionicons name="chevron-down" size={23} color="#ffffff" />
+						</Pressable>
+					</GlassSurface>
+				</View>
+			</View>
+		);
+	}
 
-	// Format the date nicely
-	const photoDate = currentPhoto?.exif?.dateTaken || currentPhoto?.modifiedAt;
-	const dateObj = photoDate ? parseDate(photoDate) : null;
-	const formattedDate = dateObj
-		? dateObj.toLocaleDateString("en-US", {
-				weekday: "short",
-				month: "short",
-				day: "numeric",
-				year: "numeric",
-			})
-		: "";
-	const formattedTime = dateObj
-		? dateObj.toLocaleTimeString("en-US", {
-				hour: "numeric",
-				minute: "2-digit",
-			})
-		: "";
+	const date = parseDate(
+		currentPhoto.exif?.dateTaken ??
+			currentPhoto.modifiedAt ??
+			currentPhoto.createdAt,
+	);
+	const formattedDate = date.toLocaleDateString(undefined, {
+		weekday: "short",
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+	const formattedTime = date.toLocaleTimeString(undefined, {
+		hour: "numeric",
+		minute: "2-digit",
+	});
 
 	return (
-		<View style={styles.container}>
-			{/* Photo viewer with built-in pinch/pan/double-tap zoom */}
+		<View style={styles.container} testID="loupe-view">
 			<Gallery
+				ref={galleryRef}
 				data={photos}
 				renderItem={renderItem}
-				keyExtractor={keyExtractor}
-				initialIndex={initialIndex}
+				keyExtractor={(photo) => photo.id.toString()}
+				initialIndex={safeCurrentIndex}
 				onIndexChange={handleIndexChange}
+				onTap={() => setChromeVisible((visible) => !visible)}
 				maxScale={5}
 				gap={20}
 				pinchMode="clamp"
@@ -101,166 +168,134 @@ export default function LoupeView({
 				zoomEnabled
 			/>
 
-			{/* Top overlay controls */}
-			<View
-				style={[styles.topBar, { paddingTop: insets.top + 4 }]}
-				pointerEvents="box-none"
-			>
-				<Pressable onPress={onClose} style={styles.topButton}>
-					<Ionicons name="chevron-back" size={28} color="#ffffff" />
-				</Pressable>
-
-				<View style={styles.topActions}>
-					<Pressable style={styles.topButton}>
-						<Ionicons name="star-outline" size={24} color="#ffffff" />
-					</Pressable>
-					<Pressable style={styles.topButton}>
-						<Ionicons
-							name="ellipsis-horizontal"
-							size={24}
-							color="#ffffff"
-						/>
-					</Pressable>
-				</View>
-			</View>
-
-			{/* Bottom overlay */}
-			<View
-				style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}
-				pointerEvents="box-none"
-			>
-				{/* Date and info */}
-				<View style={styles.dateRow}>
-					<View>
-						<Text style={styles.dateText}>{formattedDate}</Text>
-						<Text style={styles.timeText}>
-							{formattedTime}
-							{currentPhoto?.width && currentPhoto?.height
-								? `  ·  ${currentPhoto.width} × ${currentPhoto.height}`
-								: ""}
-							{currentPhoto
-								? `  ·  ${formatFileSize(currentPhoto.size)}`
-								: ""}
-						</Text>
+			{chromeVisible && (
+				<>
+					<View
+						style={[styles.topBar, { paddingTop: insets.top + 8 }]}
+						pointerEvents="box-none"
+					>
+						<GlassSurface
+							style={styles.roundButton}
+							fallbackStyle={styles.darkGlassFallback}
+							glassEffectStyle="clear"
+							colorScheme="dark"
+							isInteractive
+						>
+							<Pressable
+								accessibilityRole="button"
+								accessibilityLabel="Close photo"
+								onPress={onClose}
+								style={styles.buttonHitArea}
+							>
+								<Ionicons name="chevron-down" size={23} color="#ffffff" />
+							</Pressable>
+						</GlassSurface>
+						<GlassSurface
+							style={styles.counterPill}
+							fallbackStyle={styles.darkGlassFallback}
+							glassEffectStyle="clear"
+							colorScheme="dark"
+						>
+							<Text style={styles.counterText}>
+								{safeCurrentIndex + 1} of {photos.length}
+							</Text>
+						</GlassSurface>
 					</View>
-				</View>
 
-				{/* Action buttons */}
-				<View style={styles.actionRow}>
-					<Pressable
-						style={styles.actionButton}
-						onPress={() => {
-							Haptics.selectionAsync();
-						}}
+					<View
+						style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}
+						pointerEvents="box-none"
 					>
-						<Ionicons name="share-outline" size={24} color="#ffffff" />
-						<Text style={styles.actionLabel}>Share</Text>
-					</Pressable>
-
-					<Pressable
-						style={styles.actionButton}
-						onPress={() => {
-							Haptics.selectionAsync();
-						}}
-					>
-						<Ionicons name="heart-outline" size={24} color="#ffffff" />
-						<Text style={styles.actionLabel}>Like</Text>
-					</Pressable>
-
-					<Pressable
-						style={styles.actionButton}
-						onPress={() => {
-							Haptics.selectionAsync();
-							if (currentPhoto) onShowMetadata(currentPhoto);
-						}}
-					>
-						<Ionicons
-							name="information-circle-outline"
-							size={24}
-							color="#ffffff"
-						/>
-						<Text style={styles.actionLabel}>Info</Text>
-					</Pressable>
-
-					<Pressable
-						style={styles.actionButton}
-						onPress={() => {
-							Haptics.selectionAsync();
-						}}
-					>
-						<Ionicons name="trash-outline" size={24} color="#ffffff" />
-						<Text style={styles.actionLabel}>Delete</Text>
-					</Pressable>
-				</View>
-			</View>
+						<GlassSurface
+							style={styles.infoCard}
+							fallbackStyle={styles.darkGlassFallback}
+							glassEffectStyle="regular"
+							colorScheme="dark"
+						>
+							<View style={styles.photoInfo}>
+								<Text style={styles.dateText}>{formattedDate}</Text>
+								<Text style={styles.detailText} numberOfLines={1}>
+									{formattedTime}
+									{currentPhoto.width && currentPhoto.height
+										? `  ·  ${currentPhoto.width} × ${currentPhoto.height}`
+										: ""}
+									{`  ·  ${formatFileSize(currentPhoto.size)}`}
+								</Text>
+							</View>
+							<Pressable
+								accessibilityRole="button"
+								accessibilityLabel="Show photo info"
+								onPress={() => {
+									void Haptics.selectionAsync();
+									onShowMetadata(currentPhoto);
+								}}
+								style={styles.infoButton}
+							>
+								<Ionicons name="information-circle" size={26} color="#ffffff" />
+								<Text style={styles.infoLabel}>Info</Text>
+							</Pressable>
+						</GlassSurface>
+					</View>
+				</>
+			)}
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: "#000000",
-	},
-	image: {
-		width: SCREEN_WIDTH,
-		height: SCREEN_HEIGHT,
-	},
+	container: { flex: 1, backgroundColor: "#000000" },
+	darkGlassFallback: { backgroundColor: "rgba(28,28,30,0.9)" },
 	topBar: {
 		position: "absolute",
 		top: 0,
 		left: 0,
 		right: 0,
+		paddingHorizontal: 14,
 		flexDirection: "row",
+		alignItems: "center",
 		justifyContent: "space-between",
-		alignItems: "center",
-		paddingHorizontal: 4,
-		paddingBottom: 8,
 	},
-	topButton: {
-		padding: 10,
+	roundButton: {
+		width: 44,
+		height: 44,
+		borderRadius: 22,
+		borderCurve: "continuous",
+		overflow: "hidden",
 	},
-	topActions: {
+	buttonHitArea: { flex: 1, alignItems: "center", justifyContent: "center" },
+	counterPill: {
+		minHeight: 36,
+		justifyContent: "center",
+		paddingHorizontal: 13,
+		borderRadius: 18,
+		borderCurve: "continuous",
+	},
+	counterText: { color: "#ffffff", fontSize: 13, fontWeight: "600" },
+	bottomBar: { position: "absolute", left: 12, right: 12, bottom: 0 },
+	infoCard: {
+		minHeight: 70,
+		borderRadius: 24,
+		borderCurve: "continuous",
+		paddingLeft: 16,
+		paddingRight: 8,
+		paddingVertical: 8,
 		flexDirection: "row",
 		alignItems: "center",
+		gap: 12,
 	},
-	bottomBar: {
-		position: "absolute",
-		bottom: 0,
-		left: 0,
-		right: 0,
-		paddingHorizontal: 16,
-		paddingTop: 16,
+	photoInfo: { flex: 1, minWidth: 0 },
+	dateText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
+	detailText: { color: "rgba(255,255,255,0.72)", fontSize: 12, marginTop: 3 },
+	infoButton: {
+		width: 54,
+		minHeight: 54,
+		alignItems: "center",
+		justifyContent: "center",
 	},
-	dateRow: {
-		marginBottom: 16,
-	},
-	dateText: {
-		color: "#ffffff",
-		fontSize: 15,
+	infoLabel: {
+		color: "rgba(255,255,255,0.78)",
+		fontSize: 10,
 		fontWeight: "600",
-	},
-	timeText: {
-		color: "rgba(255,255,255,0.65)",
-		fontSize: 13,
-		marginTop: 2,
-	},
-	actionRow: {
-		flexDirection: "row",
-		justifyContent: "space-around",
-		paddingTop: 12,
-		borderTopWidth: StyleSheet.hairlineWidth,
-		borderTopColor: "rgba(255,255,255,0.15)",
-	},
-	actionButton: {
-		alignItems: "center",
-		gap: 4,
-		paddingVertical: 4,
-		paddingHorizontal: 16,
-	},
-	actionLabel: {
-		color: "rgba(255,255,255,0.7)",
-		fontSize: 11,
-		fontWeight: "500",
+		marginTop: 1,
 	},
 });

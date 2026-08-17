@@ -25,6 +25,8 @@ The API's `apps/api/src/db/schema.ts` re-exports this package. Update this packa
 
 `photo_phash` is one-to-one with `photos`, stores an unconstrained hash string and algorithm name, and cascades on photo deletion.
 
+`scan_jobs` stores durable scan phase, status, counts, error text, and timestamps. The API treats `completed` and `failed` as terminal states and mobile uses this table as a polling/restart fallback for Realtime.
+
 Status strings, hash format, embedding dimensions, and RAW status values are conventions rather than database check constraints.
 
 ## Migrations
@@ -34,6 +36,7 @@ Current migrations:
 1. `0000_thankful_miek.sql`: creates the four tables and base indexes/foreign keys.
 2. `0001_busy_mockingbird.sql`: adds EXIF filter indexes.
 3. `0002_minor_giant_girl.sql`: adds `photos.thumbnail_updated_at`.
+4. `0003_hot_midnight.sql`: creates `scan_jobs`.
 
 Use the package scripts:
 
@@ -44,6 +47,8 @@ cd packages/db && bun run db:studio
 ```
 
 The API runs migrations only when `RUN_DB_INIT=true` or `1`, using `../../packages/db/drizzle` relative to the API process. The normal API startup defaults to no migration. There is no committed application SQLite database.
+
+Drizzle Kit resolves a relative `DATABASE_URL` from `packages/db`. To migrate the API's default local database explicitly, run `DATABASE_URL=../../apps/api/photobrain.db bun run db:migrate` from this package. The API Docker image instead enables startup migration.
 
 ## Runtime Vector Search
 
@@ -59,6 +64,7 @@ Any change to embedding serialization must be coordinated across `apps/api/src/i
 - A later result with no EXIF or pHash does not delete an existing sidecar row.
 - `thumbnailUpdatedAt` is updated on each successful scan and is used by clients for URL cache busting.
 - Foreign-key cascade behavior is defined in Drizzle relations/schema and should be preserved in migrations.
+- Scan progress updates must not transition a `completed` or `failed` job back to a running phase.
 
 ## Tests
 

@@ -4,6 +4,7 @@
 
 # Dependencies (EAS installs these during build)
 node_modules/
+bun.lockb
 
 # Git
 .git/
@@ -17,11 +18,15 @@ packages/image-processing/.fastembed_cache/
 # Photo library and thumbnails
 temp-photos/
 apps/api/thumbnails/
+data/
+processed/
 
 # Database files
 *.db
 *.db-journal
 *.db-wal
+*.sqlite
+*.sqlite3
 
 # fastembed caches
 .fastembed_cache/
@@ -30,18 +35,25 @@ apps/api/.fastembed_cache/
 # Build artifacts from other apps
 apps/api/dist/
 apps/web/dist/
-apps/worker/dist/
+build/
 
 # Turbo cache
 .turbo/
+.cache/
+.nx/
+
+# Local environment files
+.env
+.env.local
+.envrc.local
 
 # Claude / AI
 .claude/
 
 # Test screenshots and artifacts
 test-results/
-*.png
-*.jpg
+coverage/
+.nyc_output/
 test-*.ts
 test-*.js
 
@@ -56,3 +68,6 @@ docker-compose*.yml
 
 # Misc
 *.log
+logs/
+*.tmp
+temp/

@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { useColors } from "@/theme";
+import GlassSurface from "./GlassSurface";
 
-interface ProgressData {
+export interface ProgressData {
 	phase: string | null;
 	current: number;
 	total: number;
@@ -14,6 +14,8 @@ interface ActivityBarProps {
 	progress: ProgressData;
 	isActive: boolean;
 	isCompleted: boolean;
+	isFailed?: boolean;
+	failureMessage?: string | null;
 }
 
 function ProgressBar({
@@ -38,11 +40,10 @@ function ProgressBar({
 					{
 						backgroundColor: color,
 						width: `${progress}%`,
-						// CSS transition for smooth animation on web
-						...(Platform.OS === "web" && {
-							transition: "width 0.3s ease-out",
-						}),
-					} as any,
+					},
+					Platform.OS === "web"
+						? ({ transition: "width 0.3s ease-out" } as unknown as ViewStyle)
+						: undefined,
 				]}
 			/>
 		</View>
@@ -58,9 +59,13 @@ function getPhaseLabel(phase: string | null): string {
 		case "embedding":
 			return "Generating Embeddings";
 		case "scan-complete":
-			return "Scan Complete";
+			return "Preparing Search";
 		case "completed":
 			return "Complete";
+		case "queued":
+			return "Scan Queued";
+		case "failed":
+			return "Scan Failed";
 		default:
 			return "Processing";
 	}
@@ -83,10 +88,12 @@ export default function ActivityBar({
 	progress,
 	isActive,
 	isCompleted,
+	isFailed = false,
+	failureMessage,
 }: ActivityBarProps) {
 	const colors = useColors();
 
-	if (!isActive && !isCompleted) {
+	if (!isActive && !isCompleted && !isFailed) {
 		return null;
 	}
 
@@ -95,10 +102,16 @@ export default function ActivityBar({
 	const isEmbedding = progress.phase === "embedding";
 
 	return (
-		<View style={[styles.container, { backgroundColor: colors.toolbar }]}>
+		<GlassSurface style={styles.container} glassEffectStyle="clear">
 			<View style={styles.progressRow}>
 				<View style={styles.progressLabel}>
-					{isActive ? (
+					{isFailed ? (
+						<Ionicons
+							name="alert-circle"
+							size={14}
+							color={colors.destructive}
+						/>
+					) : isActive ? (
 						<Ionicons name={icon} size={14} color={colors.primary} />
 					) : isCompleted ? (
 						<Ionicons name="checkmark-circle" size={14} color="#22c55e" />
@@ -109,6 +122,14 @@ export default function ActivityBar({
 						{label}
 					</Text>
 				</View>
+				{isFailed && failureMessage && (
+					<Text
+						style={[styles.failureText, { color: colors.destructive }]}
+						numberOfLines={2}
+					>
+						{failureMessage}
+					</Text>
+				)}
 				{progress.total > 0 && (
 					<View style={styles.progressInfo}>
 						<Text
@@ -122,18 +143,24 @@ export default function ActivityBar({
 					<ProgressBar
 						current={progress.current}
 						total={progress.total}
-						color={isCompleted ? "#22c55e" : isEmbedding ? "#22c55e" : colors.primary}
+						color={
+							isCompleted ? "#22c55e" : isEmbedding ? "#22c55e" : colors.primary
+						}
 					/>
 				)}
 			</View>
-		</View>
+		</GlassSurface>
 	);
 }
 
 const styles = StyleSheet.create({
 	container: {
+		marginHorizontal: 12,
+		marginTop: 8,
 		paddingHorizontal: 16,
-		paddingVertical: 8,
+		paddingVertical: 10,
+		borderRadius: 18,
+		borderCurve: "continuous",
 		gap: 8,
 	},
 	progressRow: {
@@ -154,6 +181,10 @@ const styles = StyleSheet.create({
 	},
 	progressCount: {
 		fontSize: 12,
+	},
+	failureText: {
+		fontSize: 12,
+		lineHeight: 16,
 	},
 	progressBarContainer: {
 		height: 4,

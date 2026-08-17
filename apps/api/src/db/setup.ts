@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import * as sqliteVec from "sqlite-vec";
-import { config } from "@/config";
+import { config } from "../config";
 
 /**
  * Opens and configures a SQLite database connection

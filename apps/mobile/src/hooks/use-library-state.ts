@@ -1,101 +1,32 @@
 import type { AppRouter } from "@photobrain/api";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { inferRouterOutputs } from "@trpc/server";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
 export type ViewMode = "grid" | "loupe";
 
-interface LibraryState {
-	viewMode: ViewMode;
-	activePhoto: PhotoMetadata | null;
-	activePhotoIndex: number;
-}
-
-const STORAGE_KEY = "@photobrain/library-state";
-
-async function loadFromStorage(): Promise<Partial<LibraryState>> {
-	try {
-		const stored = await AsyncStorage.getItem(STORAGE_KEY);
-		if (stored) {
-			const parsed = JSON.parse(stored);
-			return {
-				viewMode: parsed.viewMode || "grid",
-			};
-		}
-	} catch {
-		// Ignore errors
-	}
-	return {};
-}
-
-async function saveToStorage(state: Partial<LibraryState>): Promise<void> {
-	try {
-		const current = await loadFromStorage();
-		await AsyncStorage.setItem(
-			STORAGE_KEY,
-			JSON.stringify({
-				...current,
-				viewMode: state.viewMode,
-			}),
-		);
-	} catch {
-		// Ignore errors
-	}
-}
-
 export function useLibraryState(photos: PhotoMetadata[] = []) {
-	const [viewMode, setViewModeInternal] = useState<ViewMode>("grid");
+	const [viewMode, setViewMode] = useState<ViewMode>("grid");
 	const [activePhoto, setActivePhoto] = useState<PhotoMetadata | null>(null);
-	const [activePhotoIndex, setActivePhotoIndex] = useState(-1);
-	const [isLoaded, setIsLoaded] = useState(false);
-
-	// Load from storage on mount
-	useEffect(() => {
-		loadFromStorage().then((stored) => {
-			if (stored.viewMode) {
-				setViewModeInternal(stored.viewMode);
-			}
-			setIsLoaded(true);
-		});
-	}, []);
-
-	// Sync active photo index when photos or activePhoto changes
-	useEffect(() => {
-		if (activePhoto) {
-			const index = photos.findIndex((p) => p.id === activePhoto.id);
-			setActivePhotoIndex(index);
-		} else {
-			setActivePhotoIndex(-1);
-		}
-	}, [activePhoto, photos]);
-
-	const setViewMode = useCallback((mode: ViewMode) => {
-		setViewModeInternal(mode);
-		saveToStorage({ viewMode: mode });
-	}, []);
+	const [loupeSession, setLoupeSession] = useState(0);
+	const activePhotoIndex = activePhoto
+		? photos.findIndex((photo) => photo.id === activePhoto.id)
+		: -1;
 
 	const navigatePhoto = useCallback(
 		(direction: "prev" | "next") => {
 			if (photos.length === 0) return;
-
-			let newIndex: number;
-			if (activePhotoIndex === -1) {
-				// No active photo, start from beginning or end
-				newIndex = direction === "next" ? 0 : photos.length - 1;
-			} else {
-				newIndex =
-					direction === "next"
+			const nextIndex =
+				activePhotoIndex === -1
+					? direction === "next"
+						? 0
+						: photos.length - 1
+					: direction === "next"
 						? Math.min(activePhotoIndex + 1, photos.length - 1)
 						: Math.max(activePhotoIndex - 1, 0);
-			}
-
-			const newPhoto = photos[newIndex];
-			if (newPhoto) {
-				setActivePhoto(newPhoto);
-			}
+			setActivePhoto(photos[nextIndex] ?? null);
 		},
 		[activePhotoIndex, photos],
 	);
@@ -103,52 +34,34 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 	const navigateToIndex = useCallback(
 		(index: number) => {
 			if (index >= 0 && index < photos.length) {
-				const photo = photos[index];
-				setActivePhoto(photo);
+				setActivePhoto(photos[index]);
 			}
 		},
 		[photos],
 	);
 
-	const openInLoupe = useCallback(
-		(photo: PhotoMetadata) => {
-			setActivePhoto(photo);
-			setActivePhotoIndex(photos.findIndex((p) => p.id === photo.id));
-			setViewMode("loupe");
-		},
-		[photos, setViewMode],
-	);
+	const openInLoupe = useCallback((photo: PhotoMetadata) => {
+		setActivePhoto(photo);
+		setLoupeSession((session) => session + 1);
+		setViewMode("loupe");
+	}, []);
 
-	const closeLoupe = useCallback(() => {
-		setViewMode("grid");
-	}, [setViewMode]);
-
-	// Navigation helpers
-	const hasPrev = activePhotoIndex > 0;
-	const hasNext = activePhotoIndex < photos.length - 1 && activePhotoIndex >= 0;
+	const closeLoupe = useCallback(() => setViewMode("grid"), []);
 
 	return {
-		// Loading state
-		isLoaded,
-
-		// View state
+		isLoaded: true,
 		viewMode,
 		setViewMode,
-
-		// Active photo state
 		activePhoto,
 		activePhotoIndex,
+		loupeSession,
 		setActivePhoto,
-
-		// Navigation
 		navigatePhoto,
 		navigateToIndex,
 		openInLoupe,
 		closeLoupe,
-		hasPrev,
-		hasNext,
-
-		// Computed
+		hasPrev: activePhotoIndex > 0,
+		hasNext: activePhotoIndex >= 0 && activePhotoIndex < photos.length - 1,
 		totalPhotos: photos.length,
 	};
 }

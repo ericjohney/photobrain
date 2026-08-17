@@ -1,13 +1,11 @@
 import { join } from "node:path";
-import {
-	processPhotosWithCallback,
-} from "@photobrain/image-processing";
+import { processPhotosWithCallback } from "@photobrain/image-processing";
 import { THUMBNAIL_CONFIG, type ThumbnailSize } from "@photobrain/utils";
 import { eq, like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { config } from "@/config";
-import { db } from "@/db";
-import { photos } from "@/db/schema";
+import { config } from "../config";
+import { db } from "../db";
+import { photos } from "../db/schema";
 
 const router = new Hono();
 
@@ -205,20 +203,18 @@ router.post("/reprocess-heic", async (c) => {
 		const relativePaths = heicPhotos.map((p) => p.path);
 		const thumbsDir = config.THUMBNAILS_DIRECTORY;
 
-		let processed = 0;
 		processPhotosWithCallback(
 			absolutePaths,
 			relativePaths,
 			thumbsDir,
 			(result) => {
-				processed++;
 				if (result.width && result.height) {
 					db.update(photos)
 						.set({
 							width: result.width,
 							height: result.height,
 							thumbnailStatus: "completed",
-						thumbnailUpdatedAt: new Date(),
+							thumbnailUpdatedAt: new Date(),
 						})
 						.where(eq(photos.path, result.path))
 						.run();
@@ -243,16 +239,17 @@ router.post("/reprocess-heic", async (c) => {
 // thumbnails but no timestamp. Remove after running once.
 router.post("/backfill-thumbnail-timestamps", async (c) => {
 	try {
-		const result = db
+		const updatedPhotos = db
 			.update(photos)
 			.set({ thumbnailUpdatedAt: new Date() })
 			.where(
 				sql`${photos.thumbnailStatus} = 'completed' AND ${photos.thumbnailUpdatedAt} IS NULL`,
 			)
-			.run();
+			.returning({ id: photos.id })
+			.all();
 		return c.json({
-			message: `Updated ${result.changes} photos with thumbnailUpdatedAt`,
-			count: result.changes,
+			message: `Updated ${updatedPhotos.length} photos with thumbnailUpdatedAt`,
+			count: updatedPhotos.length,
 		});
 	} catch (error) {
 		return c.json(

@@ -4,9 +4,10 @@ import {
 	processPhotosBatch,
 } from "@photobrain/image-processing";
 import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { photoExif, photoPhash, photos } from "@/db/schema";
+import { db } from "../../db";
+import { photoExif, photoPhash, photos } from "../../db/schema";
 import { inngest } from "../client";
+import { failJob, updateJobProgress } from "../progress";
 
 interface SavePhotoResult {
 	id: number;
@@ -167,18 +168,48 @@ export const scanPhotosFunction = inngest.createFunction(
 	{
 		id: "scan-photos",
 		concurrency: { limit: 1 },
+		onFailure: async ({ event, error, publish, step }) => {
+			const jobId = event.data.event.data.jobId;
+			const failedJob = await step.run("persist-terminal-failure", () =>
+				failJob(jobId, error),
+			);
+			if (!failedJob) return;
+			try {
+				await publish({
+					channel: `job:${jobId}`,
+					topic: "progress",
+					data: { phase: "failed", ...failedJob },
+				});
+			} catch (publishError) {
+				console.error(`Failed to publish failure for ${jobId}:`, publishError);
+			}
+		},
 	},
 	{ event: "photos/scan.requested" },
 	async ({ event, step, publish }) => {
 		const { directory, thumbnailsDir, jobId } = event.data;
+		const publishProgress = async (data: {
+			phase: string;
+			current: number;
+			total: number;
+		}) => {
+			try {
+				await publish({ channel: `job:${jobId}`, topic: "progress", data });
+			} catch (error) {
+				console.error(`Failed to publish progress for ${jobId}:`, error);
+			}
+		};
 		console.log(`📂 Starting parallel scan of ${directory}`);
 
 		// Publish initial status
-		await publish({
-			channel: `job:${jobId}`,
-			topic: "progress",
-			data: { phase: "discovering", current: 0, total: 0 },
-		});
+		const jobStarted = await step.run("claim-scan-job-v2", () =>
+			updateJobProgress(jobId, "discovering", 0, 0),
+		);
+		if (!jobStarted) {
+			console.warn(`Skipping scan for missing or terminal job ${jobId}`);
+			return { processed: 0, successful: 0 };
+		}
+		await publishProgress({ phase: "discovering", current: 0, total: 0 });
 
 		// Discovery step - wrapped in step.run for checkpointing
 		const discovery = await step.run("discover-photos", async () => {
@@ -193,16 +224,20 @@ export const scanPhotosFunction = inngest.createFunction(
 		const { filePaths, relativePaths, totalCount } = discovery;
 		console.log(`Found ${totalCount} photos`);
 
-		await publish({
-			channel: `job:${jobId}`,
-			topic: "progress",
-			data: { phase: "processing", current: 0, total: totalCount },
+		await step.run("mark-processing", () =>
+			updateJobProgress(jobId, "processing", 0, totalCount),
+		);
+		await publishProgress({
+			phase: "processing",
+			current: 0,
+			total: totalCount,
 		});
 
 		// Process photos in batches for better progress reporting
 		const BATCH_SIZE = 20;
 		let totalSuccessCount = 0;
 		let totalProcessedCount = 0;
+		const savedPhotoIds: number[] = [];
 
 		for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
 			const batchNum = Math.floor(i / BATCH_SIZE);
@@ -223,72 +258,75 @@ export const scanPhotosFunction = inngest.createFunction(
 				},
 			);
 
-			// Save results to database
-			let batchSuccessCount = 0;
-			for (const photoResult of batchResults) {
-				if (photoResult.success) {
-					try {
-						await saveRustPhotoToDb(photoResult);
-						batchSuccessCount++;
-					} catch (error) {
-						console.error(`Error saving ${photoResult.path}:`, error);
+			const batchPhotoIds = await step.run(
+				`save-batch-${batchNum}`,
+				async () => {
+					const photoIds: number[] = [];
+					for (const photoResult of batchResults) {
+						if (!photoResult.success) continue;
+						const savedPhoto = await saveRustPhotoToDb(photoResult);
+						photoIds.push(savedPhoto.id);
 					}
-				}
-			}
+					return photoIds;
+				},
+			);
 
-			totalSuccessCount += batchSuccessCount;
+			totalSuccessCount += batchPhotoIds.length;
 			totalProcessedCount += batchResults.length;
+			savedPhotoIds.push(...batchPhotoIds);
 
 			// Publish progress after each batch
-			await publish({
-				channel: `job:${jobId}`,
-				topic: "progress",
-				data: {
-					phase: "processing",
-					current: totalProcessedCount,
-					total: totalCount,
-				},
+			await step.run(`mark-batch-${batchNum}-processed`, () =>
+				updateJobProgress(jobId, "processing", totalProcessedCount, totalCount),
+			);
+			await publishProgress({
+				phase: "processing",
+				current: totalProcessedCount,
+				total: totalCount,
 			});
 		}
 
-		const result = { processed: totalProcessedCount, successful: totalSuccessCount };
+		const result = {
+			processed: totalProcessedCount,
+			successful: totalSuccessCount,
+		};
 
 		console.log(
 			`✅ Scan complete: ${result.successful}/${result.processed} successful`,
 		);
 
-		// Queue embedding job if we processed photos
-		if (result.successful > 0) {
-			const pendingPhotos = await step.run(
-				"get-pending-embeddings",
-				async () => {
-					return db
-						.select({ id: photos.id })
-						.from(photos)
-						.where(eq(photos.embeddingStatus, "pending"))
-						.all();
-				},
-			);
-
-			if (pendingPhotos.length > 0) {
-				const photoIds = pendingPhotos.map((p) => p.id);
-				await step.sendEvent("trigger-embeddings", {
-					name: "photos/embeddings.requested",
-					data: { photoIds, thumbnailsDir, jobId },
-				});
-				console.log(`📊 Triggered embedding job for ${photoIds.length} photos`);
-			}
-		}
-
-		await publish({
-			channel: `job:${jobId}`,
-			topic: "progress",
-			data: {
-				phase: "scan-complete",
+		if (result.processed > 0 && result.successful === 0) {
+			const error = new Error("No photos could be processed");
+			await step.run("mark-scan-failed", () => failJob(jobId, error));
+			await publishProgress({
+				phase: "failed",
 				current: result.processed,
 				total: result.processed,
-			},
+			});
+			return result;
+		}
+
+		const finalPhase = savedPhotoIds.length > 0 ? "scan-complete" : "completed";
+		await step.run("mark-scan-finished", () =>
+			updateJobProgress(jobId, finalPhase, result.processed, result.processed),
+		);
+		await publishProgress({
+			phase: finalPhase,
+			current: result.processed,
+			total: result.processed,
 		});
+
+		// This must remain the final side effect in the parent function. The child
+		// can complete immediately, so writing scan-complete afterward would regress it.
+		if (savedPhotoIds.length > 0) {
+			await step.sendEvent("trigger-embeddings", {
+				name: "photos/embeddings.requested",
+				data: { photoIds: savedPhotoIds, thumbnailsDir, jobId },
+			});
+			console.log(
+				`📊 Triggered embedding job for ${savedPhotoIds.length} photos`,
+			);
+		}
 
 		return result;
 	},

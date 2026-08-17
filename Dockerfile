@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1: Builder - Install dependencies and build the Rust N-API addon
 # =============================================================================
-FROM oven/bun:1.3.5-debian AS builder
+FROM oven/bun:1.3.14-debian AS builder
 WORKDIR /app
 
 # Install Rust toolchain and build dependencies
@@ -28,7 +28,7 @@ COPY apps/mobile/package.json apps/mobile/
 
 # Install dependencies with cache mount
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    bun install
+    bun install --frozen-lockfile --linker hoisted
 
 # Copy source files
 COPY packages/image-processing packages/image-processing
@@ -38,7 +38,7 @@ COPY packages/db packages/db
 COPY apps/api apps/api
 COPY apps/web apps/web
 
-# Build the image-processing package (Rust/WASM) with Cargo cache mount
+# Build the Rust N-API image-processing package with Cargo cache mount
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/app/packages/image-processing/target \
@@ -47,7 +47,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # =============================================================================
 # Stage 2: API Production Image
 # =============================================================================
-FROM oven/bun:1.3.5-slim AS api
+FROM oven/bun:1.3.14-slim AS api
 
 # Install CA certificates (for HTTPS model downloads), exiftool and native module dependencies
 RUN apt-get update && apt-get install -y \
@@ -59,6 +59,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+ENV RUN_DB_INIT=true
 
 # Copy package files
 COPY --from=builder /app/package.json /app/bun.lock /app/turbo.json ./
@@ -100,7 +101,7 @@ RUN bun run build --filter=@photobrain/web
 # =============================================================================
 # Stage 4: Web Production Image
 # =============================================================================
-FROM oven/bun:1.3.5-slim AS web
+FROM oven/bun:1.3.14-slim AS web
 
 WORKDIR /app
 
@@ -119,7 +120,7 @@ CMD ["bun", "run", "serve.ts"]
 # Stage 5: Mobile Expo Dev Server
 # Runs the Expo dev server so Expo Go on Android can connect to it.
 # =============================================================================
-FROM oven/bun:1.3.5-debian AS mobile
+FROM oven/bun:1.3.14-debian AS mobile
 
 WORKDIR /app
 
@@ -135,7 +136,7 @@ COPY apps/mobile/package.json apps/mobile/
 
 # Install dependencies
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    bun install
+    bun install --frozen-lockfile --linker hoisted
 
 # Copy workspace packages needed by the mobile app
 COPY packages/utils packages/utils
@@ -149,6 +150,7 @@ COPY apps/api/tsconfig.json apps/api/
 COPY apps/mobile apps/mobile
 
 WORKDIR /app/apps/mobile
+ENV CI=1
 
 EXPOSE 8081
-CMD ["bunx", "expo", "start", "--non-interactive", "--port", "8081"]
+CMD ["bunx", "expo", "start", "--port", "8081"]

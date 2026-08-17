@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import type React from "react";
 import {
 	Modal,
 	Pressable,
@@ -50,8 +49,7 @@ const MONTH_NAMES = [
 ];
 
 function formatDateMonth(dateStr: string): string {
-	// "2024-06" → "June 2024"
-	const parts = dateStr.split("-");
+	const parts = dateStr.replace(/^([0-9]{4}):([0-9]{2})/, "$1-$2").split("-");
 	if (parts.length !== 2) return dateStr;
 	const year = parts[0];
 	const monthIndex = Number.parseInt(parts[1], 10) - 1;
@@ -130,7 +128,12 @@ export default function FilterSheet({
 						},
 					]}
 				>
-					<Pressable onPress={handleClearAll} disabled={!hasActiveFilters}>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel="Clear all filters"
+						onPress={handleClearAll}
+						disabled={!hasActiveFilters}
+					>
 						<Text
 							style={[
 								styles.headerAction,
@@ -147,7 +150,11 @@ export default function FilterSheet({
 					<Text style={[styles.headerTitle, { color: colors.foreground }]}>
 						Filters
 					</Text>
-					<Pressable onPress={onClose}>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel="Apply filters"
+						onPress={onClose}
+					>
 						<Text style={[styles.headerAction, { color: colors.primary }]}>
 							Done
 						</Text>
@@ -168,6 +175,8 @@ export default function FilterSheet({
 								return (
 									<Pressable
 										key={camera}
+										accessibilityRole="checkbox"
+										accessibilityState={{ checked: isSelected }}
 										style={[
 											styles.optionRow,
 											{ borderBottomColor: colors.border },
@@ -212,6 +221,8 @@ export default function FilterSheet({
 								return (
 									<Pressable
 										key={lens}
+										accessibilityRole="checkbox"
+										accessibilityState={{ checked: isSelected }}
 										style={[
 											styles.optionRow,
 											{ borderBottomColor: colors.border },
@@ -256,6 +267,8 @@ export default function FilterSheet({
 								return (
 									<Pressable
 										key={iso}
+										accessibilityRole="checkbox"
+										accessibilityState={{ checked: isSelected }}
 										style={[
 											styles.optionRow,
 											{ borderBottomColor: colors.border },
@@ -300,6 +313,8 @@ export default function FilterSheet({
 								return (
 									<Pressable
 										key={date}
+										accessibilityRole="checkbox"
+										accessibilityState={{ checked: isSelected }}
 										style={[
 											styles.optionRow,
 											{ borderBottomColor: colors.border },
@@ -365,7 +380,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		paddingBottom: 16,
+		paddingBottom: 12,
 		paddingHorizontal: 16,
 	},
 	headerTitle: {
@@ -385,8 +400,6 @@ const styles = StyleSheet.create({
 	sectionTitle: {
 		fontSize: 13,
 		fontWeight: "600",
-		textTransform: "uppercase",
-		letterSpacing: 0.5,
 		paddingHorizontal: 16,
 		paddingBottom: 8,
 	},

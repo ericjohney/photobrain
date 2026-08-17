@@ -1,109 +1,106 @@
-/**
- * PhotoBrain color system - matches web app's Lightroom-inspired palette
- * Converted from HSL CSS variables to RGB hex values
- */
+/** PhotoBrain's iOS-aligned semantic palette. */
 
 export const colors = {
 	light: {
-		// Core colors
-		background: "#f5f5f5", // hsl(0 0% 96%)
-		foreground: "#262626", // hsl(0 0% 15%)
-		card: "#ffffff",
-		cardForeground: "#262626",
+		background: "#ffffff",
+		foreground: "#000000",
+		card: "#f2f2f7",
+		cardForeground: "#000000",
 
 		// Primary (blue accent)
-		primary: "#0066cc", // hsl(210 100% 45%)
+		primary: "#007aff",
 		primaryForeground: "#ffffff",
 
 		// Secondary
-		secondary: "#ebebeb", // hsl(0 0% 92%)
-		secondaryForeground: "#333333",
+		secondary: "#e5e5ea",
+		secondaryForeground: "#1c1c1e",
 
 		// Muted
-		muted: "#f0f0f0", // hsl(0 0% 94%)
-		mutedForeground: "#737373", // hsl(0 0% 45%)
+		muted: "#f2f2f7",
+		mutedForeground: "#6c6c70",
 
 		// Accent
-		accent: "#e6e6e6", // hsl(0 0% 90%)
-		accentForeground: "#262626",
+		accent: "#e5e5ea",
+		accentForeground: "#000000",
 
 		// Destructive
-		destructive: "#ef4444", // hsl(0 84% 60%)
+		destructive: "#ff3b30",
 		destructiveForeground: "#ffffff",
+		destructiveMuted: "#fff0ef",
 
 		// Border/Input
-		border: "#e0e0e0", // hsl(0 0% 88%)
+		border: "#c6c6c8",
 		input: "#ffffff",
 
 		// Panel system (Lightroom-specific)
-		panel: "#f7f7f7", // hsl(0 0% 97%)
-		panelForeground: "#404040",
-		toolbar: "#f2f2f2", // hsl(0 0% 95%)
-		filmstrip: "#ebebeb", // hsl(0 0% 92%)
+		panel: "#f2f2f7",
+		panelForeground: "#1c1c1e",
+		toolbar: "#f9f9fb",
+		filmstrip: "#e5e5ea",
 
 		// Selection
-		selection: "#0066cc", // hsl(210 100% 45%)
-		selectionMuted: "#cce5ff", // hsl(210 100% 90%)
+		selection: "#007aff",
+		selectionMuted: "#d9ecff",
 
 		// Thumbnail
-		thumbnailBorder: "#d9d9d9", // hsl(0 0% 85%)
+		thumbnailBorder: "#d1d1d6",
 
 		// Status colors
-		success: "#22c55e",
-		warning: "#f59e0b",
-		error: "#ef4444",
-		info: "#3b82f6",
+		success: "#34c759",
+		warning: "#ff9500",
+		error: "#ff3b30",
+		info: "#007aff",
 	},
 
 	dark: {
-		// Core colors - Lightroom-inspired dark palette
-		background: "#1c1c1c", // hsl(0 0% 11%)
-		foreground: "#d9d9d9", // hsl(0 0% 85%)
-		card: "#262626", // hsl(0 0% 15%)
-		cardForeground: "#d9d9d9",
+		background: "#000000",
+		foreground: "#ffffff",
+		card: "#1c1c1e",
+		cardForeground: "#ffffff",
 
 		// Primary (blue accent)
-		primary: "#0080ff", // hsl(210 100% 50%)
+		primary: "#0a84ff",
 		primaryForeground: "#ffffff",
 
 		// Secondary
-		secondary: "#383838", // hsl(0 0% 22%)
-		secondaryForeground: "#bfbfbf",
+		secondary: "#2c2c2e",
+		secondaryForeground: "#f2f2f7",
 
 		// Muted
-		muted: "#2e2e2e", // hsl(0 0% 18%)
-		mutedForeground: "#8c8c8c", // hsl(0 0% 55%)
+		muted: "#1c1c1e",
+		mutedForeground: "#98989d",
 
 		// Accent
-		accent: "#404040", // hsl(0 0% 25%)
-		accentForeground: "#e6e6e6",
+		accent: "#2c2c2e",
+		accentForeground: "#ffffff",
 
 		// Destructive
-		destructive: "#b33939", // hsl(0 70% 45%)
+		destructive: "#ff453a",
 		destructiveForeground: "#ffffff",
+		destructiveMuted: "#3a1513",
 
 		// Border/Input
-		border: "#333333", // hsl(0 0% 20%)
-		input: "#212121", // hsl(0 0% 13%)
+		border: "#38383a",
+		input: "#1c1c1e",
 
 		// Panel system (Lightroom-specific)
-		panel: "#242424", // hsl(0 0% 14%)
-		panelForeground: "#bfbfbf",
-		toolbar: "#292929", // hsl(0 0% 16%)
-		filmstrip: "#1f1f1f", // hsl(0 0% 12%)
+		panel: "#1c1c1e",
+		panelForeground: "#f2f2f7",
+		toolbar: "#1c1c1e",
+		filmstrip: "#1c1c1e",
 
 		// Selection
-		selection: "#0080ff", // hsl(210 100% 50%)
-		selectionMuted: "#003366", // hsl(210 100% 25%)
+		selection: "#0a84ff",
+		selectionMuted: "#003b73",
 
 		// Thumbnail
-		thumbnailBorder: "#404040", // hsl(0 0% 25%)
+		thumbnailBorder: "#38383a",
 
 		// Status colors
-		success: "#22c55e",
-		warning: "#f59e0b",
-		error: "#ef4444",
-		info: "#3b82f6",
+		success: "#30d158",
+		warning: "#ff9f0a",
+		error: "#ff453a",
+		info: "#0a84ff",
 	},
 } as const;
 

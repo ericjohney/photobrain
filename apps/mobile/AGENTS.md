@@ -6,14 +6,16 @@ Scope: `apps/mobile`.
 
 `package.json` sets `main` to `expo-router/entry`. The active route tree is:
 
-- `app/_layout.tsx`: tRPC/React Query providers, theme provider, and tab navigator.
-- `app/index.tsx`: Photos tab.
-- `app/search.tsx`: Search tab.
-- `app/collections.tsx`: Albums placeholder.
-- `app/preferences.tsx`: Library/preferences tab.
-- `app/about.tsx`: hidden route (`href: null`).
+- `app/_layout.tsx`: tRPC/React Query providers, theme providers, and the root stack.
+- `app/(tabs)/_layout.tsx`: native Library and Search tabs using `unstable-native-tabs`.
+- `app/(tabs)/index.tsx`: Library tab.
+- `app/(tabs)/search/_layout.tsx`: native search stack.
+- `app/(tabs)/search/index.tsx`: Search tab.
+- `app/preferences.tsx`: Settings stack route.
+- `app/about.tsx`: About stack route.
+- `app/collections.tsx`: Albums placeholder stack route; it is not an active tab.
 
-`App.tsx` is a legacy React Navigation application. It is imported by legacy navigation tests and contains the manual `useOTAUpdates()` call, but it is not the configured Expo Router production entrypoint. Do not add active app behavior only to `App.tsx`.
+`App.tsx` is a legacy React Navigation application and contains the manual `useOTAUpdates()` call, but it is not the configured Expo Router production entrypoint or the target of current navigation tests. Do not add active app behavior only to `App.tsx`.
 
 ## Source Map
 
@@ -22,12 +24,13 @@ Scope: `apps/mobile`.
 - `src/screens/PreferencesScreen.tsx`: theme selector and current display/behavior settings.
 - `src/screens/CollectionsScreen.tsx`: placeholder.
 - `src/screens/AboutScreen.tsx`: app/about content.
-- `src/components/LoupeView.tsx`: zoom, pan, swipe, haptics, and loupe actions.
+- `src/components/GlassSurface.tsx`: native Liquid Glass with platform and Reduce Transparency fallbacks.
+- `src/components/LoupeView.tsx`: zoom, pan, swipe, haptics, and the implemented metadata action.
 - `src/components/MetadataPanel.tsx`: EXIF/RAW metadata modal.
 - `src/components/FilterSheet.tsx`: camera/lens/ISO/month filters.
 - `src/components/ActivityBar.tsx`: Inngest progress display.
-- `src/hooks/use-library-state.ts`: AsyncStorage-backed view mode and in-memory active-photo navigation.
-- `src/hooks/use-job-progress.ts`: Inngest Realtime subscription.
+- `src/hooks/use-library-state.ts`: in-memory grid/loupe and active-photo navigation.
+- `src/hooks/use-job-progress.ts`: Inngest Realtime subscription with durable `scanStatus` polling fallback.
 - `src/theme/ThemeContext.tsx`: persisted light/dark/system theme.
 - `src/config.ts`: API URL and thumbnail URL construction.
 - `src/lib/trpc-client.ts`: HTTP tRPC batch client.
@@ -44,25 +47,29 @@ cd apps/mobile && bun run android
 cd apps/mobile && bun run web
 cd apps/mobile && bun run build:web
 cd apps/mobile && bun run test
+cd apps/mobile && bun run test:ci
+cd apps/mobile && bun run typecheck
 ```
 
-The current `typecheck` script only prints a message and does not run `tsc`. Do not report it as a real typecheck. `tsconfig.json` includes `App.tsx` and `src/**` but does not include the active `app/**` route files.
+`typecheck` runs `tsc --noEmit`. `tsconfig.json` includes both active `app/**` routes and `src/**`; tests are validated by Jest/Babel rather than this TypeScript project.
 
 ## Data and UI Flow
 
-The active layout creates one tRPC/React Query client and a `ThemeProvider`. Dashboard queries `photos` and `filterOptions`, sends `scan`, and subscribes to Inngest progress with `realtimeToken`. Search queries `searchPhotos({ query, limit: 50 })` whenever trimmed text is non-empty.
+The active layout creates one tRPC/React Query client and a `ThemeProvider`. Dashboard queries `photos` and `filterOptions`, sends `scan`, restores the active job ID from AsyncStorage, and combines `scanStatus` polling with Inngest Realtime. Search debounces trimmed input by 350 ms before calling `searchPhotos({ query, limit: 50 })`; abandoned query observers request cancellation.
 
 Dashboard behavior:
 
 - Photos are sorted newest-first using EXIF date, modified date, or created date.
-- Photos are grouped by month and date.
-- The grid uses four columns, not three.
-- Pull-to-refresh refetches the photos query.
+- Photos are grouped by year, month, or date according to the timeline selector.
+- The responsive grid uses four columns on phones and up to eight on wide layouts.
+- Pull-to-refresh refetches photos and filter options.
 - The filter sheet supports camera, lens, ISO, and month. It does not expose the API's raw/standard filter.
 - Tapping a photo opens a full-screen modal loupe. The loupe uses the `large` thumbnail, not the original file route.
-- Scan status is shown in `ActivityBar` and query data is refreshed as configured by the screen.
+- Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
 
-Loupe share/like/delete/star/overflow controls are visual or haptic placeholders unless their implementation is explicitly changed. Collections is still a placeholder. Preferences persists theme selection; grid-column and haptic controls are currently disabled/hardcoded.
+The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, and metadata. Collections is still a placeholder and is not shown as a tab. Preferences persists theme selection and propagates it through React Native `Appearance`; grid-column and haptic controls remain disabled/hardcoded.
+
+On iOS, tab chrome, header search, and custom chrome use native controls. `GlassSurface` renders `expo-glass-effect` only when the iOS APIs are available and Reduce Transparency is disabled; other environments receive an opaque semantic-color fallback.
 
 ## Runtime Configuration
 
@@ -78,18 +85,18 @@ Metro watches the monorepo and redirects `@photobrain/image-processing` to `pack
 
 ## OTA and Deployment
 
-`app.json` configures `expo-updates` with `ON_LOAD` checks and an `appVersion` runtime policy. The manual `useOTAUpdates` hook is used by legacy `App.tsx`, not the active Expo Router layout. Automatic Expo update configuration remains active; do not promise a native alert/restart flow without wiring the hook into the active layout.
+`app.json` configures `expo-updates` with `ON_LOAD` checks and a fingerprint runtime policy. The manual `useOTAUpdates` hook is used by legacy `App.tsx`, not the active Expo Router layout. Automatic Expo update configuration remains active; do not promise a native alert/restart flow without wiring the hook into the active layout.
 
-The CI workflow publishes OTA updates with EAS on pushes to `main` and version tags after web/mobile tests. It does not run an Expo web export. The Docker `mobile` target copies source and starts Expo on port 8081; it is not a static exported web image.
+The CI workflow publishes preview OTA updates with EAS on pushes to `main` and production iOS updates on version tags after API/web/mobile tests. A version tag first waits for a production iOS EAS build so native dependency changes have a matching binary. It does not run an Expo web export. The Docker `mobile` target copies source and starts Expo on port 8081; it is not a static exported web image.
 
 ## Tests
 
-Jest uses the `jest-expo` preset, `__tests__/setup.ts`, and mocks for Expo, native modules, tRPC, AsyncStorage, zoom, haptics, and Realtime. Current suites cover dashboard behavior, search, filters, loupe, library state, and legacy navigation.
+Jest uses the `jest-expo` preset, `__tests__/setup.ts`, and mocks for Expo, native modules, tRPC, AsyncStorage, zoom, haptics, and Realtime. Current suites cover the active native tab routes, dashboard behavior, debounced search, filters, loupe, library state, durable progress, Liquid Glass fallback, and theme propagation.
 
 CI runs:
 
 ```bash
-cd apps/mobile && npx jest --forceExit
+cd apps/mobile && bun run test:ci
 ```
 
-Tests do not cover the active Expo Router layout, Preferences, Collections, About, OTA behavior, or real API calls. Update mocks when changing request shapes or thumbnail URL behavior.
+Tests do not perform real API calls, native EAS builds, or end-to-end checks of Preferences, Collections, About, and OTA behavior. Update mocks when changing request shapes, native route primitives, or thumbnail URL behavior.

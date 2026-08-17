@@ -1,27 +1,34 @@
 {
-  "version": "7",
-  "dialect": "sqlite",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "6",
-      "when": 1768365674180,
-      "tag": "0000_thankful_miek",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1777083805012,
-      "tag": "0001_busy_mockingbird",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1777084000000,
-      "tag": "0002_minor_giant_girl",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "sqlite",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "6",
+			"when": 1768365674180,
+			"tag": "0000_thankful_miek",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "6",
+			"when": 1777083805012,
+			"tag": "0001_busy_mockingbird",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "6",
+			"when": 1777084000000,
+			"tag": "0002_minor_giant_girl",
+			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "6",
+			"when": 1786813635179,
+			"tag": "0003_hot_midnight",
+			"breakpoints": true
+		}
+	]
 }

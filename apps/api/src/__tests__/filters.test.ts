@@ -1,16 +1,21 @@
-import { describe, test, expect, beforeAll, mock } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { scanJobs } from "../db/schema";
+import type { Context } from "../trpc/context";
 import { createTestDb, seedTestData } from "./setup";
 
+const sendScanEvent = mock(async (_event: unknown) => undefined);
+
 // Mock the vector-search service to avoid loading native image-processing module and singleton db
-mock.module("@/services/vector-search", () => ({
+mock.module("../services/vector-search", () => ({
 	searchPhotosByText: async () => [],
 	findSimilarPhotos: async () => [],
 }));
 
 // Mock the inngest client to avoid external service dependency
-mock.module("@/inngest", () => ({
+mock.module("../inngest/client", () => ({
 	inngest: {
-		send: async () => {},
+		send: sendScanEvent,
 	},
 }));
 
@@ -142,6 +147,117 @@ describe("EXIF Filtering Integration Tests", () => {
 			});
 			expect(result.total).toBe(1);
 			expect(result.photos[0].name).toBe("photo2.arw");
+		});
+	});
+
+	describe("scan lifecycle", () => {
+		test("creates a durable queued job before dispatch", async () => {
+			sendScanEvent.mockClear();
+			const result = await caller.scan();
+
+			expect(result.success).toBe(true);
+			expect(result.jobId).toBeDefined();
+			if (!result.jobId) throw new Error("Expected scan job ID");
+			const status = await caller.scanStatus({ jobId: result.jobId });
+			expect(status).toMatchObject({
+				id: result.jobId,
+				phase: "queued",
+				status: "queued",
+				current: 0,
+				total: 0,
+			});
+			expect(sendScanEvent).toHaveBeenCalledWith(
+				expect.objectContaining({
+					id: result.jobId,
+					name: "photos/scan.requested",
+				}),
+			);
+		});
+
+		test("marks a created job failed when event dispatch fails", async () => {
+			sendScanEvent.mockClear();
+			for (let attempt = 0; attempt < 2; attempt++) {
+				sendScanEvent.mockImplementationOnce(async () => {
+					throw new Error("Inngest unavailable");
+				});
+			}
+
+			const result = await caller.scan();
+
+			expect(result).toMatchObject({
+				success: false,
+				error: "Inngest unavailable",
+			});
+			expect(result.jobId).toBeDefined();
+			expect(sendScanEvent).toHaveBeenCalledTimes(2);
+			if (!result.jobId) throw new Error("Expected failed scan job ID");
+			const status = await caller.scanStatus({ jobId: result.jobId });
+			expect(status).toMatchObject({
+				phase: "failed",
+				status: "failed",
+				error: "Inngest unavailable",
+			});
+		});
+
+		test("retries a transient event dispatch failure with the same job", async () => {
+			sendScanEvent.mockClear();
+			sendScanEvent.mockImplementationOnce(async () => {
+				throw new Error("Transient Inngest error");
+			});
+
+			const result = await caller.scan();
+
+			expect(result.success).toBe(true);
+			expect(sendScanEvent).toHaveBeenCalledTimes(2);
+			expect(sendScanEvent.mock.calls[0][0]).toEqual(
+				sendScanEvent.mock.calls[1][0],
+			);
+		});
+
+		test("does not regress a job that started despite a dispatch error", async () => {
+			sendScanEvent.mockClear();
+			const advanceAndFail = async (input: unknown) => {
+				const event = input as { data: { jobId: string } };
+				db.update(scanJobs)
+					.set({ phase: "discovering", status: "running" })
+					.where(eq(scanJobs.id, event.data.jobId))
+					.run();
+				throw new Error("Response was lost");
+			};
+			for (let attempt = 0; attempt < 2; attempt++) {
+				sendScanEvent.mockImplementationOnce(advanceAndFail);
+			}
+
+			const result = await caller.scan();
+
+			expect(result.success).toBe(true);
+			if (!result.jobId) throw new Error("Expected scan job ID");
+			const status = await caller.scanStatus({ jobId: result.jobId });
+			expect(status).toMatchObject({ phase: "discovering", status: "running" });
+		});
+
+		test("does not return a phantom job ID when job creation fails", async () => {
+			const brokenCaller = appRouter.createCaller({
+				db: {
+					insert: () => {
+						throw new Error("scan_jobs is missing");
+					},
+				} as unknown as Context["db"],
+			});
+
+			const result = await brokenCaller.scan();
+
+			expect(result).toEqual({
+				success: false,
+				error: "scan_jobs is missing",
+			});
+		});
+
+		test("returns null for an unknown durable job", async () => {
+			const status = await caller.scanStatus({
+				jobId: "00000000-0000-4000-8000-000000000000",
+			});
+			expect(status).toBeNull();
 		});
 	});
 });

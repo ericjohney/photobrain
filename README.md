@@ -5,7 +5,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 ## Current Features
 
 - Web grid and loupe views with keyboard navigation, metadata, folders, and EXIF filters.
-- Expo mobile app with date-grouped browsing, search, filters, pinch/pan/zoom loupe viewing, and theme preferences.
+- Expo mobile app with native Library/Search tabs, adaptive timelines, debounced search, filters, Liquid Glass chrome on supported iOS versions, pinch/pan/zoom loupe viewing, and theme preferences.
 - Four WebP thumbnail sizes: `tiny`, `small`, `medium`, and `large`.
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
@@ -72,7 +72,7 @@ cd packages/image-processing && bun run build
 The API defaults to a database at `./photobrain.db`, a photo directory at `../../temp-photos`, and thumbnails at `./thumbnails`, all relative to the API process working directory. Either run migrations explicitly or enable startup migrations:
 
 ```bash
-cd packages/db && bun run db:migrate
+cd packages/db && DATABASE_URL=../../apps/api/photobrain.db bun run db:migrate
 ```
 
 Then, from the repository root in a new terminal:
@@ -120,9 +120,11 @@ Package/app validation:
 
 ```bash
 cd apps/api && bun test
+cd apps/api && bun run typecheck
 cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui
 cd apps/mobile && bun run test
+cd apps/mobile && bun run typecheck
 cd packages/image-processing && cargo test
 ```
 
@@ -173,6 +175,7 @@ Metadata, filtering, search, scanning, and progress-token operations use tRPC at
 - `photo`
 - `searchPhotos`
 - `scan`
+- `scanStatus`
 - `realtimeToken`
 
 Binary routes use REST:
@@ -188,7 +191,7 @@ All current API routes are unauthenticated.
 
 ## Image and Job Flow
 
-Scanning is requested through `trpc.scan`, which sends an Inngest event. The scan function discovers supported files, processes Rust batches of 20, writes photo/EXIF/pHash data, and publishes progress. It then sends pending photo IDs to the embedding function, which reads `large` WebP thumbnails in batches of 16 and stores CLIP vectors.
+Scanning is requested through `trpc.scan`, which creates a durable `scan_jobs` row before sending an Inngest event. The scan function discovers supported files, processes Rust batches of 20, writes photo/EXIF/pHash data, and persists/publishes progress. It sends the IDs saved by that scan to the embedding function, which reads `large` WebP thumbnails in batches of 16 and stores CLIP vectors. Mobile combines Realtime updates with `scanStatus` polling so active work can recover after an app restart or connection loss.
 
 The native pipeline uses `exiftool` for EXIF and embedded RAW previews, `libheif-rs` for HEIF decoding, the Rust `image` crate for standard formats, and a four-thread-capped Rayon pool. See [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md) for format and processing caveats.
 
@@ -202,9 +205,9 @@ docker build --target web -t photobrain-web .
 docker build --target mobile -t photobrain-mobile .
 ```
 
-The API image runs on port 3000. The web image serves the Vite SPA on port 3001. The mobile image runs the Expo development server on port 8081; it is not a static Expo web-export image.
+The API image applies shared migrations on startup and runs on port 3000. The web image serves the Vite SPA on port 3001. The mobile image runs the Expo development server on port 8081; it is not a static Expo web-export image.
 
-The GitHub Actions workflow runs web Playwright tests and mobile Jest tests, publishes EAS OTA updates for pushes/tags, builds API/web/mobile images, and updates image tags in the external ArgoCD repository on pushes to `main`.
+The GitHub Actions workflow runs API tests/typecheck, web Playwright tests, and mobile Jest tests; publishes preview EAS OTA updates for pushes to `main`; builds production iOS artifacts and publishes matching updates for tags; builds API/web/mobile images; and updates image tags in the external ArgoCD repository on pushes to `main`.
 
 For native mobile builds and OTA updates, see `apps/mobile/eas.json` and [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md).
 
