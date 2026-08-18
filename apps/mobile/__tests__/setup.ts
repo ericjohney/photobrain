@@ -1,3 +1,7 @@
+import { configure } from "@testing-library/react-native";
+
+configure({ asyncUtilTimeout: 5000 });
+
 // Mock react-native-reanimated (manual mock — /mock entry point requires native worklets)
 jest.mock("react-native-reanimated", () => {
 	const { View } = require("react-native");
