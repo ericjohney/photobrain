@@ -9,11 +9,11 @@ Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../CLAUDE.md`]
 `package.json` uses `expo-router/entry`. The active route files are under `app/`:
 
 - `(tabs)/index.tsx`: Library tab.
+- `(tabs)/collections.tsx`: Collections placeholder tab.
 - `(tabs)/search/index.tsx`: Search tab inside a native stack.
 - `(tabs)/_layout.tsx`: native tab configuration.
 - `preferences.tsx`: Settings stack route.
 - `about.tsx`: About stack route.
-- `collections.tsx`: Albums placeholder stack route; it is not shown as a tab.
 - `_layout.tsx`: providers and root stack configuration.
 
 `App.tsx` is a legacy React Navigation entrypoint. It is not the configured production entrypoint or the target of active navigation tests.
@@ -47,13 +47,13 @@ Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN add
 
 ## Current Behavior
 
-- Photos are sorted newest-first and grouped by year, month, or date in a responsive four-to-eight-column grid.
-- The Library tab supports EXIF camera/lens/ISO/month filters, pull-to-refresh, scan initiation, and durable Inngest progress.
+- Photos are sorted newest-first in a continuous five-column phone grid, with optional year or month grouping and up to eight columns on wide layouts.
+- The photo-backed Library header exposes selection and Library Options; grouping, EXIF camera/lens/ISO/month filters, scan initiation, and Settings remain available in the options sheet.
 - The Search tab uses the native iOS search bar and debounces natural-language queries by 350 ms.
 - Tapping a photo opens a modal loupe with pinch/pan/zoom, swipe navigation, haptics, and metadata.
 - The loupe uses the `large` thumbnail URL; it does not request the original file route.
 - Liquid Glass is native on supported iOS versions and falls back when unavailable or Reduce Transparency is enabled.
-- Collections remains a placeholder and is not an active tab.
+- Collections is an active native tab but remains a placeholder.
 - Settings persists light/dark/system themes. Grid-column and haptic settings are currently disabled or hardcoded.
 - The loupe does not display unimplemented share/like/delete controls.
 

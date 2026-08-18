@@ -2,9 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
 import { parseDate } from "@photobrain/utils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { keepPreviousData } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
@@ -19,7 +21,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ActivityBar from "@/components/ActivityBar";
-import FilterSheet from "@/components/FilterSheet";
+import FilterSheet, { type LibraryGrouping } from "@/components/FilterSheet";
 import GlassSurface from "@/components/GlassSurface";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
@@ -27,11 +29,10 @@ import { thumbnailUrl } from "@/config";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { trpc } from "@/lib/trpc";
-import { useColors } from "@/theme";
+import { useTheme } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
-type TimelineScope = "years" | "months" | "all";
 
 interface Filters {
 	camera: string | null;
@@ -43,7 +44,7 @@ interface Filters {
 type SectionItem =
 	| {
 			type: "header";
-			level: "year" | "month" | "day";
+			level: "year" | "month";
 			title: string;
 			key: string;
 	  }
@@ -66,13 +67,12 @@ function photoDate(photo: PhotoMetadata) {
 
 function makeTimeline(
 	photos: PhotoMetadata[],
-	scope: TimelineScope,
+	scope: LibraryGrouping,
 	columns: number,
 ): SectionItem[] {
 	const items: SectionItem[] = [];
 	let lastYear = "";
 	let lastMonth = "";
-	let lastDay = "";
 	let row: PhotoMetadata[] = [];
 
 	const flushRow = () => {
@@ -92,13 +92,6 @@ function makeTimeline(
 			year: "numeric",
 			month: "long",
 		});
-		const day = date.toLocaleDateString(undefined, {
-			weekday: "short",
-			month: "short",
-			day: "numeric",
-			year: "numeric",
-		});
-
 		if (scope === "years" && year !== lastYear) {
 			flushRow();
 			items.push({
@@ -108,7 +101,7 @@ function makeTimeline(
 				key: `year-${year}`,
 			});
 			lastYear = year;
-		} else if (scope !== "years" && month !== lastMonth) {
+		} else if (scope === "months" && month !== lastMonth) {
 			flushRow();
 			items.push({
 				type: "header",
@@ -117,18 +110,6 @@ function makeTimeline(
 				key: `month-${month}`,
 			});
 			lastMonth = month;
-			lastDay = "";
-		}
-
-		if (scope === "all" && day !== lastDay) {
-			flushRow();
-			items.push({
-				type: "header",
-				level: "day",
-				title: day,
-				key: `day-${day}`,
-			});
-			lastDay = day;
 		}
 
 		row.push(photo);
@@ -139,60 +120,20 @@ function makeTimeline(
 	return items;
 }
 
-function TimelinePicker({
-	value,
-	onChange,
-}: {
-	value: TimelineScope;
-	onChange: (scope: TimelineScope) => void;
-}) {
-	const colors = useColors();
-	const options: Array<{ value: TimelineScope; label: string }> = [
-		{ value: "years", label: "Years" },
-		{ value: "months", label: "Months" },
-		{ value: "all", label: "All Photos" },
-	];
-
-	return (
-		<GlassSurface style={styles.timelinePicker} glassEffectStyle="clear">
-			{options.map((option) => {
-				const selected = option.value === value;
-				return (
-					<Pressable
-						key={option.value}
-						accessibilityRole="tab"
-						accessibilityState={{ selected }}
-						onPress={() => onChange(option.value)}
-						style={[
-							styles.timelineOption,
-							selected && { backgroundColor: colors.foreground },
-						]}
-					>
-						<Text
-							style={[
-								styles.timelineLabel,
-								{ color: selected ? colors.background : colors.foreground },
-							]}
-						>
-							{option.label}
-						</Text>
-					</Pressable>
-				);
-			})}
-		</GlassSurface>
-	);
-}
-
 export default function DashboardScreen() {
-	const colors = useColors();
+	const { colors } = useTheme();
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const { width } = useWindowDimensions();
-	const columns = width >= 1024 ? 8 : width >= 768 ? 7 : width >= 560 ? 5 : 4;
+	const columns = width >= 1024 ? 8 : width >= 768 ? 7 : width >= 560 ? 6 : 5;
 	const itemSize = (width - GRID_SPACING * (columns - 1)) / columns;
-	const [scope, setScope] = useState<TimelineScope>("all");
+	const [grouping, setGrouping] = useState<LibraryGrouping>("all");
 	const [metadataPhoto, setMetadataPhoto] = useState<PhotoMetadata | null>(
 		null,
+	);
+	const [isSelecting, setIsSelecting] = useState(false);
+	const [selectedPhotoIds, setSelectedPhotoIds] = useState<ReadonlySet<number>>(
+		() => new Set(),
 	);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
 	const activeJobSelected = useRef(false);
@@ -201,12 +142,15 @@ export default function DashboardScreen() {
 	const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 	const [filterVisible, setFilterVisible] = useState(false);
 
-	const photosQuery = trpc.photos.useQuery({
-		camera: filters.camera ?? undefined,
-		lens: filters.lens ?? undefined,
-		iso: filters.iso ?? undefined,
-		dateMonth: filters.dateMonth ?? undefined,
-	});
+	const photosQuery = trpc.photos.useQuery(
+		{
+			camera: filters.camera ?? undefined,
+			lens: filters.lens ?? undefined,
+			iso: filters.iso ?? undefined,
+			dateMonth: filters.dateMonth ?? undefined,
+		},
+		{ placeholderData: keepPreviousData },
+	);
 	const filterOptionsQuery = trpc.filterOptions.useQuery({});
 	const scanMutation = trpc.scan.useMutation({
 		onSuccess: (data) => {
@@ -263,14 +207,41 @@ export default function DashboardScreen() {
 	);
 	const library = useLibraryState(photos);
 	const sections = useMemo(
-		() => makeTimeline(photos, scope, columns),
-		[columns, photos, scope],
+		() => makeTimeline(photos, grouping, columns),
+		[columns, grouping, photos],
 	);
 	const hasActiveFilters = Object.values(filters).some(
 		(value) => value !== null,
 	);
 	const scanDisabled =
 		isRestoringScan || scanMutation.isPending || jobProgress.isActive;
+	const filteredQueryFailed =
+		photosQuery.isError && !photosQuery.data && hasActiveFilters;
+	const itemCount = photosQuery.data?.total ?? photos.length;
+	const itemCountLabel = filteredQueryFailed
+		? "Items Unavailable"
+		: `${itemCount.toLocaleString()} ${itemCount === 1 ? "Item" : "Items"}`;
+	const selectionLabel =
+		selectedPhotoIds.size === 0
+			? "Select Items"
+			: `${selectedPhotoIds.size.toLocaleString()} Selected`;
+	const headerPhotos = photos.slice(0, Math.min(columns, 5));
+
+	useEffect(() => {
+		if (!isSelecting) return;
+		if (photos.length === 0) {
+			setSelectedPhotoIds(new Set());
+			setIsSelecting(false);
+			return;
+		}
+		const availableIds = new Set(photos.map((photo) => photo.id));
+		setSelectedPhotoIds((current) => {
+			const next = new Set(
+				[...current].filter((photoId) => availableIds.has(photoId)),
+			);
+			return next.size === current.size ? current : next;
+		});
+	}, [isSelecting, photos]);
 
 	const handleRefresh = useCallback(() => {
 		void Promise.all([photosQuery.refetch(), filterOptionsQuery.refetch()]);
@@ -279,35 +250,50 @@ export default function DashboardScreen() {
 		setScanError(null);
 		scanMutation.mutate();
 	}, [scanMutation]);
+	const handleFilterChange = useCallback((nextFilters: Filters) => {
+		setFilters(nextFilters);
+		setIsSelecting(false);
+		setSelectedPhotoIds(new Set());
+	}, []);
+	const togglePhotoSelection = useCallback((photoId: number) => {
+		setSelectedPhotoIds((current) => {
+			const next = new Set(current);
+			if (next.has(photoId)) next.delete(photoId);
+			else next.add(photoId);
+			return next;
+		});
+	}, []);
+	const toggleSelectionMode = useCallback(() => {
+		if (isSelecting) setSelectedPhotoIds(new Set());
+		setIsSelecting(!isSelecting);
+	}, [isSelecting]);
 
 	const handlePhotoPress = useCallback(
 		(photo: PhotoMetadata) => {
+			if (isSelecting) {
+				togglePhotoSelection(photo.id);
+				return;
+			}
 			library.openInLoupe(photo);
 		},
-		[library],
+		[isSelecting, library, togglePhotoSelection],
 	);
+	const handlePhotoLongPress = useCallback((photoId: number) => {
+		setIsSelecting(true);
+		setSelectedPhotoIds((current) => {
+			if (current.has(photoId)) return current;
+			return new Set([...current, photoId]);
+		});
+	}, []);
 
 	const renderItem = ({ item }: { item: SectionItem }) => {
 		if (item.type === "header") {
 			return (
 				<View
-					style={[
-						styles.sectionHeader,
-						item.level === "day" && styles.dayHeader,
-					]}
+					style={[styles.sectionHeader, { backgroundColor: colors.background }]}
 				>
 					<Text
-						style={[
-							item.level === "day"
-								? styles.dayHeaderText
-								: styles.sectionHeaderText,
-							{
-								color:
-									item.level === "day"
-										? colors.mutedForeground
-										: colors.foreground,
-							},
-						]}
+						style={[styles.sectionHeaderText, { color: colors.foreground }]}
 					>
 						{item.title}
 					</Text>
@@ -317,47 +303,158 @@ export default function DashboardScreen() {
 
 		return (
 			<View style={styles.photoRow}>
-				{item.photos.map((photo) => (
-					<Pressable
-						key={photo.id}
-						testID={`photo-thumbnail-${photo.id}`}
-						accessibilityRole="button"
-						accessibilityLabel={`Open ${photo.name}`}
-						onPress={() => handlePhotoPress(photo)}
-						style={[
-							styles.photoContainer,
-							{
-								width: itemSize,
-								height: itemSize,
-								backgroundColor: colors.muted,
-							},
-						]}
-					>
-						<Image
-							source={{
-								uri: thumbnailUrl(photo.id, "tiny", photo.thumbnailUpdatedAt),
-							}}
-							style={styles.photo}
-							contentFit="cover"
-							transition={120}
-							cachePolicy="memory-disk"
-							accessibilityIgnoresInvertColors
-						/>
-						{photo.isRaw && (
-							<View style={styles.rawBadge}>
-								<Text style={styles.rawBadgeText}>
-									{photo.rawFormat || "RAW"}
-								</Text>
-							</View>
-						)}
-					</Pressable>
-				))}
+				{item.photos.map((photo) => {
+					const selected = selectedPhotoIds.has(photo.id);
+					return (
+						<Pressable
+							key={photo.id}
+							testID={`photo-thumbnail-${photo.id}`}
+							accessibilityRole="button"
+							accessibilityLabel={
+								isSelecting
+									? `${selected ? "Deselect" : "Select"} ${photo.name}`
+									: `Open ${photo.name}`
+							}
+							accessibilityState={isSelecting ? { selected } : undefined}
+							onPress={() => handlePhotoPress(photo)}
+							onLongPress={() => handlePhotoLongPress(photo.id)}
+							style={[
+								styles.photoContainer,
+								{
+									width: itemSize,
+									height: itemSize,
+									backgroundColor: colors.muted,
+								},
+							]}
+						>
+							<Image
+								source={{
+									uri: thumbnailUrl(photo.id, "tiny", photo.thumbnailUpdatedAt),
+								}}
+								style={styles.photo}
+								contentFit="cover"
+								transition={120}
+								cachePolicy="memory-disk"
+								accessibilityIgnoresInvertColors
+							/>
+							{photo.isRaw && (
+								<View style={styles.rawBadge}>
+									<Text style={styles.rawBadgeText}>
+										{photo.rawFormat || "RAW"}
+									</Text>
+								</View>
+							)}
+							{isSelecting && (
+								<View
+									pointerEvents="none"
+									style={[
+										styles.selectionOverlay,
+										selected && styles.selectionOverlayActive,
+									]}
+								>
+									<View
+										style={[
+											styles.selectionIndicator,
+											selected && styles.selectionIndicatorActive,
+										]}
+									>
+										{selected && (
+											<Ionicons name="checkmark" size={15} color="#ffffff" />
+										)}
+									</View>
+								</View>
+							)}
+						</Pressable>
+					);
+				})}
 			</View>
 		);
 	};
 
 	const listHeader = (
-		<View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+		<>
+			<View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+				<View pointerEvents="none" style={styles.headerBackdrop}>
+					<View style={styles.headerBackdropRow}>
+						{headerPhotos.map((photo) => (
+							<Image
+								key={photo.id}
+								testID={`library-header-image-${photo.id}`}
+								source={{
+									uri: thumbnailUrl(photo.id, "tiny", photo.thumbnailUpdatedAt),
+								}}
+								style={styles.headerBackdropPhoto}
+								contentFit="cover"
+								blurRadius={6}
+								cachePolicy="memory-disk"
+								accessibilityIgnoresInvertColors
+							/>
+						))}
+					</View>
+					<View style={styles.headerBackdropShade} />
+				</View>
+				<View style={styles.titleRow}>
+					<View style={styles.titleBlock}>
+						<Text style={styles.title}>Library</Text>
+						<Text style={styles.photoCount}>
+							{isSelecting ? selectionLabel : itemCountLabel}
+						</Text>
+					</View>
+					<View style={styles.headerActions}>
+						<GlassSurface
+							style={styles.optionsButtonSurface}
+							fallbackStyle={styles.darkGlassFallback}
+							glassEffectStyle="clear"
+							tintColor="rgba(28,28,30,0.48)"
+							colorScheme="dark"
+							isInteractive
+						>
+							<Pressable
+								accessibilityRole="button"
+								accessibilityLabel={
+									hasActiveFilters
+										? "Library options, filters active"
+										: "Library options"
+								}
+								onPress={() => setFilterVisible(true)}
+								style={styles.headerButton}
+							>
+								<Ionicons
+									name="options-outline"
+									size={27}
+									color={hasActiveFilters ? "#64a8ff" : "#ffffff"}
+								/>
+							</Pressable>
+						</GlassSurface>
+						<GlassSurface
+							style={styles.selectButtonSurface}
+							fallbackStyle={styles.darkGlassFallback}
+							glassEffectStyle="clear"
+							tintColor="rgba(28,28,30,0.48)"
+							colorScheme="dark"
+							isInteractive
+						>
+							<Pressable
+								accessibilityRole="button"
+								accessibilityState={{ disabled: photos.length === 0 }}
+								accessibilityLabel={
+									isSelecting ? "Finish selecting photos" : "Select photos"
+								}
+								disabled={photos.length === 0}
+								onPress={toggleSelectionMode}
+								style={[
+									styles.selectButton,
+									photos.length === 0 && styles.disabledButton,
+								]}
+							>
+								<Text style={styles.selectButtonText}>
+									{isSelecting ? "Done" : "Select"}
+								</Text>
+							</Pressable>
+						</GlassSurface>
+					</View>
+				</View>
+			</View>
 			<ActivityBar
 				progress={jobProgress.progress}
 				isActive={jobProgress.isActive}
@@ -365,63 +462,6 @@ export default function DashboardScreen() {
 				isFailed={jobProgress.isFailed}
 				failureMessage={jobProgress.failureMessage}
 			/>
-			<View style={styles.titleRow}>
-				<View style={styles.titleBlock}>
-					<Text style={[styles.title, { color: colors.foreground }]}>
-						Library
-					</Text>
-					<Text style={[styles.photoCount, { color: colors.mutedForeground }]}>
-						{photosQuery.data?.total ?? photos.length}{" "}
-						{(photosQuery.data?.total ?? photos.length) === 1
-							? "Photo"
-							: "Photos"}
-					</Text>
-				</View>
-				<GlassSurface style={styles.headerActions} glassEffectStyle="clear">
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel="Filter photos"
-						onPress={() => setFilterVisible(true)}
-						style={styles.headerButton}
-					>
-						<Ionicons
-							name={hasActiveFilters ? "funnel" : "funnel-outline"}
-							size={20}
-							color={hasActiveFilters ? colors.primary : colors.foreground}
-						/>
-					</Pressable>
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel="Scan library"
-						disabled={scanDisabled}
-						onPress={handleScan}
-						style={styles.headerButton}
-					>
-						{scanMutation.isPending || jobProgress.isActive ? (
-							<ActivityIndicator size="small" color={colors.foreground} />
-						) : (
-							<Ionicons
-								name="sync-outline"
-								size={20}
-								color={colors.foreground}
-							/>
-						)}
-					</Pressable>
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel="Open settings"
-						onPress={() => router.push("/preferences")}
-						style={styles.headerButton}
-					>
-						<Ionicons
-							name="person-circle-outline"
-							size={23}
-							color={colors.foreground}
-						/>
-					</Pressable>
-				</GlassSurface>
-			</View>
-			<TimelinePicker value={scope} onChange={setScope} />
 			{scanError && (
 				<View
 					accessibilityRole="alert"
@@ -446,6 +486,7 @@ export default function DashboardScreen() {
 			{hasActiveFilters && (
 				<Pressable
 					accessibilityRole="button"
+					accessibilityLabel="Edit active filters"
 					onPress={() => setFilterVisible(true)}
 					style={[
 						styles.filterSummary,
@@ -461,48 +502,95 @@ export default function DashboardScreen() {
 					</Text>
 				</Pressable>
 			)}
-		</View>
+		</>
 	);
 
 	const emptyState = (
 		<View style={styles.emptyContainer}>
 			<Ionicons
-				name={hasActiveFilters ? "options-outline" : "images-outline"}
+				name={
+					filteredQueryFailed
+						? "cloud-offline-outline"
+						: hasActiveFilters
+							? "options-outline"
+							: "images-outline"
+				}
 				size={50}
 				color={colors.mutedForeground}
 				style={styles.emptyIcon}
 			/>
 			<Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-				{hasActiveFilters
-					? "No photos match your filters"
-					: "Your library is empty"}
+				{filteredQueryFailed
+					? "Couldn't update library"
+					: hasActiveFilters
+						? "No photos match your filters"
+						: "Your library is empty"}
 			</Text>
 			<Text style={[styles.emptyMessage, { color: colors.mutedForeground }]}>
-				{hasActiveFilters
-					? "Adjust or clear the filters to see your library."
-					: "Scan the configured PhotoBrain library to get started."}
+				{filteredQueryFailed
+					? "Check your connection, retry, or clear the active filters."
+					: hasActiveFilters
+						? "Adjust or clear the filters to see your library."
+						: "Scan the configured PhotoBrain library to get started."}
 			</Text>
-			<Pressable
-				accessibilityRole="button"
-				disabled={!hasActiveFilters && scanDisabled}
-				onPress={() =>
-					hasActiveFilters ? setFilters(EMPTY_FILTERS) : handleScan()
-				}
-				style={[styles.emptyButton, { backgroundColor: colors.primary }]}
-			>
-				{!hasActiveFilters && scanDisabled ? (
-					<ActivityIndicator size="small" color="#ffffff" />
-				) : (
-					<Ionicons
-						name={hasActiveFilters ? "close" : "sync-outline"}
-						size={18}
-						color="#ffffff"
-					/>
+			<View style={styles.emptyActions}>
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel={
+						filteredQueryFailed ? "Retry filtered library" : undefined
+					}
+					disabled={!hasActiveFilters && scanDisabled}
+					onPress={() => {
+						if (filteredQueryFailed) void photosQuery.refetch();
+						else if (hasActiveFilters) handleFilterChange(EMPTY_FILTERS);
+						else handleScan();
+					}}
+					style={[styles.emptyButton, { backgroundColor: colors.primary }]}
+				>
+					{!hasActiveFilters && scanDisabled ? (
+						<ActivityIndicator size="small" color="#ffffff" />
+					) : (
+						<Ionicons
+							name={
+								filteredQueryFailed
+									? "refresh"
+									: hasActiveFilters
+										? "close"
+										: "sync-outline"
+							}
+							size={18}
+							color="#ffffff"
+						/>
+					)}
+					<Text style={styles.emptyButtonText}>
+						{filteredQueryFailed
+							? "Try Again"
+							: hasActiveFilters
+								? "Clear Filters"
+								: "Scan Library"}
+					</Text>
+				</Pressable>
+				{filteredQueryFailed && (
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel="Clear filters"
+						onPress={() => handleFilterChange(EMPTY_FILTERS)}
+						style={[
+							styles.secondaryEmptyButton,
+							{ borderColor: colors.border },
+						]}
+					>
+						<Text
+							style={[
+								styles.secondaryEmptyButtonText,
+								{ color: colors.primary },
+							]}
+						>
+							Clear Filters
+						</Text>
+					</Pressable>
 				)}
-				<Text style={styles.emptyButtonText}>
-					{hasActiveFilters ? "Clear Filters" : "Scan Library"}
-				</Text>
-			</Pressable>
+			</View>
 		</View>
 	);
 
@@ -514,7 +602,7 @@ export default function DashboardScreen() {
 		);
 	}
 
-	if (photosQuery.isError && !photosQuery.data) {
+	if (photosQuery.isError && !photosQuery.data && !hasActiveFilters) {
 		return (
 			<View
 				style={[
@@ -545,16 +633,24 @@ export default function DashboardScreen() {
 	}
 
 	return (
-		<View style={[styles.container, { backgroundColor: colors.background }]}>
+		<View
+			style={[
+				styles.container,
+				{ backgroundColor: photos.length > 0 ? "#000000" : colors.background },
+			]}
+		>
 			<FlatList
+				style={photos.length > 0 ? styles.photoList : undefined}
 				data={sections}
 				keyExtractor={(item) => item.key}
 				renderItem={renderItem}
 				ListHeaderComponent={listHeader}
 				ListEmptyComponent={emptyState}
-				contentContainerStyle={
-					sections.length === 0 ? styles.emptyList : undefined
-				}
+				contentContainerStyle={[
+					sections.length === 0 && styles.emptyList,
+					{ paddingBottom: insets.bottom + 86 },
+				]}
+				contentInsetAdjustmentBehavior="never"
 				refreshControl={
 					<RefreshControl
 						refreshing={photosQuery.isFetching}
@@ -575,6 +671,7 @@ export default function DashboardScreen() {
 				supportedOrientations={["portrait", "landscape"]}
 				onRequestClose={library.closeLoupe}
 			>
+				<ExpoStatusBar style="light" />
 				<View style={styles.loupeRoot}>
 					<LoupeView
 						key={library.loupeSession}
@@ -597,7 +694,21 @@ export default function DashboardScreen() {
 				onClose={() => setFilterVisible(false)}
 				filterOptions={filterOptionsQuery.data}
 				activeFilters={filters}
-				onFilterChange={setFilters}
+				onFilterChange={handleFilterChange}
+				grouping={grouping}
+				onGroupingChange={setGrouping}
+				onScan={() => {
+					setFilterVisible(false);
+					handleScan();
+				}}
+				scanDisabled={scanDisabled}
+				isScanning={scanMutation.isPending || jobProgress.isActive}
+				onOpenSettings={() => {
+					setFilterVisible(false);
+					setIsSelecting(false);
+					setSelectedPhotoIds(new Set());
+					router.push("/preferences");
+				}}
 			/>
 		</View>
 	);
@@ -605,49 +716,93 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
 	container: { flex: 1 },
+	photoList: { backgroundColor: "#000000" },
 	loupeRoot: { flex: 1 },
 	loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-	header: { paddingHorizontal: 16, paddingBottom: 12, gap: 14 },
+	header: {
+		position: "relative",
+		minHeight: 170,
+		justifyContent: "flex-end",
+		paddingHorizontal: 20,
+		paddingBottom: 17,
+		backgroundColor: "#161616",
+		overflow: "hidden",
+	},
+	headerBackdrop: {
+		...StyleSheet.absoluteFill,
+	},
+	headerBackdropRow: {
+		...StyleSheet.absoluteFill,
+		flexDirection: "row",
+	},
+	headerBackdropPhoto: { flex: 1, minWidth: 0 },
+	headerBackdropShade: {
+		...StyleSheet.absoluteFill,
+		backgroundColor: "rgba(0,0,0,0.55)",
+	},
 	titleRow: {
 		flexDirection: "row",
-		alignItems: "center",
+		alignItems: "flex-end",
 		justifyContent: "space-between",
+		gap: 12,
 	},
-	titleBlock: { gap: 1 },
-	title: { fontSize: 34, fontWeight: "700", letterSpacing: -1.1 },
-	photoCount: { fontSize: 13, fontWeight: "500" },
+	titleBlock: { flex: 1, minWidth: 0, gap: 1 },
+	title: {
+		color: "#ffffff",
+		fontSize: 36,
+		fontWeight: "700",
+		letterSpacing: -1.25,
+	},
+	photoCount: {
+		color: "rgba(255,255,255,0.92)",
+		fontSize: 16,
+		fontWeight: "700",
+		letterSpacing: -0.15,
+	},
 	headerActions: {
 		flexDirection: "row",
 		alignItems: "center",
-		borderRadius: 24,
+		gap: 10,
+		paddingBottom: 2,
+	},
+	darkGlassFallback: {
+		backgroundColor: "rgba(72,72,74,0.82)",
+		borderColor: "rgba(255,255,255,0.16)",
+		borderWidth: StyleSheet.hairlineWidth,
+	},
+	optionsButtonSurface: {
+		width: 50,
+		height: 50,
+		borderRadius: 25,
 		borderCurve: "continuous",
 		overflow: "hidden",
 	},
 	headerButton: {
-		width: 42,
-		height: 42,
+		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
 	},
-	timelinePicker: {
-		alignSelf: "center",
-		flexDirection: "row",
-		padding: 3,
-		borderRadius: 20,
+	selectButtonSurface: {
+		minWidth: 88,
+		height: 50,
+		borderRadius: 25,
 		borderCurve: "continuous",
+		overflow: "hidden",
 	},
-	timelineOption: {
-		paddingHorizontal: 15,
-		paddingVertical: 7,
-		borderRadius: 17,
-		borderCurve: "continuous",
+	selectButton: {
+		flex: 1,
+		alignItems: "center",
+		justifyContent: "center",
+		paddingHorizontal: 18,
 	},
-	timelineLabel: { fontSize: 13, fontWeight: "600" },
+	disabledButton: { opacity: 0.45 },
+	selectButtonText: { color: "#ffffff", fontSize: 17, fontWeight: "600" },
 	filterSummary: {
 		alignSelf: "center",
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 7,
+		marginVertical: 9,
 		borderRadius: 16,
 		paddingHorizontal: 12,
 		paddingVertical: 7,
@@ -658,6 +813,8 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
+		marginHorizontal: 12,
+		marginVertical: 9,
 		paddingHorizontal: 12,
 		paddingVertical: 10,
 		borderRadius: 14,
@@ -672,9 +829,7 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 	},
 	sectionHeader: { paddingHorizontal: 16, paddingTop: 22, paddingBottom: 7 },
-	dayHeader: { paddingTop: 10, paddingBottom: 5 },
 	sectionHeaderText: { fontSize: 23, fontWeight: "700", letterSpacing: -0.45 },
-	dayHeaderText: { fontSize: 13, fontWeight: "600" },
 	photoRow: {
 		flexDirection: "row",
 		gap: GRID_SPACING,
@@ -682,6 +837,29 @@ const styles = StyleSheet.create({
 	},
 	photoContainer: { overflow: "hidden" },
 	photo: { width: "100%", height: "100%" },
+	selectionOverlay: {
+		...StyleSheet.absoluteFill,
+		alignItems: "flex-end",
+		padding: 7,
+		backgroundColor: "rgba(0,0,0,0.1)",
+	},
+	selectionOverlayActive: {
+		backgroundColor: "rgba(0,0,0,0.28)",
+	},
+	selectionIndicator: {
+		width: 24,
+		height: 24,
+		borderRadius: 12,
+		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: "rgba(0,0,0,0.34)",
+		borderColor: "rgba(255,255,255,0.9)",
+		borderWidth: 1.5,
+	},
+	selectionIndicatorActive: {
+		backgroundColor: "#0a84ff",
+		borderColor: "#ffffff",
+	},
 	rawBadge: {
 		position: "absolute",
 		top: 4,
@@ -710,7 +888,6 @@ const styles = StyleSheet.create({
 		maxWidth: 300,
 	},
 	emptyButton: {
-		marginTop: 20,
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 7,
@@ -719,4 +896,13 @@ const styles = StyleSheet.create({
 		paddingVertical: 10,
 	},
 	emptyButtonText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
+	emptyActions: { marginTop: 20, alignItems: "center", gap: 10 },
+	secondaryEmptyButton: {
+		minHeight: 42,
+		justifyContent: "center",
+		borderWidth: StyleSheet.hairlineWidth,
+		borderRadius: 21,
+		paddingHorizontal: 18,
+	},
+	secondaryEmptyButtonText: { fontSize: 15, fontWeight: "600" },
 });

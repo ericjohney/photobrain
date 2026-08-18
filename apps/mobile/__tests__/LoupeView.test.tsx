@@ -85,7 +85,7 @@ describe("LoupeView", () => {
 	});
 
 	it("uses the core paged viewer and native iOS zoom", async () => {
-		const { getByTestId } = renderWithProviders(
+		const { getByTestId, queryByTestId } = renderWithProviders(
 			<LoupeView {...defaultProps} />,
 		);
 		const gallery = await waitFor(() => getByTestId("loupe-gallery"));
@@ -94,6 +94,7 @@ describe("LoupeView", () => {
 		expect(gallery.props.pagingEnabled).toBe(true);
 		expect(gallery.props.initialNumToRender).toBe(1);
 		expect(gallery.props.maxToRenderPerBatch).toBe(2);
+		expect(queryByTestId("native-glass")).toBeNull();
 		if (Platform.OS === "ios") {
 			const zoom = getByTestId(`loupe-zoom-${MOCK_PHOTOS[0].id}`);
 			expect(zoom.props.minimumZoomScale).toBe(1);

@@ -7,13 +7,13 @@ Scope: `apps/mobile`.
 `package.json` sets `main` to `expo-router/entry`. The active route tree is:
 
 - `app/_layout.tsx`: tRPC/React Query providers, theme providers, and the root stack.
-- `app/(tabs)/_layout.tsx`: native Library and Search tabs using `unstable-native-tabs`.
+- `app/(tabs)/_layout.tsx`: native Library, Collections, and isolated Search tabs using `unstable-native-tabs`.
 - `app/(tabs)/index.tsx`: Library tab.
+- `app/(tabs)/collections.tsx`: Collections placeholder tab.
 - `app/(tabs)/search/_layout.tsx`: native search stack.
 - `app/(tabs)/search/index.tsx`: Search tab.
 - `app/preferences.tsx`: Settings stack route.
 - `app/about.tsx`: About stack route.
-- `app/collections.tsx`: Albums placeholder stack route; it is not an active tab.
 
 `App.tsx` is a legacy React Navigation application and contains the manual `useOTAUpdates()` call, but it is not the configured Expo Router production entrypoint or the target of current navigation tests. Do not add active app behavior only to `App.tsx`.
 
@@ -62,14 +62,15 @@ Do not use React Navigation focus or navigation hooks inside `SearchScreen`. The
 Dashboard behavior:
 
 - Photos are sorted newest-first using EXIF date, modified date, or created date.
-- Photos are grouped by year, month, or date according to the timeline selector.
-- The responsive grid uses four columns on phones and up to eight on wide layouts.
+- All Photos is a continuous edge-to-edge grid; year and month grouping remain available from Library Options.
+- The responsive grid uses five columns on phones and up to eight on wide layouts.
 - Pull-to-refresh refetches photos and filter options.
 - The filter sheet supports camera, lens, ISO, and month. It does not expose the API's raw/standard filter.
+- The photo-backed Library header exposes Library Options and a basic selection mode. Library Options also contains grouping, scan, and Settings actions.
 - Tapping a photo opens a full-screen modal loupe. The loupe uses the `large` thumbnail, not the original file route.
 - Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
 
-The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, and metadata. Collections is still a placeholder and is not shown as a tab. Preferences persists theme selection and propagates it through React Native `Appearance`; grid-column and haptic controls remain disabled/hardcoded.
+The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, and metadata. Collections is an active native tab but remains a placeholder. Preferences persists theme selection and propagates it through React Native `Appearance`; grid-column and haptic controls remain disabled/hardcoded.
 
 On iOS, tab chrome, header search, and library chrome use native controls. `GlassSurface` renders `expo-glass-effect` only when the iOS APIs are available and Reduce Transparency is disabled; other environments receive an opaque semantic-color fallback. The modal loupe deliberately uses React Native's paged `FlatList`, opaque controls, and native iOS `ScrollView` zoom instead of a third-party Reanimated gallery; keep its thumbnail-tap tests on the real implementation rather than mocking the viewer.
 

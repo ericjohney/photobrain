@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
+	ActivityIndicator,
 	Modal,
 	Pressable,
 	ScrollView,
@@ -9,6 +10,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/theme";
+
+export type LibraryGrouping = "years" | "months" | "all";
 
 interface FilterSheetProps {
 	visible: boolean;
@@ -31,7 +34,19 @@ interface FilterSheetProps {
 		iso: number | null;
 		dateMonth: string | null;
 	}) => void;
+	grouping?: LibraryGrouping;
+	onGroupingChange?: (grouping: LibraryGrouping) => void;
+	onScan?: () => void;
+	scanDisabled?: boolean;
+	isScanning?: boolean;
+	onOpenSettings?: () => void;
 }
+
+const GROUPING_OPTIONS: Array<{ value: LibraryGrouping; label: string }> = [
+	{ value: "years", label: "Years" },
+	{ value: "months", label: "Months" },
+	{ value: "all", label: "All Photos" },
+];
 
 const MONTH_NAMES = [
 	"January",
@@ -63,6 +78,12 @@ export default function FilterSheet({
 	filterOptions,
 	activeFilters,
 	onFilterChange,
+	grouping,
+	onGroupingChange,
+	onScan,
+	scanDisabled = false,
+	isScanning = false,
+	onOpenSettings,
 }: FilterSheetProps) {
 	const colors = useColors();
 	const insets = useSafeAreaInsets();
@@ -133,6 +154,7 @@ export default function FilterSheet({
 						accessibilityLabel="Clear all filters"
 						onPress={handleClearAll}
 						disabled={!hasActiveFilters}
+						style={styles.headerActionButton}
 					>
 						<Text
 							style={[
@@ -148,12 +170,13 @@ export default function FilterSheet({
 						</Text>
 					</Pressable>
 					<Text style={[styles.headerTitle, { color: colors.foreground }]}>
-						Filters
+						Library Options
 					</Text>
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Apply filters"
 						onPress={onClose}
+						style={styles.headerActionButton}
 					>
 						<Text style={[styles.headerAction, { color: colors.primary }]}>
 							Done
@@ -161,7 +184,137 @@ export default function FilterSheet({
 					</Pressable>
 				</View>
 
-				<ScrollView style={styles.content}>
+				<ScrollView
+					style={styles.content}
+					contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+				>
+					{grouping && onGroupingChange && (
+						<View style={styles.section}>
+							<Text
+								style={[styles.sectionTitle, { color: colors.mutedForeground }]}
+							>
+								Group By
+							</Text>
+							<View
+								style={[
+									styles.groupingControl,
+									{ backgroundColor: colors.card },
+								]}
+							>
+								{GROUPING_OPTIONS.map((option) => {
+									const selected = grouping === option.value;
+									return (
+										<Pressable
+											key={option.value}
+											accessibilityRole="radio"
+											accessibilityState={{ checked: selected }}
+											onPress={() => onGroupingChange(option.value)}
+											style={[
+												styles.groupingOption,
+												selected && { backgroundColor: colors.foreground },
+											]}
+										>
+											<Text
+												style={[
+													styles.groupingLabel,
+													{
+														color: selected
+															? colors.background
+															: colors.foreground,
+													},
+												]}
+											>
+												{option.label}
+											</Text>
+										</Pressable>
+									);
+								})}
+							</View>
+						</View>
+					)}
+
+					{(onScan || onOpenSettings) && (
+						<View style={styles.section}>
+							<Text
+								style={[styles.sectionTitle, { color: colors.mutedForeground }]}
+							>
+								Library
+							</Text>
+							{onScan && (
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel="Scan library"
+									disabled={scanDisabled}
+									onPress={onScan}
+									style={[
+										styles.optionRow,
+										{ borderBottomColor: colors.border },
+									]}
+								>
+									<View style={styles.libraryActionLabel}>
+										<Ionicons
+											name="sync-outline"
+											size={20}
+											color={
+												scanDisabled ? colors.mutedForeground : colors.primary
+											}
+										/>
+										<Text
+											style={[
+												styles.optionText,
+												{
+													color: scanDisabled
+														? colors.mutedForeground
+														: colors.foreground,
+												},
+											]}
+										>
+											Scan Library
+										</Text>
+									</View>
+									{isScanning ? (
+										<ActivityIndicator size="small" color={colors.primary} />
+									) : (
+										<Ionicons
+											name="chevron-forward"
+											size={18}
+											color={colors.mutedForeground}
+										/>
+									)}
+								</Pressable>
+							)}
+							{onOpenSettings && (
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel="Open settings"
+									onPress={onOpenSettings}
+									style={[
+										styles.optionRow,
+										{ borderBottomColor: colors.border },
+									]}
+								>
+									<View style={styles.libraryActionLabel}>
+										<Ionicons
+											name="settings-outline"
+											size={20}
+											color={colors.primary}
+										/>
+										<Text
+											style={[styles.optionText, { color: colors.foreground }]}
+										>
+											Settings
+										</Text>
+									</View>
+									<Ionicons
+										name="chevron-forward"
+										size={18}
+										color={colors.mutedForeground}
+									/>
+								</Pressable>
+							)}
+						</View>
+					)}
+
 					{/* Camera Section */}
 					{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
 						<View style={styles.section}>
@@ -175,7 +328,7 @@ export default function FilterSheet({
 								return (
 									<Pressable
 										key={camera}
-										accessibilityRole="checkbox"
+										accessibilityRole="radio"
 										accessibilityState={{ checked: isSelected }}
 										style={[
 											styles.optionRow,
@@ -221,7 +374,7 @@ export default function FilterSheet({
 								return (
 									<Pressable
 										key={lens}
-										accessibilityRole="checkbox"
+										accessibilityRole="radio"
 										accessibilityState={{ checked: isSelected }}
 										style={[
 											styles.optionRow,
@@ -267,7 +420,7 @@ export default function FilterSheet({
 								return (
 									<Pressable
 										key={iso}
-										accessibilityRole="checkbox"
+										accessibilityRole="radio"
 										accessibilityState={{ checked: isSelected }}
 										style={[
 											styles.optionRow,
@@ -313,7 +466,7 @@ export default function FilterSheet({
 								return (
 									<Pressable
 										key={date}
-										accessibilityRole="checkbox"
+										accessibilityRole="radio"
 										accessibilityState={{ checked: isSelected }}
 										style={[
 											styles.optionRow,
@@ -387,6 +540,11 @@ const styles = StyleSheet.create({
 		fontSize: 18,
 		fontWeight: "600",
 	},
+	headerActionButton: {
+		minWidth: 72,
+		minHeight: 44,
+		justifyContent: "center",
+	},
 	headerAction: {
 		fontSize: 16,
 		fontWeight: "500",
@@ -403,8 +561,29 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 		paddingBottom: 8,
 	},
+	groupingControl: {
+		flexDirection: "row",
+		marginHorizontal: 16,
+		padding: 3,
+		borderRadius: 12,
+		borderCurve: "continuous",
+	},
+	groupingOption: {
+		flex: 1,
+		minHeight: 44,
+		alignItems: "center",
+		justifyContent: "center",
+		paddingVertical: 8,
+		borderRadius: 10,
+		borderCurve: "continuous",
+	},
+	groupingLabel: {
+		fontSize: 13,
+		fontWeight: "600",
+	},
 	optionRow: {
 		flexDirection: "row",
+		minHeight: 48,
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingVertical: 12,
@@ -414,6 +593,12 @@ const styles = StyleSheet.create({
 	optionText: {
 		fontSize: 16,
 		flex: 1,
+	},
+	libraryActionLabel: {
+		flex: 1,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
 	},
 	emptyState: {
 		alignItems: "center",

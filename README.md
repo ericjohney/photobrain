@@ -5,7 +5,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 ## Current Features
 
 - Web grid and loupe views with keyboard navigation, metadata, folders, and EXIF filters.
-- Expo mobile app with native Library/Search tabs, adaptive timelines, debounced search, filters, Liquid Glass library chrome on supported iOS versions, a paged loupe with native iOS pinch zoom, and theme preferences.
+- Expo mobile app with native Library/Collections/Search tabs, adaptive timelines, selection, debounced search, filters, Liquid Glass library chrome on supported iOS versions, a paged loupe with native iOS pinch zoom, and theme preferences.
 - Four WebP thumbnail sizes: `tiny`, `small`, `medium`, and `large`.
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.

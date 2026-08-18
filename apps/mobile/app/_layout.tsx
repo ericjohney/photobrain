@@ -46,7 +46,6 @@ function AppNavigator() {
 				<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 				<Stack.Screen name="preferences" options={{ title: "Settings" }} />
 				<Stack.Screen name="about" options={{ title: "About" }} />
-				<Stack.Screen name="collections" options={{ title: "Albums" }} />
 			</Stack>
 		</NavigationThemeProvider>
 	);

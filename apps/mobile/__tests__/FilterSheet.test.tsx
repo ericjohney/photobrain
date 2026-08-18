@@ -1,10 +1,12 @@
-import React from "react";
 import { fireEvent, waitFor } from "@testing-library/react-native";
-import { renderWithProviders } from "./test-utils";
 import FilterSheet from "@/components/FilterSheet";
+import { renderWithProviders } from "./test-utils";
 
 const mockOnClose = jest.fn();
 const mockOnFilterChange = jest.fn();
+const mockOnGroupingChange = jest.fn();
+const mockOnScan = jest.fn();
+const mockOnOpenSettings = jest.fn();
 
 const defaultProps = {
 	visible: true,
@@ -26,6 +28,10 @@ const defaultProps = {
 		dateMonth: null as string | null,
 	},
 	onFilterChange: mockOnFilterChange,
+	grouping: "all" as const,
+	onGroupingChange: mockOnGroupingChange,
+	onScan: mockOnScan,
+	onOpenSettings: mockOnOpenSettings,
 };
 
 beforeEach(() => {
@@ -33,6 +39,28 @@ beforeEach(() => {
 });
 
 describe("FilterSheet", () => {
+	it("changes the library grouping", async () => {
+		const { getByText } = renderWithProviders(
+			<FilterSheet {...defaultProps} />,
+		);
+		await waitFor(() => expect(getByText("All Photos")).toBeTruthy());
+
+		fireEvent.press(getByText("Months"));
+		expect(mockOnGroupingChange).toHaveBeenCalledWith("months");
+	});
+
+	it("exposes scan and settings actions", async () => {
+		const { getByLabelText } = renderWithProviders(
+			<FilterSheet {...defaultProps} />,
+		);
+		await waitFor(() => expect(getByLabelText("Scan library")).toBeTruthy());
+
+		fireEvent.press(getByLabelText("Scan library"));
+		fireEvent.press(getByLabelText("Open settings"));
+		expect(mockOnScan).toHaveBeenCalledTimes(1);
+		expect(mockOnOpenSettings).toHaveBeenCalledTimes(1);
+	});
+
 	it("renders camera options", async () => {
 		const { getByText } = renderWithProviders(
 			<FilterSheet {...defaultProps} />,

@@ -1,10 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { fireEvent, waitFor } from "@testing-library/react-native";
+import * as Haptics from "expo-haptics";
+import { StyleSheet } from "react-native";
 
 const mockPhotosRefetch = jest.fn();
 const mockFilterOptionsRefetch = jest.fn();
 let mockPhotosError = false;
 let mockPhotosHaveData = true;
+let mockFilteredPhotosError = false;
+let mockPhotosQueryOptions: { placeholderData?: unknown } | undefined;
 let mockScanResult: {
 	success: boolean;
 	jobId?: string;
@@ -14,19 +18,31 @@ let mockScanResult: {
 jest.mock("@/lib/trpc", () => ({
 	trpc: {
 		photos: {
-			useQuery: jest.fn((input: { camera?: string }) => {
-				const photos = input.camera ? [] : require("./fixtures").MOCK_PHOTOS;
-				return {
-					data: mockPhotosHaveData
-						? { photos, total: photos.length, rawCount: 2 }
-						: undefined,
-					isLoading: false,
-					isFetching: false,
-					isError: mockPhotosError,
-					error: mockPhotosError ? new Error("Server unavailable") : null,
-					refetch: mockPhotosRefetch,
-				};
-			}),
+			useQuery: jest.fn(
+				(
+					input: { camera?: string },
+					options?: { placeholderData?: unknown },
+				) => {
+					mockPhotosQueryOptions = options;
+					const filteredRequestFailed =
+						input.camera !== undefined && mockFilteredPhotosError;
+					const photos = input.camera ? [] : require("./fixtures").MOCK_PHOTOS;
+					return {
+						data:
+							mockPhotosHaveData && !filteredRequestFailed
+								? { photos, total: photos.length, rawCount: 2 }
+								: undefined,
+						isLoading: false,
+						isFetching: false,
+						isError: mockPhotosError || filteredRequestFailed,
+						error:
+							mockPhotosError || filteredRequestFailed
+								? new Error("Server unavailable")
+								: null,
+						refetch: mockPhotosRefetch,
+					};
+				},
+			),
 		},
 		filterOptions: {
 			useQuery: () => ({
@@ -62,15 +78,54 @@ describe("DashboardScreen", () => {
 		jest.clearAllMocks();
 		mockPhotosError = false;
 		mockPhotosHaveData = true;
+		mockFilteredPhotosError = false;
+		mockPhotosQueryOptions = undefined;
 		mockScanResult = { success: true, jobId: "test-job-123" };
 	});
 
-	it("renders the library summary and date timeline", async () => {
-		const { getByText } = renderWithProviders(<DashboardScreen />);
+	it("renders the photo-backed library header and ungrouped grid", async () => {
+		const { getAllByTestId, getByLabelText, getByText, queryByText } =
+			renderWithProviders(<DashboardScreen />);
 
 		await waitFor(() => expect(getByText("Library")).toBeTruthy());
-		expect(getByText("5 Photos")).toBeTruthy();
-		expect(getByText("August 2024")).toBeTruthy();
+		expect(getByText("5 Items")).toBeTruthy();
+		expect(getByText("Select")).toBeTruthy();
+		expect(getByLabelText("Library options")).toBeTruthy();
+		expect(getAllByTestId(/library-header-image-/)).toHaveLength(5);
+		expect(queryByText("August 2024")).toBeNull();
+		expect(mockPhotosQueryOptions?.placeholderData).toEqual(
+			expect.any(Function),
+		);
+	});
+
+	it("uses five edge-to-edge columns on compact phones", async () => {
+		const ReactNative = require("react-native");
+		const dimensions = jest
+			.spyOn(ReactNative, "useWindowDimensions")
+			.mockReturnValue({ width: 375, height: 812, scale: 3, fontScale: 1 });
+		try {
+			const { getByTestId } = renderWithProviders(<DashboardScreen />);
+			const thumbnail = await waitFor(() => getByTestId("photo-thumbnail-5"));
+			const style = StyleSheet.flatten(thumbnail.props.style);
+
+			expect(style.width).toBeCloseTo((375 - 4) / 5);
+			expect(style.height).toBe(style.width);
+		} finally {
+			dimensions.mockRestore();
+		}
+	});
+
+	it("switches to grouped timelines from library options", async () => {
+		const { getByLabelText, getByText } = renderWithProviders(
+			<DashboardScreen />,
+		);
+		await waitFor(() => expect(getByText("5 Items")).toBeTruthy());
+
+		fireEvent.press(getByLabelText("Library options"));
+		fireEvent.press(getByText("Months"));
+		fireEvent.press(getByLabelText("Apply filters"));
+
+		await waitFor(() => expect(getByText("August 2024")).toBeTruthy());
 		expect(getByText("July 2024")).toBeTruthy();
 		expect(getByText("June 2024")).toBeTruthy();
 	});
@@ -96,6 +151,8 @@ describe("DashboardScreen", () => {
 		fireEvent.press(getByTestId("photo-thumbnail-5"));
 
 		await waitFor(() => expect(getByTestId("loupe-view")).toBeTruthy());
+		expect(getByTestId("loupe-gallery")).toBeTruthy();
+		expect(Haptics.selectionAsync).not.toHaveBeenCalled();
 		expect(getByText("Info")).toBeTruthy();
 		expect(getByText(/4000 × 6000/)).toBeTruthy();
 		expect(getByText(/3\.1 MB/)).toBeTruthy();
@@ -104,9 +161,33 @@ describe("DashboardScreen", () => {
 		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 	});
 
-	it("does not retain stale loupe metadata between photos", async () => {
-		const { getByLabelText, getByTestId, getByText, queryByText } =
+	it("selects photos without opening the loupe", async () => {
+		const { getByLabelText, getByTestId, getByText, queryByTestId } =
 			renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(getByLabelText("Select photos")).toBeTruthy());
+
+		fireEvent.press(getByLabelText("Select photos"));
+		expect(getByText("Select Items")).toBeTruthy();
+		fireEvent.press(getByTestId("photo-thumbnail-5"));
+
+		await waitFor(() => expect(getByText("1 Selected")).toBeTruthy());
+		expect(getByTestId("photo-thumbnail-5").props.accessibilityState).toEqual({
+			selected: true,
+		});
+		expect(queryByTestId("loupe-view")).toBeNull();
+
+		fireEvent.press(getByLabelText("Finish selecting photos"));
+		expect(getByText("5 Items")).toBeTruthy();
+	});
+
+	it("does not retain stale loupe metadata between photos", async () => {
+		const {
+			getByLabelText,
+			getByTestId,
+			getByText,
+			queryByTestId,
+			queryByText,
+		} = renderWithProviders(<DashboardScreen />);
 
 		await waitFor(() => expect(getByTestId("photo-thumbnail-5")).toBeTruthy());
 		fireEvent.press(getByTestId("photo-thumbnail-5"));
@@ -118,13 +199,19 @@ describe("DashboardScreen", () => {
 		await waitFor(() => expect(getByText(/4\.3 MB/)).toBeTruthy());
 		expect(getByText(/6000 × 4000/)).toBeTruthy();
 		expect(queryByText(/4000 × 6000/)).toBeNull();
+		fireEvent.press(getByLabelText("Close photo"));
+		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 	});
 
 	it("swipes through photos in the same newest-first order as the grid", async () => {
 		const { FlatList } = require("react-native");
-		const { getByTestId, getByText, UNSAFE_getAllByType } = renderWithProviders(
-			<DashboardScreen />,
-		);
+		const {
+			getByLabelText,
+			getByTestId,
+			getByText,
+			queryByTestId,
+			UNSAFE_getAllByType,
+		} = renderWithProviders(<DashboardScreen />);
 
 		await waitFor(() => expect(getByTestId("photo-thumbnail-3")).toBeTruthy());
 		fireEvent.press(getByTestId("photo-thumbnail-3"));
@@ -141,6 +228,8 @@ describe("DashboardScreen", () => {
 
 		await waitFor(() => expect(getByText(/4\.3 MB/)).toBeTruthy());
 		expect(getByText(/6000 × 4000/)).toBeTruthy();
+		fireEvent.press(getByLabelText("Close photo"));
+		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 	});
 
 	it("refreshes photos and filter options", async () => {
@@ -174,7 +263,7 @@ describe("DashboardScreen", () => {
 		const { getByText, queryByText } = renderWithProviders(<DashboardScreen />);
 
 		await waitFor(() => expect(getByText("Library")).toBeTruthy());
-		expect(getByText("5 Photos")).toBeTruthy();
+		expect(getByText("5 Items")).toBeTruthy();
 		expect(queryByText("Couldn't Load Library")).toBeNull();
 	});
 
@@ -184,7 +273,7 @@ describe("DashboardScreen", () => {
 		);
 		await waitFor(() => expect(getByText("Library")).toBeTruthy());
 
-		fireEvent.press(getByLabelText("Filter photos"));
+		fireEvent.press(getByLabelText("Library options"));
 		fireEvent.press(getByText("Sony A7III"));
 		fireEvent.press(getByLabelText("Apply filters"));
 
@@ -192,14 +281,34 @@ describe("DashboardScreen", () => {
 			expect(getByText("No photos match your filters")).toBeTruthy(),
 		);
 		fireEvent.press(getByText("Clear Filters"));
-		await waitFor(() => expect(getByText("5 Photos")).toBeTruthy());
+		await waitFor(() => expect(getByText("5 Items")).toBeTruthy());
+	});
+
+	it("keeps library options open when a filtered request fails", async () => {
+		mockFilteredPhotosError = true;
+		const { getByLabelText, getByText, queryByText } = renderWithProviders(
+			<DashboardScreen />,
+		);
+		await waitFor(() => expect(getByLabelText("Library options")).toBeTruthy());
+
+		fireEvent.press(getByLabelText("Library options"));
+		fireEvent.press(getByText("Sony A7III"));
+
+		await waitFor(() =>
+			expect(getByLabelText("Retry filtered library")).toBeTruthy(),
+		);
+		expect(getByText("Library Options")).toBeTruthy();
+		expect(getByLabelText("Clear all filters")).toBeTruthy();
+		expect(getByText("Items Unavailable")).toBeTruthy();
+		expect(queryByText("No photos match your filters")).toBeNull();
 	});
 
 	it("persists only successfully created scan jobs", async () => {
 		const successful = renderWithProviders(<DashboardScreen />);
 		await waitFor(() =>
-			expect(successful.getByLabelText("Scan library")).toBeTruthy(),
+			expect(successful.getByLabelText("Library options")).toBeTruthy(),
 		);
+		fireEvent.press(successful.getByLabelText("Library options"));
 		fireEvent.press(successful.getByLabelText("Scan library"));
 		await waitFor(() =>
 			expect(AsyncStorage.setItem).toHaveBeenCalledWith(
@@ -213,18 +322,20 @@ describe("DashboardScreen", () => {
 		mockScanResult = { success: false, error: "Database unavailable" };
 		const failed = renderWithProviders(<DashboardScreen />);
 		await waitFor(() =>
-			expect(failed.getByLabelText("Scan library")).toBeTruthy(),
+			expect(failed.getByLabelText("Library options")).toBeTruthy(),
 		);
+		fireEvent.press(failed.getByLabelText("Library options"));
 		fireEvent.press(failed.getByLabelText("Scan library"));
 		expect(AsyncStorage.setItem).not.toHaveBeenCalled();
 		expect(failed.getByText("Database unavailable")).toBeTruthy();
 	});
 
-	it("opens settings from the library header", async () => {
+	it("opens settings from library options", async () => {
 		const { __router } = require("expo-router");
 		const { getByLabelText } = renderWithProviders(<DashboardScreen />);
-		await waitFor(() => expect(getByLabelText("Open settings")).toBeTruthy());
+		await waitFor(() => expect(getByLabelText("Library options")).toBeTruthy());
 
+		fireEvent.press(getByLabelText("Library options"));
 		fireEvent.press(getByLabelText("Open settings"));
 		expect(__router.push).toHaveBeenCalledWith("/preferences");
 	});

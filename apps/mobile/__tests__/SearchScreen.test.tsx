@@ -1,4 +1,5 @@
 import { fireEvent, waitFor } from "@testing-library/react-native";
+import * as Haptics from "expo-haptics";
 
 type SearchInput = { query: string; limit: number };
 type SearchOptions = {
@@ -196,9 +197,8 @@ describe("SearchScreen", () => {
 	});
 
 	it("opens a result in the loupe with the correct metadata", async () => {
-		const { getByLabelText, getByTestId, getByText } = renderWithProviders(
-			<SearchScreen />,
-		);
+		const { getByLabelText, getByTestId, getByText, queryByTestId } =
+			renderWithProviders(<SearchScreen />);
 		const input = await waitFor(() => getByLabelText("Search photos"));
 		fireEvent.changeText(input, "sunset beach");
 
@@ -208,8 +208,12 @@ describe("SearchScreen", () => {
 		fireEvent.press(getByTestId("search-result-1"));
 
 		await waitFor(() => expect(getByTestId("loupe-view")).toBeTruthy());
+		expect(getByTestId("loupe-gallery")).toBeTruthy();
+		expect(Haptics.selectionAsync).not.toHaveBeenCalled();
 		expect(getByText("Info")).toBeTruthy();
 		expect(getByText(/6000 × 4000/)).toBeTruthy();
 		expect(getByText(/4\.3 MB/)).toBeTruthy();
+		fireEvent.press(getByLabelText("Close photo"));
+		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 	});
 });

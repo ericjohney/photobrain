@@ -231,7 +231,7 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 
 The active entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint and is not the configured production entrypoint or the target of active navigation tests.
 
-The active native tabs are Library and Search. Library has year/month/all-photo timelines, a responsive four-to-eight-column grid, EXIF filters, durable scan progress, metadata, and a modal loupe with paged swipe navigation and native iOS pinch zoom. Search uses a native iOS search bar and a 350 ms cancellable debounce. Library chrome uses `expo-glass-effect` when Liquid Glass is available, with platform and Reduce Transparency fallbacks; the loupe uses opaque core React Native controls. Collections remains a non-tab placeholder route. Settings persists light/dark/system theme selection; some display/behavior controls remain disabled or hardcoded.
+The active native tabs are Library, Collections, and an isolated Search tab. Library has a photo-backed header, a continuous five-column phone grid, optional year/month grouping, basic selection, EXIF filters, durable scan progress, metadata, and a modal loupe with paged swipe navigation and native iOS pinch zoom. Search uses a native iOS search bar and a 350 ms cancellable debounce. Library chrome uses `expo-glass-effect` when Liquid Glass is available, with platform and Reduce Transparency fallbacks; the loupe uses opaque core React Native controls. Collections remains a placeholder tab. Settings persists light/dark/system theme selection; some display/behavior controls remain disabled or hardcoded.
 
 ## Deployment
 
