@@ -84,14 +84,16 @@ describe("DashboardScreen", () => {
 	});
 
 	it("renders the photo-backed library header and ungrouped grid", async () => {
-		const { getAllByTestId, getByLabelText, getByText, queryByText } =
+		const { getByLabelText, getByTestId, getByText, queryByText } =
 			renderWithProviders(<DashboardScreen />);
 
 		await waitFor(() => expect(getByText("Library")).toBeTruthy());
 		expect(getByText("5 Items")).toBeTruthy();
 		expect(getByText("Select")).toBeTruthy();
 		expect(getByLabelText("Library options")).toBeTruthy();
-		expect(getAllByTestId(/library-header-image-/)).toHaveLength(5);
+		expect(getByTestId("library-header-image").props.sourceUri).toContain(
+			"/thumbnail/medium",
+		);
 		expect(queryByText("August 2024")).toBeNull();
 		expect(mockPhotosQueryOptions?.placeholderData).toEqual(
 			expect.any(Function),

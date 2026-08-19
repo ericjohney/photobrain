@@ -225,7 +225,7 @@ export default function DashboardScreen() {
 		selectedPhotoIds.size === 0
 			? "Select Items"
 			: `${selectedPhotoIds.size.toLocaleString()} Selected`;
-	const headerPhotos = photos.slice(0, Math.min(columns, 5));
+	const headerPhoto = photos[0];
 
 	useEffect(() => {
 		if (!isSelecting) return;
@@ -373,24 +373,25 @@ export default function DashboardScreen() {
 
 	const listHeader = (
 		<>
-			<View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+			<View style={[styles.header, { paddingTop: insets.top + 8 }]}>
 				<View pointerEvents="none" style={styles.headerBackdrop}>
-					<View style={styles.headerBackdropRow}>
-						{headerPhotos.map((photo) => (
-							<Image
-								key={photo.id}
-								testID={`library-header-image-${photo.id}`}
-								source={{
-									uri: thumbnailUrl(photo.id, "tiny", photo.thumbnailUpdatedAt),
-								}}
-								style={styles.headerBackdropPhoto}
-								contentFit="cover"
-								blurRadius={6}
-								cachePolicy="memory-disk"
-								accessibilityIgnoresInvertColors
-							/>
-						))}
-					</View>
+					{headerPhoto && (
+						<Image
+							testID="library-header-image"
+							source={{
+								uri: thumbnailUrl(
+									headerPhoto.id,
+									"medium",
+									headerPhoto.thumbnailUpdatedAt,
+								),
+							}}
+							style={styles.headerBackdropPhoto}
+							contentFit="cover"
+							blurRadius={16}
+							cachePolicy="memory-disk"
+							accessibilityIgnoresInvertColors
+						/>
+					)}
 					<View style={styles.headerBackdropShade} />
 				</View>
 				<View style={styles.titleRow}>
@@ -721,24 +722,23 @@ const styles = StyleSheet.create({
 	loading: { flex: 1, alignItems: "center", justifyContent: "center" },
 	header: {
 		position: "relative",
-		minHeight: 170,
+		minHeight: 150,
 		justifyContent: "flex-end",
 		paddingHorizontal: 20,
-		paddingBottom: 17,
+		paddingBottom: 13,
 		backgroundColor: "#161616",
 		overflow: "hidden",
 	},
 	headerBackdrop: {
 		...StyleSheet.absoluteFill,
 	},
-	headerBackdropRow: {
+	headerBackdropPhoto: {
 		...StyleSheet.absoluteFill,
-		flexDirection: "row",
+		transform: [{ scale: 1.08 }],
 	},
-	headerBackdropPhoto: { flex: 1, minWidth: 0 },
 	headerBackdropShade: {
 		...StyleSheet.absoluteFill,
-		backgroundColor: "rgba(0,0,0,0.55)",
+		backgroundColor: "rgba(0,0,0,0.52)",
 	},
 	titleRow: {
 		flexDirection: "row",
