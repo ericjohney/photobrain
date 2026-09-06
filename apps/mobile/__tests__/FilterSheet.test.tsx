@@ -39,6 +39,44 @@ beforeEach(() => {
 });
 
 describe("FilterSheet", () => {
+	it("distinguishes loading filters from an empty library", async () => {
+		const { findByText, queryByText, getByLabelText } = renderWithProviders(
+			<FilterSheet
+				{...defaultProps}
+				filterOptions={undefined}
+				isLoadingFilters
+			/>,
+		);
+		await findByText("Loading filters...");
+		expect(queryByText("No filter options available")).toBeNull();
+		expect(getByLabelText("Open settings")).toBeTruthy();
+	});
+
+	it("offers retry when filters fail without hiding library actions", async () => {
+		const retry = jest.fn();
+		const { findByText, getByLabelText } = renderWithProviders(
+			<FilterSheet
+				{...defaultProps}
+				filterOptions={undefined}
+				filtersError
+				onRetryFilters={retry}
+			/>,
+		);
+		await findByText("Couldn't load filters");
+		fireEvent.press(getByLabelText("Retry filters"));
+		expect(retry).toHaveBeenCalledTimes(1);
+		fireEvent.press(getByLabelText("Scan library"));
+		expect(mockOnScan).toHaveBeenCalled();
+	});
+
+	it("keeps cached filter options available after a refetch error", async () => {
+		const { findByText, queryByText } = renderWithProviders(
+			<FilterSheet {...defaultProps} filtersError />,
+		);
+		await findByText("Sony A7III");
+		expect(queryByText("Couldn't load filters")).toBeNull();
+	});
+
 	it("changes the library grouping", async () => {
 		const { getByText } = renderWithProviders(
 			<FilterSheet {...defaultProps} />,

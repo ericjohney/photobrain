@@ -117,7 +117,7 @@ export function useJobProgress(jobId: string | null) {
 		return result.data.token;
 	}, [tokenQuery.refetch]);
 
-	const { data, latestData, error, state } = useInngestSubscription({
+	const { data, latestData, state } = useInngestSubscription({
 		token: tokenQuery.data?.token,
 		refreshToken: refreshRealtimeToken,
 		enabled: Boolean(
@@ -232,7 +232,10 @@ export function useJobProgress(jobId: string | null) {
 		isCompleted,
 		isFailed,
 		isConnected: state === "active",
-		error: error ?? tokenQuery.error ?? statusQuery.error,
+		error:
+			isActive && !latest && statusQuery.error
+				? "Unable to check scan status. Retrying automatically."
+				: null,
 		failureMessage: isMissingJob
 			? "Scan job was not found."
 			: (statusQuery.data?.error ?? null),

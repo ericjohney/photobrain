@@ -64,13 +64,18 @@ Dashboard behavior:
 - Photos are sorted newest-first using EXIF date, modified date, or created date.
 - All Photos is a continuous edge-to-edge grid; year and month grouping remain available from Library Options.
 - The responsive grid uses five columns on phones and up to eight on wide layouts.
+- Library and Search grids use `small` thumbnails for Retina sharpness; the Library backdrop uses one blurred `medium` thumbnail.
 - Pull-to-refresh refetches photos and filter options.
 - The filter sheet supports camera, lens, ISO, and month. It does not expose the API's raw/standard filter.
 - The photo-backed Library header exposes Library Options and a basic selection mode. Library Options also contains grouping, scan, and Settings actions.
+- Selection has a persistent Done control outside the scrolling grid; bulk actions are not implemented. Library Options distinguishes filter loading, failure with retry, and empty metadata.
 - Tapping a photo opens a full-screen modal loupe. The loupe uses the `large` thumbnail, not the original file route.
 - Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
+- Unknown scan progress is labeled as checking status, with an automatic-retry explanation when recovery requests fail instead of claiming processing has started.
 
 The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, and metadata. Collections is an active native tab but remains a placeholder. Preferences persists theme selection and propagates it through React Native `Appearance`; grid-column and haptic controls remain disabled/hardcoded.
+
+Loupe chrome respects horizontal safe areas in landscape, and image failures offer per-photo retry. Metadata values wrap and are selectable, with stacked labels at larger text sizes. Search empty/loading/error states scroll with automatic native-header insets. Glass fallbacks remain opaque while Reduce Transparency is enabled or its initial value is unknown.
 
 On iOS, tab chrome, header search, and library chrome use native controls. `GlassSurface` renders `expo-glass-effect` only when the iOS APIs are available and Reduce Transparency is disabled; other environments receive an opaque semantic-color fallback. The modal loupe deliberately uses React Native's paged `FlatList`, opaque controls, and native iOS `ScrollView` zoom instead of a third-party Reanimated gallery; keep its thumbnail-tap tests on the real implementation rather than mocking the viewer.
 

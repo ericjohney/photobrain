@@ -11,6 +11,7 @@ import {
 	ScrollView,
 	StyleSheet,
 	Text,
+	useWindowDimensions,
 	View,
 } from "react-native";
 import { thumbnailUrl } from "@/config";
@@ -44,6 +45,9 @@ function CollapsibleSection({
 	return (
 		<View style={[styles.section, { borderBottomColor: colors.border }]}>
 			<Pressable
+				accessibilityRole="button"
+				accessibilityLabel={title}
+				accessibilityState={{ expanded: isOpen }}
 				style={styles.sectionHeader}
 				onPress={() => setIsOpen(!isOpen)}
 			>
@@ -71,16 +75,28 @@ interface MetadataRowProps {
 
 function MetadataRow({ label, value }: MetadataRowProps) {
 	const colors = useColors();
+	const { fontScale } = useWindowDimensions();
+	const stacked = fontScale >= 1.5;
 	if (value === null || value === undefined || value === "") return null;
 
 	return (
-		<View style={styles.row}>
-			<Text style={[styles.rowLabel, { color: colors.mutedForeground }]}>
+		<View style={[styles.row, stacked && styles.stackedRow]}>
+			<Text
+				style={[
+					styles.rowLabel,
+					stacked && styles.stackedLabel,
+					{ color: colors.mutedForeground },
+				]}
+			>
 				{label}
 			</Text>
 			<Text
-				style={[styles.rowValue, { color: colors.foreground }]}
-				numberOfLines={1}
+				style={[
+					styles.rowValue,
+					stacked && styles.stackedValue,
+					{ color: colors.foreground },
+				]}
+				selectable
 			>
 				{value}
 			</Text>
@@ -194,6 +210,7 @@ export default function MetadataPanel({
 							{photo.rawError && (
 								<View style={styles.errorRow}>
 									<Text
+										selectable
 										style={[styles.errorText, { color: colors.destructive }]}
 									>
 										{photo.rawError}
@@ -259,13 +276,14 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 	},
 	headerTitle: {
+		flex: 1,
 		fontSize: 18,
 		fontWeight: "600",
 	},
 	closeButton: {
-		width: 32,
-		height: 32,
-		borderRadius: 16,
+		width: 44,
+		height: 44,
+		borderRadius: 22,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -293,11 +311,13 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 	},
 	sectionHeaderLeft: {
+		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
 	},
 	sectionTitle: {
+		flexShrink: 1,
 		fontSize: 14,
 		fontWeight: "600",
 		textTransform: "uppercase",
@@ -315,7 +335,8 @@ const styles = StyleSheet.create({
 	},
 	rowLabel: {
 		fontSize: 14,
-		flexShrink: 0,
+		width: "35%",
+		maxWidth: 140,
 	},
 	rowValue: {
 		fontSize: 14,
@@ -323,6 +344,9 @@ const styles = StyleSheet.create({
 		textAlign: "right",
 		flex: 1,
 	},
+	stackedRow: { flexDirection: "column", gap: 4 },
+	stackedLabel: { width: "100%", maxWidth: "100%" },
+	stackedValue: { flex: 0, textAlign: "left" },
 	errorRow: {
 		paddingVertical: 6,
 	},

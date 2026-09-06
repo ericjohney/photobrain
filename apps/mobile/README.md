@@ -56,6 +56,9 @@ Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN add
 - Collections is an active native tab but remains a placeholder.
 - Settings persists light/dark/system themes. Grid-column and haptic settings are currently disabled or hardcoded.
 - The loupe does not display unimplemented share/like/delete controls.
+- Photo grids use sharper previews, and failed loupe images offer Retry. Landscape loupe controls stay within safe areas.
+- Photo Info supports wrapping, selectable values and larger text. Search messages remain scrollable below the native header.
+- Library Options shows filter loading and retry states. Selection can be exited without scrolling back to the header; bulk actions are not implemented.
 
 The app uses tRPC for metadata, filters, search, scan, durable scan status, and Realtime tokens. REST is used for image and thumbnail URLs. Active scan IDs survive restarts in AsyncStorage and are cleared on terminal or missing durable status.
 

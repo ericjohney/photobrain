@@ -16,6 +16,7 @@ interface ActivityBarProps {
 	isCompleted: boolean;
 	isFailed?: boolean;
 	failureMessage?: string | null;
+	error?: string | null;
 }
 
 function ProgressBar({
@@ -67,7 +68,7 @@ function getPhaseLabel(phase: string | null): string {
 		case "failed":
 			return "Scan Failed";
 		default:
-			return "Processing";
+			return "Checking scan status";
 	}
 }
 
@@ -90,6 +91,7 @@ export default function ActivityBar({
 	isCompleted,
 	isFailed = false,
 	failureMessage,
+	error,
 }: ActivityBarProps) {
 	const colors = useColors();
 
@@ -97,7 +99,11 @@ export default function ActivityBar({
 		return null;
 	}
 
-	const label = getPhaseLabel(progress.phase);
+	const isUnavailable =
+		isActive && !isCompleted && !isFailed && !progress.phase && Boolean(error);
+	const label = isUnavailable
+		? "Progress unavailable"
+		: getPhaseLabel(progress.phase);
 	const icon = getPhaseIcon(progress.phase);
 	const isEmbedding = progress.phase === "embedding";
 
@@ -128,6 +134,11 @@ export default function ActivityBar({
 						numberOfLines={2}
 					>
 						{failureMessage}
+					</Text>
+				)}
+				{isUnavailable && (
+					<Text style={[styles.failureText, { color: colors.mutedForeground }]}>
+						{error}
 					</Text>
 				)}
 				{progress.total > 0 && (

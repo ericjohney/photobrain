@@ -28,7 +28,9 @@ export default function GlassSurface({
 	...props
 }: GlassSurfaceProps) {
 	const { isDark } = useTheme();
-	const [reduceTransparency, setReduceTransparency] = useState(false);
+	const [reduceTransparency, setReduceTransparency] = useState<boolean | null>(
+		null,
+	);
 
 	useEffect(() => {
 		if (
@@ -38,17 +40,21 @@ export default function GlassSurface({
 			return;
 		}
 		let mounted = true;
-		AccessibilityInfo.isReduceTransparencyEnabled()
-			.then((enabled) => {
-				if (mounted && enabled) setReduceTransparency(true);
-			})
-			.catch(() => {
-				// Keep the normal visual treatment if the preference cannot be read.
-			});
+		let preferenceChanged = false;
 		const subscription = AccessibilityInfo.addEventListener?.(
 			"reduceTransparencyChanged",
-			setReduceTransparency,
+			(enabled) => {
+				preferenceChanged = true;
+				if (mounted) setReduceTransparency(enabled);
+			},
 		);
+		AccessibilityInfo.isReduceTransparencyEnabled()
+			.then((enabled) => {
+				if (mounted && !preferenceChanged) setReduceTransparency(enabled);
+			})
+			.catch(() => {
+				// Keep the opaque fallback until the preference is known.
+			});
 
 		return () => {
 			mounted = false;
@@ -58,7 +64,7 @@ export default function GlassSurface({
 
 	const canRenderGlass =
 		Platform.OS === "ios" &&
-		!reduceTransparency &&
+		reduceTransparency === false &&
 		isLiquidGlassAvailable() &&
 		isGlassEffectAPIAvailable();
 
@@ -83,9 +89,7 @@ export default function GlassSurface({
 				style,
 				styles.fallback,
 				{
-					backgroundColor: isDark
-						? "rgba(44,44,46,0.94)"
-						: "rgba(242,242,247,0.94)",
+					backgroundColor: isDark ? "#2c2c2e" : "#f2f2f7",
 				},
 				fallbackStyle,
 			]}

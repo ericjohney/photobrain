@@ -101,7 +101,7 @@ export default function PreferencesScreen() {
 					accessibilityRole="button"
 					accessibilityLabel="About PhotoBrain"
 					onPress={() => router.push("/about")}
-					style={styles.row}
+					style={[styles.row, styles.lastRow]}
 				>
 					<View
 						style={[
@@ -178,6 +178,7 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		marginRight: 12,
 	},
+	lastRow: { borderBottomWidth: 0 },
 	rowContent: { flex: 1, paddingVertical: 10 },
 	rowTitle: { fontSize: 16, fontWeight: "500" },
 	rowDetail: { marginTop: 2, fontSize: 12 },

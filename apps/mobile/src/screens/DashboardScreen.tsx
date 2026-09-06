@@ -124,7 +124,7 @@ export default function DashboardScreen() {
 	const { colors } = useTheme();
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
-	const { width } = useWindowDimensions();
+	const { width, fontScale } = useWindowDimensions();
 	const columns = width >= 1024 ? 8 : width >= 768 ? 7 : width >= 560 ? 6 : 5;
 	const itemSize = (width - GRID_SPACING * (columns - 1)) / columns;
 	const [grouping, setGrouping] = useState<LibraryGrouping>("all");
@@ -329,7 +329,11 @@ export default function DashboardScreen() {
 						>
 							<Image
 								source={{
-									uri: thumbnailUrl(photo.id, "tiny", photo.thumbnailUpdatedAt),
+									uri: thumbnailUrl(
+										photo.id,
+										"small",
+										photo.thumbnailUpdatedAt,
+									),
 								}}
 								style={styles.photo}
 								contentFit="cover"
@@ -394,7 +398,9 @@ export default function DashboardScreen() {
 					)}
 					<View style={styles.headerBackdropShade} />
 				</View>
-				<View style={styles.titleRow}>
+				<View
+					style={[styles.titleRow, fontScale > 1.3 && styles.titleRowStacked]}
+				>
 					<View style={styles.titleBlock}>
 						<Text style={styles.title}>Library</Text>
 						<Text style={styles.photoCount}>
@@ -462,6 +468,7 @@ export default function DashboardScreen() {
 				isCompleted={jobProgress.isCompleted}
 				isFailed={jobProgress.isFailed}
 				failureMessage={jobProgress.failureMessage}
+				error={jobProgress.error}
 			/>
 			{scanError && (
 				<View
@@ -478,6 +485,7 @@ export default function DashboardScreen() {
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Dismiss scan error"
+						style={styles.dismissButton}
 						onPress={() => setScanError(null)}
 					>
 						<Ionicons name="close" size={18} color={colors.destructive} />
@@ -549,7 +557,7 @@ export default function DashboardScreen() {
 					style={[styles.emptyButton, { backgroundColor: colors.primary }]}
 				>
 					{!hasActiveFilters && scanDisabled ? (
-						<ActivityIndicator size="small" color="#ffffff" />
+						<ActivityIndicator size="small" color={colors.primaryForeground} />
 					) : (
 						<Ionicons
 							name={
@@ -560,10 +568,15 @@ export default function DashboardScreen() {
 										: "sync-outline"
 							}
 							size={18}
-							color="#ffffff"
+							color={colors.primaryForeground}
 						/>
 					)}
-					<Text style={styles.emptyButtonText}>
+					<Text
+						style={[
+							styles.emptyButtonText,
+							{ color: colors.primaryForeground },
+						]}
+					>
 						{filteredQueryFailed
 							? "Try Again"
 							: hasActiveFilters
@@ -627,7 +640,14 @@ export default function DashboardScreen() {
 					onPress={handleRefresh}
 					style={[styles.emptyButton, { backgroundColor: colors.primary }]}
 				>
-					<Text style={styles.emptyButtonText}>Try Again</Text>
+					<Text
+						style={[
+							styles.emptyButtonText,
+							{ color: colors.primaryForeground },
+						]}
+					>
+						Try Again
+					</Text>
 				</Pressable>
 			</View>
 		);
@@ -664,6 +684,16 @@ export default function DashboardScreen() {
 				windowSize={7}
 				removeClippedSubviews
 			/>
+			{isSelecting && (
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel="Finish selection"
+					onPress={toggleSelectionMode}
+					style={[styles.selectionExit, { bottom: insets.bottom + 90 }]}
+				>
+					<Text style={styles.selectButtonText}>Done selecting</Text>
+				</Pressable>
+			)}
 
 			<Modal
 				visible={library.viewMode === "loupe"}
@@ -694,6 +724,11 @@ export default function DashboardScreen() {
 				visible={filterVisible}
 				onClose={() => setFilterVisible(false)}
 				filterOptions={filterOptionsQuery.data}
+				isLoadingFilters={filterOptionsQuery.isLoading}
+				filtersError={filterOptionsQuery.isError}
+				onRetryFilters={() => {
+					void filterOptionsQuery.refetch();
+				}}
 				activeFilters={filters}
 				onFilterChange={handleFilterChange}
 				grouping={grouping}
@@ -747,6 +782,7 @@ const styles = StyleSheet.create({
 		gap: 12,
 	},
 	titleBlock: { flex: 1, minWidth: 0, gap: 1 },
+	titleRowStacked: { flexDirection: "column", alignItems: "stretch" },
 	title: {
 		color: "#ffffff",
 		fontSize: 36,
@@ -766,7 +802,7 @@ const styles = StyleSheet.create({
 		paddingBottom: 2,
 	},
 	darkGlassFallback: {
-		backgroundColor: "rgba(72,72,74,0.82)",
+		backgroundColor: "#343436",
 		borderColor: "rgba(255,255,255,0.16)",
 		borderWidth: StyleSheet.hairlineWidth,
 	},
@@ -797,7 +833,20 @@ const styles = StyleSheet.create({
 	},
 	disabledButton: { opacity: 0.45 },
 	selectButtonText: { color: "#ffffff", fontSize: 17, fontWeight: "600" },
+	selectionExit: {
+		position: "absolute",
+		alignSelf: "center",
+		minHeight: 44,
+		paddingHorizontal: 20,
+		paddingVertical: 12,
+		borderRadius: 24,
+		backgroundColor: "#343436",
+		borderColor: "#636366",
+		borderWidth: StyleSheet.hairlineWidth,
+		justifyContent: "center",
+	},
 	filterSummary: {
+		minHeight: 44,
 		alignSelf: "center",
 		flexDirection: "row",
 		alignItems: "center",
@@ -820,6 +869,12 @@ const styles = StyleSheet.create({
 		borderRadius: 14,
 	},
 	errorBannerText: { flex: 1, fontSize: 13, fontWeight: "500" },
+	dismissButton: {
+		width: 44,
+		height: 44,
+		alignItems: "center",
+		justifyContent: "center",
+	},
 	errorTitle: { marginTop: 16, fontSize: 21, fontWeight: "700" },
 	errorMessage: {
 		marginTop: 7,

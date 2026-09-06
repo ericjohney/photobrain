@@ -24,14 +24,17 @@ interface TokenQueryResult {
 }
 
 interface StatusQueryResult {
-	data: {
-		phase: string;
-		current: number;
-		total: number;
-		status: string;
-		error: string | null;
-		updatedAt?: Date;
-	} | null;
+	data:
+		| {
+				phase: string;
+				current: number;
+				total: number;
+				status: string;
+				error: string | null;
+				updatedAt?: Date;
+		  }
+		| null
+		| undefined;
 	isSuccess: boolean;
 	error: Error | null;
 }
@@ -129,6 +132,177 @@ describe("useJobProgress", () => {
 			}),
 		).toEqual({ phase: "embedding", current: 3, total: 6 });
 		expect(decodeProgressMessage({ phase: "unknown", current: 1 })).toBeNull();
+	});
+
+	it("keeps a restored job active while its status is unknown", () => {
+		mockStatusQueryResult = {
+			data: undefined,
+			isSuccess: false,
+			error: null,
+		};
+		const { result } = renderHook(() => useJobProgress(JOB_ID));
+
+		expect(result.current).toMatchObject({
+			progress: { phase: null, current: 0, total: 0 },
+			isActive: true,
+			isCompleted: false,
+			isFailed: false,
+			error: null,
+			failureMessage: null,
+		});
+		expect(mockScanStatusUseQuery).toHaveBeenCalledWith(
+			{ jobId: JOB_ID },
+			expect.objectContaining({ enabled: true }),
+		);
+		expect(mockPhotosInvalidate).not.toHaveBeenCalled();
+	});
+
+	it("reports unavailable progress without losing the job and recovers on polling", () => {
+		mockStatusQueryResult = {
+			data: undefined,
+			isSuccess: false,
+			error: new Error("Network unavailable"),
+		};
+		const { result, rerender } = renderHook(() => useJobProgress(JOB_ID));
+
+		expect(result.current).toMatchObject({
+			progress: { phase: null },
+			isActive: true,
+			isCompleted: false,
+			isFailed: false,
+			error: "Unable to check scan status. Retrying automatically.",
+			failureMessage: null,
+		});
+		expect(mockScanStatusUseQuery).toHaveBeenLastCalledWith(
+			{ jobId: JOB_ID },
+			expect.objectContaining({ enabled: true }),
+		);
+		const queryOptions = mockScanStatusUseQuery.mock.calls.at(-1)?.[1];
+		expect(
+			queryOptions.refetchInterval({
+				state: { status: "error", data: undefined },
+			}),
+		).toBe(1500);
+		expect(mockPhotosInvalidate).not.toHaveBeenCalled();
+
+		resetResults();
+		rerender({});
+		expect(result.current.progress.phase).toBe("processing");
+		expect(result.current.error).toBeNull();
+		expect(result.current.isActive).toBe(true);
+	});
+
+	it("uses Realtime progress when durable recovery fails", () => {
+		mockStatusQueryResult = {
+			data: undefined,
+			isSuccess: false,
+			error: new Error("Network unavailable"),
+		};
+		const { result, rerender } = renderHook(() => useJobProgress(JOB_ID));
+		expect(result.current.error).not.toBeNull();
+
+		mockSubscriptionResult.latestData = {
+			channel: `job:${JOB_ID}`,
+			data: { phase: "processing", current: 2, total: 4 },
+		};
+		rerender({});
+		expect(result.current.progress).toMatchObject({
+			phase: "processing",
+			current: 2,
+			percentage: 50,
+		});
+		expect(result.current.error).toBeNull();
+		expect(result.current.isActive).toBe(true);
+	});
+
+	it("keeps cached durable progress on a failed refetch", () => {
+		mockStatusQueryResult.isSuccess = false;
+		mockStatusQueryResult.error = new Error("Network unavailable");
+		mockSubscriptionResult.error = new Error("Realtime unavailable");
+		mockSubscriptionResult.state = "closed";
+		const { result } = renderHook(() => useJobProgress(JOB_ID));
+
+		expect(result.current.progress.phase).toBe("processing");
+		expect(result.current.error).toBeNull();
+		expect(result.current.isActive).toBe(true);
+	});
+
+	it("does not treat Realtime errors alone as a durable recovery failure", () => {
+		mockStatusQueryResult = {
+			data: undefined,
+			isSuccess: false,
+			error: null,
+		};
+		mockTokenQueryResult.error = new Error("Token unavailable");
+		mockSubscriptionResult.error = new Error("Realtime unavailable");
+		const { result } = renderHook(() => useJobProgress(JOB_ID));
+
+		expect(result.current.progress.phase).toBeNull();
+		expect(result.current.error).toBeNull();
+		expect(result.current.isFailed).toBe(false);
+	});
+
+	it("does not show recovery errors without an active job", () => {
+		mockStatusQueryResult = {
+			data: undefined,
+			isSuccess: false,
+			error: new Error("Network unavailable"),
+		};
+		const { result } = renderHook(() => useJobProgress(null));
+
+		expect(result.current.isActive).toBe(false);
+		expect(result.current.error).toBeNull();
+	});
+
+	it("does not let the previous job's Realtime progress hide a recovery error", () => {
+		mockSubscriptionResult.latestData = {
+			channel: `job:${JOB_ID}`,
+			data: { phase: "completed", current: 4, total: 4 },
+		};
+		const { result, rerender } = renderHook(
+			({ jobId }) => useJobProgress(jobId),
+			{ initialProps: { jobId: JOB_ID } },
+		);
+		expect(result.current.isCompleted).toBe(true);
+
+		mockStatusQueryResult = {
+			data: undefined,
+			isSuccess: false,
+			error: new Error("Network unavailable"),
+		};
+		rerender({ jobId: OTHER_JOB_ID });
+		expect(result.current.progress.phase).toBeNull();
+		expect(result.current.error).not.toBeNull();
+		expect(result.current.isActive).toBe(true);
+		expect(result.current.isCompleted).toBe(false);
+	});
+
+	it.each([
+		"completed",
+		"failed",
+	])("keeps durable %s status despite a refetch error and late Realtime progress", (phase) => {
+		mockStatusQueryResult.data = {
+			phase,
+			current: 4,
+			total: 4,
+			status: phase,
+			error: phase === "failed" ? "Scan failed" : null,
+		};
+		const { result, rerender } = renderHook(() => useJobProgress(JOB_ID));
+		mockStatusQueryResult.isSuccess = false;
+		mockStatusQueryResult.error = new Error("Network unavailable");
+		mockSubscriptionResult.latestData = {
+			channel: `job:${JOB_ID}`,
+			data: { phase: "processing", current: 2, total: 4 },
+		};
+		rerender({});
+
+		expect(result.current.progress.phase).toBe(phase);
+		expect(result.current.isActive).toBe(false);
+		expect(result.current.isCompleted).toBe(phase === "completed");
+		expect(result.current.isFailed).toBe(phase === "failed");
+		expect(result.current.error).toBeNull();
+		expect(mockPhotosInvalidate).toHaveBeenCalledTimes(1);
 	});
 
 	it("fetches a token for the current job and prefers current Realtime progress", () => {

@@ -40,6 +40,9 @@ interface FilterSheetProps {
 	scanDisabled?: boolean;
 	isScanning?: boolean;
 	onOpenSettings?: () => void;
+	isLoadingFilters?: boolean;
+	filtersError?: boolean;
+	onRetryFilters?: () => void;
 }
 
 const GROUPING_OPTIONS: Array<{ value: LibraryGrouping; label: string }> = [
@@ -84,6 +87,9 @@ export default function FilterSheet({
 	scanDisabled = false,
 	isScanning = false,
 	onOpenSettings,
+	isLoadingFilters = false,
+	filtersError = false,
+	onRetryFilters,
 }: FilterSheetProps) {
 	const colors = useColors();
 	const insets = useSafeAreaInsets();
@@ -169,9 +175,6 @@ export default function FilterSheet({
 							Clear All
 						</Text>
 					</Pressable>
-					<Text style={[styles.headerTitle, { color: colors.foreground }]}>
-						Library Options
-					</Text>
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Apply filters"
@@ -183,6 +186,15 @@ export default function FilterSheet({
 						</Text>
 					</Pressable>
 				</View>
+				<Text
+					accessibilityRole="header"
+					style={[
+						styles.headerTitle,
+						{ color: colors.foreground, backgroundColor: colors.toolbar },
+					]}
+				>
+					Library Options
+				</Text>
 
 				<ScrollView
 					style={styles.content}
@@ -500,24 +512,51 @@ export default function FilterSheet({
 					)}
 
 					{/* Empty state when no filter options available */}
-					{(!filterOptions ||
-						(filterOptions.cameras.length === 0 &&
-							filterOptions.lenses.length === 0 &&
-							filterOptions.isos.length === 0 &&
-							filterOptions.dates.length === 0)) && (
+					{!filterOptions && (isLoadingFilters || filtersError) ? (
 						<View style={styles.emptyState}>
-							<Ionicons
-								name="funnel-outline"
-								size={48}
-								color={colors.mutedForeground}
-								style={{ opacity: 0.3 }}
-							/>
+							{isLoadingFilters && <ActivityIndicator color={colors.primary} />}
 							<Text
 								style={[styles.emptyText, { color: colors.mutedForeground }]}
 							>
-								No filter options available
+								{isLoadingFilters
+									? "Loading filters..."
+									: "Couldn't load filters"}
 							</Text>
+							{!isLoadingFilters && onRetryFilters && (
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel="Retry filters"
+									onPress={onRetryFilters}
+									style={styles.headerActionButton}
+								>
+									<Text
+										style={[styles.headerAction, { color: colors.primary }]}
+									>
+										Try Again
+									</Text>
+								</Pressable>
+							)}
 						</View>
+					) : (
+						(!filterOptions ||
+							(filterOptions.cameras.length === 0 &&
+								filterOptions.lenses.length === 0 &&
+								filterOptions.isos.length === 0 &&
+								filterOptions.dates.length === 0)) && (
+							<View style={styles.emptyState}>
+								<Ionicons
+									name="funnel-outline"
+									size={48}
+									color={colors.mutedForeground}
+									style={{ opacity: 0.3 }}
+								/>
+								<Text
+									style={[styles.emptyText, { color: colors.mutedForeground }]}
+								>
+									No filter options available
+								</Text>
+							</View>
+						)
 					)}
 				</ScrollView>
 			</View>
@@ -537,13 +576,16 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 	},
 	headerTitle: {
-		fontSize: 18,
-		fontWeight: "600",
+		fontSize: 24,
+		fontWeight: "700",
+		paddingHorizontal: 16,
+		paddingBottom: 16,
 	},
 	headerActionButton: {
 		minWidth: 72,
 		minHeight: 44,
 		justifyContent: "center",
+		alignItems: "center",
 	},
 	headerAction: {
 		fontSize: 16,

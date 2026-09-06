@@ -31,6 +31,74 @@ interface LoupeViewProps {
 	onShowMetadata: (photo: PhotoMetadata) => void;
 }
 
+function LoupePhoto({
+	photo,
+	width,
+	height,
+	onPress,
+}: {
+	photo: PhotoMetadata;
+	width: number;
+	height: number;
+	onPress: () => void;
+}) {
+	const [failed, setFailed] = useState(false);
+	const insets = useSafeAreaInsets();
+
+	if (failed) {
+		return (
+			<Pressable
+				testID={`loupe-photo-error-${photo.id}`}
+				accessible={false}
+				onPress={onPress}
+				style={[
+					styles.photoError,
+					{
+						width,
+						height,
+						paddingLeft: insets.left + 24,
+						paddingRight: insets.right + 24,
+					},
+				]}
+			>
+				<Text style={styles.dateText}>Unable to load photo</Text>
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel={`Retry loading ${photo.name}`}
+					onPress={() => setFailed(false)}
+					style={[styles.retryButton, styles.chromeSurface]}
+				>
+					<Text style={styles.counterText}>Retry</Text>
+				</Pressable>
+			</Pressable>
+		);
+	}
+
+	return (
+		<Pressable
+			accessibilityRole="button"
+			accessibilityLabel={photo.name}
+			onPress={onPress}
+			style={{ width, height }}
+		>
+			<Image
+				source={{
+					uri: thumbnailUrl(photo.id, "large", photo.thumbnailUpdatedAt),
+				}}
+				placeholder={{
+					uri: thumbnailUrl(photo.id, "small", photo.thumbnailUpdatedAt),
+				}}
+				onError={() => setFailed(true)}
+				style={styles.photo}
+				contentFit="contain"
+				priority="high"
+				cachePolicy="memory-disk"
+				accessibilityIgnoresInvertColors
+			/>
+		</Pressable>
+	);
+}
+
 export default function LoupeView({
 	photos,
 	initialIndex,
@@ -119,26 +187,13 @@ export default function LoupeView({
 	const renderItem = useCallback(
 		({ item }: { item: PhotoMetadata }) => {
 			const photo = (
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel={item.name}
+				<LoupePhoto
+					key={thumbnailUrl(item.id, "large", item.thumbnailUpdatedAt)}
+					photo={item}
+					width={width}
+					height={height}
 					onPress={() => setChromeVisible((visible) => !visible)}
-					style={{ width, height }}
-				>
-					<Image
-						source={{
-							uri: thumbnailUrl(item.id, "large", item.thumbnailUpdatedAt),
-						}}
-						placeholder={{
-							uri: thumbnailUrl(item.id, "small", item.thumbnailUpdatedAt),
-						}}
-						style={styles.photo}
-						contentFit="contain"
-						priority="high"
-						cachePolicy="memory-disk"
-						accessibilityIgnoresInvertColors
-					/>
-				</Pressable>
+				/>
 			);
 
 			if (Platform.OS !== "ios") return photo;
@@ -165,7 +220,17 @@ export default function LoupeView({
 	if (!currentPhoto) {
 		return (
 			<View style={styles.container} testID="loupe-view">
-				<View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+				<View
+					testID="loupe-top-bar"
+					style={[
+						styles.topBar,
+						{
+							paddingTop: insets.top + 8,
+							paddingLeft: insets.left + 14,
+							paddingRight: insets.right + 14,
+						},
+					]}
+				>
 					<View style={[styles.roundButton, styles.chromeSurface]}>
 						<Pressable
 							accessibilityRole="button"
@@ -226,7 +291,15 @@ export default function LoupeView({
 			{chromeVisible && (
 				<>
 					<View
-						style={[styles.topBar, { paddingTop: insets.top + 8 }]}
+						testID="loupe-top-bar"
+						style={[
+							styles.topBar,
+							{
+								paddingTop: insets.top + 8,
+								paddingLeft: insets.left + 14,
+								paddingRight: insets.right + 14,
+							},
+						]}
 						pointerEvents="box-none"
 					>
 						<View style={[styles.roundButton, styles.chromeSurface]}>
@@ -247,7 +320,15 @@ export default function LoupeView({
 					</View>
 
 					<View
-						style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}
+						testID="loupe-bottom-bar"
+						style={[
+							styles.bottomBar,
+							{
+								paddingBottom: insets.bottom + 10,
+								left: insets.left + 12,
+								right: insets.right + 12,
+							},
+						]}
 						pointerEvents="box-none"
 					>
 						<View style={[styles.infoCard, styles.chromeSurface]}>
@@ -284,13 +365,19 @@ export default function LoupeView({
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: "#000000" },
 	photo: { width: "100%", height: "100%" },
+	photoError: { alignItems: "center", justifyContent: "center", gap: 12 },
+	retryButton: {
+		minHeight: 44,
+		paddingHorizontal: 20,
+		justifyContent: "center",
+		borderRadius: 22,
+	},
 	chromeSurface: { backgroundColor: "rgba(28,28,30,0.9)" },
 	topBar: {
 		position: "absolute",
 		top: 0,
 		left: 0,
 		right: 0,
-		paddingHorizontal: 14,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
@@ -311,7 +398,7 @@ const styles = StyleSheet.create({
 		borderCurve: "continuous",
 	},
 	counterText: { color: "#ffffff", fontSize: 13, fontWeight: "600" },
-	bottomBar: { position: "absolute", left: 12, right: 12, bottom: 0 },
+	bottomBar: { position: "absolute", bottom: 0 },
 	infoCard: {
 		minHeight: 70,
 		borderRadius: 24,

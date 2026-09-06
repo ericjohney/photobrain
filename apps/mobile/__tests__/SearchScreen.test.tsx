@@ -1,5 +1,7 @@
-import { fireEvent, waitFor } from "@testing-library/react-native";
+import { fireEvent, waitFor, within } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
+import { StyleSheet } from "react-native";
 
 type SearchInput = { query: string; limit: number };
 type SearchOptions = {
@@ -8,6 +10,7 @@ type SearchOptions = {
 };
 
 const mockSearchCancel = jest.fn();
+const mockSearchRefetch = jest.fn();
 
 const mockSearchUseQuery = jest.fn(
 	(input: SearchInput, options: SearchOptions) => {
@@ -35,7 +38,16 @@ const mockSearchUseQuery = jest.fn(
 				isFetching: false,
 				isError: true,
 				error: new Error("Offline"),
-				refetch: jest.fn(),
+				refetch: mockSearchRefetch,
+			};
+		}
+		if (input.query === "loading") {
+			return {
+				data: undefined,
+				isFetching: true,
+				isError: false,
+				error: null,
+				refetch: mockSearchRefetch,
 			};
 		}
 		if (input.query === "cached-error") {
@@ -93,6 +105,47 @@ describe("SearchScreen", () => {
 		);
 		expect(getByText("Search your library")).toBeTruthy();
 		expect(getByText(/visual meaning/)).toBeTruthy();
+	});
+
+	it.each([
+		["", "Search your library"],
+		["loading", "Searching..."],
+		["xyznotfound", "No results"],
+		["offline", "Search unavailable"],
+	])("keeps the %s state scrollable below native chrome", async (query, message) => {
+		const { getByLabelText, getByTestId } = renderWithProviders(
+			<SearchScreen />,
+		);
+		const input = await waitFor(() => getByLabelText("Search photos"));
+		if (query) fireEvent.changeText(input, query);
+
+		await waitFor(() => {
+			if (query) {
+				expect(mockSearchUseQuery).toHaveBeenLastCalledWith(
+					{ query, limit: 50 },
+					{ enabled: true, trpc: { abortOnUnmount: true } },
+				);
+			}
+			expect(
+				within(getByTestId("search-state-scroll")).getByText(message),
+			).toBeTruthy();
+		});
+		const scroll = getByTestId("search-state-scroll");
+		expect(scroll.props.contentInsetAdjustmentBehavior).toBe("automatic");
+		expect(scroll.props.keyboardShouldPersistTaps).toBe("handled");
+		expect(scroll.props.keyboardDismissMode).toBe("on-drag");
+		expect(
+			StyleSheet.flatten(scroll.props.contentContainerStyle),
+		).toMatchObject({
+			flexGrow: 1,
+		});
+		const messageContainer = within(scroll).getByText(message).parent?.parent;
+		expect(StyleSheet.flatten(messageContainer?.props.style)).toMatchObject({
+			flexGrow: 1,
+		});
+		expect(
+			StyleSheet.flatten(messageContainer?.props.style)?.minHeight,
+		).toBeUndefined();
 	});
 
 	it("debounces rapid input and requests only the final phrase", async () => {
@@ -194,26 +247,50 @@ describe("SearchScreen", () => {
 		await waitFor(() => expect(getByText("Search unavailable")).toBeTruthy(), {
 			timeout: 1500,
 		});
+		fireEvent.press(getByText("Try Again"));
+		expect(mockSearchRefetch).toHaveBeenCalledTimes(1);
+	});
+
+	it("clears an error immediately without leaving a stale blocking state", async () => {
+		const { getByLabelText, getByText, queryByText } = renderWithProviders(
+			<SearchScreen />,
+		);
+		const input = await waitFor(() => getByLabelText("Search photos"));
+		fireEvent.changeText(input, "offline");
+		await waitFor(() => expect(getByText("Search unavailable")).toBeTruthy());
+		fireEvent(input, "cancelButtonPress", { nativeEvent: {} });
+		expect(getByText("Search your library")).toBeTruthy();
+		expect(queryByText("Search unavailable")).toBeNull();
+		expect(queryByText("Searching...")).toBeNull();
 	});
 
 	it("opens a result in the loupe with the correct metadata", async () => {
-		const { getByLabelText, getByTestId, getByText, queryByTestId } =
-			renderWithProviders(<SearchScreen />);
+		const {
+			getByLabelText,
+			getByTestId,
+			getByText,
+			queryByTestId,
+			UNSAFE_queryByType,
+			UNSAFE_getByType,
+		} = renderWithProviders(<SearchScreen />);
 		const input = await waitFor(() => getByLabelText("Search photos"));
 		fireEvent.changeText(input, "sunset beach");
 
 		await waitFor(() => expect(getByTestId("search-result-1")).toBeTruthy(), {
 			timeout: 1500,
 		});
+		expect(UNSAFE_queryByType(ExpoStatusBar)).toBeNull();
 		fireEvent.press(getByTestId("search-result-1"));
 
 		await waitFor(() => expect(getByTestId("loupe-view")).toBeTruthy());
 		expect(getByTestId("loupe-gallery")).toBeTruthy();
+		expect(UNSAFE_getByType(ExpoStatusBar).props.style).toBe("light");
 		expect(Haptics.selectionAsync).not.toHaveBeenCalled();
 		expect(getByText("Info")).toBeTruthy();
 		expect(getByText(/6000 × 4000/)).toBeTruthy();
 		expect(getByText(/4\.3 MB/)).toBeTruthy();
 		fireEvent.press(getByLabelText("Close photo"));
 		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
+		expect(UNSAFE_queryByType(ExpoStatusBar)).toBeNull();
 	});
 });

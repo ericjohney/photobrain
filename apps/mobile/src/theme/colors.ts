@@ -8,7 +8,7 @@ export const colors = {
 		cardForeground: "#000000",
 
 		// Primary (blue accent)
-		primary: "#007aff",
+		primary: "#0066cc",
 		primaryForeground: "#ffffff",
 
 		// Secondary
@@ -24,7 +24,7 @@ export const colors = {
 		accentForeground: "#000000",
 
 		// Destructive
-		destructive: "#ff3b30",
+		destructive: "#c9342b",
 		destructiveForeground: "#ffffff",
 		destructiveMuted: "#fff0ef",
 
@@ -60,7 +60,7 @@ export const colors = {
 
 		// Primary (blue accent)
 		primary: "#0a84ff",
-		primaryForeground: "#ffffff",
+		primaryForeground: "#000000",
 
 		// Secondary
 		secondary: "#2c2c2e",

@@ -132,6 +132,7 @@ const styles = StyleSheet.create({
 		gap: 12,
 	},
 	techText: {
+		flex: 1,
 		fontSize: 16,
 	},
 	featureList: {
@@ -143,6 +144,7 @@ const styles = StyleSheet.create({
 		gap: 12,
 	},
 	featureText: {
+		flex: 1,
 		fontSize: 16,
 	},
 });

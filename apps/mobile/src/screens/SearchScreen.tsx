@@ -3,6 +3,7 @@ import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Image } from "expo-image";
 import { Stack } from "expo-router";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { useCallback, useRef, useState } from "react";
 import {
 	ActivityIndicator,
@@ -10,6 +11,7 @@ import {
 	Modal,
 	Platform,
 	Pressable,
+	ScrollView,
 	StyleSheet,
 	Text,
 	TextInput,
@@ -58,6 +60,8 @@ export default function SearchScreen() {
 	const isDebouncing = searchQuery.trim() !== debouncedQuery;
 	const isSearching =
 		isDebouncing || (searchPhotosQuery.isFetching && !hasSearchData);
+	const showResults =
+		searchQuery.trim().length > 0 && photos.length > 0 && !isSearching;
 	const cancelSearch = useCallback(() => {
 		void utils.searchPhotos.cancel();
 	}, [utils.searchPhotos]);
@@ -130,93 +134,142 @@ export default function SearchScreen() {
 				</View>
 			)}
 
-			{isSearching && searchQuery.trim().length > 0 && (
-				<View style={styles.statusRow}>
-					<ActivityIndicator size="small" color={colors.primary} />
-					<Text style={[styles.statusText, { color: colors.mutedForeground }]}>
-						Searching...
-					</Text>
-				</View>
-			)}
+			{!showResults && (
+				<ScrollView
+					testID="search-state-scroll"
+					style={styles.container}
+					contentContainerStyle={styles.stateContent}
+					contentInsetAdjustmentBehavior="automatic"
+					keyboardShouldPersistTaps="handled"
+					keyboardDismissMode="on-drag"
+				>
+					{isSearching && searchQuery.trim().length > 0 && (
+						<View style={styles.statusRow}>
+							<ActivityIndicator size="small" color={colors.primary} />
+							<Text
+								style={[styles.statusText, { color: colors.mutedForeground }]}
+							>
+								Searching...
+							</Text>
+						</View>
+					)}
 
-			{searchPhotosQuery.isError && !hasSearchData && !isSearching && (
-				<View style={styles.messageContainer}>
-					<Ionicons
-						name="cloud-offline-outline"
-						size={42}
-						color={colors.mutedForeground}
-					/>
-					<Text style={[styles.messageTitle, { color: colors.foreground }]}>
-						Search unavailable
-					</Text>
-					<Text style={[styles.messageBody, { color: colors.mutedForeground }]}>
-						Check your connection and try again.
-					</Text>
-					<Pressable
-						accessibilityRole="button"
-						onPress={() => searchPhotosQuery.refetch()}
-						style={[styles.retryButton, { backgroundColor: colors.primary }]}
-					>
-						<Text style={styles.retryText}>Try Again</Text>
-					</Pressable>
-				</View>
-			)}
-
-			{searchQuery.trim().length === 0 && (
-				<View style={styles.messageContainer}>
-					<Ionicons name="sparkles-outline" size={44} color={colors.primary} />
-					<Text style={[styles.messageTitle, { color: colors.foreground }]}>
-						Search your library
-					</Text>
-					<Text style={[styles.messageBody, { color: colors.mutedForeground }]}>
-						Describe a place, subject, color, or moment. PhotoBrain searches by
-						visual meaning.
-					</Text>
-					<View style={styles.examples}>
-						{["sunset on the beach", "red car", "mountains in winter"].map(
-							(example) => (
-								<Pressable
-									key={example}
-									onPress={() => applyExample(example)}
+					{searchQuery.trim().length > 0 &&
+						searchPhotosQuery.isError &&
+						!hasSearchData &&
+						!isSearching && (
+							<View style={styles.messageContainer}>
+								<Ionicons
+									name="cloud-offline-outline"
+									size={42}
+									color={colors.mutedForeground}
+								/>
+								<Text
+									style={[styles.messageTitle, { color: colors.foreground }]}
+								>
+									Search unavailable
+								</Text>
+								<Text
 									style={[
-										styles.exampleChip,
-										{ backgroundColor: colors.muted },
+										styles.messageBody,
+										{ color: colors.mutedForeground },
+									]}
+								>
+									Check your connection and try again.
+								</Text>
+								<Pressable
+									accessibilityRole="button"
+									onPress={() => searchPhotosQuery.refetch()}
+									style={[
+										styles.retryButton,
+										{ backgroundColor: colors.primary },
 									]}
 								>
 									<Text
-										style={[styles.exampleText, { color: colors.foreground }]}
+										style={[
+											styles.retryText,
+											{ color: colors.primaryForeground },
+										]}
 									>
-										{example}
+										Try Again
 									</Text>
 								</Pressable>
-							),
+							</View>
 						)}
-					</View>
-				</View>
+
+					{searchQuery.trim().length === 0 && (
+						<View style={styles.messageContainer}>
+							<Ionicons
+								name="sparkles-outline"
+								size={44}
+								color={colors.primary}
+							/>
+							<Text style={[styles.messageTitle, { color: colors.foreground }]}>
+								Search your library
+							</Text>
+							<Text
+								style={[styles.messageBody, { color: colors.mutedForeground }]}
+							>
+								Describe a place, subject, color, or moment. PhotoBrain searches
+								by visual meaning.
+							</Text>
+							<View style={styles.examples}>
+								{["sunset on the beach", "red car", "mountains in winter"].map(
+									(example) => (
+										<Pressable
+											key={example}
+											accessibilityRole="button"
+											onPress={() => applyExample(example)}
+											style={[
+												styles.exampleChip,
+												{ backgroundColor: colors.muted },
+											]}
+										>
+											<Text
+												style={[
+													styles.exampleText,
+													{ color: colors.foreground },
+												]}
+											>
+												{example}
+											</Text>
+										</Pressable>
+									),
+								)}
+							</View>
+						</View>
+					)}
+
+					{searchQuery.trim().length > 0 &&
+						debouncedQuery.length > 0 &&
+						!isSearching &&
+						hasSearchData &&
+						photos.length === 0 && (
+							<View style={styles.messageContainer}>
+								<Ionicons
+									name="search-outline"
+									size={44}
+									color={colors.mutedForeground}
+								/>
+								<Text
+									style={[styles.messageTitle, { color: colors.foreground }]}
+								>
+									No results
+								</Text>
+								<Text
+									style={[
+										styles.messageBody,
+										{ color: colors.mutedForeground },
+									]}
+								>
+									Try a broader description or a different phrase.
+								</Text>
+							</View>
+						)}
+				</ScrollView>
 			)}
 
-			{debouncedQuery.length > 0 &&
-				!isSearching &&
-				hasSearchData &&
-				photos.length === 0 && (
-					<View style={styles.messageContainer}>
-						<Ionicons
-							name="search-outline"
-							size={44}
-							color={colors.mutedForeground}
-						/>
-						<Text style={[styles.messageTitle, { color: colors.foreground }]}>
-							No results
-						</Text>
-						<Text
-							style={[styles.messageBody, { color: colors.mutedForeground }]}
-						>
-							Try a broader description or a different phrase.
-						</Text>
-					</View>
-				)}
-
-			{photos.length > 0 && !isSearching && (
+			{showResults && (
 				<FlatList
 					data={photos}
 					key={columns}
@@ -225,6 +278,8 @@ export default function SearchScreen() {
 					columnWrapperStyle={styles.photoRow}
 					contentInsetAdjustmentBehavior="automatic"
 					contentContainerStyle={styles.results}
+					keyboardShouldPersistTaps="handled"
+					keyboardDismissMode="on-drag"
 					renderItem={({ item }) => (
 						<Pressable
 							testID={`search-result-${item.id}`}
@@ -239,7 +294,7 @@ export default function SearchScreen() {
 						>
 							<Image
 								source={{
-									uri: thumbnailUrl(item.id, "tiny", item.thumbnailUpdatedAt),
+									uri: thumbnailUrl(item.id, "small", item.thumbnailUpdatedAt),
 								}}
 								style={styles.photo}
 								contentFit="cover"
@@ -262,6 +317,7 @@ export default function SearchScreen() {
 				supportedOrientations={["portrait", "landscape"]}
 				onRequestClose={library.closeLoupe}
 			>
+				<ExpoStatusBar style="light" />
 				<View style={styles.loupeRoot}>
 					<LoupeView
 						key={library.loupeSession}
@@ -303,6 +359,7 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	statusRow: {
+		flexGrow: 1,
 		flexDirection: "row",
 		justifyContent: "center",
 		alignItems: "center",
@@ -310,9 +367,9 @@ const styles = StyleSheet.create({
 		paddingVertical: 12,
 	},
 	statusText: { fontSize: 13, fontWeight: "500" },
+	stateContent: { flexGrow: 1, paddingVertical: 24 },
 	messageContainer: {
-		flex: 1,
-		minHeight: 420,
+		flexGrow: 1,
 		alignItems: "center",
 		justifyContent: "center",
 		paddingHorizontal: 34,

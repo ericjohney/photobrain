@@ -132,14 +132,14 @@ describe("DashboardScreen", () => {
 		expect(getByText("June 2024")).toBeTruthy();
 	});
 
-	it("renders tiny thumbnails and RAW badges", async () => {
+	it("renders sharper grid thumbnails and RAW badges", async () => {
 		const { getAllByTestId, getByText } = renderWithProviders(
 			<DashboardScreen />,
 		);
 
 		await waitFor(() => expect(getAllByTestId("expo-image")).toHaveLength(5));
 		for (const image of getAllByTestId("expo-image")) {
-			expect(image.props.sourceUri).toContain("/thumbnail/tiny");
+			expect(image.props.sourceUri).toContain("/thumbnail/small");
 		}
 		expect(getByText("ARW")).toBeTruthy();
 		expect(getByText("CR2")).toBeTruthy();
@@ -180,6 +180,26 @@ describe("DashboardScreen", () => {
 
 		fireEvent.press(getByLabelText("Finish selecting photos"));
 		expect(getByText("5 Items")).toBeTruthy();
+	});
+
+	it("keeps a selection exit outside the scrolling photo list", async () => {
+		const { FlatList } = require("react-native");
+		const {
+			findByTestId,
+			getByLabelText,
+			queryByLabelText,
+			UNSAFE_getAllByType,
+		} = renderWithProviders(<DashboardScreen />);
+		fireEvent(await findByTestId("photo-thumbnail-5"), "longPress");
+		const exit = getByLabelText("Finish selection");
+		for (const list of UNSAFE_getAllByType(FlatList)) {
+			expect(
+				list.findAllByProps({ accessibilityLabel: "Finish selection" }),
+			).toHaveLength(0);
+		}
+		fireEvent.press(exit);
+		expect(queryByLabelText("Finish selection")).toBeNull();
+		expect(getByLabelText("Select photos")).toBeTruthy();
 	});
 
 	it("does not retain stale loupe metadata between photos", async () => {
