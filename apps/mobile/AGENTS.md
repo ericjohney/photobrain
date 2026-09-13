@@ -27,7 +27,7 @@ Scope: `apps/mobile`.
 - `src/components/GlassSurface.tsx`: native Liquid Glass with platform and Reduce Transparency fallbacks.
 - `src/components/LoupeView.tsx`: core paged swipe viewer, native iOS zoom, haptics, and the implemented metadata action.
 - `src/components/MetadataPanel.tsx`: EXIF/RAW metadata modal.
-- `src/components/FilterSheet.tsx`: camera/lens/ISO/month filters.
+- `src/components/FilterSheet.tsx`: Library Options, sorting, and searchable RAW/standard/camera/lens/ISO/month filters.
 - `src/components/ActivityBar.tsx`: Inngest progress display.
 - `src/hooks/use-library-state.ts`: in-memory grid/loupe and active-photo navigation.
 - `src/hooks/use-job-progress.ts`: Inngest Realtime subscription with durable `scanStatus` polling fallback.
@@ -61,19 +61,22 @@ Do not use React Navigation focus or navigation hooks inside `SearchScreen`. The
 
 Dashboard behavior:
 
-- Photos are sorted newest-first using EXIF date, modified date, or created date.
-- All Photos is a continuous edge-to-edge grid; year and month grouping remain available from Library Options.
+- Photos default to newest-first using EXIF date, modified date, or created date. Recently Added uses descending photo IDs (insertion order), not filesystem creation dates.
+- All Photos is a continuous edge-to-edge grid; Years/Months/All Photos are available in the Library header and Library Options. Date grouping selects captured-date sorting; Recently Added returns to All Photos to avoid splitting date groups.
 - The responsive grid uses five columns on phones and up to eight on wide layouts.
 - Library and Search grids use `small` thumbnails for Retina sharpness; the Library backdrop uses one blurred `medium` thumbnail.
 - Pull-to-refresh refetches photos and filter options.
-- The filter sheet supports camera, lens, ISO, and month. It does not expose the API's raw/standard filter.
-- The photo-backed Library header exposes Library Options and a basic selection mode. Library Options also contains grouping, scan, and Settings actions.
+- Library Options separates sorting, a Filter destination, View Options grouping, and scan/Settings actions. Filter has RAW/Standard choices and camera/lens/ISO/month summaries that open searchable, virtualized checkmarked lists.
+- Filters combine across categories with one value per category, apply immediately, and remain in memory. Done dismisses without an apply transaction. All Items/Clear All resets filters, not sorting/grouping; each category's All clears only that category. Active values remain removable even if metadata disappears or fails to load.
+- The photo-backed Library header exposes Library Options and a basic selection mode. An active-filter summary opens Filter directly; its close button restores all items.
 - Selection has a persistent Done control outside the scrolling grid; bulk actions are not implemented. Library Options distinguishes filter loading, failure with retry, and empty metadata.
 - Tapping a photo opens a full-screen modal loupe. The loupe uses the `large` thumbnail, not the original file route.
 - Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
 - Unknown scan progress is labeled as checking status, with an automatic-retry explanation when recovery requests fail instead of claiming processing has started.
 
 The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, and metadata. Collections is an active native tab but remains a placeholder. Preferences persists theme selection and propagates it through React Native `Appearance`; grid-column and haptic controls remain disabled/hardcoded.
+
+Design references: [Apple iOS overview](https://www.apple.com/os/ios/) and [Photos sorting/filtering guide](https://support.apple.com/guide/iphone/sort-and-filter-the-photo-library-iph2e66e2f2c/ios). The app adapts the separate sort/filter/view-options model to supported metadata; it does not expose unsupported Favorites, Edited, or video categories. Unlike Apple's bottom-newest library, PhotoBrain retains newest-first browsing. Years and Months group the full grid rather than generating curated cover collections.
 
 Loupe chrome respects horizontal safe areas in landscape, and image failures offer per-photo retry. Metadata values wrap and are selectable, with stacked labels at larger text sizes. Search empty/loading/error states scroll with automatic native-header insets. Glass fallbacks remain opaque while Reduce Transparency is enabled or its initial value is unknown.
 

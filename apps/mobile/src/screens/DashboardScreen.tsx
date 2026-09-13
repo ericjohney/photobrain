@@ -21,7 +21,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ActivityBar from "@/components/ActivityBar";
-import FilterSheet, { type LibraryGrouping } from "@/components/FilterSheet";
+import FilterSheet, {
+	EMPTY_FILTERS,
+	formatDateMonth,
+	type LibraryFilters,
+	type LibraryGrouping,
+	type LibrarySort,
+} from "@/components/FilterSheet";
 import GlassSurface from "@/components/GlassSurface";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
@@ -34,13 +40,6 @@ import { useTheme } from "@/theme";
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
-interface Filters {
-	camera: string | null;
-	lens: string | null;
-	iso: number | null;
-	dateMonth: string | null;
-}
-
 type SectionItem =
 	| {
 			type: "header";
@@ -52,12 +51,6 @@ type SectionItem =
 
 const GRID_SPACING = 1;
 const ACTIVE_SCAN_KEY = "@photobrain/active-scan";
-const EMPTY_FILTERS: Filters = {
-	camera: null,
-	lens: null,
-	iso: null,
-	dateMonth: null,
-};
 
 function photoDate(photo: PhotoMetadata) {
 	return parseDate(
@@ -128,6 +121,7 @@ export default function DashboardScreen() {
 	const columns = width >= 1024 ? 8 : width >= 768 ? 7 : width >= 560 ? 6 : 5;
 	const itemSize = (width - GRID_SPACING * (columns - 1)) / columns;
 	const [grouping, setGrouping] = useState<LibraryGrouping>("all");
+	const [sort, setSort] = useState<LibrarySort>("captured");
 	const [metadataPhoto, setMetadataPhoto] = useState<PhotoMetadata | null>(
 		null,
 	);
@@ -139,8 +133,11 @@ export default function DashboardScreen() {
 	const activeJobSelected = useRef(false);
 	const [isRestoringScan, setIsRestoringScan] = useState(true);
 	const [scanError, setScanError] = useState<string | null>(null);
-	const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+	const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
 	const [filterVisible, setFilterVisible] = useState(false);
+	const [optionsPage, setOptionsPage] = useState<"options" | "filters">(
+		"options",
+	);
 
 	const photosQuery = trpc.photos.useQuery(
 		{
@@ -148,6 +145,7 @@ export default function DashboardScreen() {
 			lens: filters.lens ?? undefined,
 			iso: filters.iso ?? undefined,
 			dateMonth: filters.dateMonth ?? undefined,
+			filterRaw: filters.filterRaw ?? undefined,
 		},
 		{ placeholderData: keepPreviousData },
 	);
@@ -200,10 +198,13 @@ export default function DashboardScreen() {
 
 	const photos = useMemo(
 		() =>
-			[...(photosQuery.data?.photos ?? [])].sort(
-				(a, b) => photoDate(b).getTime() - photoDate(a).getTime(),
+			[...(photosQuery.data?.photos ?? [])].sort((a, b) =>
+				// IDs preserve library insertion order; createdAt is a filesystem date.
+				sort === "added"
+					? b.id - a.id
+					: photoDate(b).getTime() - photoDate(a).getTime() || b.id - a.id,
 			),
-		[photosQuery.data?.photos],
+		[photosQuery.data?.photos, sort],
 	);
 	const library = useLibraryState(photos);
 	const sections = useMemo(
@@ -213,6 +214,17 @@ export default function DashboardScreen() {
 	const hasActiveFilters = Object.values(filters).some(
 		(value) => value !== null,
 	);
+	const filterSummary = [
+		filters.filterRaw === "raw"
+			? "RAW"
+			: filters.filterRaw === "standard"
+				? "Standard"
+				: null,
+		filters.camera,
+		filters.lens,
+		filters.iso !== null ? `ISO ${filters.iso}` : null,
+		filters.dateMonth ? formatDateMonth(filters.dateMonth) : null,
+	].filter((value): value is string => value !== null);
 	const scanDisabled =
 		isRestoringScan || scanMutation.isPending || jobProgress.isActive;
 	const filteredQueryFailed =
@@ -250,11 +262,19 @@ export default function DashboardScreen() {
 		setScanError(null);
 		scanMutation.mutate();
 	}, [scanMutation]);
-	const handleFilterChange = useCallback((nextFilters: Filters) => {
+	const handleFilterChange = useCallback((nextFilters: LibraryFilters) => {
 		setFilters(nextFilters);
 		setIsSelecting(false);
 		setSelectedPhotoIds(new Set());
 	}, []);
+	const handleGroupingChange = (nextGrouping: LibraryGrouping) => {
+		setGrouping(nextGrouping);
+		if (nextGrouping !== "all") setSort("captured");
+	};
+	const openOptions = (page: "options" | "filters") => {
+		setOptionsPage(page);
+		setFilterVisible(true);
+	};
 	const togglePhotoSelection = useCallback((photoId: number) => {
 		setSelectedPhotoIds((current) => {
 			const next = new Set(current);
@@ -423,11 +443,11 @@ export default function DashboardScreen() {
 										? "Library options, filters active"
 										: "Library options"
 								}
-								onPress={() => setFilterVisible(true)}
+								onPress={() => openOptions("options")}
 								style={styles.headerButton}
 							>
 								<Ionicons
-									name="options-outline"
+									name="swap-vertical"
 									size={27}
 									color={hasActiveFilters ? "#64a8ff" : "#ffffff"}
 								/>
@@ -461,6 +481,40 @@ export default function DashboardScreen() {
 						</GlassSurface>
 					</View>
 				</View>
+				<GlassSurface
+					style={styles.timelineSurface}
+					fallbackStyle={styles.darkGlassFallback}
+					colorScheme="dark"
+				>
+					<View
+						style={[
+							styles.timelineControl,
+							fontScale > 1.3 && styles.timelineStacked,
+						]}
+					>
+						{(["years", "months", "all"] as const).map((value) => (
+							<Pressable
+								key={value}
+								accessibilityRole="radio"
+								accessibilityLabel={`Group library by ${value}`}
+								accessibilityState={{ checked: grouping === value }}
+								onPress={() => handleGroupingChange(value)}
+								style={[
+									styles.timelineOption,
+									grouping === value && styles.timelineSelected,
+								]}
+							>
+								<Text style={styles.timelineLabel}>
+									{value === "all"
+										? "All Photos"
+										: value === "months"
+											? "Months"
+											: "Years"}
+								</Text>
+							</Pressable>
+						))}
+					</View>
+				</GlassSurface>
 			</View>
 			<ActivityBar
 				progress={jobProgress.progress}
@@ -493,23 +547,37 @@ export default function DashboardScreen() {
 				</View>
 			)}
 			{hasActiveFilters && (
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Edit active filters"
-					onPress={() => setFilterVisible(true)}
+				<View
 					style={[
 						styles.filterSummary,
 						{ backgroundColor: colors.selectionMuted },
 					]}
 				>
-					<Ionicons name="funnel" size={14} color={colors.primary} />
-					<Text style={[styles.filterSummaryText, { color: colors.primary }]}>
-						Filters active
-					</Text>
-					<Text style={[styles.filterSummaryAction, { color: colors.primary }]}>
-						Edit
-					</Text>
-				</Pressable>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel="Edit active filters"
+						accessibilityValue={{ text: filterSummary.join(", ") }}
+						onPress={() => openOptions("filters")}
+						style={styles.filterSummaryButton}
+					>
+						<Ionicons name="funnel" size={16} color={colors.primary} />
+						<Text
+							numberOfLines={2}
+							style={[styles.filterSummaryText, { color: colors.primary }]}
+						>
+							{filterSummary.join(", ")}
+						</Text>
+						<Ionicons name="chevron-forward" size={14} color={colors.primary} />
+					</Pressable>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel="Show all items"
+						onPress={() => handleFilterChange(EMPTY_FILTERS)}
+						style={styles.dismissButton}
+					>
+						<Ionicons name="close-circle" size={22} color={colors.primary} />
+					</Pressable>
+				</View>
 			)}
 		</>
 	);
@@ -722,6 +790,7 @@ export default function DashboardScreen() {
 
 			<FilterSheet
 				visible={filterVisible}
+				initialPage={optionsPage}
 				onClose={() => setFilterVisible(false)}
 				filterOptions={filterOptionsQuery.data}
 				isLoadingFilters={filterOptionsQuery.isLoading}
@@ -732,7 +801,12 @@ export default function DashboardScreen() {
 				activeFilters={filters}
 				onFilterChange={handleFilterChange}
 				grouping={grouping}
-				onGroupingChange={setGrouping}
+				onGroupingChange={handleGroupingChange}
+				sort={sort}
+				onSortChange={(nextSort) => {
+					setSort(nextSort);
+					if (nextSort === "added") setGrouping("all");
+				}}
 				onScan={() => {
 					setFilterVisible(false);
 					handleScan();
@@ -847,17 +921,42 @@ const styles = StyleSheet.create({
 	},
 	filterSummary: {
 		minHeight: 44,
-		alignSelf: "center",
+		alignSelf: "stretch",
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 7,
 		marginVertical: 9,
+		marginHorizontal: 16,
 		borderRadius: 16,
 		paddingHorizontal: 12,
-		paddingVertical: 7,
 	},
-	filterSummaryText: { fontSize: 13, fontWeight: "600" },
-	filterSummaryAction: { fontSize: 13, fontWeight: "700", marginLeft: 4 },
+	filterSummaryButton: {
+		flex: 1,
+		minHeight: 44,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		paddingVertical: 8,
+	},
+	filterSummaryText: { flex: 1, fontSize: 14, fontWeight: "600" },
+	timelineSurface: {
+		marginTop: 16,
+		borderRadius: 26,
+		overflow: "hidden",
+		borderCurve: "continuous",
+	},
+	timelineControl: { flexDirection: "row", padding: 4 },
+	timelineStacked: { flexDirection: "column" },
+	timelineOption: {
+		flex: 1,
+		minHeight: 44,
+		padding: 10,
+		alignItems: "center",
+		justifyContent: "center",
+		borderRadius: 22,
+	},
+	timelineSelected: { backgroundColor: "#636366" },
+	timelineLabel: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
 	errorBanner: {
 		flexDirection: "row",
 		alignItems: "center",

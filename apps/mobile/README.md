@@ -48,7 +48,8 @@ Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN add
 ## Current Behavior
 
 - Photos are sorted newest-first in a continuous five-column phone grid, with optional year or month grouping and up to eight columns on wide layouts.
-- The photo-backed Library header exposes selection and Library Options; grouping, EXIF camera/lens/ISO/month filters, scan initiation, and Settings remain available in the options sheet.
+- The photo-backed Library header exposes selection, Years/Months/All Photos, and Library Options. Options separates captured/recently-added sorting, filters, view grouping, scan initiation, and Settings.
+- Filter combines RAW/standard choices with searchable camera/lens/ISO/month lists. Changes apply immediately; Done dismisses. All Items resets filters, and the library's active-filter summary offers direct editing and a one-tap reset.
 - The Search tab uses the native iOS search bar and debounces natural-language queries by 350 ms.
 - Tapping a photo opens a modal loupe with pinch/pan/zoom, swipe navigation, haptics, and metadata.
 - The loupe uses the `large` thumbnail URL; it does not request the original file route.
@@ -58,7 +59,7 @@ Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN add
 - The loupe does not display unimplemented share/like/delete controls.
 - Photo grids use sharper previews, and failed loupe images offer Retry. Landscape loupe controls stay within safe areas.
 - Photo Info supports wrapping, selectable values and larger text. Search messages remain scrollable below the native header.
-- Library Options shows filter loading and retry states. Selection can be exited without scrolling back to the header; bulk actions are not implemented.
+- Filter shows metadata loading and retry states without blocking media-type choices or clearing filters. Selection can be exited without scrolling back to the header; bulk actions are not implemented.
 
 The app uses tRPC for metadata, filters, search, scan, durable scan status, and Realtime tokens. REST is used for image and thumbnail URLs. Active scan IDs survive restarts in AsyncStorage and are cleared on terminal or missing durable status.
 

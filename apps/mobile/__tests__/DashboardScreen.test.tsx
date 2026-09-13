@@ -20,13 +20,19 @@ jest.mock("@/lib/trpc", () => ({
 		photos: {
 			useQuery: jest.fn(
 				(
-					input: { camera?: string },
+					input: { camera?: string; filterRaw?: "raw" | "standard" },
 					options?: { placeholderData?: unknown },
 				) => {
 					mockPhotosQueryOptions = options;
 					const filteredRequestFailed =
 						input.camera !== undefined && mockFilteredPhotosError;
-					const photos = input.camera ? [] : require("./fixtures").MOCK_PHOTOS;
+					const photos = input.camera
+						? []
+						: require("./fixtures").MOCK_PHOTOS.filter(
+								(photo: { isRaw: boolean }) =>
+									!input.filterRaw ||
+									photo.isRaw === (input.filterRaw === "raw"),
+							);
 					return {
 						data:
 							mockPhotosHaveData && !filteredRequestFailed
@@ -75,6 +81,7 @@ import { renderWithProviders } from "./test-utils";
 
 describe("DashboardScreen", () => {
 	beforeEach(() => {
+		jest.useFakeTimers();
 		jest.clearAllMocks();
 		mockPhotosError = false;
 		mockPhotosHaveData = true;
@@ -82,6 +89,7 @@ describe("DashboardScreen", () => {
 		mockPhotosQueryOptions = undefined;
 		mockScanResult = { success: true, jobId: "test-job-123" };
 	});
+	afterEach(() => jest.useRealTimers());
 
 	it("renders the photo-backed library header and ungrouped grid", async () => {
 		const { getByLabelText, getByTestId, getByText, queryByText } =
@@ -124,8 +132,8 @@ describe("DashboardScreen", () => {
 		await waitFor(() => expect(getByText("5 Items")).toBeTruthy());
 
 		fireEvent.press(getByLabelText("Library options"));
-		fireEvent.press(getByText("Months"));
-		fireEvent.press(getByLabelText("Apply filters"));
+		fireEvent.press(getByLabelText("Months"));
+		fireEvent.press(getByLabelText("Done"));
 
 		await waitFor(() => expect(getByText("August 2024")).toBeTruthy());
 		expect(getByText("July 2024")).toBeTruthy();
@@ -296,8 +304,10 @@ describe("DashboardScreen", () => {
 		await waitFor(() => expect(getByText("Library")).toBeTruthy());
 
 		fireEvent.press(getByLabelText("Library options"));
+		fireEvent.press(getByLabelText("Filter"));
+		fireEvent.press(getByLabelText("Camera"));
 		fireEvent.press(getByText("Sony A7III"));
-		fireEvent.press(getByLabelText("Apply filters"));
+		fireEvent.press(getByLabelText("Done"));
 
 		await waitFor(() =>
 			expect(getByText("No photos match your filters")).toBeTruthy(),
@@ -314,15 +324,80 @@ describe("DashboardScreen", () => {
 		await waitFor(() => expect(getByLabelText("Library options")).toBeTruthy());
 
 		fireEvent.press(getByLabelText("Library options"));
+		fireEvent.press(getByLabelText("Filter"));
+		fireEvent.press(getByLabelText("Camera"));
 		fireEvent.press(getByText("Sony A7III"));
 
 		await waitFor(() =>
 			expect(getByLabelText("Retry filtered library")).toBeTruthy(),
 		);
-		expect(getByText("Library Options")).toBeTruthy();
+		expect(getByLabelText("Back to Filter")).toBeTruthy();
+		fireEvent.press(getByLabelText("Back to Filter"));
 		expect(getByLabelText("Clear all filters")).toBeTruthy();
 		expect(getByText("Items Unavailable")).toBeTruthy();
 		expect(queryByText("No photos match your filters")).toBeNull();
+	});
+
+	it("groups from the library without opening options", async () => {
+		const view = renderWithProviders(<DashboardScreen />);
+		fireEvent.press(await view.findByLabelText("Group library by months"));
+		expect(view.getByText("August 2024")).toBeTruthy();
+		expect(
+			view.getByLabelText("Group library by months").props.accessibilityState
+				.checked,
+		).toBe(true);
+		fireEvent.press(view.getByLabelText("Group library by all"));
+		expect(view.queryByText("August 2024")).toBeNull();
+	});
+
+	it("filters RAW and standard photos, reopens filters directly, and resets from the grid", async () => {
+		const view = renderWithProviders(<DashboardScreen />);
+		fireEvent.press(await view.findByLabelText("Library options"));
+		fireEvent.press(view.getByLabelText("Filter"));
+		fireEvent.press(view.getByLabelText("RAW"));
+		fireEvent.press(view.getByLabelText("Done"));
+		expect(view.getByText("2 Items")).toBeTruthy();
+		expect(view.getByTestId("photo-thumbnail-2")).toBeTruthy();
+		expect(view.queryByTestId("photo-thumbnail-1")).toBeNull();
+		expect(
+			view.getByLabelText("Edit active filters").props.accessibilityValue.text,
+		).toBe("RAW");
+		fireEvent.press(view.getByLabelText("Edit active filters"));
+		expect(view.getByLabelText("RAW").props.accessibilityState.checked).toBe(
+			true,
+		);
+		fireEvent.press(view.getByLabelText("Standard"));
+		fireEvent.press(view.getByLabelText("Done"));
+		expect(view.getByText("3 Items")).toBeTruthy();
+		expect(view.getByTestId("photo-thumbnail-1")).toBeTruthy();
+		expect(view.queryByTestId("photo-thumbnail-2")).toBeNull();
+		fireEvent.press(view.getByLabelText("Show all items"));
+		expect(view.getByText("5 Items")).toBeTruthy();
+		expect(view.queryByLabelText("Edit active filters")).toBeNull();
+	});
+
+	it("sorts by insertion order and returns to captured order for date grouping", async () => {
+		const { FlatList } = require("react-native");
+		const view = renderWithProviders(<DashboardScreen />);
+		const photoIds = () =>
+			view
+				.UNSAFE_getAllByType(FlatList)[0]
+				.props.data.filter(
+					(item: { type: string }) => item.type === "photo-row",
+				)
+				.flatMap((item: { photos: Array<{ id: number }> }) =>
+					item.photos.map((photo) => photo.id),
+				);
+		await view.findByLabelText("Library options");
+		expect(photoIds()).toEqual([5, 4, 3, 1, 2]);
+		fireEvent.press(view.getByLabelText("Group library by months"));
+		fireEvent.press(view.getByLabelText("Library options"));
+		fireEvent.press(view.getByLabelText("Recently Added"));
+		fireEvent.press(view.getByLabelText("Done"));
+		expect(photoIds()).toEqual([5, 4, 3, 2, 1]);
+		expect(view.queryByText("August 2024")).toBeNull();
+		fireEvent.press(view.getByLabelText("Group library by months"));
+		expect(photoIds()).toEqual([5, 4, 3, 1, 2]);
 	});
 
 	it("persists only successfully created scan jobs", async () => {
