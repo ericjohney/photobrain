@@ -60,7 +60,7 @@ Any change to embedding serialization must be coordinated across `apps/api/src/i
 
 - Scan upserts by unique relative path but does not remove rows for files missing from disk.
 - Scan resets embeddings to pending for successfully processed rows, including unchanged files.
-- Photo, EXIF, pHash, and status writes are not one transaction.
+- Each scan save batch writes photos, EXIF, pHash, and processing statuses in one synchronous transaction. Embedding batches separately commit vector upserts and photo embedding statuses together. Media generation and scan-job progress are outside these transactions.
 - A later result with no EXIF or pHash does not delete an existing sidecar row.
 - `thumbnailUpdatedAt` is updated on each successful scan and is used by clients for URL cache busting.
 - Foreign-key cascade behavior is defined in Drizzle relations/schema and should be preserved in migrations.

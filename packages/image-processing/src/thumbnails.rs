@@ -1,4 +1,4 @@
-use image::{imageops::FilterType, DynamicImage, GenericImageView, ImageFormat};
+use image::{DynamicImage, GenericImageView, ImageFormat, imageops::FilterType};
 use napi_derive::napi;
 use rayon::prelude::*;
 use std::fs;
@@ -64,11 +64,13 @@ pub fn generate_thumbnail_from_image(
   };
 
   // Only resize if image is larger than target
+  let resized;
   let thumbnail = if width > new_width || height > new_height {
-    img.resize(new_width, new_height, FilterType::Lanczos3)
+    resized = img.resize(new_width, new_height, FilterType::Lanczos3);
+    &resized
   } else {
     // Image is already smaller than target, use as-is
-    img.clone()
+    img
   };
 
   // Create parent directory if it doesn't exist
@@ -77,14 +79,55 @@ pub fn generate_thumbnail_from_image(
       .map_err(|e| format!("Failed to create thumbnail directory: {}", e))?;
   }
 
-  // Save as WebP with specified quality
-  // Note: The image crate's WebP encoder doesn't support quality parameter directly
-  // It uses lossless WebP by default, which is still much smaller than JPEG
+  // The image crate encoder uses lossless WebP; config.quality is not applied.
   thumbnail
     .save_with_format(output_path, ImageFormat::WebP)
     .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
 
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn thumbnail_bytes_match_previous_clone_or_resize_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = ThumbnailConfig {
+      max_dimension: 32,
+      quality: 80,
+    };
+    for (width, height) in [(8, 4), (32, 32), (80, 40), (40, 80)] {
+      for alpha in [false, true] {
+        let rgba = image::RgbaImage::from_fn(width, height, |x, y| {
+          image::Rgba([x as u8, y as u8, (x + y) as u8, (x * 3 + y) as u8])
+        });
+        let img = if alpha {
+          DynamicImage::ImageRgba8(rgba)
+        } else {
+          DynamicImage::ImageRgb8(DynamicImage::ImageRgba8(rgba).to_rgb8())
+        };
+        let (new_width, new_height) = if width > height {
+          (32, (32.0 / (width as f32 / height as f32)) as u32)
+        } else {
+          ((32.0 / (height as f32 / width as f32)) as u32, 32)
+        };
+        let previous = if width > new_width || height > new_height {
+          img.resize(new_width, new_height, FilterType::Lanczos3)
+        } else {
+          img.clone()
+        };
+        let expected = temp.path().join("expected.webp");
+        let actual = temp.path().join("actual.webp");
+        previous
+          .save_with_format(&expected, ImageFormat::WebP)
+          .unwrap();
+        generate_thumbnail_from_image(&img, &config, actual.to_str().unwrap()).unwrap();
+        assert_eq!(fs::read(actual).unwrap(), fs::read(expected).unwrap());
+      }
+    }
+  }
 }
 
 /// Generate thumbnails from a file with a custom relative path
@@ -146,10 +189,7 @@ pub fn generate_all_thumbnails_internal(
 
   // Get the path without extension and convert to .webp
   let path_obj = Path::new(relative_path);
-  let path_without_ext = path_obj
-    .with_extension("")
-    .to_string_lossy()
-    .to_string();
+  let path_without_ext = path_obj.with_extension("").to_string_lossy().to_string();
 
   let thumbnail_configs = [
     ("tiny", &sizes.tiny),
@@ -162,7 +202,10 @@ pub fn generate_all_thumbnails_internal(
   let results: Vec<Result<(), String>> = thumbnail_configs
     .par_iter()
     .map(|(size_name, config)| {
-      let output_path = format!("{}/{}/{}.webp", thumbnails_base_dir, size_name, path_without_ext);
+      let output_path = format!(
+        "{}/{}/{}.webp",
+        thumbnails_base_dir, size_name, path_without_ext
+      );
       generate_thumbnail_from_image(img, config, &output_path)
     })
     .collect();

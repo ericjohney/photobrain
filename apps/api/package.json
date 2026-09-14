@@ -10,6 +10,8 @@
 	"scripts": {
 		"dev": "bun run src/index.ts",
 		"test": "bun test",
+		"bench:import": "bun scripts/benchmark-import.ts",
+		"bench:exif": "bun scripts/benchmark-exif.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

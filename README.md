@@ -32,6 +32,8 @@ packages/
 
 There is no `apps/worker`, BullMQ consumer, or Redis dependency in the current implementation. The API registers scan and embedding functions at `/api/inngest`; an Inngest development/runtime service must deliver events to that endpoint for asynchronous work to execute.
 
+CPU-heavy import calls use one bounded, persistent worker thread inside the API process, not a separately deployed worker service. Database writes and durable job orchestration remain on the API thread.
+
 Detailed implementation guidance is in:
 
 - [`CLAUDE.md`](CLAUDE.md): cross-repository architecture, commands, invariants, and documentation map.
@@ -193,7 +195,11 @@ All current API routes are unauthenticated.
 
 Scanning is requested through `trpc.scan`, which creates a durable `scan_jobs` row before sending an Inngest event. The scan function discovers supported files, processes Rust batches of 20, writes photo/EXIF/pHash data, and persists/publishes progress. It sends the IDs saved by that scan to the embedding function, which reads `large` WebP thumbnails in batches of 16 and stores CLIP vectors. Mobile combines Realtime updates with `scanStatus` polling so active work can recover after an app restart or connection loss.
 
-The native pipeline uses `exiftool` for EXIF and embedded RAW previews, `libheif-rs` for HEIF decoding, the Rust `image` crate for standard formats, and a four-thread-capped Rayon pool. See [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md) for format and processing caveats.
+The native pipeline uses batched `exiftool` metadata commands (up to 20 photos), separate ExifTool commands for embedded RAW previews, `libheif-rs` for HEIF decoding, the Rust `image` crate for standard formats, and a reused four-thread-capped Rayon pool. See [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md) for format and processing caveats.
+
+Scan and embedding database writes use one transaction per batch with upserts, reducing disk commit overhead while preserving photo IDs and rolling back a failed batch. Real scans log native-processing, inference, and database-save timings separately. Run `bun run bench:import` from `apps/api` for an isolated file-backed persistence benchmark against the previous per-photo write strategy; it does not measure image decoding or end-to-end import speed.
+
+Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare batched metadata extraction with per-file extraction, without modifying photos. It requires ExifTool, not the native addon. [Import performance and architecture](docs/import-performance.md) describes measured scope and the proposed incremental-scan, artifact-versioning, and durable-work changes; those larger changes are not implemented yet.
 
 ## Production Builds
 

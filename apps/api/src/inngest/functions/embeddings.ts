@@ -1,9 +1,10 @@
 import path from "node:path";
-import { batchGenerateClipEmbeddings } from "@photobrain/image-processing";
 import { getThumbnailPath } from "@photobrain/utils";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { photoEmbedding, photos } from "../../db/schema";
+import { photos } from "../../db/schema";
+import { saveEmbeddingBatch } from "../../services/import-persistence";
+import { nativeExecutor } from "../../services/native-executor";
 import { inngest } from "../client";
 import { failJob, updateJobProgress } from "../progress";
 
@@ -100,37 +101,22 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 						path.join(thumbnailsDir, getThumbnailPath(p.path, "large")),
 					);
 
-					const embeddings = batchGenerateClipEmbeddings(thumbnailPaths);
+					const started = performance.now();
+					const embeddings = await nativeExecutor.run(
+						"batchGenerateClipEmbeddings",
+						thumbnailPaths,
+					);
+					const inferenceFinished = performance.now();
 
-					let batchSuccess = 0;
-					for (let j = 0; j < batch.length; j++) {
-						const photoId = batch[j].id;
-						const embedding = embeddings[j];
-
-						if (embedding) {
-							await db
-								.delete(photoEmbedding)
-								.where(eq(photoEmbedding.photoId, photoId));
-							await db.insert(photoEmbedding).values({
-								photoId,
-								embedding: Buffer.from(new Float32Array(embedding).buffer),
-								modelVersion: "clip-vit-b32",
-								createdAt: new Date(),
-							});
-							await db
-								.update(photos)
-								.set({ embeddingStatus: "completed" })
-								.where(eq(photos.id, photoId));
-							batchSuccess++;
-						} else {
-							await db
-								.update(photos)
-								.set({ embeddingStatus: "failed" })
-								.where(eq(photos.id, photoId));
-						}
-					}
-
-					return { processed: batch.length, successful: batchSuccess };
+					const result = saveEmbeddingBatch(
+						db,
+						batch.map((photo) => photo.id),
+						embeddings,
+					);
+					console.log(
+						`Embedding batch ${batchIndex}: native queue + image load/model/inference ${Math.round(inferenceFinished - started)}ms, database save ${Math.round(performance.now() - inferenceFinished)}ms for ${batch.length} photos`,
+					);
+					return result;
 				},
 			);
 

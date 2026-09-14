@@ -23,6 +23,7 @@ Read the guide for the area being changed:
 - [Database and migrations](packages/db/AGENTS.md)
 - [Shared utilities](packages/utils/AGENTS.md)
 - [Shared TypeScript configuration](packages/config/AGENTS.md)
+- [Import performance and architectural options](docs/import-performance.md)
 
 Historical implementation plans live under `docs/superpowers/`. They document past decisions and are not a substitute for checking the current source.
 
@@ -61,6 +62,7 @@ The scan flow is:
 2. The Inngest scan function discovers supported files with Rust `discoverPhotos`.
 3. Files are processed in batches of 20 with Rust `processPhotosBatch`.
 4. Successful results update `photos`, `photo_exif`, and `photo_phash`.
+   Each save batch uses one synchronous SQLite transaction and upserts, preserving photo IDs. Embedding vector/status saves are also transactional per batch; native processing and progress writes stay outside the transactions.
 5. IDs successfully saved by that scan trigger `photos/embeddings.requested`.
 6. The embedding function reads `large` WebP thumbnails in batches of 16, generates CLIP embeddings, and updates `photo_embedding` and `embeddingStatus`.
 7. Both functions persist progress to `scan_jobs` and publish it to the Inngest Realtime channel `job:{jobId}`. Exhausted failures become terminal failed rows.
@@ -69,13 +71,15 @@ The mobile client obtains a Realtime token through `trpc.realtimeToken`, subscri
 
 There is no repository-local worker process. Running the API alone exposes the Inngest handler, but an Inngest development/runtime service must deliver events to that handler for asynchronous jobs to execute. This repository has no `dev:worker` script.
 
+Import discovery, native media batches, and CLIP image batches run on one persistent in-process worker thread via `apps/api/src/services/native-executor.ts`. It runs one native call at a time and bounds running/queued calls to eight per API process. SQLite persistence and Inngest checkpoints stay on the API thread. This keeps import work off the API event loop without introducing a separate service; direct text-search and maintenance native calls remain synchronous. Worker errors/overload reject steps for Inngest retry; there is no process-crash isolation or cross-job generation fencing.
+
 ### Image processing
 
 `packages/image-processing` is a Rust `cdylib` built with N-API. The normal scan pipeline is:
 
 1. Walk the photo directory, skip hidden entries, and retain supported extensions.
 2. Read filesystem metadata.
-3. Extract EXIF with `exiftool`.
+3. Extract EXIF with `exiftool`, amortizing metadata startup across at most 20 paths/32 KiB of path arguments per command in batch/callback processing. Match by absolute `SourceFile`, preserve symlink filenames, retain valid records from mixed failures, and retry unresolved inputs individually. RAW binary preview commands remain separate.
 4. Detect HEIF by extension or magic bytes and decode it with `libheif-rs`.
 5. For RAW files, extract an embedded JPEG preview with `exiftool -b -PreviewImage`, falling back to `-JpgFromRaw`.
 6. Decode standard images with the Rust `image` crate.
@@ -134,6 +138,8 @@ bun run format           # Biome format with --write; modifies files
 bun run lint             # Turbo lint tasks where package scripts exist
 bun run typecheck        # Turbo TypeScript tasks, including API and active mobile routes
 cd apps/api && bun test
+cd apps/api && bun run bench:import # File-backed persistence benchmark, no native processing
+cd apps/api && bun run bench:exif /path/to/photo1.jpg /path/to/photo2.heic # Read-only EXIF comparison; requires exiftool
 cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui
 cd apps/mobile && bun run test
@@ -292,12 +298,12 @@ The API and worker must not be described as separate services unless a future ch
 ## Invariants and Known Gaps
 
 - `discoverPhotos` returns index-aligned `filePaths` and `relativePaths`; preserve that pairing.
-- The Rust batch processor uses a Rayon pool capped at four threads. Callback completion order is not input order.
+- The Rust batch and callback processors reuse one Rayon pool capped at four threads. Callback completion order is not input order; blocking callback queueing does not acknowledge JavaScript persistence.
 - Thumbnail generation can log a warning while a photo result remains successful; verify files before treating `thumbnailStatus` as reliable.
 - Scans do not delete database rows for files removed from disk.
 - A successful scan resets processed photos to `embeddingStatus: "pending"`, even when a source file is unchanged.
 - `scan_jobs` terminal states are monotonic, but a process crash after inserting a queued row and before sending its Inngest event can still leave that row queued; there is no outbox reconciler.
-- EXIF and pHash sidecar writes are not one transaction with the photo row.
+- Scan save batches atomically upsert photo rows, EXIF, pHash, and processing statuses. Embedding batches atomically upsert vectors and embedding statuses. Native media generation and scan-job progress are outside these transactions.
 - Missing later EXIF or pHash data does not currently remove an old sidecar row.
 - Thumbnail paths are extension-stripped and path-based; different source files with the same relative stem can collide.
 - The pHash is the Rust `DoubleGradient` output serialized as base64, not a guaranteed 64-character hexadecimal value.
