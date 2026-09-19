@@ -47,8 +47,8 @@ Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN add
 
 ## Current Behavior
 
-- Photos are sorted newest-first in a continuous five-column phone grid, with optional year or month grouping and up to eight columns on wide layouts.
-- The fixed Library header keeps Options and selection available while photos scroll beneath a live blur and soft fade. Its subtitle changes from item count to the visible photo date. Years/Months/All Photos are directly accessible in a floating bottom control above the native tabs. Options contains captured/recently-added sorting, filters, scan initiation, and Settings.
+- Photos run oldest-to-newest in a continuous five-column phone grid, open at the newest edge, and support optional year or month grouping with up to eight columns on wide layouts.
+- The fixed Library header keeps Options and selection available while photos scroll beneath a live blur and soft fade. Its subtitle changes from item count at the newest edge to the visible photo date while browsing history. The normal Library/Collections/Search tabs collapse while browsing history into one Collections button, Years/Months/All segments, and one Search button. Options contains captured/recently-added sorting, filters, scan initiation, and Settings.
 - Filter combines RAW/standard choices with searchable camera/lens/ISO/month lists. Changes apply immediately; Done dismisses. All Items resets filters, and the library's active-filter summary offers direct editing and a one-tap reset.
 - The Search tab uses the native iOS search bar and debounces natural-language queries by 350 ms.
 - Tapping a photo opens a modal loupe with pinch/pan/zoom, swipe navigation, a tappable thumbnail filmstrip, haptics, and metadata. Compact glass controls show date/time, position, close, and info; tapping the photo hides or restores them.
