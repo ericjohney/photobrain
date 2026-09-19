@@ -53,12 +53,20 @@ export function processPhotosBatch(
 	relativePaths: string[],
 	thumbnailsDir: string,
 ): PhotoProcessingResult[];
-export function processPhotosWithCallback(
-	paths: string[],
+export interface PhotoStreamResult {
+	index: number;
+	result: PhotoProcessingResult;
+}
+export class PhotoProcessingStream {
+	private constructor();
+	next(): Promise<PhotoStreamResult | null>;
+	close(): Promise<void>;
+}
+export function startPhotoProcessing(
+	filePaths: string[],
 	relativePaths: string[],
 	thumbnailsDir: string,
-	callback: (result: PhotoProcessingResult) => void,
-): number;
+): PhotoProcessingStream;
 export function extractExif(path: string): ExifData | null;
 export function perceptualHash(path: string): string;
 export function generatePhash(path: string): string;

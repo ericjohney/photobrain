@@ -1,11 +1,10 @@
 use image::ImageReader;
-use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 use rayon::prelude::*;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
-use std::sync::{Arc, OnceLock};
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use crate::exif::{ExifData, METADATA_CHUNK_SIZE, extract_exif_batch, extract_exif_internal};
@@ -15,14 +14,33 @@ use crate::phash::generate_phash_from_image;
 use crate::preview::{extract_preview, get_raw_format, is_raw_file};
 use crate::thumbnails::generate_all_thumbnails_internal;
 
-fn processing_pool() -> &'static rayon::ThreadPool {
-  static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
-  POOL.get_or_init(|| {
+fn processing_threads(available: usize, configured: Option<&str>) -> Result<usize, String> {
+  match configured {
+    None => Ok(available.max(1)),
+    Some(value) => value
+      .parse::<usize>()
+      .ok()
+      .filter(|count| *count > 0)
+      .ok_or_else(|| "PHOTO_PROCESSING_THREADS must be a positive integer".to_string()),
+  }
+}
+
+pub(crate) fn processing_pool() -> napi::Result<&'static rayon::ThreadPool> {
+  static POOL: LazyLock<Result<rayon::ThreadPool, String>> = LazyLock::new(|| {
+    let configured = match std::env::var("PHOTO_PROCESSING_THREADS") {
+      Ok(value) => Some(value),
+      Err(std::env::VarError::NotPresent) => None,
+      Err(error) => return Err(error.to_string()),
+    };
+    let available = std::thread::available_parallelism().map_or(1, usize::from);
     rayon::ThreadPoolBuilder::new()
-      .num_threads(num_cpus::get().clamp(1, 4))
+      .num_threads(processing_threads(available, configured.as_deref())?)
       .build()
-      .expect("Failed to create bounded photo processing pool")
-  })
+      .map_err(|error| format!("Failed to create photo processing pool: {error}"))
+  });
+  POOL
+    .as_ref()
+    .map_err(|error| napi::Error::from_reason(error.clone()))
 }
 
 /// Standard image extensions (directly decodable by image crate)
@@ -119,7 +137,7 @@ fn error_result(path: &str, name: String, error: String) -> PhotoProcessingResul
 }
 
 /// Process a single photo (any type)
-fn process_photo_internal(
+pub(crate) fn process_photo_internal(
   file_path: &str,
   relative_path: &str,
   thumbnails_dir: &str,
@@ -203,10 +221,10 @@ fn process_photo_internal(
       // Generate phash
       let phash = Some(generate_phash_from_image(&img));
 
-      // Generate thumbnails
-      if let Err(e) = generate_all_thumbnails_internal(&img, relative_path, thumbnails_dir) {
-        eprintln!("Warning: Failed to generate thumbnails: {}", e);
-      }
+      // A successful result guarantees every thumbnail was written.
+      let thumbnail_error = generate_all_thumbnails_internal(&img, relative_path, thumbnails_dir)
+        .err()
+        .map(|error| format!("Failed to generate thumbnails: {}", error));
 
       // Note: CLIP embeddings are generated in a batch job after scan completes
       // This makes the initial scan ~3x faster
@@ -246,8 +264,8 @@ fn process_photo_internal(
           None
         },
         raw_error: None,
-        success: true,
-        error: None,
+        success: thumbnail_error.is_none(),
+        error: thumbnail_error,
       }
     }
     Err(e) => {
@@ -285,8 +303,8 @@ pub fn process_photos_batch(
   file_paths: Vec<String>,
   relative_paths: Vec<String>,
   thumbnails_dir: String,
-) -> Vec<PhotoProcessingResult> {
-  let pool = processing_pool();
+) -> napi::Result<Vec<PhotoProcessingResult>> {
+  let pool = processing_pool()?;
   let mut results = Vec::with_capacity(file_paths.len());
   let mut exif_wall = Duration::ZERO;
   let mut processing_wall = Duration::ZERO;
@@ -316,7 +334,7 @@ pub fn process_photos_batch(
     exif_wall.as_millis(),
     processing_wall.as_millis()
   );
-  results
+  Ok(results)
 }
 
 /// Process a single photo
@@ -325,57 +343,12 @@ pub fn process_photo(
   file_path: String,
   relative_path: String,
   thumbnails_dir: String,
-) -> PhotoProcessingResult {
-  process_photo_internal(&file_path, &relative_path, &thumbnails_dir, || {
-    extract_exif_internal(&file_path)
-  })
-}
-
-/// Process photos in parallel with callback for each completed photo.
-/// Uses rayon for CPU-bound parallel processing.
-/// Blocking mode waits for queue capacity, not for the JavaScript callback to finish.
-#[napi]
-pub fn process_photos_with_callback(
-  file_paths: Vec<String>,
-  relative_paths: Vec<String>,
-  thumbnails_dir: String,
-  #[napi(ts_arg_type = "(result: PhotoProcessingResult) => void")]
-  on_photo_processed: ThreadsafeFunction<PhotoProcessingResult>,
-) -> u32 {
-  let callback = Arc::new(on_photo_processed);
-  let pool = processing_pool();
-  let count = file_paths.len() as u32;
-  let mut exif_wall = Duration::ZERO;
-  let mut processing_wall = Duration::ZERO;
-  for (chunk_index, paths) in file_paths.chunks(METADATA_CHUNK_SIZE).enumerate() {
-    let started = Instant::now();
-    let metadata = extract_exif_batch(paths);
-    exif_wall += started.elapsed();
-    let started = Instant::now();
-    pool.install(|| {
-      paths
-        .par_iter()
-        .zip(metadata.into_par_iter())
-        .enumerate()
-        .for_each(|(i, (file_path, exif))| {
-          let index = chunk_index * METADATA_CHUNK_SIZE + i;
-          let rel_path = relative_paths.get(index).map(|s| s.as_str()).unwrap_or("");
-          let result = process_photo_internal(file_path, rel_path, &thumbnails_dir, || exif);
-
-          // Queue the callback; delivery is not a database persistence acknowledgement.
-          callback.call(Ok(result), ThreadsafeFunctionCallMode::Blocking);
-        });
-    });
-    processing_wall += started.elapsed();
-  }
-  eprintln!(
-    "Photo callback batch: files={} exif_wall_ms={} processing_with_callbacks_wall_ms={}",
-    count,
-    exif_wall.as_millis(),
-    processing_wall.as_millis()
-  );
-
-  count
+) -> napi::Result<PhotoProcessingResult> {
+  Ok(processing_pool()?.install(|| {
+    process_photo_internal(&file_path, &relative_path, &thumbnails_dir, || {
+      extract_exif_internal(&file_path)
+    })
+  }))
 }
 
 #[cfg(test)]
@@ -384,13 +357,84 @@ mod tests {
 
   #[test]
   fn batch_pool_is_reused_and_bounded() {
-    let pool = processing_pool();
-    assert!(std::ptr::eq(pool, processing_pool()));
-    assert!((1..=4).contains(&pool.current_num_threads()));
+    let pool = processing_pool().unwrap();
+    assert!(std::ptr::eq(pool, processing_pool().unwrap()));
+    assert!(pool.current_num_threads() > 0);
     pool.install(|| {
       (0..40).into_par_iter().for_each(|_| {
         assert_eq!(rayon::current_num_threads(), pool.current_num_threads());
       });
     });
+  }
+
+  #[test]
+  fn pool_size_uses_available_capacity_or_a_positive_override() {
+    assert_eq!(processing_threads(12, None).unwrap(), 12);
+    assert_eq!(processing_threads(0, None).unwrap(), 1);
+    assert_eq!(processing_threads(12, Some("2")).unwrap(), 2);
+    for invalid in [
+      "",
+      "0",
+      "-1",
+      "1.5",
+      " 2",
+      "many",
+      "999999999999999999999999",
+    ] {
+      assert!(processing_threads(12, Some(invalid)).is_err());
+    }
+  }
+
+  #[test]
+  fn thumbnail_failure_is_not_a_successful_photo() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("photo.png");
+    image::DynamicImage::new_rgb8(32, 16).save(&source).unwrap();
+    let thumbnails = temp.path().join("thumbnails");
+    fs::create_dir_all(&thumbnails).unwrap();
+    fs::write(thumbnails.join("medium"), b"not a directory").unwrap();
+
+    let result = processing_pool().unwrap().install(|| {
+      process_photo_internal(
+        source.to_str().unwrap(),
+        "photo.png",
+        thumbnails.to_str().unwrap(),
+        || None,
+      )
+    });
+
+    assert!(!result.success);
+    assert!(result.error.is_some());
+  }
+
+  #[test]
+  fn successful_photo_has_all_thumbnails_and_original_phash() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("photo.png");
+    let img = image::DynamicImage::ImageRgb8(image::RgbImage::from_fn(1800, 900, |x, y| {
+      image::Rgb([x as u8, y as u8, (x ^ y) as u8])
+    }));
+    img.save(&source).unwrap();
+    let thumbnails = temp.path().join("thumbnails");
+    let result = processing_pool().unwrap().install(|| {
+      process_photo_internal(
+        source.to_str().unwrap(),
+        "photo.png",
+        thumbnails.to_str().unwrap(),
+        || None,
+      )
+    });
+
+    assert!(result.success, "{:?}", result.error);
+    assert_eq!(result.phash, Some(generate_phash_from_image(&img)));
+    for (size, dimensions) in [
+      ("tiny", (150, 75)),
+      ("small", (400, 200)),
+      ("medium", (800, 400)),
+      ("large", (1600, 800)),
+    ] {
+      let thumbnail = image::open(thumbnails.join(size).join("photo.webp")).unwrap();
+      assert_eq!((thumbnail.width(), thumbnail.height()), dimensions);
+    }
   }
 }

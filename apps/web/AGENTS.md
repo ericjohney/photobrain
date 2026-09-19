@@ -18,7 +18,7 @@ Scope: `apps/web`.
 - `src/hooks/use-library-state.ts`: grid/loupe state, active photo, localStorage persistence.
 - `src/hooks/use-panel-state.ts`: panel visibility and persisted dimensions.
 - `src/hooks/use-keyboard-shortcuts.ts`: Lightroom-style keyboard behavior.
-- `src/hooks/use-job-progress.ts`: Inngest Realtime subscription and query invalidation.
+- `src/hooks/use-job-progress.ts`: Inngest Realtime subscription, durable status polling, and incremental query invalidation.
 - `src/lib/trpc-client.ts`: HTTP batch link plus HTTP subscription link.
 - `src/lib/config.ts`: runtime-injected/API URL resolution.
 - `src/lib/thumbnails.ts`: thumbnail and full-image URL helpers.
@@ -46,9 +46,15 @@ Active browser routes:
 
 `Dashboard` owns search text, selected folder, camera/lens/ISO/month filters, and the active scan job ID. It queries `folders`, `filterOptions`, `photos`, and `searchPhotos` through tRPC. Search is reactive: a non-empty query enables `searchPhotos`, while ordinary photo/filter queries are disabled.
 
-The dashboard scan mutation receives an Inngest `jobId`; `useJobProgress` obtains a Realtime token through `realtimeToken`, subscribes to `job:{jobId}`, and invalidates photos/folders on completion.
+The dashboard scan mutation receives an Inngest `jobId`; `useJobProgress` obtains a Realtime token through `realtimeToken` and subscribes to `job:{jobId}`. An advancing `processing.current` invalidates photos, folders, and filter options: the first advance refreshes immediately, and subsequent advances coalesce into a trailing refresh at most once per second. Duplicate or stale progress does not trigger another processing refresh. Entering `scan-complete` or the first `embedding` phase refreshes the library immediately, without waiting for embeddings to finish.
 
 The token query is enabled when a job starts; the subscription waits for its result. For self-hosting, the API's optional `realtimeToken.baseUrl` supplies a client-reachable origin, attached through a keyless SDK client on initial and refreshed tokens. Progress is decoded from the Realtime message's `data` envelope. Server event/signing keys must never be bundled.
+
+The hook also polls durable `scanStatus` every 1500 ms, including while Realtime is connected, so token failures, disconnects, or missed messages do not prevent progress and library refreshes. Polling stops when durable status is terminal or the job is missing; token queries and subscriptions are disabled in those states. Failed token queries retry periodically, and subscription token refresh preserves the self-hosted origin.
+
+Progress is accepted monotonically by phase and count for the active job; delayed processing messages cannot move an embedding or terminal job backward, and durable terminal status takes precedence. `scan-complete` is the handoff to indexing, not a terminal state, and `embedding` remains active. Only `completed` and `failed` are terminal; a missing durable job is surfaced as failed. Terminal progress cancels pending coalesced refreshes and invalidates library, folder, filter, and search queries once per job. Changing jobs or unmounting cancels old refresh timers.
+
+See [import performance](../../docs/import-performance.md) for measured native/persistence timings and the separate real API/Inngest/web smoke; these are not interchangeable with mocked E2E results.
 
 The tRPC client uses `httpBatchLink` for queries/mutations and `unstable_httpSubscriptionLink` for subscriptions. Both use `superjson` and `${API_URL}/api/trpc`.
 
@@ -94,7 +100,7 @@ The API resolves the photo's path and serves mirrored WebP files. The optional `
 
 ## Tests
 
-There are eight Playwright specs covering loading, search, filters, scan initiation, panels, loupe navigation, metadata, and thumbnail sizing. Fixtures in `e2e/fixtures/handlers.ts` mock tRPC batch responses, image endpoints, and Inngest requests. These are deterministic UI tests, not API/realtime integration tests.
+Playwright specs cover loading, search, filters, scan initiation and incremental refresh, panels, loupe navigation, metadata, and thumbnail sizing. Fixtures in `e2e/fixtures/handlers.ts` mock tRPC batch responses, image endpoints, and Inngest requests. These are deterministic UI tests, not API/realtime integration tests.
 
 When adding a test:
 

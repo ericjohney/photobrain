@@ -1,17 +1,46 @@
+import { eq } from "drizzle-orm";
 import { db } from "../../db";
-import { saveScanBatch } from "../../services/import-persistence";
+import { scanJobs, scanManifests } from "../../db/schema";
 import { nativeExecutor } from "../../services/native-executor";
+import {
+	clearScanWork,
+	commitScanResult,
+	completedScanPhotoIds,
+	getScanWorkProgress,
+	initializeScanWork,
+	pendingScanWork,
+} from "../../services/scan-work";
 import { inngest } from "../client";
 import { failJob, updateJobProgress } from "../progress";
 
+function scanActive(jobId: string) {
+	const job = db.select().from(scanJobs).where(eq(scanJobs.id, jobId)).get();
+	return !!job && job.status !== "completed" && job.status !== "failed";
+}
+
 export const scanPhotosFunction = inngest.createFunction(
 	{
-		id: "scan-photos",
+		// Drain old scan runs before deploying this new checkpoint graph.
+		id: "scan-photos-v4",
 		concurrency: { limit: 1 },
 		onFailure: async ({ event, error, publish, step }) => {
 			const jobId = event.data.event.data.jobId;
-			const failedJob = await step.run("persist-terminal-failure", () =>
-				failJob(jobId, error),
+			const failedJob = await step.run(
+				"persist-terminal-failure-v4",
+				async () => {
+					try {
+						await nativeExecutor.cancelPhotos(jobId);
+					} catch (cancelError) {
+						// A dead/overloaded executor must not leave an exhausted job running.
+						console.error(
+							`Failed to cancel native work for ${jobId}:`,
+							cancelError,
+						);
+					}
+					const failed = await failJob(jobId, error);
+					clearScanWork(db, jobId);
+					return failed;
+				},
 			);
 			if (!failedJob) return;
 			try {
@@ -28,148 +57,223 @@ export const scanPhotosFunction = inngest.createFunction(
 	{ event: "photos/scan.requested" },
 	async ({ event, step, publish }) => {
 		const { directory, thumbnailsDir, jobId } = event.data;
-		const publishProgress = async (data: {
+		const publishProgress = (data: {
 			phase: string;
 			current: number;
 			total: number;
-		}) => {
-			try {
-				await publish({ channel: `job:${jobId}`, topic: "progress", data });
-			} catch (error) {
-				console.error(`Failed to publish progress for ${jobId}:`, error);
+		}) => publish({ channel: `job:${jobId}`, topic: "progress", data });
+
+		const started = await step.run("claim-scan-job-v4", async () => {
+			const job = db
+				.select()
+				.from(scanJobs)
+				.where(eq(scanJobs.id, jobId))
+				.get();
+			if (!scanActive(jobId)) return false;
+			// A lost claim checkpoint must not reset already committed progress.
+			if (job?.phase === "queued") {
+				await updateJobProgress(jobId, "discovering", 0, 0);
+				await publishProgress({ phase: "discovering", current: 0, total: 0 });
 			}
-		};
-		console.log(`📂 Starting parallel scan of ${directory}`);
-
-		// Publish initial status
-		const jobStarted = await step.run("claim-scan-job-v2", () =>
-			updateJobProgress(jobId, "discovering", 0, 0),
-		);
-		if (!jobStarted) {
-			console.warn(`Skipping scan for missing or terminal job ${jobId}`);
-			return { processed: 0, successful: 0 };
-		}
-		await publishProgress({ phase: "discovering", current: 0, total: 0 });
-
-		// Discovery step - wrapped in step.run for checkpointing
-		const discovery = await step.run("discover-photos", async () => {
-			const result = await nativeExecutor.run("discoverPhotos", directory);
-			return {
-				filePaths: result.filePaths,
-				relativePaths: result.relativePaths,
-				totalCount: result.totalCount,
-			};
+			return true;
 		});
+		if (!started) return { processed: 0, successful: 0 };
 
-		const { filePaths, relativePaths, totalCount } = discovery;
-		console.log(`Found ${totalCount} photos`);
-
-		await step.run("mark-processing", () =>
-			updateJobProgress(jobId, "processing", 0, totalCount),
-		);
-		await publishProgress({
-			phase: "processing",
-			current: 0,
-			total: totalCount,
+		let progress = await step.run("initialize-scan-work-v4", async () => {
+			if (!scanActive(jobId)) return null;
+			// The durable header freezes discovery even when there are zero files.
+			if (
+				db
+					.select()
+					.from(scanManifests)
+					.where(eq(scanManifests.jobId, jobId))
+					.get()
+			) {
+				return getScanWorkProgress(db, jobId);
+			}
+			const discovery = await nativeExecutor.run("discoverPhotos", directory);
+			if (!scanActive(jobId)) return null;
+			return initializeScanWork(db, jobId, discovery);
 		});
+		if (!progress) return { processed: 0, successful: 0 };
 
-		// Process photos in batches for better progress reporting
-		const BATCH_SIZE = 20;
-		let totalSuccessCount = 0;
-		let totalProcessedCount = 0;
-		const savedPhotoIds: number[] = [];
-
-		for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
-			const batchNum = Math.floor(i / BATCH_SIZE);
-			const batchFilePaths = filePaths.slice(i, i + BATCH_SIZE);
-			const batchRelativePaths = relativePaths.slice(i, i + BATCH_SIZE);
-
-			const batchResults = await step.run(
-				`process-batch-${batchNum}`,
-				async () => {
-					console.log(
-						`Processing batch ${batchNum + 1}/${Math.ceil(filePaths.length / BATCH_SIZE)}...`,
-					);
-					const started = performance.now();
-					const results = await nativeExecutor.run(
-						"processPhotosBatch",
-						batchFilePaths,
-						batchRelativePaths,
-						thumbnailsDir,
-					);
-					console.log(
-						`Scan batch ${batchNum}: native queue + processing ${Math.round(performance.now() - started)}ms for ${results.length} photos`,
-					);
-					return results;
-				},
-			);
-
-			const batchPhotoIds = await step.run(`save-batch-${batchNum}`, () => {
-				const started = performance.now();
-				const ids = saveScanBatch(db, batchResults);
-				console.log(
-					`Scan batch ${batchNum}: database save ${Math.round(performance.now() - started)}ms for ${ids.length} photos`,
-				);
-				return ids;
-			});
-
-			totalSuccessCount += batchPhotoIds.length;
-			totalProcessedCount += batchResults.length;
-			savedPhotoIds.push(...batchPhotoIds);
-
-			// Publish progress after each batch
-			await step.run(`mark-batch-${batchNum}-processed`, () =>
-				updateJobProgress(jobId, "processing", totalProcessedCount, totalCount),
+		const processing = await step.run("mark-processing-v4", async () => {
+			if (!scanActive(jobId)) return false;
+			const durable = getScanWorkProgress(db, jobId);
+			await updateJobProgress(
+				jobId,
+				"processing",
+				durable.processed,
+				durable.total,
 			);
 			await publishProgress({
 				phase: "processing",
-				current: totalProcessedCount,
-				total: totalCount,
+				current: durable.processed,
+				total: durable.total,
 			});
+			return true;
+		});
+		if (!processing)
+			return { processed: progress.processed, successful: progress.successful };
+
+		for (let window = 0; progress.pending > 0; window++) {
+			const checkpoint = await step.run(
+				`consume-photo-results-v4-${window}`,
+				async () => {
+					if (!scanActive(jobId)) {
+						await nativeExecutor.cancelPhotos(jobId);
+						const durable = getScanWorkProgress(db, jobId);
+						clearScanWork(db, jobId);
+						return { ...durable, active: false };
+					}
+					// Publish the first completion immediately. While it is in flight retain
+					// only the latest progress, never a promise or message per photo. Realtime
+					// middleware publishes directly inside this step (no nested checkpoints).
+					let latest:
+						| { phase: string; current: number; total: number }
+						| undefined;
+					let publishing: Promise<void> | undefined;
+					let publishedCurrent = -1;
+					let publicationFailed = false;
+					let publicationError: unknown;
+					const publishLatest = () => {
+						if (publishing || publicationFailed || !latest) return;
+						if (!scanActive(jobId)) {
+							latest = undefined;
+							return;
+						}
+						const data = latest;
+						latest = undefined;
+						publishing = publishProgress(data)
+							.then(() => {
+								publishedCurrent = data.current;
+							})
+							.catch((error: unknown) => {
+								publicationFailed = true;
+								publicationError = error;
+							})
+							.finally(() => {
+								publishing = undefined;
+								publishLatest();
+							});
+					};
+					const stopped = new Error("Scan became terminal");
+					try {
+						await nativeExecutor.consumePhotos(
+							jobId,
+							thumbnailsDir,
+							() => pendingScanWork(db, jobId),
+							(id, result) => {
+								const committed = commitScanResult(db, jobId, id, result);
+								if (!committed.active) throw stopped;
+								if (committed.committed) {
+									latest = {
+										phase: "processing",
+										current: committed.processed,
+										total: committed.total,
+									};
+									publishLatest();
+								}
+							},
+							20,
+						);
+						while (publishing) await publishing;
+						if (publicationFailed) throw publicationError;
+						const durable = getScanWorkProgress(db, jobId);
+						// A replay may have no pending inputs after losing its checkpoint;
+						// republish the durable count if this window did not publish it.
+						if (scanActive(jobId) && durable.processed !== publishedCurrent) {
+							await publishProgress({
+								phase: "processing",
+								current: durable.processed,
+								total: durable.total,
+							});
+						}
+						return { ...durable, active: scanActive(jobId) };
+					} catch (error) {
+						await nativeExecutor.cancelPhotos(jobId);
+						while (publishing) await publishing;
+						if (error === stopped) {
+							const durable = getScanWorkProgress(db, jobId);
+							clearScanWork(db, jobId);
+							return { ...durable, active: false };
+						}
+						throw error;
+					}
+				},
+			);
+			progress = checkpoint;
+			if (!checkpoint.active)
+				return {
+					processed: progress.processed,
+					successful: progress.successful,
+				};
 		}
 
 		const result = {
-			processed: totalProcessedCount,
-			successful: totalSuccessCount,
+			processed: progress.processed,
+			successful: progress.successful,
 		};
-
-		console.log(
-			`✅ Scan complete: ${result.successful}/${result.processed} successful`,
-		);
-
 		if (result.processed > 0 && result.successful === 0) {
-			const error = new Error("No photos could be processed");
-			await step.run("mark-scan-failed", () => failJob(jobId, error));
-			await publishProgress({
-				phase: "failed",
-				current: result.processed,
-				total: result.processed,
+			await step.run("mark-scan-failed-v4", async () => {
+				await nativeExecutor.cancelPhotos(jobId);
+				const failed = await failJob(
+					jobId,
+					new Error("No photos could be processed"),
+				);
+				clearScanWork(db, jobId);
+				if (failed) {
+					try {
+						await publishProgress({ phase: "failed", ...failed });
+					} catch (error) {
+						console.error(`Failed to publish failure for ${jobId}:`, error);
+					}
+				}
 			});
 			return result;
 		}
 
-		const finalPhase = savedPhotoIds.length > 0 ? "scan-complete" : "completed";
-		await step.run("mark-scan-finished", () =>
-			updateJobProgress(jobId, finalPhase, result.processed, result.processed),
+		// Checkpoint IDs before terminal progress or dispatch; retain receipts until
+		// the event checkpoint succeeds, including retries after a lost response.
+		const photoIds = await step.run("completed-scan-photo-ids-v4", () =>
+			completedScanPhotoIds(db, jobId),
 		);
-		await publishProgress({
-			phase: finalPhase,
-			current: result.processed,
-			total: result.processed,
-		});
-
-		// This must remain the final side effect in the parent function. The child
-		// can complete immediately, so writing scan-complete afterward would regress it.
-		if (savedPhotoIds.length > 0) {
-			await step.sendEvent("trigger-embeddings", {
-				name: "photos/embeddings.requested",
-				data: { photoIds: savedPhotoIds, thumbnailsDir, jobId },
-			});
-			console.log(
-				`📊 Triggered embedding job for ${savedPhotoIds.length} photos`,
+		const phase = photoIds.length > 0 ? "scan-complete" : "completed";
+		const total = progress.total;
+		const finished = await step.run("mark-scan-finished-v4", async () => {
+			if (await updateJobProgress(jobId, phase, result.processed, total))
+				return true;
+			// Empty scans become terminal here. Losing this checkpoint must still
+			// allow their final publication, without reopening a terminal job.
+			const job = db
+				.select()
+				.from(scanJobs)
+				.where(eq(scanJobs.id, jobId))
+				.get();
+			return (
+				phase === "completed" &&
+				job?.status === "completed" &&
+				job.phase === phase &&
+				job.current === result.processed &&
+				job.total === total
 			);
+		});
+		if (finished) {
+			await step.run("publish-scan-finished-v4", () =>
+				publishProgress({ phase, current: result.processed, total }),
+			);
+			if (photoIds.length > 0) {
+				await step.sendEvent("trigger-embeddings-v4", {
+					name: "photos/embeddings.requested",
+					data: { photoIds, thumbnailsDir, jobId },
+				});
+			}
 		}
-
+		// No parent progress writes after dispatch: the child may already be done.
+		await step.run("clear-scan-work-v4", async () => {
+			await nativeExecutor.cancelPhotos(jobId);
+			clearScanWork(db, jobId);
+		});
 		return result;
 	},
 );

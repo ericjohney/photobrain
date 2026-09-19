@@ -6,7 +6,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 
 - Web grid and loupe views with keyboard navigation, metadata, folders, and EXIF filters.
 - Expo mobile app with native Library/Collections/Search tabs, bottom Years/Months/All Photos browsing, captured/recently-added sorting, selection, debounced search, and Photos-inspired filters with searchable camera/lens/ISO/month lists and RAW/standard choices. Liquid Glass chrome on supported iOS versions, a paged loupe with a synchronized thumbnail filmstrip and native iOS pinch zoom, and theme preferences.
-- Four WebP thumbnail sizes: `tiny`, `small`, `medium`, and `large`.
+- Four derived WebP preview sizes: `tiny`, `small`, `medium`, and `large`. Preview color is lossy; original photo files are untouched.
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
 - Standard image, HEIF/HEIC, and common RAW file discovery.
@@ -32,7 +32,7 @@ packages/
 
 There is no `apps/worker`, BullMQ consumer, or Redis dependency in the current implementation. The API registers scan and embedding functions at `/api/inngest`; an Inngest development/runtime service must deliver events to that endpoint for asynchronous work to execute.
 
-CPU-heavy import calls use one bounded, persistent worker thread inside the API process, not a separately deployed worker service. Database writes and durable job orchestration remain on the API thread.
+CPU-heavy import work runs behind one persistent worker thread inside the API process, not a separate service. A continuously fed Rust pool uses available CPU capacity and saves photos as they finish; slow photos no longer hold up an input batch. SQLite receipts let interrupted scans resume pending work without repeating acknowledged photos. Database writes and Inngest checkpoints remain on the API thread.
 
 Detailed implementation guidance is in:
 
@@ -150,6 +150,7 @@ cd packages/image-processing && cargo test
 | `NODE_ENV` | `development` | Runtime environment |
 | `RUN_DB_INIT` | `false` | Set to `true` or `1` to run shared migrations on startup |
 | `FASTEMBED_CACHE_DIR` | unset | Optional FastEmbed model cache directory |
+| `PHOTO_PROCESSING_THREADS` | available CPU capacity | Optional positive integer limiting concurrent media processing; read once by Rust when its pool initializes |
 | `INNGEST_DEV` | SDK default | Use `1` only for local development; `0` for production/self-hosting |
 | `INNGEST_BASE_URL` | SDK default | Server-to-server Inngest origin; set for self-hosting |
 | `INNGEST_EVENT_KEY` | unset | Server-only key used to submit events |
@@ -158,6 +159,8 @@ cd packages/image-processing && cargo test
 | `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable HTTP(S) Inngest origin for WebSocket subscriptions |
 
 `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are parsed legacy values and are not used by the current image pipeline.
+
+More photo workers use more decoded-image memory. Reduce `PHOTO_PROCESSING_THREADS` on memory-constrained hosts; storage, ExifTool, startup, and the final few photos can still leave CPUs idle. See [measured CPU, memory, and throughput](docs/import-performance.md#continuous-pool--2026-09-19). For this architecture cutover, drain active old scan runs, rebuild the native addon, and apply migration `0005_continuous_scan_work.sql` before starting `scan-photos-v4` (`RUN_DB_INIT=true` performs migrations on startup; the API Docker image enables it).
 
 ### Self-hosted Inngest
 
@@ -213,13 +216,15 @@ All current API routes are unauthenticated.
 
 ## Image and Job Flow
 
-Scanning is requested through `trpc.scan`, which creates a durable `scan_jobs` row before sending an Inngest event. The scan function discovers supported files, processes Rust batches of 20, writes photo/EXIF/pHash data, and persists/publishes progress. It sends the IDs saved by that scan to the embedding function, which reads `large` WebP thumbnails in batches of 16 and stores CLIP vectors. Mobile combines Realtime updates with `scanStatus` polling so active work can recover after an app restart or connection loss.
+Scanning is requested through `trpc.scan`, which creates a durable `scan_jobs` row before sending an Inngest event. SQLite freezes priority-ordered work and records each completion. New paths enter the continuously fed pool first; workers do not wait for an input batch, and photos appear in web/mobile as they finish and commit. Existing photos are still reprocessed, not skipped. Inngest checkpoints every 20 completed results while native work continues behind bounded queues. After media processing, one embedding job reads saved `large` WebP previews in batches of 16 and stores CLIP vectors. Embedding remains active work, not completion. Both clients combine Realtime with durable polling; mobile also recovers active work after an app restart.
 
-The native pipeline uses batched `exiftool` metadata commands (up to 20 photos), separate ExifTool commands for embedded RAW previews, `libheif-rs` for HEIF decoding, the Rust `image` crate for standard formats, and a reused four-thread-capped Rayon pool. See [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md) for format and processing caveats.
+The native pipeline independently prefetches `exiftool` metadata (up to 20 photos per command), uses separate ExifTool commands for embedded RAW previews, `libheif-rs` for HEIF decoding, and the Rust `image` crate for standard formats. A shared Rayon pool defaults to available CPU capacity, with `PHOTO_PROCESSING_THREADS` as a memory/concurrency override. See [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md) for format and processing caveats.
 
-Scan and embedding database writes use one transaction per batch with upserts, reducing disk commit overhead while preserving photo IDs and rolling back a failed batch. Real scans log native-processing, inference, and database-save timings separately. Run `bun run bench:import` from `apps/api` for an isolated file-backed persistence benchmark against the previous per-photo write strategy; it does not measure image decoding or end-to-end import speed.
+Generated previews use lossy WebP color encoding (quality 80/85/85/90 for tiny/small/medium/large) and lossless alpha encoding. Original photo files are not modified. A thumbnail generation failure does not mark that photo ready.
 
-Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare batched metadata extraction with per-file extraction, without modifying photos. It requires ExifTool, not the native addon. [Import performance and architecture](docs/import-performance.md) describes measured scope and the proposed incremental-scan, artifact-versioning, and durable-work changes; those larger changes are not implemented yet.
+Each streamed completion commits photo/EXIF/pHash data, its durable receipt, counters, and scan progress atomically. A failed transaction leaves the photo pending; an acknowledged receipt prevents duplicate work after checkpoint loss or restart. Embedding writes remain transactional batches. `bun run bench:import` from `apps/api` still benchmarks the shared batch-persistence helper against legacy writes; it does not measure the rolling scheduler or end-to-end import speed.
+
+Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare batched metadata extraction with per-file extraction without modifying photos. It requires ExifTool, not the native addon. [Import performance and architecture](docs/import-performance.md) records continuous-pool throughput, memory, live visibility, and restart checks, and separates implemented receipts from future incremental scans, artifact generations, and distributed ownership.
 
 ## Production Builds
 

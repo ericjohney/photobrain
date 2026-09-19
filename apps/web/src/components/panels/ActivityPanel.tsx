@@ -1,4 +1,4 @@
-import { Brain, Camera, CheckCircle, Loader2 } from "lucide-react";
+import { Brain, Camera, CheckCircle, CircleAlert, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ProgressData {
@@ -10,6 +10,8 @@ interface ProgressData {
 
 function getPhaseIcon(phase: string | null) {
 	switch (phase) {
+		case "failed":
+			return CircleAlert;
 		case "discovering":
 		case "processing":
 		case "scan-complete":
@@ -23,6 +25,10 @@ function getPhaseIcon(phase: string | null) {
 
 function getPhaseLabel(phase: string | null) {
 	switch (phase) {
+		case "queued":
+			return "Queued";
+		case "failed":
+			return "Scan Failed";
 		case "discovering":
 			return "Discovering Photos";
 		case "processing":
@@ -54,10 +60,16 @@ export function ActivityPanel({
 	const hasProgress = progress.total > 0 || progress.phase !== null;
 
 	return (
-		<div className="border-t border-border bg-panel">
+		<section
+			aria-label="Activity"
+			aria-busy={isActive}
+			className="border-t border-border bg-panel"
+		>
 			<div className="px-3 py-2 border-b border-border/50 flex items-center gap-2">
 				{isActive ? (
 					<Loader2 className="h-4 w-4 animate-spin text-primary" />
+				) : progress.phase === "failed" ? (
+					<CircleAlert className="h-4 w-4 text-destructive" />
 				) : (
 					<CheckCircle className="h-4 w-4 text-muted-foreground" />
 				)}
@@ -72,7 +84,14 @@ export function ActivityPanel({
 						) : isCompleted ? (
 							<CheckCircle className="h-4 w-4 text-green-500" />
 						) : (
-							<Icon className="h-4 w-4 text-muted-foreground" />
+							<Icon
+								className={cn(
+									"h-4 w-4",
+									progress.phase === "failed"
+										? "text-destructive"
+										: "text-muted-foreground",
+								)}
+							/>
 						)}
 						<span className="text-sm font-medium flex-1">{label}</span>
 						{progress.total > 0 && (
@@ -88,7 +107,11 @@ export function ActivityPanel({
 							<div
 								className={cn(
 									"h-full transition-all duration-300",
-									isCompleted ? "bg-green-500" : "bg-primary",
+									isCompleted
+										? "bg-green-500"
+										: progress.phase === "failed"
+											? "bg-destructive"
+											: "bg-primary",
 								)}
 								style={{ width: `${progress.percentage}%` }}
 							/>
@@ -100,7 +123,7 @@ export function ActivityPanel({
 					No active tasks
 				</div>
 			)}
-		</div>
+		</section>
 	);
 }
 
