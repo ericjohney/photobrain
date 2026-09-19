@@ -39,7 +39,8 @@ async function commandJson(command, args) {
 }
 
 function validateBuild(build) {
-	const nullableString = (value) => value === null || typeof value === "string";
+	// EAS CLI's JSON serializer omits null-valued fields recursively.
+	const nullableString = (value) => value == null || typeof value === "string";
 	if (
 		!build ||
 		!uuid.test(build.id) ||
@@ -48,16 +49,18 @@ function validateBuild(build) {
 		!["IOS", "ANDROID"].includes(build.platform) ||
 		typeof build.isForIosSimulator !== "boolean" ||
 		!nullableString(build.buildProfile) ||
-		![null, "INTERNAL", "STORE", "SIMULATOR"].includes(build.distribution) ||
+		![null, undefined, "INTERNAL", "STORE", "SIMULATOR"].includes(
+			build.distribution,
+		) ||
 		!nullableString(build.appIdentifier) ||
-		!(build.runtime === null || typeof build.runtime?.version === "string") ||
+		!(build.runtime == null || typeof build.runtime?.version === "string") ||
 		!(
-			build.updateChannel === null ||
+			build.updateChannel == null ||
 			typeof build.updateChannel?.name === "string"
 		) ||
-		!(build.artifacts === null || nullableString(build.artifacts?.buildUrl)) ||
+		!(build.artifacts == null || nullableString(build.artifacts?.buildUrl)) ||
 		!(
-			build.expirationDate === null ||
+			build.expirationDate == null ||
 			(typeof build.expirationDate === "string" &&
 				Number.isFinite(Date.parse(build.expirationDate)))
 		)
@@ -82,7 +85,7 @@ function isCompatible(build, target) {
 
 function isExpired(build, now) {
 	return (
-		build.expirationDate !== null && Date.parse(build.expirationDate) <= now
+		build.expirationDate != null && Date.parse(build.expirationDate) <= now
 	);
 }
 

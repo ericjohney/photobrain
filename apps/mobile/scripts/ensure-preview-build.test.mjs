@@ -28,7 +28,11 @@ const build = (overrides = {}) => ({
 function service({
 	pages = [[]],
 	views = [build()],
-	created = build(),
+	created = build({
+		status: "IN_QUEUE",
+		artifacts: {},
+		expirationDate: undefined,
+	}),
 	listError,
 } = {}) {
 	let starts = 0;
@@ -70,6 +74,13 @@ test("JS-only releases reuse the runtime even when the EAS source fingerprint di
 	assert.equal(eas.starts, 0);
 });
 
+test("finished builds remain reusable when EAS omits a null expiration date", async () => {
+	const finished = build({ expirationDate: undefined });
+	const eas = service({ pages: [[finished]], views: [finished] });
+	assert.equal((await ensurePreviewBuild(eas.options)).action, "Reused");
+	assert.equal(eas.starts, 0);
+});
+
 test("a matching source fingerprint does not make a different runtime compatible", async () => {
 	const eas = service({
 		pages: [
@@ -99,7 +110,8 @@ test("unusable finished, expired, canceled, and incompatible binaries require a 
 				build({ distribution: "STORE" }),
 				build({ updateChannel: { name: "production" } }),
 				build({ buildProfile: "development" }),
-				build({ runtime: null }),
+				build({ runtime: undefined }),
+				build({ updateChannel: undefined }),
 			],
 		],
 	});
@@ -110,8 +122,17 @@ test("unusable finished, expired, canceled, and incompatible binaries require a 
 
 test("matching queued builds are awaited instead of duplicated", async () => {
 	const eas = service({
-		pages: [[build({ status: "IN_QUEUE", artifacts: null })]],
-		views: [build({ status: "IN_PROGRESS", artifacts: null }), build()],
+		pages: [
+			[build({ status: "IN_QUEUE", artifacts: {}, expirationDate: undefined })],
+		],
+		views: [
+			build({
+				status: "IN_PROGRESS",
+				artifacts: {},
+				expirationDate: undefined,
+			}),
+			build(),
+		],
 	});
 	const result = await ensurePreviewBuild(eas.options);
 	assert.equal(result.action, "Awaited existing");
