@@ -36,6 +36,13 @@
       "when": 1789799573110,
       "tag": "0004_repair-photo-exif-unique",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789836778059,
+      "tag": "0005_continuous_scan_work",
+      "breakpoints": true
     }
   ]
 }

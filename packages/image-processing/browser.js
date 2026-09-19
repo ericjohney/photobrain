@@ -21,6 +21,4 @@ module.exports.isSupportedImage = notAvailable("isSupportedImage");
 module.exports.perceptualHash = notAvailable("perceptualHash");
 module.exports.processPhoto = notAvailable("processPhoto");
 module.exports.processPhotosBatch = notAvailable("processPhotosBatch");
-module.exports.processPhotosWithCallback = notAvailable(
-	"processPhotosWithCallback",
-);
+module.exports.startPhotoProcessing = notAvailable("startPhotoProcessing");

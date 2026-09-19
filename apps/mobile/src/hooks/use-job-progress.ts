@@ -76,7 +76,15 @@ function compareProgress(left: ProgressData, right: ProgressData) {
 
 export function useJobProgress(jobId: string | null) {
 	const utils = trpc.useUtils();
-	const invalidatedJob = useRef<string | null>(null);
+	const refreshState = useRef({
+		jobId,
+		current: 0,
+		scanComplete: false,
+		embedding: false,
+		terminal: false,
+		lastRefreshAt: null as number | null,
+	});
+	const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const statusQuery = trpc.scanStatus.useQuery(
 		{ jobId: jobId ?? EMPTY_JOB_ID },
 		{
@@ -207,28 +215,94 @@ export function useJobProgress(jobId: string | null) {
 		progress.phase !== "failed" &&
 		!isMissingJob;
 
-	useEffect(() => {
-		if (
-			!jobId ||
-			(!isCompleted && !isFailed) ||
-			invalidatedJob.current === jobId
-		) {
-			return;
+	const cancelPendingRefresh = useCallback(() => {
+		if (refreshTimer.current !== null) {
+			clearTimeout(refreshTimer.current);
+			refreshTimer.current = null;
 		}
-		invalidatedJob.current = jobId;
+	}, []);
+	const refreshLibrary = useCallback(() => {
+		if (!jobId || refreshState.current.jobId !== jobId) return;
+		refreshState.current.lastRefreshAt = Date.now();
 		void Promise.all([
 			utils.photos.invalidate(),
 			utils.folders.invalidate(),
 			utils.filterOptions.invalidate(),
-			utils.searchPhotos.invalidate(),
 		]);
+	}, [jobId, utils.filterOptions, utils.folders, utils.photos]);
+
+	useEffect(() => {
+		refreshState.current = {
+			jobId,
+			current: 0,
+			scanComplete: false,
+			embedding: false,
+			terminal: false,
+			lastRefreshAt: null,
+		};
+		return () => {
+			refreshState.current.jobId = null;
+			cancelPendingRefresh();
+		};
+	}, [jobId, cancelPendingRefresh]);
+
+	useEffect(() => {
+		const observed = refreshState.current;
+		if (!jobId || observed.jobId !== jobId || observed.terminal) return;
+		if (isCompleted || isFailed) {
+			observed.terminal = true;
+			cancelPendingRefresh();
+			refreshLibrary();
+			void utils.searchPhotos.invalidate();
+			return;
+		}
+
+		if (
+			(progress.phase === "scan-complete" &&
+				!observed.scanComplete &&
+				!observed.embedding) ||
+			(progress.phase === "embedding" && !observed.embedding)
+		) {
+			if (progress.phase === "scan-complete") observed.scanComplete = true;
+			else observed.embedding = true;
+			cancelPendingRefresh();
+			refreshLibrary();
+			return;
+		}
+
+		if (
+			progress.phase !== "processing" ||
+			observed.scanComplete ||
+			observed.embedding ||
+			progress.current <= observed.current
+		) {
+			return;
+		}
+		observed.current = progress.current;
+		const remaining =
+			observed.lastRefreshAt === null
+				? 0
+				: 1000 - (Date.now() - observed.lastRefreshAt);
+		if (remaining <= 0) {
+			cancelPendingRefresh();
+			refreshLibrary();
+		} else if (refreshTimer.current === null) {
+			refreshTimer.current = setTimeout(() => {
+				if (refreshState.current !== observed || observed.jobId !== jobId) {
+					return;
+				}
+				refreshTimer.current = null;
+				refreshLibrary();
+			}, remaining);
+		}
 	}, [
+		cancelPendingRefresh,
 		isCompleted,
 		isFailed,
 		jobId,
-		utils.filterOptions,
-		utils.folders,
-		utils.photos,
+		progress.current,
+		progress.phase,
+		refreshLibrary,
 		utils.searchPhotos,
 	]);
 

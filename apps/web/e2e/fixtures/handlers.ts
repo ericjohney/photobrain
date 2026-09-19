@@ -32,6 +32,8 @@ type Handler = (input: unknown) => unknown | Promise<unknown>;
 
 export type HandlerOverrides = Partial<Record<string, Handler>>;
 
+export const FIXTURE_JOB_ID = "11111111-1111-4111-8111-111111111111";
+
 export const DEFAULT_HANDLERS: Record<string, Handler> = {
 	folders: () => FIXTURE_FOLDERS,
 	photos: () => ({
@@ -54,10 +56,22 @@ export const DEFAULT_HANDLERS: Record<string, Handler> = {
 		isos: [100, 200, 400, 800, 3200],
 		dates: ["2024-06", "2024-07", "2024-08"],
 	}),
-	scan: () => ({ success: true, jobId: "test-job-123" }),
+	scan: () => ({ success: true, jobId: FIXTURE_JOB_ID }),
+	scanStatus: (input) => ({
+		id:
+			typeof input === "object" && input !== null && "jobId" in input
+				? input.jobId
+				: FIXTURE_JOB_ID,
+		status: "queued",
+		phase: "queued",
+		current: 0,
+		total: 0,
+		error: null,
+		updatedAt: new Date("2024-01-01T00:00:00Z"),
+	}),
 	realtimeToken: () => ({
 		token: {
-			channel: "job:test-job-123",
+			channel: `job:${FIXTURE_JOB_ID}`,
 			topics: ["progress"],
 			key: "test-token-xyz",
 		},

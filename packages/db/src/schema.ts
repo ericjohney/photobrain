@@ -3,6 +3,7 @@ import {
 	blob,
 	index,
 	integer,
+	primaryKey,
 	sqliteTable,
 	text,
 } from "drizzle-orm/sqlite-core";
@@ -120,6 +121,38 @@ export const scanJobs = sqliteTable("scan_jobs", {
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
+export const scanManifests = sqliteTable("scan_manifests", {
+	jobId: text("job_id")
+		.primaryKey()
+		.references(() => scanJobs.id, { onDelete: "cascade" }),
+	total: integer("total").notNull(),
+	processed: integer("processed").notNull().default(0),
+	successful: integer("successful").notNull().default(0),
+});
+
+export const scanItems = sqliteTable(
+	"scan_items",
+	{
+		jobId: text("job_id")
+			.notNull()
+			.references(() => scanManifests.jobId, { onDelete: "cascade" }),
+		ordinal: integer("ordinal").notNull(),
+		filePath: text("file_path").notNull(),
+		relativePath: text("relative_path").notNull(),
+		status: text("status").notNull().default("pending"),
+		photoId: integer("photo_id"),
+		error: text("error"),
+	},
+	(table) => [
+		primaryKey({ columns: [table.jobId, table.ordinal] }),
+		index("scan_items_job_status_ordinal_idx").on(
+			table.jobId,
+			table.status,
+			table.ordinal,
+		),
+	],
+);
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -146,3 +179,7 @@ export type PhotoPhash = typeof photoPhash.$inferSelect;
 export type NewPhotoPhash = typeof photoPhash.$inferInsert;
 export type ScanJob = typeof scanJobs.$inferSelect;
 export type NewScanJob = typeof scanJobs.$inferInsert;
+export type ScanManifest = typeof scanManifests.$inferSelect;
+export type NewScanManifest = typeof scanManifests.$inferInsert;
+export type ScanItem = typeof scanItems.$inferSelect;
+export type NewScanItem = typeof scanItems.$inferInsert;

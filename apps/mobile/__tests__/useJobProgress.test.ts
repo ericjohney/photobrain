@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react-native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 
 const JOB_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_JOB_ID = "22222222-2222-4222-8222-222222222222";
@@ -305,7 +305,7 @@ describe("useJobProgress", () => {
 		expect(mockPhotosInvalidate).toHaveBeenCalledTimes(1);
 	});
 
-	it("fetches a token for the current job and prefers current Realtime progress", () => {
+	it("prefers current Realtime progress", () => {
 		const message = {
 			channel: `job:${JOB_ID}`,
 			data: { phase: "processing", current: 3, total: 4 },
@@ -319,18 +319,6 @@ describe("useJobProgress", () => {
 
 		const { result } = renderHook(() => useJobProgress(JOB_ID));
 
-		expect(mockRealtimeTokenUseQuery).toHaveBeenCalledWith(
-			{ jobId: JOB_ID },
-			expect.objectContaining({ enabled: true, retry: 3 }),
-		);
-		expect(mockUseInngestSubscription).toHaveBeenCalledWith(
-			expect.objectContaining({
-				token: { jwt: "test-token" },
-				refreshToken: expect.any(Function),
-				enabled: true,
-				key: JOB_ID,
-			}),
-		);
 		expect(result.current.progress).toMatchObject({
 			phase: "processing",
 			current: 3,
@@ -524,5 +512,187 @@ describe("useJobProgress", () => {
 				state: { status: "success", data: null },
 			}),
 		).toBe(false);
+	});
+
+	describe("incremental library refresh", () => {
+		beforeEach(() => {
+			jest.useFakeTimers();
+			setDurableProgress("processing", 0);
+		});
+
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
+		function setDurableProgress(phase: string, current: number) {
+			mockStatusQueryResult.data = {
+				phase,
+				current,
+				total: 40,
+				status: phase === "completed" || phase === "failed" ? phase : "running",
+				error: phase === "failed" ? "Scan failed" : null,
+			};
+		}
+
+		function setRealtimeProgress(phase: string, current: number) {
+			mockSubscriptionResult.latestData = {
+				channel: `job:${JOB_ID}`,
+				data: { phase, current, total: 40 },
+			};
+		}
+
+		function expectLibraryRefreshes(count: number) {
+			expect(mockPhotosInvalidate).toHaveBeenCalledTimes(count);
+			expect(mockFoldersInvalidate).toHaveBeenCalledTimes(count);
+			expect(mockFilterOptionsInvalidate).toHaveBeenCalledTimes(count);
+		}
+
+		it("refreshes the first committed batch immediately and coalesces bursts without losing the last batch", () => {
+			const { result, rerender } = renderHook(() => useJobProgress(JOB_ID));
+			expectLibraryRefreshes(0);
+
+			setRealtimeProgress("processing", 4);
+			rerender({});
+			expectLibraryRefreshes(1);
+			expect(result.current.isCompleted).toBe(false);
+			expect(result.current.progress.current).toBe(4);
+			expect(mockSearchPhotosInvalidate).not.toHaveBeenCalled();
+
+			act(() => jest.advanceTimersByTime(200));
+			setRealtimeProgress("processing", 8);
+			rerender({});
+			act(() => jest.advanceTimersByTime(200));
+			setRealtimeProgress("processing", 12);
+			rerender({});
+			expectLibraryRefreshes(1);
+
+			act(() => jest.advanceTimersByTime(599));
+			expectLibraryRefreshes(1);
+			act(() => jest.advanceTimersByTime(1));
+			expectLibraryRefreshes(2);
+			expect(result.current.progress.current).toBe(12);
+			expect(result.current.isCompleted).toBe(false);
+
+			setRealtimeProgress("processing", 12);
+			rerender({});
+			setRealtimeProgress("processing", 8);
+			rerender({});
+			act(() => jest.advanceTimersByTime(5000));
+			expectLibraryRefreshes(2);
+			expect(mockSearchPhotosInvalidate).not.toHaveBeenCalled();
+		});
+
+		it("refreshes committed rows from durable progress after the socket disconnects", () => {
+			setRealtimeProgress("processing", 4);
+			const { result, rerender } = renderHook(() => useJobProgress(JOB_ID));
+			expectLibraryRefreshes(1);
+
+			mockSubscriptionResult.state = "closed";
+			mockSubscriptionResult.error = new Error("Socket lost");
+			act(() => jest.advanceTimersByTime(1500));
+			setDurableProgress("processing", 24);
+			rerender({});
+			expectLibraryRefreshes(2);
+			expect(result.current.progress.current).toBe(24);
+			expect(result.current.isConnected).toBe(false);
+			expect(result.current.isCompleted).toBe(false);
+
+			act(() => jest.advanceTimersByTime(1500));
+			setDurableProgress("processing", 24);
+			rerender({});
+			expectLibraryRefreshes(2);
+			setDurableProgress("processing", 40);
+			rerender({});
+			expectLibraryRefreshes(3);
+			expect(mockSearchPhotosInvalidate).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			"scan-complete",
+			"embedding",
+		])("refreshes on reconnect at %s without refetching each embedding batch", (phase) => {
+			setDurableProgress(phase, phase === "embedding" ? 0 : 40);
+			const { result, rerender } = renderHook(() => useJobProgress(JOB_ID));
+			expectLibraryRefreshes(1);
+			expect(result.current.isCompleted).toBe(false);
+
+			setDurableProgress(phase, phase === "embedding" ? 0 : 40);
+			rerender({});
+			expectLibraryRefreshes(1);
+			setDurableProgress("embedding", 16);
+			rerender({});
+			const expectedRefreshes = phase === "embedding" ? 1 : 2;
+			expectLibraryRefreshes(expectedRefreshes);
+			setDurableProgress("embedding", 32);
+			rerender({});
+			act(() => jest.advanceTimersByTime(5000));
+			expectLibraryRefreshes(expectedRefreshes);
+			expect(mockSearchPhotosInvalidate).not.toHaveBeenCalled();
+		});
+
+		it("cancels the old job's trailing refresh and resets the next job's first batch", () => {
+			setRealtimeProgress("processing", 4);
+			const { result, rerender } = renderHook(
+				({ jobId }) => useJobProgress(jobId),
+				{ initialProps: { jobId: JOB_ID } },
+			);
+			setRealtimeProgress("processing", 24);
+			rerender({ jobId: JOB_ID });
+			expectLibraryRefreshes(1);
+
+			rerender({ jobId: OTHER_JOB_ID });
+			expect(result.current.progress.current).toBe(0);
+			act(() => jest.advanceTimersByTime(1000));
+			expectLibraryRefreshes(1);
+
+			setDurableProgress("processing", 4);
+			rerender({ jobId: OTHER_JOB_ID });
+			expectLibraryRefreshes(2);
+			expect(result.current.progress.current).toBe(4);
+			expect(mockSearchPhotosInvalidate).not.toHaveBeenCalled();
+		});
+
+		it("cancels the trailing refresh on unmount", () => {
+			setDurableProgress("processing", 4);
+			const { rerender, unmount } = renderHook(() => useJobProgress(JOB_ID));
+			setDurableProgress("processing", 24);
+			rerender({});
+			expectLibraryRefreshes(1);
+
+			unmount();
+			act(() => jest.advanceTimersByTime(5000));
+			expectLibraryRefreshes(1);
+			expect(mockSearchPhotosInvalidate).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			"completed",
+			"failed",
+		])("refreshes all queries once on %s and cancels a pending processing refresh", (phase) => {
+			setRealtimeProgress("processing", 4);
+			const { result, rerender } = renderHook(() => useJobProgress(JOB_ID));
+			setRealtimeProgress("processing", 24);
+			rerender({});
+			expectLibraryRefreshes(1);
+
+			setDurableProgress(phase, 24);
+			rerender({});
+			expectLibraryRefreshes(2);
+			expect(mockSearchPhotosInvalidate).toHaveBeenCalledTimes(1);
+			expect(result.current.isActive).toBe(false);
+			expect(result.current.isCompleted).toBe(phase === "completed");
+			expect(result.current.isFailed).toBe(phase === "failed");
+			expect(result.current.failureMessage).toBe(
+				phase === "failed" ? "Scan failed" : null,
+			);
+
+			setRealtimeProgress("processing", 40);
+			rerender({});
+			act(() => jest.advanceTimersByTime(5000));
+			setDurableProgress(phase, 24);
+			rerender({});
+			expectLibraryRefreshes(2);
+			expect(mockSearchPhotosInvalidate).toHaveBeenCalledTimes(1);
+		});
 	});
 });

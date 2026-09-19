@@ -1,11 +1,11 @@
 import { join } from "node:path";
-import { processPhotosWithCallback } from "@photobrain/image-processing";
 import { THUMBNAIL_CONFIG, type ThumbnailSize } from "@photobrain/utils";
 import { eq, like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { config } from "../config";
 import { db } from "../db";
 import { photos } from "../db/schema";
+import { nativeExecutor } from "../services/native-executor";
 
 const router = new Hono();
 
@@ -197,30 +197,43 @@ router.post("/reprocess-heic", async (c) => {
 			return c.json({ message: "No HEIC photos found", count: 0 });
 		}
 
-		const absolutePaths = heicPhotos.map((p) =>
-			join(config.PHOTO_DIRECTORY, p.path),
+		const pending = new Map(
+			heicPhotos.map((photo) => [
+				photo.id,
+				{
+					id: photo.id,
+					filePath: join(config.PHOTO_DIRECTORY, photo.path),
+					relativePath: photo.path,
+				},
+			]),
 		);
-		const relativePaths = heicPhotos.map((p) => p.path);
-		const thumbsDir = config.THUMBNAILS_DIRECTORY;
-
-		processPhotosWithCallback(
-			absolutePaths,
-			relativePaths,
-			thumbsDir,
-			(result) => {
-				if (result.width && result.height) {
-					db.update(photos)
-						.set({
-							width: result.width,
-							height: result.height,
-							thumbnailStatus: "completed",
-							thumbnailUpdatedAt: new Date(),
-						})
-						.where(eq(photos.path, result.path))
-						.run();
-				}
-			},
-		);
+		const sessionId = crypto.randomUUID();
+		try {
+			let done = false;
+			while (!done) {
+				({ done } = await nativeExecutor.consumePhotos(
+					sessionId,
+					config.THUMBNAILS_DIRECTORY,
+					() => [...pending.values()],
+					(id, result) => {
+						if (result.success && result.width && result.height) {
+							db.update(photos)
+								.set({
+									width: result.width,
+									height: result.height,
+									thumbnailStatus: "completed",
+									thumbnailUpdatedAt: new Date(),
+								})
+								.where(eq(photos.id, id))
+								.run();
+						}
+						pending.delete(id);
+					},
+				));
+			}
+		} finally {
+			await nativeExecutor.cancelPhotos(sessionId);
+		}
 
 		return c.json({
 			message: `Re-processed ${heicPhotos.length} HEIC photos`,

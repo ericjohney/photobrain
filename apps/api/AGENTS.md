@@ -9,11 +9,12 @@ Scope: `apps/api`.
 - `src/trpc/router.ts`: public tRPC contract.
 - `src/routes/photos.ts`: binary file and thumbnail routes plus one-off maintenance routes.
 - `src/inngest/client.ts`: typed event definitions and Realtime middleware.
-- `src/inngest/functions/scan.ts`: discovery, Rust batch processing, and database persistence.
+- `src/inngest/functions/scan.ts`: durable discovery, continuous Rust processing, and completed-result checkpoints.
 - `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches.
 - `src/services/vector-search.ts`: sqlite-vec text search.
 - `src/services/import-persistence.ts`: synchronous transactional scan and embedding batch writes.
-- `src/services/native-executor.ts` and `native-worker.ts`: bounded, persistent in-process worker thread for synchronous native import calls; no database or Inngest state inside the worker.
+- `src/services/native-executor.ts` and `native-worker.ts`: bounded persistent worker with a native photo stream surviving checkpoint windows; no database or Inngest state in the worker.
+- `src/services/scan-work.ts`: frozen manifests, priority-ordered pending work, atomic per-photo receipts/progress, and terminal cleanup.
 - `src/db/index.ts`: SQLite/Drizzle connection and optional startup migration.
 - `src/db/setup.ts`: Bun SQLite and sqlite-vec loading.
 - `src/db/schema.ts`: re-export of `@photobrain/db/schema`; do not add the authoritative schema here.
@@ -29,7 +30,7 @@ cd apps/api && bun run bench:import
 cd apps/api && bun run bench:exif /path/to/photo1.jpg /path/to/photo2.heic
 ```
 
-The API package has no separately deployed worker or build script. Inngest functions are registered in this same API process at `/api/inngest`. A separate Inngest development/runtime service must invoke that endpoint. A lazy `node:worker_threads` worker offloads import discovery, native media batches, and CLIP image batches from the API event loop. It executes one call at a time, admits at most eight running/queued calls, and retains native caches between batches. Errors/overload reject the current step for Inngest retry; worker death rejects outstanding requests and a later call recreates it. It is not a durable queue or a native process-crash boundary. Text search and maintenance native calls are not offloaded.
+The API package has no separately deployed worker or build script. Inngest functions are registered in this API process at `/api/inngest`; a separate Inngest runtime invokes that endpoint. A lazy `node:worker_threads` worker offloads discovery, streaming media, HEIC maintenance, and CLIP image batches. It admits at most eight running/queued requests and owns one native photo stream. A completion window returns after 20 finished results, not 20 particular inputs; the stream remains alive and bounded between windows. Job/destination switches and other native operations cancel/drain an existing stream before replacement. Worker failures reject outstanding requests; resumed scans reload pending SQLite receipts. This is not a native process-crash or cross-process artifact-ownership boundary. Direct text search remains synchronous.
 
 ## HTTP Surface
 
@@ -75,17 +76,21 @@ photos/embeddings.requested
 Scan function details:
 
 - Concurrency limit is 1 for executing steps, not an exclusive whole-job library lock.
-- Discovery is a checkpointed step.
-- Processing uses Rust batches of 20.
-- Discovery and processing await the shared native executor; checkpoint names and result shapes are unchanged. The API executor rejects mismatched absolute/relative path arrays before native invocation.
-- Native processing and database persistence are separate checkpointed steps. Native failures are skipped; each save batch is one synchronous SQLite transaction. Database failures roll back the entire save batch and escape the step so Inngest can retry it without rerunning native processing.
+- Function ID is `scan-photos-v4`. `initialize-scan-work-v4` persists a frozen manifest, including empty discovery, rather than storing a library-sized path plan in Inngest checkpoints.
+- `initializeScanWork` stably orders new paths before existing paths. Workers dispatch in that priority order, but fast existing photos may commit while earlier new photos are still running. This does not skip unchanged photos.
+- Native ready/results queues each hold at most twice the CPU-sized worker count; metadata prefetch is separate from media completion. The API pulls one result and acknowledges it after its commit. `consumePhotos` binds loaders/consumers to their calling async context so Inngest Realtime works from worker event callbacks.
+- Each `consume-photo-results-v4-*` step consumes up to 20 completions while retaining the live stream. Every result transaction includes photo/EXIF/pHash saves, its success/failure receipt, manifest counters, and scan progress. A rollback leaves that item pending; an acknowledged receipt is not redone after a lost checkpoint or process restart. Checkpoints return compact counters, not paths/native results/EXIF. First completion publishes immediately, with at most one in-flight Realtime publication and one coalesced latest snapshot inside the step.
 - Existing rows are matched by unique relative `photos.path`.
 - Photo rows use a path-keyed upsert that preserves their IDs and original creation dates. EXIF and pHash sidecars are upserted only when new data exists, preserving sidecar IDs.
 - Every successfully processed photo is marked `thumbnailStatus: "completed"`, `thumbnailUpdatedAt: new Date()`, and `embeddingStatus: "pending"`.
-- A successful scan sends exactly the photo IDs saved by that scan to the embedding function.
+- A successful scan sends exactly the photo IDs saved by that scan in one final embedding event, not one event per media batch.
 - Durable and Realtime progress phases are `queued`, `discovering`, `processing`, `scan-complete`, `embedding`, `completed`, and `failed`.
 - Terminal database states are monotonic. Each function's initial progress update acts as a durable claim and missing or terminal jobs exit before media work. Both functions mark exhausted retries failed and attempt to publish terminal Realtime progress; a nonempty all-failed scan is also failed.
 - `scan-complete` is persisted before dispatching the embedding child; the parent performs no progress writes after dispatch, preventing it from overwriting a fast child completion.
+- The current 7,961-file library needs 399 completed-result windows plus fixed steps, below the documented 1,000-step ceiling. Native path arrays and the final embedding ID list still grow with the library.
+- Drain active old runs, rebuild the native addon, and apply migration `0005_continuous_scan_work.sql` before deploying `scan-photos-v4`. Receipts remain until final IDs/dispatch are checkpointed; success and terminal failure clean them up. Cancellation failure cannot leave an exhausted job running. Local verification is not a production deployment.
+
+Both clients refresh library queries as committed processing counts advance: first advance immediately, then coalesced trailing refreshes at most once per second. They also refresh on `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web polls durable `scanStatus` every 1,500 ms while active; mobile retains its fallback/recovery polling. Public event/progress payloads are unchanged; the internal work-ledger schema is new.
 
 Embedding function details:
 
@@ -111,7 +116,7 @@ Active API variables are parsed in `src/config.ts`:
 
 `DATABASE_URL`, `PHOTO_DIRECTORY`, and `THUMBNAILS_DIRECTORY` are relative to the process working directory. The normal `bun run dev:api` script runs from `apps/api`.
 
-`FASTEMBED_CACHE_DIR` is consumed by the Rust package, not parsed here. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and do not control the current Rust pipeline.
+`FASTEMBED_CACHE_DIR` and `PHOTO_PROCESSING_THREADS` are read by Rust, not parsed here. The media pool defaults to `available_parallelism()`; the override must be a positive integer and is read once when the pool initializes. Larger pools increase decoded-image memory; lower the override when needed. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and do not control the current pipeline.
 
 The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, and `INNGEST_SERVE_ORIGIN` directly. For self-hosting, use production mode (`INNGEST_DEV=0`), matching server-only keys on the runtime/API, and an internal base URL. Set `INNGEST_REALTIME_BASE_URL` separately to the client-reachable HTTP(S) origin exposing `/v1/realtime/connect`. Never return either server key to clients. Register `/api/inngest` with the runtime and enable periodic app sync. SDK v3.54.2 is compatible with the self-hosted v1.45.1 server, which rejects vulnerable SDK releases below v3.54.0. The Hono handler must continue to allow only GET/PUT/POST.
 
@@ -119,11 +124,11 @@ The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, `I
 
 - Use `@photobrain/db/schema` for schema changes.
 - Migrations live at `packages/db/drizzle`.
-- `scan_jobs` is the durable source for mobile polling and recovery; preserve terminal-state monotonicity when changing job code.
+- `scan_jobs` is the durable source for web/mobile polling and recovery; preserve terminal-state monotonicity when changing job code.
 - Startup migration is opt-in with `RUN_DB_INIT=true` for direct API runs. The API Docker image enables it so deployed schema changes are applied before serving traffic.
 - The standalone `src/db/migrate.ts` is not the normal migration path and currently points at an API-local `./drizzle` directory that does not exist.
 - Do not assume scan removes rows for files deleted from disk.
-- Each scan save batch atomically writes photos, EXIF, pHash, and processing statuses. Each embedding save batch atomically writes vectors and embedding statuses. Native media work and scan-job progress writes are outside these transactions; do not put async callbacks inside Bun SQLite transactions.
+- Streaming scan transactions include photo/EXIF/pHash/status saves, item receipts, manifest counters, and scan progress. Embedding transactions include vectors and embedding statuses. Native work/network publication remain outside transactions; never put async callbacks inside Bun SQLite transactions. `clearScanWork` explicitly deletes items and manifests in one transaction because foreign-key enforcement is not guaranteed on every connection.
 
 ## REST File Rules
 
@@ -142,12 +147,12 @@ The two POST maintenance routes are operational leftovers. Do not add new caller
 
 `src/__tests__/filters.test.ts` uses `createTestDb()` from `src/__tests__/setup.ts`, an in-memory SQLite database with shared migrations and seeded EXIF data. It covers folder-scoped filter options, raw/camera/lens/ISO/date filters, durable scan creation/status, dispatch failures, and missing job IDs.
 
-There are no current API tests that execute Inngest functions, REST serving, vector search, startup migrations, or thumbnail generation. Add focused tests when changing those areas.
+`src/__tests__/scan.test.ts` exercises real SQLite manifests/receipts with controlled native/Inngest dependencies: new-first dispatch with free completion order, early visibility, partial ACK restart, lost checkpoints, atomic rollback, publication failure, final dispatch/fast-child ordering, empty and terminal jobs, cleanup, and the 7,961-input checkpoint budget. These are not actual Inngest delivery or native integration tests.
 
 `src/__tests__/import-persistence.test.ts` covers native-result mapping, stable IDs, retry behavior, missing sidecars/vectors, batch boundaries, and transaction rollback using SQLite failure triggers. It does not execute native image processing or Inngest delivery.
 
-`bun run bench:import` compares legacy per-photo writes with transactional upserts using 200 synthetic results, three repeats, and isolated file-backed databases. It checks persisted-data equivalence and reports median fresh-import, rescan, and embedding-write times with the SQLite pragmas. No native addon, photos, or CLIP downloads are required. These are persistence-only measurements, sensitive to the temporary filesystem, not end-to-end import estimates. Native-processing, inference, and database-save batch timings are also logged during real scans to identify the next bottleneck.
+`bun run bench:import` compares legacy per-photo writes with the shared transactional batch helper using 200 synthetic results, three repeats, and isolated file-backed databases. It checks persisted-data equivalence and reports fresh-import, rescan, and embedding-write medians with SQLite pragmas. It does not exercise streaming receipts, native work, or end-to-end import latency; use the real-photo/runtime measurements for those boundaries.
 
-`src/__tests__/native-executor.test.ts` uses real worker threads with a blocking TypeScript fixture, not the native addon. It covers event-loop responsiveness during work, FIFO reuse, bounded admission, failure recovery, startup errors, path alignment, and shutdown. Test the actual addon lifecycle on the deployed Bun version after rebuilding; fixture tests are not native integration coverage.
+`src/__tests__/native-executor.test.ts` uses real worker threads with a controlled TypeScript fixture. It covers persistent completion windows, persistence ACK backpressure, per-checkpoint async context, session switching, early stream termination/invalid indices, restart, bounded admission, and shutdown. The release addon and actual local Inngest/API/web flow were also exercised on Apple M4 Pro/macOS 26.5.1, including interrupted-import receipt recovery and real HEIC maintenance; see [measurement boundaries and results](../../docs/import-performance.md). Revalidate the deployed Bun/native environment during rollout.
 
-`bun run bench:exif <1-20 distinct photo paths>` requires ExifTool but not the addon, reads the Rust metadata flags, and compares batched versus four-concurrent per-file metadata extraction with exact JSON equivalence checks. `EXIFTOOL_BIN` selects an executable for this benchmark only. See [import architecture and measurements](../../docs/import-performance.md) for measured scope, incremental-scan prerequisites, and proposed bounded durable work records.
+`bun run bench:exif <1-20 distinct photo paths>` requires ExifTool but not the addon, reads the Rust metadata flags, and compares batched versus four-concurrent per-file metadata extraction with exact JSON equivalence checks. `EXIFTOOL_BIN` selects an executable for this benchmark only. See [import architecture and measurements](../../docs/import-performance.md) for measured scope, implemented receipts, and remaining incremental/generation-aware work.
