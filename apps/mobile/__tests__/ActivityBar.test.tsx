@@ -49,11 +49,34 @@ describe("ActivityBar", () => {
 	});
 
 	it.each([
-		["queued", "Scan Queued"],
-		["processing", "Processing Photos"],
-		["completed", "Complete"],
-		["failed", "Scan Failed"],
-	])("keeps the %s label when useful progress exists", (phase, label) => {
+		["queued", "Scan Queued", "Waiting for the background service"],
+		[
+			"discovering",
+			"Discovering Photos",
+			"Finding supported photos in your library",
+		],
+		[
+			"processing",
+			"Preparing Photos",
+			"Reading metadata and creating thumbnails",
+		],
+		[
+			"scan-complete",
+			"Starting Search Index",
+			"Photo scan finished; search indexing starts next",
+		],
+		[
+			"embedding",
+			"Building Search Index",
+			"Generating CLIP embeddings for semantic search",
+		],
+		["completed", "Library Up to Date", "Photos and semantic search are ready"],
+		[
+			"failed",
+			"Scan Failed",
+			"The library update stopped before it could finish",
+		],
+	])("explains the %s phase", (phase, label, detail) => {
 		const { getByText, queryByText } = render(
 			<ActivityBar
 				progress={{ ...unknownProgress, phase }}
@@ -66,11 +89,31 @@ describe("ActivityBar", () => {
 		);
 
 		expect(getByText(label)).toBeTruthy();
+		expect(getByText(detail)).toBeTruthy();
 		expect(queryByText("Progress unavailable")).toBeNull();
 		expect(queryByText(recoveryError)).toBeNull();
 		if (phase === "failed") {
 			expect(getByText("Scan could not finish.")).toBeTruthy();
 		}
+	});
+
+	it("shows searchable indexing as the final pipeline stage", () => {
+		const { getByLabelText, getByText } = render(
+			<ActivityBar
+				progress={{
+					phase: "embedding",
+					current: 1234,
+					total: 2000,
+					percentage: 62,
+				}}
+				isActive
+				isCompleted={false}
+			/>,
+		);
+
+		expect(getByText("1,234 of 2,000")).toBeTruthy();
+		expect(getByText("62%")).toBeTruthy();
+		expect(getByLabelText("Scan pipeline: stage 3 of 3")).toBeTruthy();
 	});
 
 	it("stays hidden without an active or terminal job", () => {

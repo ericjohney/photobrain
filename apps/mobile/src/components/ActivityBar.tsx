@@ -19,6 +19,45 @@ interface ActivityBarProps {
 	error?: string | null;
 }
 
+const PIPELINE_STAGES = ["Discover", "Prepare", "Search"] as const;
+
+function getPhaseDetail(phase: string | null): string {
+	switch (phase) {
+		case "queued":
+			return "Waiting for the background service";
+		case "discovering":
+			return "Finding supported photos in your library";
+		case "processing":
+			return "Reading metadata and creating thumbnails";
+		case "scan-complete":
+			return "Photo scan finished; search indexing starts next";
+		case "embedding":
+			return "Generating CLIP embeddings for semantic search";
+		case "completed":
+			return "Photos and semantic search are ready";
+		case "failed":
+			return "The library update stopped before it could finish";
+		default:
+			return "Restoring the latest durable scan state";
+	}
+}
+
+function getActiveStage(phase: string | null): number {
+	switch (phase) {
+		case "discovering":
+			return 0;
+		case "processing":
+			return 1;
+		case "scan-complete":
+		case "embedding":
+			return 2;
+		case "completed":
+			return PIPELINE_STAGES.length;
+		default:
+			return -1;
+	}
+}
+
 function ProgressBar({
 	current,
 	total,
@@ -29,10 +68,14 @@ function ProgressBar({
 	color: string;
 }) {
 	const colors = useColors();
-	const progress = total > 0 ? (current / total) * 100 : 0;
+	const progress =
+		total > 0 ? Math.min(100, Math.max(0, (current / total) * 100)) : 0;
 
 	return (
 		<View
+			accessible
+			accessibilityRole="progressbar"
+			accessibilityValue={{ min: 0, max: total, now: current }}
 			style={[styles.progressBarContainer, { backgroundColor: colors.muted }]}
 		>
 			<View
@@ -56,13 +99,13 @@ function getPhaseLabel(phase: string | null): string {
 		case "discovering":
 			return "Discovering Photos";
 		case "processing":
-			return "Processing Photos";
+			return "Preparing Photos";
 		case "embedding":
-			return "Generating Embeddings";
+			return "Building Search Index";
 		case "scan-complete":
-			return "Preparing Search";
+			return "Starting Search Index";
 		case "completed":
-			return "Complete";
+			return "Library Up to Date";
 		case "queued":
 			return "Scan Queued";
 		case "failed":
@@ -75,14 +118,66 @@ function getPhaseLabel(phase: string | null): string {
 function getPhaseIcon(phase: string | null): keyof typeof Ionicons.glyphMap {
 	switch (phase) {
 		case "discovering":
-		case "processing":
-		case "scan-complete":
 			return "scan-outline";
+		case "processing":
+			return "images-outline";
+		case "scan-complete":
 		case "embedding":
 			return "sparkles-outline";
 		default:
 			return "hourglass-outline";
 	}
+}
+
+function PipelineStages({
+	phase,
+	isFailed,
+}: {
+	phase: string | null;
+	isFailed: boolean;
+}) {
+	const colors = useColors();
+	if (!phase || isFailed) return null;
+
+	const activeStage = getActiveStage(phase);
+	const isCompleted = phase === "completed";
+	const accessibilityStage =
+		activeStage < 0
+			? "waiting to start"
+			: isCompleted
+				? "all 3 stages complete"
+				: `stage ${activeStage + 1} of 3`;
+
+	return (
+		<View
+			accessible
+			accessibilityLabel={`Scan pipeline: ${accessibilityStage}`}
+			style={styles.pipelineStages}
+		>
+			{PIPELINE_STAGES.map((label, index) => {
+				const complete = isCompleted || index < activeStage;
+				const active = !isCompleted && index === activeStage;
+				const color = complete
+					? "#22c55e"
+					: active
+						? colors.primary
+						: colors.muted;
+				const labelColor =
+					complete || active ? colors.foreground : colors.mutedForeground;
+
+				return (
+					<View key={label} style={styles.pipelineStage}>
+						<View
+							style={[styles.pipelineStageTrack, { backgroundColor: color }]}
+						/>
+						<Text style={[styles.pipelineStageLabel, { color: labelColor }]}>
+							{label}
+						</Text>
+					</View>
+				);
+			})}
+		</View>
+	);
 }
 
 export default function ActivityBar({
@@ -106,6 +201,7 @@ export default function ActivityBar({
 		: getPhaseLabel(progress.phase);
 	const icon = getPhaseIcon(progress.phase);
 	const isEmbedding = progress.phase === "embedding";
+	const detail = getPhaseDetail(progress.phase);
 
 	return (
 		<GlassSurface style={styles.container} glassEffectStyle="clear">
@@ -128,6 +224,10 @@ export default function ActivityBar({
 						{label}
 					</Text>
 				</View>
+				<Text style={[styles.phaseDetail, { color: colors.mutedForeground }]}>
+					{detail}
+				</Text>
+				<PipelineStages phase={progress.phase} isFailed={isFailed} />
 				{isFailed && failureMessage && (
 					<Text
 						style={[styles.failureText, { color: colors.destructive }]}
@@ -146,7 +246,13 @@ export default function ActivityBar({
 						<Text
 							style={[styles.progressCount, { color: colors.mutedForeground }]}
 						>
-							{progress.current} / {progress.total}
+							{progress.current.toLocaleString()} of{" "}
+							{progress.total.toLocaleString()}
+						</Text>
+						<Text
+							style={[styles.progressCount, { color: colors.mutedForeground }]}
+						>
+							{progress.percentage}%
 						</Text>
 					</View>
 				)}
@@ -186,9 +292,31 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: "500",
 	},
+	phaseDetail: {
+		fontSize: 12,
+		lineHeight: 16,
+	},
+	pipelineStages: {
+		flexDirection: "row",
+		gap: 6,
+		marginTop: 4,
+	},
+	pipelineStage: {
+		flex: 1,
+		gap: 3,
+	},
+	pipelineStageTrack: {
+		height: 3,
+		borderRadius: 2,
+	},
+	pipelineStageLabel: {
+		fontSize: 10,
+		fontWeight: "500",
+	},
 	progressInfo: {
 		flexDirection: "row",
-		justifyContent: "flex-end",
+		justifyContent: "space-between",
+		marginTop: 2,
 	},
 	progressCount: {
 		fontSize: 12,

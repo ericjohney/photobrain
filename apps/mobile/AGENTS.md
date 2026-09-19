@@ -31,7 +31,7 @@ Scope: `apps/mobile`.
 - `src/components/LoupeView.tsx`: core paged swipe viewer, native iOS zoom, glass date/time controls, filmstrip navigation, and metadata.
 - `src/components/MetadataPanel.tsx`: EXIF/RAW metadata modal.
 - `src/components/FilterSheet.tsx`: Library Options, sorting, and searchable RAW/standard/camera/lens/ISO/month filters.
-- `src/components/ActivityBar.tsx`: Inngest progress display.
+- `src/components/ActivityBar.tsx`: durable scan status presented as Discover, Prepare, and Search stages with phase-specific details, counts, and percentage.
 - `src/hooks/use-library-state.ts`: in-memory grid/loupe and active-photo navigation.
 - `src/hooks/use-job-progress.ts`: Inngest Realtime subscription with durable `scanStatus` polling fallback.
 - `src/theme/ThemeContext.tsx`: persisted light/dark/system theme.
@@ -76,6 +76,7 @@ Dashboard behavior:
 - Tapping a photo opens a full-screen modal loupe. The loupe uses the `large` thumbnail, not the original file route.
 - Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
 - Unknown scan progress is labeled as checking status, with an automatic-retry explanation when recovery requests fail instead of claiming processing has started.
+- Active progress distinguishes photo discovery, metadata/thumbnail preparation, the handoff to search indexing, and CLIP embedding generation instead of presenting every running state as generic processing.
 
 The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, thumbnail navigation, and metadata. Thumbnail taps and swipes update the active photo, counter, metadata target, and selected thumbnail together. Tap the photo to hide or restore chrome. Native zoom resets when changing photos or orientation; paging pauses while zoomed. Collections remains a placeholder; Preferences persists theme selection, while grid-column and haptic controls remain disabled/hardcoded.
 
