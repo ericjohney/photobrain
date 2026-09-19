@@ -37,6 +37,7 @@ Current migrations:
 2. `0001_busy_mockingbird.sql`: adds EXIF filter indexes.
 3. `0002_minor_giant_girl.sql`: adds `photos.thumbnail_updated_at`.
 4. `0003_hot_midnight.sql`: creates `scan_jobs`.
+5. `0004_repair-photo-exif-unique.sql`: restores the declared one-to-one unique index on `photo_exif.photo_id` for databases created before the invariant was migrated consistently.
 
 Use the package scripts:
 

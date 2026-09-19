@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS `photo_exif_photo_id_unique` ON `photo_exif` (`photo_id`);
