@@ -26,7 +26,7 @@ Scope: `apps/mobile`.
 - `src/screens/AboutScreen.tsx`: app/about content.
 - `src/components/GlassSurface.tsx`: native Liquid Glass with platform and Reduce Transparency fallbacks.
 - `src/components/LibraryHeader.tsx`: persistent Library overlay, live masked blur, adaptive title/date, and selection controls.
-- `src/components/LibraryTimeScope.tsx`: bottom Years/Months/All Photos browsing control.
+- `src/components/LibraryTimeScope.tsx`: iOS-style collapsed browsing bar with Collections, Years/Months/All, and Search controls.
 - `src/components/Filmstrip.tsx`: virtualized loupe thumbnails synchronized with the active photo.
 - `src/components/LoupeView.tsx`: core paged swipe viewer, native iOS zoom, glass date/time controls, filmstrip navigation, and metadata.
 - `src/components/MetadataPanel.tsx`: EXIF/RAW metadata modal.
@@ -64,14 +64,14 @@ Do not use React Navigation focus or navigation hooks inside `SearchScreen`. The
 
 Dashboard behavior:
 
-- Photos default to newest-first using EXIF date, modified date, or created date. Recently Added uses descending photo IDs (insertion order), not filesystem creation dates.
-- All Photos is a continuous edge-to-edge grid. A floating Years/Months/All Photos control sits above native tabs, independently of metadata filters. It hides during selection and when there are no photos; its measured height and the tab safe area reserve space for the last row. Date grouping selects captured-date sorting; Recently Added returns to All Photos.
+- Photos default to oldest-to-newest using EXIF date, modified date, or created date, and the grid opens at its newest edge. Recently Added uses ascending photo IDs (insertion order), not filesystem creation dates.
+- All Photos is a continuous edge-to-edge grid. At the newest edge, the native Library/Collections/Search tabs remain visible. Scrolling back in time replaces them with one Collections button, Years/Months/All segments, and one Search button. The collapsed bar hides during selection and when there are no photos; its measured height and safe area reserve space for the last row. Date grouping selects captured-date sorting; Recently Added returns to All.
 - The responsive grid uses five columns on phones and up to eight on wide layouts.
 - Library and Search grids use `small` thumbnails for Retina sharpness. The Library header blurs the actual scrolling grid with `expo-blur` and a fading mask, not a copied photo.
 - Pull-to-refresh refetches photos and filter options.
 - Library Options separates sorting, a Filter destination, and scan/Settings actions. Filter has RAW/Standard choices and camera/lens/ISO/month summaries that open searchable, virtualized checkmarked lists; browsing scopes live in the bottom control, not this sheet.
 - Filters combine across categories with one value per category, apply immediately, and remain in memory. Done dismisses without an apply transaction. All Items/Clear All resets filters, not sorting/grouping; each category's All clears only that category. Active values remain removable even if metadata disappears or fails to load.
-- The fixed Library header exposes Library Options and selection. It shows the item count at rest, the visible photo date while scrolled, and the selection count in selection mode. Measured header height determines grid and refresh insets; larger text stacks its controls. Filter, grouping, sorting, and layout changes reset scroll/date context.
+- The fixed Library header exposes Library Options and selection. It shows the item count at the newest edge, the visible photo date while browsing back in time, and the selection count in selection mode. Measured header height determines grid and refresh insets; larger text stacks its controls. Filter, grouping, sorting, and layout changes reset scroll/date context.
 - Selection exits through the header's persistent close control; bulk actions are not implemented. An active-filter summary opens Filter directly; its close button restores all items. Library Options distinguishes filter loading, failure with retry, and empty metadata.
 - Tapping a photo opens a full-screen modal loupe. The loupe uses the `large` thumbnail, not the original file route.
 - Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
@@ -86,7 +86,7 @@ See [import performance](../../docs/import-performance.md) for measurements and 
 
 The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, thumbnail navigation, and metadata. Thumbnail taps and swipes update the active photo, counter, metadata target, and selected thumbnail together. Tap the photo to hide or restore chrome. Native zoom resets when changing photos or orientation; paging pauses while zoomed. Collections remains a placeholder; Preferences persists theme selection, while grid-column and haptic controls remain disabled/hardcoded.
 
-Design references: [Photos library browsing](https://support.apple.com/guide/iphone/browse-your-photo-library-iph7d24753a5/26/ios/26), [photo viewing](https://support.apple.com/guide/iphone/view-photos-and-videos-iph3d267610/26/ios/26), and [sorting/filtering](https://support.apple.com/guide/iphone/sort-and-filter-the-photo-library-iph2e66e2f2c/26/ios/26). Apple replaces its expanded bottom navigation with Years/Months/All while browsing; PhotoBrain keeps its native tabs and places the scope control above them. PhotoBrain retains newest-first browsing and groups the complete grid rather than creating curated cover collections. Unsupported Favorites, Edited, and video categories are not exposed.
+Design references: [Photos library browsing](https://support.apple.com/guide/iphone/browse-your-photo-library-iph7d24753a5/26/ios/26), [photo viewing](https://support.apple.com/guide/iphone/view-photos-and-videos-iph3d267610/26/ios/26), and [sorting/filtering](https://support.apple.com/guide/iphone/sort-and-filter-the-photo-library-iph2e66e2f2c/26/ios/26). Apple uses Years/Months/All, not Days, in the current iOS 26 Library. PhotoBrain follows its expanded Library/Collections/Search navigation at the newest edge and its collapsed Collections + time scope + Search bar while browsing history. PhotoBrain groups the complete grid rather than creating curated cover collections. Unsupported Favorites, Edited, and video categories are not exposed.
 
 Library and Search loupe modals each create a `SafeAreaProvider`, so full-screen chrome uses device insets rather than the underlying tab bar's inset. Controls respect landscape safe areas; image failures offer per-photo retry. Metadata values wrap and are selectable, with stacked labels at larger text sizes. Search messages scroll with automatic native-header insets. Glass fallbacks remain opaque while Reduce Transparency is enabled or its initial value is unknown.
 

@@ -16,6 +16,7 @@ import {
 	Modal,
 	type NativeScrollEvent,
 	type NativeSyntheticEvent,
+	Platform,
 	Pressable,
 	RefreshControl,
 	StyleSheet,
@@ -44,6 +45,7 @@ import { thumbnailUrl } from "@/config";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { trpc } from "@/lib/trpc";
+import { useTabBarVisibility } from "@/navigation/tab-bar-visibility";
 import { useTheme } from "@/theme";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -60,6 +62,8 @@ type SectionItem =
 
 const GRID_SPACING = 1;
 const ACTIVE_SCAN_KEY = "@photobrain/active-scan";
+const BROWSING_HISTORY_THRESHOLD = 24;
+const SECTION_HEADER_HEIGHT = 57;
 
 function photoDate(photo: PhotoMetadata) {
 	return parseDate(
@@ -126,6 +130,7 @@ export default function DashboardScreen() {
 	const { colors, isDark } = useTheme();
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
+	const setTabBarHidden = useTabBarVisibility();
 	const { width, fontScale } = useWindowDimensions();
 	const columns = width >= 1024 ? 8 : width >= 768 ? 7 : width >= 560 ? 6 : 5;
 	const itemSize = (width - GRID_SPACING * (columns - 1)) / columns;
@@ -150,14 +155,19 @@ export default function DashboardScreen() {
 	const gridRef = useRef<FlatList<SectionItem>>(null);
 	const [headerHeight, setHeaderHeight] = useState(0);
 	const [isOverPhotos, setIsOverPhotos] = useState(false);
+	const [isBrowsingHistory, setIsBrowsingHistory] = useState(false);
 	const [timeScopeHeight, setTimeScopeHeight] = useState(0);
 	const [visibleDate, setVisibleDate] = useState("");
 	const [isVisible, setIsVisible] = useState(true);
+	const browsingHistory = useRef(false);
+	const groupingBeforeSelection = useRef<LibraryGrouping>("all");
 	const scrollPosition = useRef(0);
 	const contentHeaderHeight = useRef(0);
 	const firstGroupHeight = useRef(0);
 	const overPhotos = useRef(false);
 	const visiblePhoto = useRef<PhotoMetadata | null>(null);
+	const newestPhoto = useRef<PhotoMetadata | null>(null);
+	const scrollToNewestPending = useRef(true);
 	const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 1 }).current;
 
 	const photosQuery = trpc.photos.useQuery(
@@ -222,8 +232,8 @@ export default function DashboardScreen() {
 			[...(photosQuery.data?.photos ?? [])].sort((a, b) =>
 				// IDs preserve library insertion order; createdAt is a filesystem date.
 				sort === "added"
-					? b.id - a.id
-					: photoDate(b).getTime() - photoDate(a).getTime() || b.id - a.id,
+					? a.id - b.id
+					: photoDate(a).getTime() - photoDate(b).getTime() || a.id - b.id,
 			),
 		[photosQuery.data?.photos, sort],
 	);
@@ -232,8 +242,27 @@ export default function DashboardScreen() {
 		() => makeTimeline(photos, grouping, columns),
 		[columns, grouping, photos],
 	);
-	const showTimeScope = photos.length > 0 && !isSelecting;
-	// Native tabs supply a per-screen safe area, including their current height.
+	const sectionLayouts = useMemo(() => {
+		let offset = 0;
+		return sections.map((item, index) => {
+			const length =
+				item.type === "header"
+					? SECTION_HEADER_HEIGHT
+					: itemSize + GRID_SPACING;
+			const layout = { length, offset, index };
+			offset += length;
+			return layout;
+		});
+	}, [itemSize, sections]);
+	const getSectionLayout = useCallback(
+		(_data: ArrayLike<SectionItem> | null | undefined, index: number) =>
+			sectionLayouts[index],
+		[sectionLayouts],
+	);
+	const showTimeScope =
+		photos.length > 0 &&
+		!isSelecting &&
+		(isBrowsingHistory || grouping !== "all");
 	const timeScopeBottom = insets.bottom + 12;
 	const gridBottomInset = showTimeScope
 		? timeScopeBottom + timeScopeHeight + 12
@@ -271,6 +300,7 @@ export default function DashboardScreen() {
 		width,
 		fontScale,
 	]);
+	const listContextKey = `${scrollContext}:${photos.length}:${photos[0]?.id ?? "empty"}:${photos.at(-1)?.id ?? "empty"}`;
 	const photoContext = useMemo(
 		() =>
 			photos
@@ -279,8 +309,7 @@ export default function DashboardScreen() {
 		[photos],
 	);
 	const hasPhotos = useRef(photos.length > 0);
-	const firstPhoto = useRef(photos[0]);
-	firstPhoto.current = photos[0];
+	newestPhoto.current = photos.at(-1) ?? null;
 	hasPhotos.current = photos.length > 0;
 
 	const updateOverPhotos = useCallback(() => {
@@ -292,10 +321,10 @@ export default function DashboardScreen() {
 			overPhotos.current = next;
 			setIsOverPhotos(next);
 		}
-		if (next && !visiblePhoto.current && firstPhoto.current) {
-			visiblePhoto.current = firstPhoto.current;
+		if (next && !visiblePhoto.current && newestPhoto.current) {
+			visiblePhoto.current = newestPhoto.current;
 			setVisibleDate(
-				photoDate(firstPhoto.current).toLocaleDateString(undefined, {
+				photoDate(newestPhoto.current).toLocaleDateString(undefined, {
 					month: "long",
 					day: "numeric",
 					year: "numeric",
@@ -305,8 +334,21 @@ export default function DashboardScreen() {
 	}, []);
 	const handleScroll = useCallback(
 		(event: NativeSyntheticEvent<NativeScrollEvent>) => {
-			scrollPosition.current = event.nativeEvent.contentOffset.y;
+			const { contentOffset, contentSize, layoutMeasurement } =
+				event.nativeEvent;
+			scrollPosition.current = contentOffset.y;
 			updateOverPhotos();
+
+			const distanceFromNewest = Math.max(
+				0,
+				contentSize.height - layoutMeasurement.height - contentOffset.y,
+			);
+			const nextBrowsingHistory =
+				hasPhotos.current && distanceFromNewest > BROWSING_HISTORY_THRESHOLD;
+			if (nextBrowsingHistory !== browsingHistory.current) {
+				browsingHistory.current = nextBrowsingHistory;
+				setIsBrowsingHistory(nextBrowsingHistory);
+			}
 		},
 		[updateOverPhotos],
 	);
@@ -316,6 +358,33 @@ export default function DashboardScreen() {
 	const handleTimeScopeLayout = useCallback((event: LayoutChangeEvent) => {
 		setTimeScopeHeight(event.nativeEvent.layout.height);
 	}, []);
+	const handleGridContentSizeChange = useCallback(
+		(_width: number, height: number) => {
+			if (!scrollToNewestPending.current || sections.length === 0) return;
+			const list = gridRef.current;
+			if (!list) return;
+			const nativeScrollRef = list.getNativeScrollRef();
+			if (
+				Platform.OS === "web" &&
+				nativeScrollRef &&
+				"scrollTop" in nativeScrollRef &&
+				typeof nativeScrollRef.scrollTop === "number"
+			) {
+				scrollToNewestPending.current = false;
+				Reflect.set(nativeScrollRef, "scrollTop", height);
+				if (
+					"dispatchEvent" in nativeScrollRef &&
+					typeof nativeScrollRef.dispatchEvent === "function"
+				) {
+					nativeScrollRef.dispatchEvent(new Event("scroll", { bubbles: true }));
+				}
+				return;
+			}
+			scrollToNewestPending.current = false;
+			list.scrollToOffset({ offset: height, animated: false });
+		},
+		[sections.length],
+	);
 	const handleContentHeaderLayout = useCallback(
 		(event: LayoutChangeEvent) => {
 			contentHeaderHeight.current = event.nativeEvent.layout.height;
@@ -349,17 +418,60 @@ export default function DashboardScreen() {
 	);
 
 	useEffect(() => {
-		// Metadata-only/cached refetches retain the user's valid scroll position.
+		// A changed library context opens on its newest photo, matching iOS Photos.
 		void scrollContext;
 		void photoContext;
 		scrollPosition.current = 0;
 		overPhotos.current = false;
+		browsingHistory.current = false;
 		visiblePhoto.current = null;
+		scrollToNewestPending.current = true;
 		if (grouping === "all") firstGroupHeight.current = 0;
 		setIsOverPhotos(false);
+		setIsBrowsingHistory(false);
 		setVisibleDate("");
-		gridRef.current?.scrollToOffset({ offset: 0, animated: false });
 	}, [grouping, photoContext, scrollContext]);
+	useEffect(() => {
+		if (sections.length === 0) return;
+		const timeout = setTimeout(() => {
+			if (!scrollToNewestPending.current) return;
+			const list = gridRef.current;
+			if (!list) return;
+			const nativeScrollRef = list.getNativeScrollRef();
+			if (
+				Platform.OS === "web" &&
+				nativeScrollRef &&
+				"scrollHeight" in nativeScrollRef &&
+				typeof nativeScrollRef.scrollHeight === "number" &&
+				"scrollTop" in nativeScrollRef &&
+				typeof nativeScrollRef.scrollTop === "number"
+			) {
+				scrollToNewestPending.current = false;
+				Reflect.set(nativeScrollRef, "scrollTop", nativeScrollRef.scrollHeight);
+				if (
+					"dispatchEvent" in nativeScrollRef &&
+					typeof nativeScrollRef.dispatchEvent === "function"
+				) {
+					nativeScrollRef.dispatchEvent(new Event("scroll", { bubbles: true }));
+				}
+				return;
+			}
+			scrollToNewestPending.current = false;
+			list.scrollToEnd({ animated: false });
+		}, 0);
+		return () => clearTimeout(timeout);
+	}, [sections]);
+
+	useEffect(() => {
+		setTabBarHidden(isVisible && showTimeScope);
+	}, [isVisible, setTabBarHidden, showTimeScope]);
+
+	useEffect(
+		() => () => {
+			setTabBarHidden(false);
+		},
+		[setTabBarHidden],
+	);
 
 	useEffect(() => {
 		if (!isSelecting) return;
@@ -406,9 +518,14 @@ export default function DashboardScreen() {
 		});
 	}, []);
 	const toggleSelectionMode = useCallback(() => {
-		if (isSelecting) setSelectedPhotoIds(new Set());
+		if (isSelecting) {
+			setSelectedPhotoIds(new Set());
+			setGrouping(groupingBeforeSelection.current);
+		} else {
+			groupingBeforeSelection.current = grouping;
+		}
 		setIsSelecting(!isSelecting);
-	}, [isSelecting]);
+	}, [grouping, isSelecting]);
 
 	const handlePhotoPress = useCallback(
 		(photo: PhotoMetadata) => {
@@ -692,13 +809,16 @@ export default function DashboardScreen() {
 				<ExpoStatusBar style={isOverPhotos || isDark ? "light" : "dark"} />
 			)}
 			<FlatList
+				key={listContextKey}
 				ref={gridRef}
 				testID="library-grid"
 				onScroll={handleScroll}
+				onContentSizeChange={handleGridContentSizeChange}
 				scrollEventThrottle={16}
 				onViewableItemsChanged={handleViewableItemsChanged}
 				viewabilityConfig={viewabilityConfig}
 				data={sections}
+				getItemLayout={getSectionLayout}
 				keyExtractor={(item) => item.key}
 				renderItem={renderItem}
 				ListHeaderComponent={listHeader}
@@ -767,7 +887,7 @@ export default function DashboardScreen() {
 				subtitle={
 					isSelecting
 						? selectionLabel
-						: isOverPhotos && visibleDate
+						: isBrowsingHistory && visibleDate
 							? visibleDate
 							: itemCountLabel
 				}
@@ -794,6 +914,8 @@ export default function DashboardScreen() {
 					<LibraryTimeScope
 						grouping={grouping}
 						onGroupingChange={handleGroupingChange}
+						onShowCollections={() => router.push("/collections")}
+						onShowSearch={() => router.push("/search")}
 						onLayout={handleTimeScopeLayout}
 					/>
 				</View>
@@ -907,8 +1029,18 @@ const styles = StyleSheet.create({
 		lineHeight: 20,
 		textAlign: "center",
 	},
-	sectionHeader: { paddingHorizontal: 16, paddingTop: 22, paddingBottom: 7 },
-	sectionHeaderText: { fontSize: 23, fontWeight: "700", letterSpacing: -0.45 },
+	sectionHeader: {
+		height: SECTION_HEADER_HEIGHT,
+		paddingHorizontal: 16,
+		paddingTop: 22,
+		paddingBottom: 7,
+	},
+	sectionHeaderText: {
+		fontSize: 23,
+		lineHeight: 28,
+		fontWeight: "700",
+		letterSpacing: -0.45,
+	},
 	photoRow: {
 		flexDirection: "row",
 		gap: GRID_SPACING,
