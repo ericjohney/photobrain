@@ -48,6 +48,8 @@ Active browser routes:
 
 The dashboard scan mutation receives an Inngest `jobId`; `useJobProgress` obtains a Realtime token through `realtimeToken`, subscribes to `job:{jobId}`, and invalidates photos/folders on completion.
 
+The token query is enabled when a job starts; the subscription waits for its result. For self-hosting, the API's optional `realtimeToken.baseUrl` supplies a client-reachable origin, attached through a keyless SDK client on initial and refreshed tokens. Progress is decoded from the Realtime message's `data` envelope. Server event/signing keys must never be bundled.
+
 The tRPC client uses `httpBatchLink` for queries/mutations and `unstable_httpSubscriptionLink` for subscriptions. Both use `superjson` and `${API_URL}/api/trpc`.
 
 ## Current UI Behavior

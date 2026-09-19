@@ -96,7 +96,13 @@ The API is available at `http://localhost:3000` and the web app at `http://local
 bun run dev:mobile
 ```
 
-Configure an Inngest development/runtime service to invoke `http://localhost:3000/api/inngest` before testing scans end to end. Running the API by itself does not execute queued events.
+Start the Inngest Dev Server in another terminal:
+
+```bash
+bunx inngest-cli@1.45.1 dev -u http://localhost:3000/api/inngest
+```
+
+Run the API with `INNGEST_DEV=1` for local development. For mobile progress, also set `INNGEST_REALTIME_BASE_URL=http://<your-host-LAN-address>:8288` on the API so the phone can reach the Dev Server. Running the API by itself does not execute queued events. Never use development mode in a deployed environment; it disables signature verification.
 
 ## Commands
 
@@ -144,8 +150,22 @@ cd packages/image-processing && cargo test
 | `NODE_ENV` | `development` | Runtime environment |
 | `RUN_DB_INIT` | `false` | Set to `true` or `1` to run shared migrations on startup |
 | `FASTEMBED_CACHE_DIR` | unset | Optional FastEmbed model cache directory |
+| `INNGEST_DEV` | SDK default | Use `1` only for local development; `0` for production/self-hosting |
+| `INNGEST_BASE_URL` | SDK default | Server-to-server Inngest origin; set for self-hosting |
+| `INNGEST_EVENT_KEY` | unset | Server-only key used to submit events |
+| `INNGEST_SIGNING_KEY` | unset | Server-only key for authenticated callbacks and Realtime token creation |
+| `INNGEST_SERVE_ORIGIN` | inferred | Optional API origin reachable by Inngest for callbacks |
+| `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable HTTP(S) Inngest origin for WebSocket subscriptions |
 
 `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are parsed legacy values and are not used by the current image pipeline.
+
+### Self-hosted Inngest
+
+Run `inngest start`, not `inngest dev`, with a persistent data directory and matching event/signing keys on both Inngest and the API. Use `INNGEST_DEV=0` and set the API's `INNGEST_BASE_URL` to the runtime's internal origin. Register the API's `/api/inngest` endpoint with `--sdk-url`; `--poll-interval=60` picks up function changes after API deployments. Inngest v1.45.1 requires TypeScript SDK v3.54.0 or newer; this workspace uses v3.54.2.
+
+The API returns `INNGEST_REALTIME_BASE_URL` alongside the short-lived subscription token. Web and mobile attach a keyless SDK client pointing to that origin. If unset, the existing SDK endpoint defaults apply. For self-hosting, use an origin reachable by the phone/browser, not a Kubernetes service name; expose `/v1/realtime/connect` through the gateway. Event submission, token minting, registration, and the dashboard do not need client-facing routes. Never put the event or signing key in `EXPO_PUBLIC_*` or `VITE_*` variables.
+
+The homelab manifests are maintained in the separate ArgoCD repository under `apps/photobrain-inngest` and `apps/photobrain/values-api.yaml`. They use a single-node runtime with a dedicated iSCSI volume, Vault-backed keys, internal API callbacks, and a subscription-only route on the existing API hostname. Inngest owns orchestration state, not the photo library or PhotoBrain SQLite database. Its embedded queue snapshots are not crash-proof delivery or an off-volume backup.
 
 ### Web
 

@@ -97,6 +97,8 @@ On iOS, tab chrome, header search, and library chrome use native controls. `Glas
 
 EAS build profiles in `eas.json` currently set `EXPO_PUBLIC_API_URL=https://photobrain-api.ericj5.com` and channels `development`, `preview`, or `production`.
 
+Self-hosted Realtime routing comes from `realtimeToken.baseUrl`, configured on the API with `INNGEST_REALTIME_BASE_URL`. `useJobProgress` attaches a keyless Inngest client to both initial and refreshed tokens; durable polling remains the fallback. The URL must be reachable by the phone and expose `/v1/realtime/connect`. Event/signing keys stay on the API/runtime and must never be added to `EXPO_PUBLIC_*`. Existing installed clients need the updated JavaScript bundle to use this routing; their durable polling still works without it.
+
 Metro watches the monorepo and redirects `@photobrain/image-processing` to `packages/image-processing/browser.js`. Native Rust processing must not be imported into the mobile bundle.
 
 ## OTA and Deployment

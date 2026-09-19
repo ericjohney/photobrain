@@ -56,7 +56,7 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `searchPhotos({ query, limit? })`: generates a CLIP text embedding and returns nearest photo rows. `limit` is 1-100 and defaults to 20.
 - `scan()`: creates a durable queued `scan_jobs` row, sends an idempotently keyed `photos/scan.requested` event, and returns `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing.
 - `scanStatus({ jobId })`: returns the durable scan row or `null` when the UUID is unknown.
-- `realtimeToken({ jobId })`: returns a token for channel `job:{jobId}`, topic `progress`.
+- `realtimeToken({ jobId })`: returns `{ token, baseUrl? }` for channel `job:{jobId}`, topic `progress`. `baseUrl` is the client-reachable `INNGEST_REALTIME_BASE_URL`; it must not be inferred from an internal service hostname.
 
 Keep the router as the source of client types. `src/types.ts` exports `AppRouter` for workspace consumers.
 
@@ -107,10 +107,13 @@ Active API variables are parsed in `src/config.ts`:
 - `THUMBNAILS_DIRECTORY=./thumbnails`
 - `NODE_ENV=development`
 - `RUN_DB_INIT=false`
+- `INNGEST_REALTIME_BASE_URL` (optional validated URL, returned to clients)
 
 `DATABASE_URL`, `PHOTO_DIRECTORY`, and `THUMBNAILS_DIRECTORY` are relative to the process working directory. The normal `bun run dev:api` script runs from `apps/api`.
 
 `FASTEMBED_CACHE_DIR` is consumed by the Rust package, not parsed here. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and do not control the current Rust pipeline.
+
+The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, and `INNGEST_SERVE_ORIGIN` directly. For self-hosting, use production mode (`INNGEST_DEV=0`), matching server-only keys on the runtime/API, and an internal base URL. Set `INNGEST_REALTIME_BASE_URL` separately to the client-reachable HTTP(S) origin exposing `/v1/realtime/connect`. Never return either server key to clients. Register `/api/inngest` with the runtime and enable periodic app sync. SDK v3.54.2 is compatible with the self-hosted v1.45.1 server, which rejects vulnerable SDK releases below v3.54.0. The Hono handler must continue to allow only GET/PUT/POST.
 
 ## Database Rules
 

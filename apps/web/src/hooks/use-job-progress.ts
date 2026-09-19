@@ -1,4 +1,5 @@
 import { useInngestSubscription } from "@inngest/realtime/hooks";
+import { Inngest } from "inngest";
 import { useCallback, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 
@@ -17,22 +18,42 @@ interface ProgressData {
 export function useJobProgress(jobId: string | null) {
 	const utils = trpc.useUtils();
 
-	// Fetch token from tRPC
+	const tokenQuery = trpc.realtimeToken.useQuery(
+		{ jobId: jobId ?? "" },
+		{ enabled: Boolean(jobId), staleTime: Number.POSITIVE_INFINITY },
+	);
+	const token = useMemo(() => {
+		const response = tokenQuery.data;
+		if (!response?.baseUrl) return response?.token;
+		return {
+			...response.token,
+			app: new Inngest({ id: "photobrain", baseUrl: response.baseUrl }),
+		};
+	}, [tokenQuery.data]);
 	const refreshToken = useCallback(async () => {
-		if (!jobId) return null;
-		const { token } = await utils.realtimeToken.fetch({ jobId });
-		return token;
-	}, [jobId, utils.realtimeToken]);
+		const result = await tokenQuery.refetch();
+		if (result.error) throw result.error;
+		if (!result.data?.token) {
+			throw new Error("Could not refresh Realtime token");
+		}
+		return result.data.baseUrl
+			? {
+					...result.data.token,
+					app: new Inngest({ id: "photobrain", baseUrl: result.data.baseUrl }),
+				}
+			: result.data.token;
+	}, [tokenQuery.refetch]);
 
 	const { data, latestData, error, state } = useInngestSubscription({
+		token,
 		refreshToken,
-		enabled: !!jobId,
+		enabled: Boolean(jobId && token),
 		key: jobId ?? undefined,
 	});
 
 	// Compute derived progress state
 	const progress = useMemo(() => {
-		const latest = latestData as ProgressData | null;
+		const latest = latestData?.data as ProgressData | null | undefined;
 		if (!latest) {
 			return {
 				phase: null as string | null,

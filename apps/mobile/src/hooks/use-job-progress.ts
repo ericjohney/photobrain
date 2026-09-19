@@ -1,4 +1,5 @@
 import { useInngestSubscription } from "@inngest/realtime/hooks";
+import { Inngest } from "inngest";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 
@@ -108,17 +109,30 @@ export function useJobProgress(jobId: string | null) {
 				query.state.status === "error" ? 5000 : false,
 		},
 	);
+	const realtimeToken = useMemo(() => {
+		const response = tokenQuery.data;
+		if (!response?.baseUrl) return response?.token;
+		return {
+			...response.token,
+			app: new Inngest({ id: "photobrain", baseUrl: response.baseUrl }),
+		};
+	}, [tokenQuery.data]);
 	const refreshRealtimeToken = useCallback(async () => {
 		const result = await tokenQuery.refetch();
 		if (result.error) throw result.error;
 		if (!result.data?.token) {
 			throw new Error("Could not refresh Realtime token");
 		}
-		return result.data.token;
+		return result.data.baseUrl
+			? {
+					...result.data.token,
+					app: new Inngest({ id: "photobrain", baseUrl: result.data.baseUrl }),
+				}
+			: result.data.token;
 	}, [tokenQuery.refetch]);
 
 	const { data, latestData, state } = useInngestSubscription({
-		token: tokenQuery.data?.token,
+		token: realtimeToken,
 		refreshToken: refreshRealtimeToken,
 		enabled: Boolean(
 			jobId && tokenQuery.data?.token && !isDurableTerminal && !isMissingJob,

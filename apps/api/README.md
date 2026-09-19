@@ -41,10 +41,13 @@ Variables are parsed in `src/config.ts`:
 | `THUMBNAILS_DIRECTORY` | `./thumbnails` |
 | `NODE_ENV` | `development` |
 | `RUN_DB_INIT` | `false` |
+| `INNGEST_REALTIME_BASE_URL` | unset; client SDK default |
 
 `DATABASE_URL`, `PHOTO_DIRECTORY`, and `THUMBNAILS_DIRECTORY` are relative to the API process working directory. Set `RUN_DB_INIT=true` to apply migrations from `packages/db/drizzle` on startup, or use the database package scripts directly.
 
 `FASTEMBED_CACHE_DIR` is consumed by the native image-processing package. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and are not active RAW dependencies.
+
+The Inngest SDK reads its own server variables directly: `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, and `INNGEST_SERVE_ORIGIN`. Deployed/self-hosted runtimes require `INNGEST_DEV=0` and matching event/signing keys; local Dev Server use requires `INNGEST_DEV=1`. `INNGEST_REALTIME_BASE_URL` is the phone/browser-reachable origin returned alongside the subscription token, not the internal server-to-server URL. See [self-hosted setup](../../README.md#self-hosted-inngest). Neither key belongs in a mobile or web bundle.
 
 ## HTTP API
 

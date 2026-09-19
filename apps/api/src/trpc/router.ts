@@ -360,7 +360,7 @@ export const appRouter = router({
 				channel: `job:${input.jobId}`,
 				topics: ["progress"],
 			});
-			return { token };
+			return { token, baseUrl: config.INNGEST_REALTIME_BASE_URL };
 		}),
 });
 

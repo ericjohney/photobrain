@@ -164,8 +164,11 @@ The schema and defaults are in `apps/api/src/config.ts`:
 | `NODE_ENV` | `development` | `development`, `production`, or `test` |
 | `RUN_DB_INIT` | `false` | `true` or `1` runs shared migrations on API startup |
 | `FASTEMBED_CACHE_DIR` | unset | Optional Rust/FastEmbed model cache |
+| `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable Inngest HTTP(S) origin returned alongside subscription tokens |
 
 `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are still parsed as legacy configuration but are not used by the current Rust preview pipeline. Do not document them as active RAW dependencies.
+
+The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, and `INNGEST_SERVE_ORIGIN` directly. Production/self-hosting requires `INNGEST_DEV=0`, matching runtime/API keys, and a reachable runtime. Keep `INNGEST_BASE_URL` server-internal if desired; `INNGEST_REALTIME_BASE_URL` must be reachable by web/mobile and expose `/v1/realtime/connect`. Both clients attach a keyless SDK client to initial/refreshed tokens. Never ship server keys in public client variables. The homelab runtime is managed in the external ArgoCD repository; it stores orchestration state separately from PhotoBrain's database/photos. See [self-hosted setup](README.md#self-hosted-inngest).
 
 The tracked `.envrc` sets `PHOTO_DIRECTORY=/photos`, `PORT=3000`, and `VITE_API_URL=http://localhost:3000` when direnv loads it. Check the shell environment before diagnosing path behavior.
 
@@ -198,7 +201,7 @@ All tRPC procedures are public; there is no authentication or authorization midd
 | `searchPhotos` | query | CLIP text search, limit 1-100 |
 | `scan` | mutation | Creates a durable job, sends an Inngest scan event, and returns `{ success, jobId? }` |
 | `scanStatus` | query | Returns durable progress for a scan UUID or `null` |
-| `realtimeToken` | query | Returns an Inngest Realtime token for a job ID |
+| `realtimeToken` | query | Returns `{ token, baseUrl? }` for a job ID; optional client-reachable self-hosted origin |
 
 REST routes under `/api/photos`:
 
