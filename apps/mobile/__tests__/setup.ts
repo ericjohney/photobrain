@@ -263,7 +263,8 @@ jest.mock("@photobrain/utils", () => ({
 		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	},
-	formatDate: (dateStr: string) => dateStr,
+	formatDate: (value: Date | string) =>
+		value instanceof Date ? value.toISOString() : value,
 	parseDate: (value: Date | string | null | undefined) => {
 		if (!value) return new Date(0);
 		if (value instanceof Date) return value;

@@ -18,6 +18,7 @@ let mockScanResult: {
 	error?: string;
 } = { success: true, jobId: "test-job-123" };
 
+jest.unmock("@/components/MetadataPanel");
 jest.mock("@/lib/trpc", () => ({
 	trpc: {
 		photos: {
@@ -153,19 +154,32 @@ describe("DashboardScreen", () => {
 		}
 	});
 
-	it("switches to grouped timelines from library options", async () => {
-		const { getByLabelText, getByText } = renderWithProviders(
-			<DashboardScreen />,
-		);
-		await waitFor(() => expect(getByText("5 Items")).toBeTruthy());
-
-		fireEvent.press(getByLabelText("Library options"));
-		fireEvent.press(getByLabelText("Months"));
-		fireEvent.press(getByLabelText("Done"));
-
-		await waitFor(() => expect(getByText("August 2024")).toBeTruthy());
-		expect(getByText("July 2024")).toBeTruthy();
-		expect(getByText("June 2024")).toBeTruthy();
+	it("changes browsing scopes directly without filtering the full library", async () => {
+		const view = renderWithProviders(<DashboardScreen />);
+		await view.findByText("5 Items");
+		expect(
+			view.getByRole("tab", { name: "All Photos", selected: true }),
+		).toBeTruthy();
+		fireEvent.press(view.getByRole("tab", { name: "Months" }));
+		expect(
+			view.getByRole("tab", { name: "Months", selected: true }),
+		).toBeTruthy();
+		expect(view.getByText("August 2024")).toBeTruthy();
+		expect(view.getByText("July 2024")).toBeTruthy();
+		expect(view.getByText("June 2024")).toBeTruthy();
+		expect(view.getByText("5 Items")).toBeTruthy();
+		fireEvent.press(view.getByRole("tab", { name: "Years" }));
+		expect(
+			view.getByRole("tab", { name: "Years", selected: true }),
+		).toBeTruthy();
+		expect(view.getByText("2024")).toBeTruthy();
+		expect(view.queryByText("August 2024")).toBeNull();
+		fireEvent.press(view.getByRole("tab", { name: "All Photos" }));
+		expect(
+			view.getByRole("tab", { name: "All Photos", selected: true }),
+		).toBeTruthy();
+		expect(view.queryByText("2024")).toBeNull();
+		expect(view.getAllByTestId(/^photo-thumbnail-/)).toHaveLength(5);
 	});
 
 	it("renders sharper grid thumbnails and RAW badges", async () => {
@@ -191,31 +205,35 @@ describe("DashboardScreen", () => {
 		await waitFor(() => expect(getByTestId("loupe-view")).toBeTruthy());
 		expect(getByTestId("loupe-gallery")).toBeTruthy();
 		expect(Haptics.selectionAsync).not.toHaveBeenCalled();
-		expect(getByText("Info")).toBeTruthy();
-		expect(getByText(/4000 × 6000/)).toBeTruthy();
-		expect(getByText(/3\.1 MB/)).toBeTruthy();
+		expect(getByLabelText("Show photo info")).toBeTruthy();
+		expect(getByText("1 of 5")).toBeTruthy();
 
 		fireEvent.press(getByLabelText("Close photo"));
 		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 	});
 
-	it("selects photos without opening the loupe", async () => {
-		const { getByLabelText, getByTestId, getByText, queryByTestId } =
-			renderWithProviders(<DashboardScreen />);
-		await waitFor(() => expect(getByLabelText("Select photos")).toBeTruthy());
-
-		fireEvent.press(getByLabelText("Select photos"));
-		expect(getByText("Select Items")).toBeTruthy();
-		fireEvent.press(getByTestId("photo-thumbnail-5"));
-
-		await waitFor(() => expect(getByText("1 Selected")).toBeTruthy());
-		expect(getByTestId("photo-thumbnail-5").props.accessibilityState).toEqual({
-			selected: true,
-		});
-		expect(queryByTestId("loupe-view")).toBeNull();
-
-		fireEvent.press(getByLabelText("Finish selecting photos"));
-		expect(getByText("5 Items")).toBeTruthy();
+	it("hides the browsing scope during selection and restores it on exit", async () => {
+		const view = renderWithProviders(<DashboardScreen />);
+		fireEvent.press(await view.findByRole("tab", { name: "Months" }));
+		fireEvent.press(view.getByLabelText("Select photos"));
+		expect(view.queryByRole("tab", { name: "Months" })).toBeNull();
+		expect(view.getByText("Select Items")).toBeTruthy();
+		fireEvent.press(view.getByTestId("photo-thumbnail-5"));
+		expect(view.getByText("1 Selected")).toBeTruthy();
+		expect(
+			view.getByRole("button", { name: "Deselect street.jpg", selected: true }),
+		).toBeTruthy();
+		expect(view.queryByTestId("loupe-view")).toBeNull();
+		fireEvent.press(view.getByLabelText("Finish selecting photos"));
+		expect(view.getByText("5 Items")).toBeTruthy();
+		expect(
+			await view.findByRole("tab", { name: "Months", selected: true }),
+		).toBeTruthy();
+		fireEvent.press(view.getByLabelText("Select photos"));
+		expect(view.getByText("Select Items")).toBeTruthy();
+		expect(
+			view.getByRole("button", { name: "Select street.jpg", selected: false }),
+		).toBeTruthy();
 	});
 
 	it("keeps options and selection exit usable while browsing beneath the header", async () => {
@@ -237,12 +255,13 @@ describe("DashboardScreen", () => {
 		expect(view.getByText(capturedDate(5))).toBeTruthy();
 		expect(view.getByLabelText("Select photos")).toBeTruthy();
 		scrollLibrary(view, 0);
-		expect(view.getByText("5 Items")).toBeTruthy();
+		await waitFor(() => expect(view.getByText("5 Items")).toBeTruthy());
 	});
 
 	it("does not retain stale loupe metadata between photos", async () => {
 		const {
 			getByLabelText,
+			getByRole,
 			getByTestId,
 			getByText,
 			queryByTestId,
@@ -251,14 +270,33 @@ describe("DashboardScreen", () => {
 
 		await waitFor(() => expect(getByTestId("photo-thumbnail-5")).toBeTruthy());
 		fireEvent.press(getByTestId("photo-thumbnail-5"));
-		await waitFor(() => expect(getByText(/3\.1 MB/)).toBeTruthy());
+		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
+		fireEvent.press(getByLabelText("Show photo info"));
+		await waitFor(() =>
+			expect(
+				getByRole("button", { name: "File", expanded: true }),
+			).toBeTruthy(),
+		);
+		expect(getByText("street.jpg")).toBeTruthy();
+		expect(getByText("4000 x 6000")).toBeTruthy();
+		fireEvent.press(getByLabelText("Close photo info"));
 		fireEvent.press(getByLabelText("Close photo"));
 
 		await waitFor(() => expect(getByTestId("photo-thumbnail-1")).toBeTruthy());
 		fireEvent.press(getByTestId("photo-thumbnail-1"));
-		await waitFor(() => expect(getByText(/4\.3 MB/)).toBeTruthy());
-		expect(getByText(/6000 × 4000/)).toBeTruthy();
-		expect(queryByText(/4000 × 6000/)).toBeNull();
+		await waitFor(() => expect(getByText("4 of 5")).toBeTruthy());
+		expect(queryByText("4000 x 6000")).toBeNull();
+		fireEvent.press(getByLabelText("Show photo info"));
+		await waitFor(() =>
+			expect(
+				getByRole("button", { name: "File", expanded: true }),
+			).toBeTruthy(),
+		);
+		expect(getByText("sunset.jpg")).toBeTruthy();
+		expect(queryByText("street.jpg")).toBeNull();
+		expect(getByText("6000 x 4000")).toBeTruthy();
+		expect(queryByText("4000 x 6000")).toBeNull();
+		fireEvent.press(getByLabelText("Close photo info"));
 		fireEvent.press(getByLabelText("Close photo"));
 		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 	});
@@ -267,6 +305,7 @@ describe("DashboardScreen", () => {
 		const { FlatList } = require("react-native");
 		const {
 			getByLabelText,
+			getByRole,
 			getByTestId,
 			getByText,
 			queryByTestId,
@@ -275,7 +314,7 @@ describe("DashboardScreen", () => {
 
 		await waitFor(() => expect(getByTestId("photo-thumbnail-3")).toBeTruthy());
 		fireEvent.press(getByTestId("photo-thumbnail-3"));
-		await waitFor(() => expect(getByText(/7360 × 4912/)).toBeTruthy());
+		await waitFor(() => expect(getByText("3 of 5")).toBeTruthy());
 
 		const gallery = UNSAFE_getAllByType(FlatList).find(
 			(list) => list.props.testID === "loupe-gallery",
@@ -286,8 +325,16 @@ describe("DashboardScreen", () => {
 			nativeEvent: { contentOffset: { x: 2250, y: 0 } },
 		});
 
-		await waitFor(() => expect(getByText(/4\.3 MB/)).toBeTruthy());
-		expect(getByText(/6000 × 4000/)).toBeTruthy();
+		await waitFor(() => expect(getByText("4 of 5")).toBeTruthy());
+		fireEvent.press(getByLabelText("Show photo info"));
+		await waitFor(() =>
+			expect(
+				getByRole("button", { name: "File", expanded: true }),
+			).toBeTruthy(),
+		);
+		expect(getByText("sunset.jpg")).toBeTruthy();
+		expect(getByText("6000 x 4000")).toBeTruthy();
+		fireEvent.press(getByLabelText("Close photo info"));
 		fireEvent.press(getByLabelText("Close photo"));
 		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 	});
@@ -370,16 +417,12 @@ describe("DashboardScreen", () => {
 
 	it("tracks the visible photo date in grouped timelines and resets changed contexts", async () => {
 		const view = renderWithProviders(<DashboardScreen />);
-		fireEvent.press(await view.findByLabelText("Library options"));
-		fireEvent.press(view.getByLabelText("Months"));
-		fireEvent.press(view.getByLabelText("Done"));
+		fireEvent.press(await view.findByRole("tab", { name: "Months" }));
 		scrollLibrary(view, 320, 4);
 		expect(view.getByText(capturedDate(4))).toBeTruthy();
 		expect(view.queryByText(capturedDate(5))).toBeNull();
 
-		fireEvent.press(view.getByLabelText("Library options"));
-		fireEvent.press(view.getByLabelText("All Photos"));
-		fireEvent.press(view.getByLabelText("Done"));
+		fireEvent.press(view.getByRole("tab", { name: "All Photos" }));
 		expect(view.getByText("5 Items")).toBeTruthy();
 		expect(view.queryByText(capturedDate(4))).toBeNull();
 
@@ -414,6 +457,9 @@ describe("DashboardScreen", () => {
 		fireEvent.press(view.getByLabelText("RAW"));
 		fireEvent.press(view.getByLabelText("Done"));
 		expect(view.getByText("2 Items")).toBeTruthy();
+		fireEvent.press(view.getByRole("tab", { name: "Months" }));
+		expect(view.getByText("June 2024")).toBeTruthy();
+		expect(view.getByText("2 Items")).toBeTruthy();
 		expect(view.getByTestId("photo-thumbnail-2")).toBeTruthy();
 		expect(view.queryByTestId("photo-thumbnail-1")).toBeNull();
 		expect(
@@ -430,6 +476,9 @@ describe("DashboardScreen", () => {
 		expect(view.queryByTestId("photo-thumbnail-2")).toBeNull();
 		fireEvent.press(view.getByLabelText("Show all items"));
 		expect(view.getByText("5 Items")).toBeTruthy();
+		expect(
+			view.getByRole("tab", { name: "Months", selected: true }),
+		).toBeTruthy();
 		expect(view.queryByLabelText("Edit active filters")).toBeNull();
 	});
 
@@ -447,18 +496,22 @@ describe("DashboardScreen", () => {
 				);
 		await view.findByLabelText("Library options");
 		expect(photoIds()).toEqual([5, 4, 3, 1, 2]);
-		fireEvent.press(view.getByLabelText("Library options"));
-		fireEvent.press(view.getByLabelText("Months"));
-		fireEvent.press(view.getByLabelText("Done"));
+		fireEvent.press(view.getByRole("tab", { name: "Months" }));
 		fireEvent.press(view.getByLabelText("Library options"));
 		fireEvent.press(view.getByLabelText("Recently Added"));
 		fireEvent.press(view.getByLabelText("Done"));
 		expect(photoIds()).toEqual([5, 4, 3, 2, 1]);
 		expect(view.queryByText("August 2024")).toBeNull();
-		fireEvent.press(view.getByLabelText("Library options"));
-		fireEvent.press(view.getByLabelText("Months"));
-		fireEvent.press(view.getByLabelText("Done"));
+		expect(
+			view.getByRole("tab", { name: "All Photos", selected: true }),
+		).toBeTruthy();
+		fireEvent.press(view.getByRole("tab", { name: "Months" }));
 		expect(photoIds()).toEqual([5, 4, 3, 1, 2]);
+		expect(
+			view.getByRole("tab", { name: "Months", selected: true }),
+		).toBeTruthy();
+		fireEvent.press(view.getByLabelText("Library options"));
+		expect(view.getByRole("radio", { name: "Date Captured" })).toBeChecked();
 	});
 
 	it("persists only successfully created scan jobs", async () => {

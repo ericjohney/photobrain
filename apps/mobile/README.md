@@ -48,16 +48,16 @@ Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN add
 ## Current Behavior
 
 - Photos are sorted newest-first in a continuous five-column phone grid, with optional year or month grouping and up to eight columns on wide layouts.
-- The fixed Library header keeps Options and selection available while photos scroll beneath a live blur and soft fade. Its subtitle changes from item count to the visible photo date. Options contains Years/Months/All Photos, captured/recently-added sorting, filters, scan initiation, and Settings.
+- The fixed Library header keeps Options and selection available while photos scroll beneath a live blur and soft fade. Its subtitle changes from item count to the visible photo date. Years/Months/All Photos are directly accessible in a floating bottom control above the native tabs. Options contains captured/recently-added sorting, filters, scan initiation, and Settings.
 - Filter combines RAW/standard choices with searchable camera/lens/ISO/month lists. Changes apply immediately; Done dismisses. All Items resets filters, and the library's active-filter summary offers direct editing and a one-tap reset.
 - The Search tab uses the native iOS search bar and debounces natural-language queries by 350 ms.
-- Tapping a photo opens a modal loupe with pinch/pan/zoom, swipe navigation, haptics, and metadata.
+- Tapping a photo opens a modal loupe with pinch/pan/zoom, swipe navigation, a tappable thumbnail filmstrip, haptics, and metadata. Compact glass controls show date/time, position, close, and info; tapping the photo hides or restores them.
 - The loupe uses the `large` thumbnail URL; it does not request the original file route.
 - Liquid Glass and the live header blur use opaque fallbacks when unavailable or Reduce Transparency is enabled. Larger text stacks the header controls without hiding them.
 - Collections is an active native tab but remains a placeholder.
 - Settings persists light/dark/system themes. Grid-column and haptic settings are currently disabled or hardcoded.
 - The loupe does not display unimplemented share/like/delete controls.
-- Photo grids use sharper previews, and failed loupe images offer Retry. Landscape loupe controls stay within safe areas.
+- Photo grids use sharper previews, and failed loupe images offer Retry. Library and Search loupe controls use full-screen safe areas, including in landscape, rather than inheriting tab-bar padding.
 - Photo Info supports wrapping, selectable values and larger text. Search messages remain scrollable below the native header.
 - Filter shows metadata loading and retry states without blocking media-type choices or clearing filters. Selection can be exited without scrolling back to the header; bulk actions are not implemented.
 
@@ -88,8 +88,10 @@ The current native stack uses Expo SDK 57 and an iOS deployment target of 26.0. 
 
 The Library header uses the native `expo-blur` and `@react-native-masked-view/masked-view` modules. Rebuild the development client after native dependency changes; a Metro reload or OTA update cannot install missing native modules.
 
-The GitHub Actions workflow publishes preview OTA updates on pushes to `main` and production iOS updates on version tags after API/web/mobile tests. Tagged releases first wait for a production iOS EAS build so native dependency changes have a matching binary. The manual `useOTAUpdates` hook is used by legacy `App.tsx`, not the active Expo Router layout; do not document an alert/restart flow as active without wiring it into the active layout.
+After API/web/mobile tests, pushes to `main` automatically ensure an installable iOS preview with the current Expo fingerprint runtime: reuse a compatible finished build, wait for a matching build already running, or build a new binary. Only then are preview OTA updates published for iOS and Android. Native Android builds remain separate. The GitHub job summary includes the iOS install link and whether the binary was reused or built. Install a new binary when the native runtime changes; OTA cannot upgrade the native runtime.
 
-Run the manual `EAS Preview iOS Build` GitHub Actions workflow to create an internal iOS installation after native dependency or runtime fingerprint changes.
+The preview gate runs in the EAS `preview` environment. Its environment values, including `EXPO_PUBLIC_API_URL`, must match `preview.env` in `eas.json`; a mismatch fails the release rather than publishing a differently configured update. Run the manual `EAS Preview iOS Build` workflow to force a fresh internal iOS build, for example after adding a registered device. Automatic and manual builds share a concurrency group.
+
+Version tags still wait for a production iOS EAS build before publishing production iOS updates. The manual `useOTAUpdates` hook is used by legacy `App.tsx`, not the active Expo Router layout; there is no active custom alert/restart flow.
 
 The Docker `mobile` target runs the Expo development server on port 8081. It is not a static Expo web-export image.

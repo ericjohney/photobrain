@@ -18,7 +18,10 @@ import {
 	useWindowDimensions,
 	View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+	SafeAreaProvider,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import type { SearchBarCommands } from "react-native-screens";
 import GlassSurface from "@/components/GlassSurface";
 import LoupeView from "@/components/LoupeView";
@@ -318,7 +321,7 @@ export default function SearchScreen() {
 				onRequestClose={library.closeLoupe}
 			>
 				<ExpoStatusBar style="light" />
-				<View style={styles.loupeRoot}>
+				<SafeAreaProvider style={styles.loupeRoot}>
 					<LoupeView
 						key={library.loupeSession}
 						photos={photos}
@@ -332,7 +335,7 @@ export default function SearchScreen() {
 						photo={metadataPhoto}
 						onClose={() => setMetadataPhoto(null)}
 					/>
-				</View>
+				</SafeAreaProvider>
 			</Modal>
 		</View>
 	);

@@ -41,8 +41,6 @@ interface FilterSheetProps {
 	filterOptions?: inferRouterOutputs<AppRouter>["filterOptions"];
 	activeFilters: LibraryFilters;
 	onFilterChange: (filters: LibraryFilters) => void;
-	grouping?: LibraryGrouping;
-	onGroupingChange?: (grouping: LibraryGrouping) => void;
 	sort?: LibrarySort;
 	onSortChange?: (sort: LibrarySort) => void;
 	initialPage?: "options" | "filters";
@@ -54,12 +52,6 @@ interface FilterSheetProps {
 	filtersError?: boolean;
 	onRetryFilters?: () => void;
 }
-
-const GROUPING_OPTIONS: Array<{ value: LibraryGrouping; label: string }> = [
-	{ value: "all", label: "All Photos" },
-	{ value: "years", label: "Years" },
-	{ value: "months", label: "Months" },
-];
 
 const SORT_OPTIONS: Array<{ value: LibrarySort; label: string }> = [
 	{ value: "added", label: "Recently Added" },
@@ -105,8 +97,6 @@ export default function FilterSheet({
 	filterOptions,
 	activeFilters,
 	onFilterChange,
-	grouping,
-	onGroupingChange,
 	sort = "captured",
 	onSortChange,
 	initialPage = "options",
@@ -509,19 +499,6 @@ export default function FilterSheet({
 										last: true,
 									}),
 								)}
-								{grouping &&
-									onGroupingChange &&
-									group(
-										"View Options",
-										GROUPING_OPTIONS.map((option, index) =>
-											row({
-												label: option.label,
-												checked: grouping === option.value,
-												onPress: () => onGroupingChange(option.value),
-												last: index === GROUPING_OPTIONS.length - 1,
-											}),
-										),
-									)}
 								{(onScan || onOpenSettings) &&
 									group(
 										"Library",

@@ -3,6 +3,8 @@ import * as Haptics from "expo-haptics";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { StyleSheet } from "react-native";
 
+jest.unmock("@/components/MetadataPanel");
+
 type SearchInput = { query: string; limit: number };
 type SearchOptions = {
 	enabled: boolean;
@@ -266,10 +268,13 @@ describe("SearchScreen", () => {
 
 	it("opens a result in the loupe with the correct metadata", async () => {
 		const {
+			findAllByTestId,
+			findByText,
 			getByLabelText,
 			getByTestId,
 			getByText,
 			queryByTestId,
+			queryByText,
 			UNSAFE_queryByType,
 			UNSAFE_getByType,
 		} = renderWithProviders(<SearchScreen />);
@@ -283,12 +288,23 @@ describe("SearchScreen", () => {
 		fireEvent.press(getByTestId("search-result-1"));
 
 		await waitFor(() => expect(getByTestId("loupe-view")).toBeTruthy());
+		await findAllByTestId("native-glass");
 		expect(getByTestId("loupe-gallery")).toBeTruthy();
 		expect(UNSAFE_getByType(ExpoStatusBar).props.style).toBe("light");
 		expect(Haptics.selectionAsync).not.toHaveBeenCalled();
-		expect(getByText("Info")).toBeTruthy();
-		expect(getByText(/6000 × 4000/)).toBeTruthy();
-		expect(getByText(/4\.3 MB/)).toBeTruthy();
+		expect(getByText("1 of 2")).toBeTruthy();
+		fireEvent.press(getByLabelText("Show photo info"));
+		expect(await findByText("sunset.jpg")).toBeTruthy();
+		expect(getByText("6000 x 4000")).toBeTruthy();
+		fireEvent.press(getByLabelText("Close photo info"));
+		fireEvent.press(getByLabelText("View photo 2: landscape.jpg"));
+		expect(getByText("2 of 2")).toBeTruthy();
+		fireEvent.press(getByLabelText("Show photo info"));
+		expect(await findByText("landscape.jpg")).toBeTruthy();
+		expect(getByText("7360 x 4912")).toBeTruthy();
+		expect(queryByText("sunset.jpg")).toBeNull();
+		expect(queryByText("6000 x 4000")).toBeNull();
+		fireEvent.press(getByLabelText("Close photo info"));
 		fireEvent.press(getByLabelText("Close photo"));
 		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 		expect(UNSAFE_queryByType(ExpoStatusBar)).toBeNull();

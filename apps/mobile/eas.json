@@ -1,6 +1,6 @@
 {
 	"cli": {
-		"version": ">= 15.0.0",
+		"version": ">= 24.7.0",
 		"appVersionSource": "remote"
 	},
 	"build": {
@@ -31,11 +31,13 @@
 		"preview": {
 			"channel": "preview",
 			"environment": "preview",
+			"developmentClient": false,
 			"distribution": "internal",
 			"env": {
 				"EXPO_PUBLIC_API_URL": "https://photobrain-api.ericj5.com"
 			},
 			"ios": {
+				"simulator": false,
 				"resourceClass": "m-medium"
 			}
 		},

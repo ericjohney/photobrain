@@ -237,7 +237,7 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 
 The active entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint and is not the configured production entrypoint or the target of active navigation tests.
 
-The active native tabs are Library, Collections, and an isolated Search tab. Library has a persistent header with live scrolling-grid blur and a visible-photo date, a continuous five-column phone grid, optional year/month grouping in Library Options, basic selection, EXIF filters, durable scan progress, metadata, and a modal loupe with paged swipe navigation and native iOS pinch zoom. Search uses a native iOS search bar and a 350 ms cancellable debounce. Library chrome uses `expo-glass-effect` and a masked `expo-blur` backdrop when supported, with platform and Reduce Transparency fallbacks; the loupe uses opaque core React Native controls. Collections remains a placeholder tab. Settings persists light/dark/system theme selection; some display/behavior controls remain disabled or hardcoded.
+The active native tabs are Library, Collections, and an isolated Search tab. Library has a persistent header with live scrolling-grid blur and a visible-photo date, a continuous five-column phone grid, a bottom Years/Months/All Photos browsing control above native tabs, basic selection, EXIF filters, durable scan progress, and metadata. The modal loupe combines paged swipes, native iOS pinch zoom, a synchronized thumbnail filmstrip, and compact date/time and info controls. Library and Search create separate full-screen modal safe-area providers. Search uses a native iOS search bar and a 350 ms cancellable debounce. Library and loupe chrome use `expo-glass-effect` with opaque platform/Reduce Transparency fallbacks; Library also uses a masked `expo-blur` backdrop. Collections remains a placeholder. Settings persists light/dark/system themes; some other controls remain disabled or hardcoded.
 
 ## Deployment
 
@@ -255,9 +255,9 @@ There is no worker image and the mobile Docker target is not a static Expo web-e
 
 - Runs API tests and typecheck.
 - Runs web Playwright E2E tests.
-- Runs mobile Jest tests.
-- Publishes preview EAS OTA updates on pushes to `main`; version tags first wait for a production iOS EAS build, then publish an iOS production update.
-- Provides a manual EAS workflow for installable internal iOS preview builds.
+- Runs mobile Jest tests and preview-build decision regressions.
+- Before main's iOS/Android preview OTA publication, resolves the iOS Expo fingerprint runtime and reuses, waits for, or creates a compatible internal iOS preview. Failed or incompatible builds block publication. Version tags still wait for a production iOS EAS build before the iOS production update.
+- Provides a manual forced iOS preview rebuild sharing the automatic release's concurrency group. Both report install links; preview environment values must match the build profile.
 - Builds and pushes API, web, and mobile Docker targets.
 - Updates API/web/mobile image tags in the external ArgoCD repository on pushes to `main`.
 

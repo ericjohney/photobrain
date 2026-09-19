@@ -26,7 +26,9 @@ Scope: `apps/mobile`.
 - `src/screens/AboutScreen.tsx`: app/about content.
 - `src/components/GlassSurface.tsx`: native Liquid Glass with platform and Reduce Transparency fallbacks.
 - `src/components/LibraryHeader.tsx`: persistent Library overlay, live masked blur, adaptive title/date, and selection controls.
-- `src/components/LoupeView.tsx`: core paged swipe viewer, native iOS zoom, haptics, and the implemented metadata action.
+- `src/components/LibraryTimeScope.tsx`: bottom Years/Months/All Photos browsing control.
+- `src/components/Filmstrip.tsx`: virtualized loupe thumbnails synchronized with the active photo.
+- `src/components/LoupeView.tsx`: core paged swipe viewer, native iOS zoom, glass date/time controls, filmstrip navigation, and metadata.
 - `src/components/MetadataPanel.tsx`: EXIF/RAW metadata modal.
 - `src/components/FilterSheet.tsx`: Library Options, sorting, and searchable RAW/standard/camera/lens/ISO/month filters.
 - `src/components/ActivityBar.tsx`: Inngest progress display.
@@ -37,7 +39,7 @@ Scope: `apps/mobile`.
 - `src/lib/trpc-client.ts`: HTTP tRPC batch client.
 - `__tests__/`: Jest Expo tests and mocks.
 
-The shared `src/components/PhotoGrid.tsx`, `SearchBar.tsx`, and `Filmstrip.tsx` exist, but the active dashboard/search screens render their own specialized layouts. Check imports before changing a shared component.
+The shared `src/components/PhotoGrid.tsx` and `SearchBar.tsx` exist, but the active dashboard/search screens render their own specialized layouts. `Filmstrip.tsx` is used by the active loupe. Check imports before changing a shared component.
 
 ## Commands
 
@@ -63,11 +65,11 @@ Do not use React Navigation focus or navigation hooks inside `SearchScreen`. The
 Dashboard behavior:
 
 - Photos default to newest-first using EXIF date, modified date, or created date. Recently Added uses descending photo IDs (insertion order), not filesystem creation dates.
-- All Photos is a continuous edge-to-edge grid; Years/Months/All Photos are available in Library Options. Date grouping selects captured-date sorting; Recently Added returns to All Photos to avoid splitting date groups.
+- All Photos is a continuous edge-to-edge grid. A floating Years/Months/All Photos control sits above native tabs, independently of metadata filters. It hides during selection and when there are no photos; its measured height and the tab safe area reserve space for the last row. Date grouping selects captured-date sorting; Recently Added returns to All Photos.
 - The responsive grid uses five columns on phones and up to eight on wide layouts.
 - Library and Search grids use `small` thumbnails for Retina sharpness. The Library header blurs the actual scrolling grid with `expo-blur` and a fading mask, not a copied photo.
 - Pull-to-refresh refetches photos and filter options.
-- Library Options separates sorting, a Filter destination, View Options grouping, and scan/Settings actions. Filter has RAW/Standard choices and camera/lens/ISO/month summaries that open searchable, virtualized checkmarked lists.
+- Library Options separates sorting, a Filter destination, and scan/Settings actions. Filter has RAW/Standard choices and camera/lens/ISO/month summaries that open searchable, virtualized checkmarked lists; browsing scopes live in the bottom control, not this sheet.
 - Filters combine across categories with one value per category, apply immediately, and remain in memory. Done dismisses without an apply transaction. All Items/Clear All resets filters, not sorting/grouping; each category's All clears only that category. Active values remain removable even if metadata disappears or fails to load.
 - The fixed Library header exposes Library Options and selection. It shows the item count at rest, the visible photo date while scrolled, and the selection count in selection mode. Measured header height determines grid and refresh insets; larger text stacks its controls. Filter, grouping, sorting, and layout changes reset scroll/date context.
 - Selection exits through the header's persistent close control; bulk actions are not implemented. An active-filter summary opens Filter directly; its close button restores all items. Library Options distinguishes filter loading, failure with retry, and empty metadata.
@@ -75,13 +77,13 @@ Dashboard behavior:
 - Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
 - Unknown scan progress is labeled as checking status, with an automatic-retry explanation when recovery requests fail instead of claiming processing has started.
 
-The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, and metadata. Collections is an active native tab but remains a placeholder. Preferences persists theme selection and propagates it through React Native `Appearance`; grid-column and haptic controls remain disabled/hardcoded.
+The loupe intentionally exposes only implemented controls: close, navigation/zoom gestures, thumbnail navigation, and metadata. Thumbnail taps and swipes update the active photo, counter, metadata target, and selected thumbnail together. Tap the photo to hide or restore chrome. Native zoom resets when changing photos or orientation; paging pauses while zoomed. Collections remains a placeholder; Preferences persists theme selection, while grid-column and haptic controls remain disabled/hardcoded.
 
-Design references: [Apple iOS overview](https://www.apple.com/os/ios/) and [Photos sorting/filtering guide](https://support.apple.com/guide/iphone/sort-and-filter-the-photo-library-iph2e66e2f2c/ios). The app adapts the separate sort/filter/view-options model to supported metadata; it does not expose unsupported Favorites, Edited, or video categories. Unlike Apple's bottom-newest library, PhotoBrain retains newest-first browsing. Years and Months group the full grid rather than generating curated cover collections.
+Design references: [Photos library browsing](https://support.apple.com/guide/iphone/browse-your-photo-library-iph7d24753a5/26/ios/26), [photo viewing](https://support.apple.com/guide/iphone/view-photos-and-videos-iph3d267610/26/ios/26), and [sorting/filtering](https://support.apple.com/guide/iphone/sort-and-filter-the-photo-library-iph2e66e2f2c/26/ios/26). Apple replaces its expanded bottom navigation with Years/Months/All while browsing; PhotoBrain keeps its native tabs and places the scope control above them. PhotoBrain retains newest-first browsing and groups the complete grid rather than creating curated cover collections. Unsupported Favorites, Edited, and video categories are not exposed.
 
-Loupe chrome respects horizontal safe areas in landscape, and image failures offer per-photo retry. Metadata values wrap and are selectable, with stacked labels at larger text sizes. Search empty/loading/error states scroll with automatic native-header insets. Glass fallbacks remain opaque while Reduce Transparency is enabled or its initial value is unknown.
+Library and Search loupe modals each create a `SafeAreaProvider`, so full-screen chrome uses device insets rather than the underlying tab bar's inset. Controls respect landscape safe areas; image failures offer per-photo retry. Metadata values wrap and are selectable, with stacked labels at larger text sizes. Search messages scroll with automatic native-header insets. Glass fallbacks remain opaque while Reduce Transparency is enabled or its initial value is unknown.
 
-On iOS, tab chrome, header search, and library chrome use native controls. `GlassSurface` renders `expo-glass-effect` only when the iOS APIs are available and Reduce Transparency is disabled; other environments receive an opaque semantic-color fallback. The modal loupe deliberately uses React Native's paged `FlatList`, opaque controls, and native iOS `ScrollView` zoom instead of a third-party Reanimated gallery; keep its thumbnail-tap tests on the real implementation rather than mocking the viewer.
+On iOS, tab chrome, header search, and library chrome use native controls. `GlassSurface` renders `expo-glass-effect` only when available and Reduce Transparency is disabled; unsupported environments receive an opaque fallback. The loupe uses dark glass controls with an opaque dark fallback, React Native's paged `FlatList`, and native iOS `ScrollView` zoom rather than a third-party gallery. Keep thumbnail-tap tests on the real viewer.
 
 `LibraryHeader` shares the glass-availability policy through `useGlassAvailability`. Its live blur and dark fading scrim appear only over photos; the resting header uses the semantic background. Unsupported platforms and Reduce Transparency use an opaque background. `expo-blur` and `@react-native-masked-view/masked-view` are native dependencies: rebuild the development client when adding or changing them; Metro reload alone is insufficient.
 
@@ -101,9 +103,11 @@ Metro watches the monorepo and redirects `@photobrain/image-processing` to `pack
 
 `app.json` configures `expo-updates` with `ON_LOAD` checks and a fingerprint runtime policy. The manual `useOTAUpdates` hook is used by legacy `App.tsx`, not the active Expo Router layout. Automatic Expo update configuration remains active; do not promise a native alert/restart flow without wiring the hook into the active layout.
 
-The CI workflow publishes preview OTA updates with EAS on pushes to `main` and production iOS updates on version tags after API/web/mobile tests. A version tag first waits for a production iOS EAS build so native dependency changes have a matching binary. It does not run an Expo web export. The Docker `mobile` target copies source and starts Expo on port 8081; it is not a static exported web image.
+After API/web/mobile tests, main releases run `scripts/ensure-preview-build.mjs` before publishing preview OTA updates for iOS and Android. The script resolves the iOS fingerprint runtime with Expo Updates, reuses a finished unexpired physical-device internal preview artifact with that runtime, awaits a matching pending build, or creates and waits for a new one. Compatibility uses `runtime.version`, not EAS's separate source `fingerprint.hash`. Errors, malformed records, failed builds, and incompatible results stop publication. Android native builds are not automated by this gate.
 
-The manual `EAS Preview iOS Build` GitHub Actions workflow creates an internal-distribution build from the `preview` profile and waits for EAS to return an installable artifact. Use it when a native fingerprint change prevents an existing preview binary from receiving OTA updates.
+Both preview workflows use the `eas-preview-ios` concurrency group and pinned EAS CLI 24.7.0. The manual `EAS Preview iOS Build` workflow passes `--force` to create a fresh binary even when one is compatible. Each successful gate writes an install link and reuse/build outcome to the GitHub job summary. Both run under `eas env:exec preview`; the resolved environment must match `preview.env` in `eas.json`, including `EXPO_PUBLIC_API_URL`, because OTA publication does not consume build-profile environment overrides.
+
+Version tags still wait for a production iOS EAS build before publishing an iOS production update. The workflows do not export Expo web. The Docker `mobile` target starts Expo on port 8081, not a static web image.
 
 ## Tests
 
@@ -112,7 +116,9 @@ Jest uses the `jest-expo` preset, `__tests__/setup.ts`, and mocks for Expo, nati
 CI runs:
 
 ```bash
-cd apps/mobile && bun run test:ci
+cd apps/mobile
+bun run test:ci
+node --test scripts/ensure-preview-build.test.mjs
 ```
 
 Tests do not perform real API calls, native EAS builds, or end-to-end checks of Preferences, Collections, About, and OTA behavior. Update mocks when changing request shapes, native route primitives, or thumbnail URL behavior.

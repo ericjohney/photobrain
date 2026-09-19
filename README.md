@@ -5,7 +5,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 ## Current Features
 
 - Web grid and loupe views with keyboard navigation, metadata, folders, and EXIF filters.
-- Expo mobile app with native Library/Collections/Search tabs, Years/Months/All Photos browsing, captured/recently-added sorting, selection, debounced search, and Photos-inspired filters with searchable camera/lens/ISO/month lists and RAW/standard choices. Liquid Glass library chrome on supported iOS versions, a paged loupe with native iOS pinch zoom, and theme preferences.
+- Expo mobile app with native Library/Collections/Search tabs, bottom Years/Months/All Photos browsing, captured/recently-added sorting, selection, debounced search, and Photos-inspired filters with searchable camera/lens/ISO/month lists and RAW/standard choices. Liquid Glass chrome on supported iOS versions, a paged loupe with a synchronized thumbnail filmstrip and native iOS pinch zoom, and theme preferences.
 - Four WebP thumbnail sizes: `tiny`, `small`, `medium`, and `large`.
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
@@ -213,9 +213,9 @@ docker build --target mobile -t photobrain-mobile .
 
 The API image applies shared migrations on startup and runs on port 3000. The web image serves the Vite SPA on port 3001. The mobile image runs the Expo development server on port 8081; it is not a static Expo web-export image.
 
-The GitHub Actions workflow runs API tests/typecheck, web Playwright tests, and mobile Jest tests; publishes preview EAS OTA updates for pushes to `main`; builds production iOS artifacts and publishes matching updates for tags; builds API/web/mobile images; and updates image tags in the external ArgoCD repository on pushes to `main`.
+The GitHub Actions workflow runs API tests/typecheck, web Playwright tests, mobile Jest tests, and preview-build decision tests. Pushes to `main` ensure a compatible installable iOS preview before publishing iOS/Android preview OTA updates: reuse a finished binary, wait for an existing matching build, or build a new one based on the Expo runtime fingerprint. Version tags build production iOS artifacts and publish matching updates. The workflow also builds API/web/mobile images and updates external ArgoCD image tags on pushes to `main`.
 
-The manual `EAS Preview iOS Build` workflow creates an installable internal iOS preview when native changes require a new runtime fingerprint.
+The manual `EAS Preview iOS Build` workflow forces a fresh internal iOS preview. It shares the automatic release's concurrency group; both report an install link in the job summary. Keep EAS preview environment values aligned with `preview.env` in `apps/mobile/eas.json`; mismatches stop the release.
 
 For native mobile builds and OTA updates, see `apps/mobile/eas.json` and [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md).
 

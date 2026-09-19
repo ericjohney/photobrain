@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
-import { formatFileSize, parseDate } from "@photobrain/utils";
+import { parseDate } from "@photobrain/utils";
 import type { inferRouterOutputs } from "@trpc/server";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
@@ -19,6 +19,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { thumbnailUrl } from "@/config";
+import Filmstrip from "./Filmstrip";
+import GlassSurface from "./GlassSurface";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -99,6 +101,68 @@ function LoupePhoto({
 	);
 }
 
+function LoupePage({
+	photo,
+	width,
+	height,
+	active,
+	onPress,
+	onZoomChange,
+}: {
+	photo: PhotoMetadata;
+	width: number;
+	height: number;
+	active: boolean;
+	onPress: () => void;
+	onZoomChange: (zoomed: boolean) => void;
+}) {
+	const zoomRef = useRef<ScrollView>(null);
+
+	useEffect(() => {
+		if (Platform.OS !== "ios" || width === 0 || height === 0) return;
+		zoomRef.current?.scrollResponderZoomTo({
+			x: 0,
+			y: 0,
+			width,
+			height,
+			animated: false,
+		});
+		if (active) onZoomChange(false);
+	}, [active, height, onZoomChange, width]);
+
+	const image = (
+		<LoupePhoto
+			key={thumbnailUrl(photo.id, "large", photo.thumbnailUpdatedAt)}
+			photo={photo}
+			width={width}
+			height={height}
+			onPress={onPress}
+		/>
+	);
+	if (Platform.OS !== "ios") return image;
+
+	return (
+		<ScrollView
+			ref={zoomRef}
+			testID={`loupe-zoom-${photo.id}`}
+			style={{ width, height }}
+			contentContainerStyle={{ width, height }}
+			minimumZoomScale={1}
+			maximumZoomScale={5}
+			bouncesZoom
+			centerContent
+			showsHorizontalScrollIndicator={false}
+			showsVerticalScrollIndicator={false}
+			scrollEventThrottle={16}
+			onScroll={(event) => {
+				if (active) onZoomChange((event.nativeEvent.zoomScale ?? 1) > 1.01);
+			}}
+		>
+			{image}
+		</ScrollView>
+	);
+}
+
 export default function LoupeView({
 	photos,
 	initialIndex,
@@ -123,6 +187,11 @@ export default function LoupeView({
 	const onIndexChangeRef = useRef(onIndexChange);
 	onIndexChangeRef.current = onIndexChange;
 	const [chromeVisible, setChromeVisible] = useState(true);
+	const [zoomed, setZoomed] = useState(false);
+	const toggleChrome = useCallback(
+		() => setChromeVisible((visible) => !visible),
+		[],
+	);
 	const identityIndex = photos.findIndex(
 		(photo) => photo.id === currentPhotoIdRef.current,
 	);
@@ -170,6 +239,7 @@ export default function LoupeView({
 		currentIndexRef.current = index;
 		currentPhotoIdRef.current = photosRef.current[index]?.id ?? null;
 		setCurrentIndex(index);
+		setZoomed(false);
 		onIndexChangeRef.current(index);
 		void Haptics.selectionAsync();
 	}, []);
@@ -184,37 +254,31 @@ export default function LoupeView({
 		[handleIndexChange, width],
 	);
 
-	const renderItem = useCallback(
-		({ item }: { item: PhotoMetadata }) => {
-			const photo = (
-				<LoupePhoto
-					key={thumbnailUrl(item.id, "large", item.thumbnailUpdatedAt)}
-					photo={item}
-					width={width}
-					height={height}
-					onPress={() => setChromeVisible((visible) => !visible)}
-				/>
-			);
-
-			if (Platform.OS !== "ios") return photo;
-
-			return (
-				<ScrollView
-					testID={`loupe-zoom-${item.id}`}
-					style={{ width, height }}
-					contentContainerStyle={{ width, height }}
-					minimumZoomScale={1}
-					maximumZoomScale={5}
-					bouncesZoom
-					centerContent
-					showsHorizontalScrollIndicator={false}
-					showsVerticalScrollIndicator={false}
-				>
-					{photo}
-				</ScrollView>
-			);
+	const handleThumbnailPress = useCallback(
+		(photo: PhotoMetadata) => {
+			const index = photosRef.current.findIndex((item) => item.id === photo.id);
+			if (index < 0 || index === currentIndexRef.current) return;
+			handleIndexChange(index);
+			galleryRef.current?.scrollToOffset({
+				offset: index * width,
+				animated: false,
+			});
 		},
-		[height, width],
+		[handleIndexChange, width],
+	);
+
+	const renderItem = useCallback(
+		({ item }: { item: PhotoMetadata }) => (
+			<LoupePage
+				photo={item}
+				width={width}
+				height={height}
+				active={item.id === currentPhoto?.id}
+				onPress={toggleChrome}
+				onZoomChange={setZoomed}
+			/>
+		),
+		[currentPhoto?.id, height, toggleChrome, width],
 	);
 
 	if (!currentPhoto) {
@@ -231,7 +295,11 @@ export default function LoupeView({
 						},
 					]}
 				>
-					<View style={[styles.roundButton, styles.chromeSurface]}>
+					<GlassSurface
+						style={styles.roundButton}
+						fallbackStyle={styles.chromeSurface}
+						colorScheme="dark"
+					>
 						<Pressable
 							accessibilityRole="button"
 							accessibilityLabel="Close photo"
@@ -240,7 +308,7 @@ export default function LoupeView({
 						>
 							<Ionicons name="chevron-down" size={23} color="#ffffff" />
 						</Pressable>
-					</View>
+					</GlassSurface>
 				</View>
 			</View>
 		);
@@ -272,6 +340,7 @@ export default function LoupeView({
 				keyExtractor={(photo) => photo.id.toString()}
 				horizontal
 				pagingEnabled
+				scrollEnabled={!zoomed}
 				showsHorizontalScrollIndicator={false}
 				initialScrollIndex={safeCurrentIndex}
 				getItemLayout={(_, index) => ({
@@ -302,7 +371,11 @@ export default function LoupeView({
 						]}
 						pointerEvents="box-none"
 					>
-						<View style={[styles.roundButton, styles.chromeSurface]}>
+						<GlassSurface
+							style={styles.roundButton}
+							fallbackStyle={styles.chromeSurface}
+							colorScheme="dark"
+						>
 							<Pressable
 								accessibilityRole="button"
 								accessibilityLabel="Close photo"
@@ -311,12 +384,16 @@ export default function LoupeView({
 							>
 								<Ionicons name="chevron-down" size={23} color="#ffffff" />
 							</Pressable>
-						</View>
-						<View style={[styles.counterPill, styles.chromeSurface]}>
-							<Text style={styles.counterText}>
-								{safeCurrentIndex + 1} of {photos.length}
-							</Text>
-						</View>
+						</GlassSurface>
+						<GlassSurface
+							style={styles.datePill}
+							fallbackStyle={styles.chromeSurface}
+							colorScheme="dark"
+							pointerEvents="none"
+						>
+							<Text style={styles.dateText}>{formattedDate}</Text>
+							<Text style={styles.timeText}>{formattedTime}</Text>
+						</GlassSurface>
 					</View>
 
 					<View
@@ -331,29 +408,43 @@ export default function LoupeView({
 						]}
 						pointerEvents="box-none"
 					>
-						<View style={[styles.infoCard, styles.chromeSurface]}>
-							<View style={styles.photoInfo}>
-								<Text style={styles.dateText}>{formattedDate}</Text>
-								<Text style={styles.detailText} numberOfLines={1}>
-									{formattedTime}
-									{currentPhoto.width && currentPhoto.height
-										? `  ·  ${currentPhoto.width} × ${currentPhoto.height}`
-										: ""}
-									{`  ·  ${formatFileSize(currentPhoto.size)}`}
-								</Text>
-							</View>
-							<Pressable
-								accessibilityRole="button"
-								accessibilityLabel="Show photo info"
-								onPress={() => {
-									void Haptics.selectionAsync();
-									onShowMetadata(currentPhoto);
-								}}
-								style={styles.infoButton}
+						<Filmstrip
+							photos={photos}
+							activePhotoId={currentPhoto.id}
+							onPhotoPress={handleThumbnailPress}
+						/>
+						<View style={styles.bottomActions} pointerEvents="box-none">
+							<GlassSurface
+								style={styles.counterPill}
+								fallbackStyle={styles.chromeSurface}
+								colorScheme="dark"
+								pointerEvents="none"
 							>
-								<Ionicons name="information-circle" size={26} color="#ffffff" />
-								<Text style={styles.infoLabel}>Info</Text>
-							</Pressable>
+								<Text style={styles.counterText}>
+									{safeCurrentIndex + 1} of {photos.length}
+								</Text>
+							</GlassSurface>
+							<GlassSurface
+								style={styles.roundButton}
+								fallbackStyle={styles.chromeSurface}
+								colorScheme="dark"
+							>
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel="Show photo info"
+									onPress={() => {
+										void Haptics.selectionAsync();
+										onShowMetadata(currentPhoto);
+									}}
+									style={styles.buttonHitArea}
+								>
+									<Ionicons
+										name="information-circle"
+										size={26}
+										color="#ffffff"
+									/>
+								</Pressable>
+							</GlassSurface>
 						</View>
 					</View>
 				</>
@@ -372,57 +463,51 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		borderRadius: 22,
 	},
-	chromeSurface: { backgroundColor: "rgba(28,28,30,0.9)" },
+	chromeSurface: { backgroundColor: "#1c1c1e" },
 	topBar: {
 		position: "absolute",
 		top: 0,
 		left: 0,
 		right: 0,
 		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
+		alignItems: "flex-start",
+		gap: 12,
 	},
 	roundButton: {
 		width: 44,
 		height: 44,
+		flexShrink: 0,
 		borderRadius: 22,
 		borderCurve: "continuous",
 		overflow: "hidden",
 	},
 	buttonHitArea: { flex: 1, alignItems: "center", justifyContent: "center" },
+	datePill: {
+		flexShrink: 1,
+		minWidth: 0,
+		paddingHorizontal: 16,
+		paddingVertical: 8,
+		borderRadius: 22,
+		borderCurve: "continuous",
+	},
 	counterPill: {
-		minHeight: 36,
+		flexShrink: 1,
+		minWidth: 0,
+		minHeight: 44,
 		justifyContent: "center",
+		paddingVertical: 8,
 		paddingHorizontal: 13,
 		borderRadius: 18,
 		borderCurve: "continuous",
 	},
 	counterText: { color: "#ffffff", fontSize: 13, fontWeight: "600" },
-	bottomBar: { position: "absolute", bottom: 0 },
-	infoCard: {
-		minHeight: 70,
-		borderRadius: 24,
-		borderCurve: "continuous",
-		paddingLeft: 16,
-		paddingRight: 8,
-		paddingVertical: 8,
+	bottomBar: { position: "absolute", bottom: 0, gap: 8 },
+	bottomActions: {
 		flexDirection: "row",
 		alignItems: "center",
+		justifyContent: "space-between",
 		gap: 12,
 	},
-	photoInfo: { flex: 1, minWidth: 0 },
 	dateText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
-	detailText: { color: "rgba(255,255,255,0.72)", fontSize: 12, marginTop: 3 },
-	infoButton: {
-		width: 54,
-		minHeight: 54,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	infoLabel: {
-		color: "rgba(255,255,255,0.78)",
-		fontSize: 10,
-		fontWeight: "600",
-		marginTop: 1,
-	},
+	timeText: { color: "#e5e5ea", fontSize: 13, marginTop: 2 },
 });

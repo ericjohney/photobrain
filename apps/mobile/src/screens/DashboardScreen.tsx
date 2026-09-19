@@ -24,7 +24,10 @@ import {
 	View,
 	type ViewToken,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+	SafeAreaProvider,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import ActivityBar from "@/components/ActivityBar";
 import FilterSheet, {
 	EMPTY_FILTERS,
@@ -34,6 +37,7 @@ import FilterSheet, {
 	type LibrarySort,
 } from "@/components/FilterSheet";
 import LibraryHeader from "@/components/LibraryHeader";
+import LibraryTimeScope from "@/components/LibraryTimeScope";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
 import { thumbnailUrl } from "@/config";
@@ -146,6 +150,7 @@ export default function DashboardScreen() {
 	const gridRef = useRef<FlatList<SectionItem>>(null);
 	const [headerHeight, setHeaderHeight] = useState(0);
 	const [isOverPhotos, setIsOverPhotos] = useState(false);
+	const [timeScopeHeight, setTimeScopeHeight] = useState(0);
 	const [visibleDate, setVisibleDate] = useState("");
 	const [isVisible, setIsVisible] = useState(true);
 	const scrollPosition = useRef(0);
@@ -227,6 +232,12 @@ export default function DashboardScreen() {
 		() => makeTimeline(photos, grouping, columns),
 		[columns, grouping, photos],
 	);
+	const showTimeScope = photos.length > 0 && !isSelecting;
+	// Native tabs supply a per-screen safe area, including their current height.
+	const timeScopeBottom = insets.bottom + 12;
+	const gridBottomInset = showTimeScope
+		? timeScopeBottom + timeScopeHeight + 12
+		: insets.bottom + 12;
 	const hasActiveFilters = Object.values(filters).some(
 		(value) => value !== null,
 	);
@@ -301,6 +312,9 @@ export default function DashboardScreen() {
 	);
 	const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
 		setHeaderHeight(event.nativeEvent.layout.height);
+	}, []);
+	const handleTimeScopeLayout = useCallback((event: LayoutChangeEvent) => {
+		setTimeScopeHeight(event.nativeEvent.layout.height);
 	}, []);
 	const handleContentHeaderLayout = useCallback(
 		(event: LayoutChangeEvent) => {
@@ -732,10 +746,10 @@ export default function DashboardScreen() {
 				}
 				contentContainerStyle={[
 					sections.length === 0 && styles.emptyList,
-					{ paddingTop: headerHeight, paddingBottom: insets.bottom + 86 },
+					{ paddingTop: headerHeight, paddingBottom: gridBottomInset },
 				]}
 				contentInsetAdjustmentBehavior="never"
-				scrollIndicatorInsets={{ top: headerHeight }}
+				scrollIndicatorInsets={{ top: headerHeight, bottom: gridBottomInset }}
 				refreshControl={
 					<RefreshControl
 						refreshing={photosQuery.isFetching}
@@ -765,6 +779,25 @@ export default function DashboardScreen() {
 				onToggleSelection={toggleSelectionMode}
 				onLayout={handleHeaderLayout}
 			/>
+			{showTimeScope && (
+				<View
+					pointerEvents="box-none"
+					style={[
+						styles.timeScopeOverlay,
+						{
+							bottom: timeScopeBottom,
+							left: insets.left + 16,
+							right: insets.right + 16,
+						},
+					]}
+				>
+					<LibraryTimeScope
+						grouping={grouping}
+						onGroupingChange={handleGroupingChange}
+						onLayout={handleTimeScopeLayout}
+					/>
+				</View>
+			)}
 
 			<Modal
 				visible={library.viewMode === "loupe"}
@@ -774,7 +807,7 @@ export default function DashboardScreen() {
 				onRequestClose={library.closeLoupe}
 			>
 				{library.viewMode === "loupe" && <ExpoStatusBar style="light" />}
-				<View style={styles.loupeRoot}>
+				<SafeAreaProvider style={styles.loupeRoot}>
 					<LoupeView
 						key={library.loupeSession}
 						photos={photos}
@@ -788,7 +821,7 @@ export default function DashboardScreen() {
 						photo={metadataPhoto}
 						onClose={() => setMetadataPhoto(null)}
 					/>
-				</View>
+				</SafeAreaProvider>
 			</Modal>
 
 			<FilterSheet
@@ -803,8 +836,6 @@ export default function DashboardScreen() {
 				}}
 				activeFilters={filters}
 				onFilterChange={handleFilterChange}
-				grouping={grouping}
-				onGroupingChange={handleGroupingChange}
 				sort={sort}
 				onSortChange={(nextSort) => {
 					setSort(nextSort);
@@ -830,6 +861,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
 	container: { flex: 1 },
 	loupeRoot: { flex: 1 },
+	timeScopeOverlay: { position: "absolute" },
 	filterSummary: {
 		minHeight: 44,
 		alignSelf: "stretch",

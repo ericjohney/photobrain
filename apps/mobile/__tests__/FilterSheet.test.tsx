@@ -11,7 +11,6 @@ import { renderWithProviders } from "./test-utils";
 
 const mockOnClose = jest.fn();
 const mockOnFilterChange = jest.fn();
-const mockOnGroupingChange = jest.fn();
 const mockOnSortChange = jest.fn();
 const mockOnScan = jest.fn();
 const mockOnOpenSettings = jest.fn();
@@ -30,8 +29,6 @@ const defaultProps = {
 	},
 	activeFilters: EMPTY_FILTERS,
 	onFilterChange: mockOnFilterChange,
-	grouping: "all" as const,
-	onGroupingChange: mockOnGroupingChange,
 	sort: "captured" as const,
 	onSortChange: mockOnSortChange,
 	onScan: mockOnScan,
@@ -113,11 +110,13 @@ describe("FilterSheet", () => {
 		).toMatchObject({ paddingBottom: 45 });
 	});
 
-	it("separates sort, Filter, View Options, and library actions", async () => {
+	it("separates sorting, filters, and library actions from browsing scopes", async () => {
 		const ui = renderWithProviders(<FilterSheet {...defaultProps} />);
 		await ui.findByText("Library Options");
 		expect(ui.getByText("Sort By")).toBeTruthy();
-		expect(ui.getByText("View Options")).toBeTruthy();
+		expect(ui.queryByRole("radio", { name: "Years" })).toBeNull();
+		expect(ui.queryByRole("radio", { name: "Months" })).toBeNull();
+		expect(ui.queryByRole("radio", { name: "All Photos" })).toBeNull();
 		expect(ui.getByRole("button", { name: "Filter" })).toHaveAccessibilityValue(
 			{ text: "All Items" },
 		);
@@ -433,26 +432,18 @@ describe("FilterSheet", () => {
 		expect(ui.getByLabelText("Open settings")).toBeEnabled();
 	});
 
-	it("shows checkmarked sort/grouping choices and changes them independently", async () => {
+	it("changes sort choices without changing filters or dismissing options", async () => {
 		const ui = renderWithProviders(<FilterSheet {...defaultProps} />);
 		expect(
 			await ui.findByRole("radio", { name: "Date Captured" }),
 		).toBeChecked();
-		expect(ui.getByRole("radio", { name: "All Photos" })).toBeChecked();
 		fireEvent.press(ui.getByRole("radio", { name: "Recently Added" }));
-		fireEvent.press(ui.getByRole("radio", { name: "Months" }));
 		expect(mockOnSortChange).toHaveBeenCalledWith("added");
-		expect(mockOnGroupingChange).toHaveBeenCalledWith("months");
-		ui.rerender(
-			<FilterSheet {...defaultProps} sort="added" grouping="months" />,
-		);
+		ui.rerender(<FilterSheet {...defaultProps} sort="added" />);
 		expect(ui.getByRole("radio", { name: "Recently Added" })).toBeChecked();
-		expect(ui.getByRole("radio", { name: "Months" })).toBeChecked();
 		expect(ui.getByRole("radio", { name: "Date Captured" })).not.toBeChecked();
 		fireEvent.press(ui.getByRole("radio", { name: "Date Captured" }));
-		fireEvent.press(ui.getByRole("radio", { name: "Years" }));
 		expect(mockOnSortChange).toHaveBeenLastCalledWith("captured");
-		expect(mockOnGroupingChange).toHaveBeenLastCalledWith("years");
 		expect(mockOnFilterChange).not.toHaveBeenCalled();
 		expect(mockOnClose).not.toHaveBeenCalled();
 	});
@@ -462,14 +453,12 @@ describe("FilterSheet", () => {
 			<FilterSheet
 				{...defaultProps}
 				onSortChange={undefined}
-				onGroupingChange={undefined}
 				onScan={undefined}
 				onOpenSettings={undefined}
 			/>,
 		);
 		await ui.findByText("Library Options");
 		expect(ui.queryByText("Sort By")).toBeNull();
-		expect(ui.queryByText("View Options")).toBeNull();
 		expect(ui.queryByLabelText("Scan library")).toBeNull();
 		expect(ui.queryByLabelText("Open settings")).toBeNull();
 	});

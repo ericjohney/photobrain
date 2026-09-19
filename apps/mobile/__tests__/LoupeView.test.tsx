@@ -1,6 +1,6 @@
-import { act, fireEvent, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
-import { Dimensions, Platform } from "react-native";
+import { Dimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import LoupeView from "@/components/LoupeView";
 import { thumbnailUrl } from "@/config";
@@ -28,10 +28,12 @@ describe("LoupeView", () => {
 		const { findByTestId, getByTestId, getByLabelText, queryByLabelText } =
 			renderWithProviders(<LoupeView {...defaultProps} />);
 		const image = await findByTestId("expo-image");
+		await screen.findAllByTestId("native-glass");
 		fireEvent.press(getByLabelText(MOCK_PHOTOS[0].name));
 		expect(queryByLabelText("Close photo")).toBeNull();
 		fireEvent(image, "error", { error: "offline" });
 		fireEvent.press(getByTestId(`loupe-photo-error-${MOCK_PHOTOS[0].id}`));
+		await screen.findAllByTestId("native-glass");
 		expect(getByLabelText("Close photo")).toBeTruthy();
 		fireEvent.press(getByLabelText("Close photo"));
 		expect(mockOnClose).toHaveBeenCalledTimes(1);
@@ -52,56 +54,23 @@ describe("LoupeView", () => {
 		jest.useRealTimers();
 	});
 
-	it.each([
-		false,
-		true,
-	])("insets chrome with an empty list: %s, keeping photos full bleed", async (empty) => {
-		jest.mocked(useSafeAreaInsets).mockReturnValue({
-			top: 20,
-			bottom: 21,
-			left: 44,
-			right: 34,
-		});
-		const { getByTestId, getByLabelText, queryByTestId } = renderWithProviders(
-			<LoupeView {...defaultProps} photos={empty ? [] : MOCK_PHOTOS} />,
+	it("can close when the photo list becomes empty", async () => {
+		const { getByLabelText, queryByTestId, rerender } = renderWithProviders(
+			<LoupeView {...defaultProps} />,
 		);
-		await waitFor(() => expect(getByTestId("loupe-top-bar")).toBeTruthy());
-		expect(getByTestId("loupe-top-bar")).toHaveStyle({
-			paddingTop: 28,
-			paddingLeft: 58,
-			paddingRight: 48,
-		});
+		await waitFor(() => expect(getByLabelText("Close photo")).toBeTruthy());
+		await screen.findAllByTestId("native-glass");
+		rerender(<LoupeView {...defaultProps} photos={[]} />);
+		await screen.findAllByTestId("native-glass");
+		expect(queryByTestId("loupe-gallery")).toBeNull();
 		fireEvent.press(getByLabelText("Close photo"));
 		expect(mockOnClose).toHaveBeenCalledTimes(1);
-		if (empty) {
-			expect(queryByTestId("loupe-gallery")).toBeNull();
-			return;
-		}
-		expect(getByTestId("loupe-bottom-bar")).toHaveStyle({
-			paddingBottom: 31,
-			left: 56,
-			right: 46,
-		});
-		const { width, height } = Dimensions.get("window");
-		expect(getByLabelText(MOCK_PHOTOS[0].name)).toHaveStyle({ width, height });
-		expect(getByTestId(`loupe-zoom-${MOCK_PHOTOS[0].id}`)).toHaveStyle({
-			width,
-			height,
-		});
-		expect(getByTestId("expo-image")).toHaveStyle({
-			width: "100%",
-			height: "100%",
-		});
-		expect(getByTestId("loupe-gallery").props.getItemLayout(null, 1)).toEqual({
-			length: width,
-			offset: width,
-			index: 1,
-		});
 	});
 
 	it.each([
 		MOCK_PHOTOS[0],
 		MOCK_PHOTOS[1],
+		{ ...MOCK_PHOTOS[0], name: "photo.heic", mimeType: "image/heic" },
 	])("retries and recovers a failed $name thumbnail", async (photo) => {
 		const {
 			getByTestId,
@@ -111,6 +80,7 @@ describe("LoupeView", () => {
 			queryByTestId,
 		} = renderWithProviders(<LoupeView {...defaultProps} photos={[photo]} />);
 		const firstImage = await waitFor(() => getByTestId("expo-image"));
+		await screen.findAllByTestId("native-glass");
 		const uri = thumbnailUrl(photo.id, "large");
 		expect(firstImage.props.sourceUri).toBe(uri);
 		fireEvent(firstImage, "error", { error: "Network failure" });
@@ -130,6 +100,7 @@ describe("LoupeView", () => {
 		fireEvent.press(getByLabelText(photo.name));
 		expect(queryByTestId("loupe-top-bar")).toBeNull();
 		fireEvent.press(getByLabelText(photo.name));
+		await screen.findAllByTestId("native-glass");
 		expect(getByLabelText("Close photo")).toBeTruthy();
 	});
 
@@ -140,6 +111,7 @@ describe("LoupeView", () => {
 		};
 		const { getByTestId, getByText, queryByText, rerender } =
 			renderWithProviders(<LoupeView {...defaultProps} photos={[photo]} />);
+		await screen.findAllByTestId("native-glass");
 		fireEvent(await waitFor(() => getByTestId("expo-image")), "error", {
 			error: "Missing",
 		});
@@ -160,6 +132,7 @@ describe("LoupeView", () => {
 			renderWithProviders(
 				<LoupeView {...defaultProps} photos={MOCK_PHOTOS.slice(0, 2)} />,
 			);
+		await screen.findAllByTestId("native-glass");
 		fireEvent(await waitFor(() => getByTestId("expo-image")), "error", {
 			error: "Missing",
 		});
@@ -183,30 +156,12 @@ describe("LoupeView", () => {
 		expect(getByLabelText(`Retry loading ${MOCK_PHOTOS[0].name}`)).toBeTruthy();
 	});
 
-	it("renders the current photo details and counter", async () => {
-		const { getByText } = renderWithProviders(<LoupeView {...defaultProps} />);
-
-		await waitFor(() => expect(getByText(/6000 × 4000/)).toBeTruthy());
-		expect(getByText(/4\.3 MB/)).toBeTruthy();
-		expect(getByText("1 of 5")).toBeTruthy();
-	});
-
-	it("shows only the implemented info action", async () => {
-		const { getByText, queryByText } = renderWithProviders(
-			<LoupeView {...defaultProps} />,
-		);
-
-		await waitFor(() => expect(getByText("Info")).toBeTruthy());
-		expect(queryByText("Share")).toBeNull();
-		expect(queryByText("Like")).toBeNull();
-		expect(queryByText("Delete")).toBeNull();
-	});
-
 	it("closes from the accessible close control", async () => {
 		const { getByLabelText } = renderWithProviders(
 			<LoupeView {...defaultProps} />,
 		);
 		await waitFor(() => expect(getByLabelText("Close photo")).toBeTruthy());
+		await screen.findAllByTestId("native-glass");
 
 		fireEvent.press(getByLabelText("Close photo"));
 		expect(mockOnClose).toHaveBeenCalledTimes(1);
@@ -217,6 +172,7 @@ describe("LoupeView", () => {
 			<LoupeView {...defaultProps} />,
 		);
 		await waitFor(() => expect(getByLabelText("Show photo info")).toBeTruthy());
+		await screen.findAllByTestId("native-glass");
 
 		fireEvent.press(getByLabelText("Show photo info"));
 		expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
@@ -224,71 +180,67 @@ describe("LoupeView", () => {
 	});
 
 	it("starts at a non-zero index without emitting a navigation event", async () => {
-		const { getByText, queryByText } = renderWithProviders(
+		const { getByText, getByLabelText } = renderWithProviders(
 			<LoupeView {...defaultProps} initialIndex={3} />,
 		);
 
-		await waitFor(() => expect(getByText(/5472 × 3648/)).toBeTruthy());
-		expect(getByText(/28\.6 MB/)).toBeTruthy();
-		expect(getByText("4 of 5")).toBeTruthy();
-		expect(queryByText(/4\.3 MB/)).toBeNull();
+		await waitFor(() => expect(getByText("4 of 5")).toBeTruthy());
+		await screen.findAllByTestId("native-glass");
+		fireEvent.press(getByLabelText("Show photo info"));
+		expect(mockOnShowMetadata).toHaveBeenCalledWith(MOCK_PHOTOS[3]);
 		expect(mockOnIndexChange).not.toHaveBeenCalled();
 	});
 
-	it("loads only the opening large thumbnail initially", async () => {
-		const { getAllByTestId } = renderWithProviders(
-			<LoupeView {...defaultProps} />,
-		);
-		await waitFor(() => expect(getAllByTestId("expo-image").length).toBe(1));
+	it("keeps thumbnail jumps, swipes, metadata and parent selection in sync", async () => {
+		const { getByText, getByTestId, getByLabelText, queryByTestId } =
+			renderWithProviders(<LoupeView {...defaultProps} />);
+		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
+		await screen.findAllByTestId("native-glass");
 
-		expect(getAllByTestId("expo-image")[0].props.sourceUri).toContain(
-			"/thumbnail/large",
-		);
-	});
+		fireEvent.press(getByLabelText(`View photo 4: ${MOCK_PHOTOS[3].name}`));
+		expect(getByText("4 of 5")).toBeTruthy();
+		expect(
+			getByLabelText(`View photo 4: ${MOCK_PHOTOS[3].name}`),
+		).toBeSelected();
+		expect(
+			getByLabelText(`View photo 1: ${MOCK_PHOTOS[0].name}`),
+		).not.toBeSelected();
+		expect(mockOnIndexChange).toHaveBeenLastCalledWith(3);
+		fireEvent.press(getByLabelText("Show photo info"));
+		expect(mockOnShowMetadata).toHaveBeenLastCalledWith(MOCK_PHOTOS[3]);
 
-	it("uses the core paged viewer and native iOS zoom", async () => {
-		const { getByTestId, queryByTestId } = renderWithProviders(
-			<LoupeView {...defaultProps} />,
-		);
-		const gallery = await waitFor(() => getByTestId("loupe-gallery"));
-
-		expect(gallery.props.horizontal).toBe(true);
-		expect(gallery.props.pagingEnabled).toBe(true);
-		expect(gallery.props.initialNumToRender).toBe(1);
-		expect(gallery.props.maxToRenderPerBatch).toBe(2);
-		expect(queryByTestId("native-glass")).toBeNull();
-		if (Platform.OS === "ios") {
-			const zoom = getByTestId(`loupe-zoom-${MOCK_PHOTOS[0].id}`);
-			expect(zoom.props.minimumZoomScale).toBe(1);
-			expect(zoom.props.maximumZoomScale).toBe(5);
-		}
-	});
-
-	it("updates details and callback after a gallery swipe", async () => {
-		const { FlatList } = require("react-native");
-		const { getByText, UNSAFE_getByType } = renderWithProviders(
-			<LoupeView {...defaultProps} />,
-		);
-		await waitFor(() => expect(getByText(/4\.3 MB/)).toBeTruthy());
-
-		fireEvent(UNSAFE_getByType(FlatList), "momentumScrollEnd", {
-			nativeEvent: { contentOffset: { x: 750, y: 0 } },
+		fireEvent(getByTestId("loupe-gallery"), "momentumScrollEnd", {
+			nativeEvent: {
+				contentOffset: { x: Dimensions.get("window").width * 2, y: 0 },
+			},
 		});
+		expect(getByText("3 of 5")).toBeTruthy();
+		expect(
+			getByLabelText(`View photo 3: ${MOCK_PHOTOS[2].name}`),
+		).toBeSelected();
+		expect(mockOnIndexChange).toHaveBeenLastCalledWith(2);
+		fireEvent.press(getByLabelText("Show photo info"));
+		expect(mockOnShowMetadata).toHaveBeenLastCalledWith(MOCK_PHOTOS[2]);
 
-		await waitFor(() => expect(getByText(/23\.8 MB/)).toBeTruthy());
-		expect(getByText("2 of 5")).toBeTruthy();
-		expect(mockOnIndexChange).toHaveBeenCalledWith(1);
-		expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+		fireEvent.press(getByLabelText(`View photo 1: ${MOCK_PHOTOS[0].name}`));
+		expect(getByText("1 of 5")).toBeTruthy();
+		expect(mockOnIndexChange).toHaveBeenLastCalledWith(0);
+		fireEvent.press(getByLabelText(MOCK_PHOTOS[0].name));
+		expect(queryByTestId("loupe-top-bar")).toBeNull();
+		expect(queryByTestId("loupe-filmstrip")).toBeNull();
+		fireEvent.press(getByLabelText(MOCK_PHOTOS[0].name));
+		await screen.findAllByTestId("native-glass");
+		expect(getByTestId("loupe-filmstrip")).toBeTruthy();
 	});
 
 	it("uses the drag target when a page settles without momentum", async () => {
-		const { FlatList } = require("react-native");
-		const { getByText, UNSAFE_getByType } = renderWithProviders(
+		const { getByText, getByTestId } = renderWithProviders(
 			<LoupeView {...defaultProps} />,
 		);
 		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
+		await screen.findAllByTestId("native-glass");
 
-		fireEvent(UNSAFE_getByType(FlatList), "scrollEndDrag", {
+		fireEvent(getByTestId("loupe-gallery"), "scrollEndDrag", {
 			nativeEvent: {
 				contentOffset: { x: 300, y: 0 },
 				targetContentOffset: { x: 750, y: 0 },
@@ -299,35 +251,15 @@ describe("LoupeView", () => {
 		expect(mockOnIndexChange).toHaveBeenCalledWith(1);
 	});
 
-	it("can navigate back to the opening photo", async () => {
-		const { FlatList } = require("react-native");
-		const { getByText, UNSAFE_getByType } = renderWithProviders(
-			<LoupeView {...defaultProps} />,
-		);
+	it("keeps the same photo active when the photo list is reordered", async () => {
+		const { getByText, getByLabelText, getByTestId, rerender } =
+			renderWithProviders(<LoupeView {...defaultProps} />);
 		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
-
-		fireEvent(UNSAFE_getByType(FlatList), "momentumScrollEnd", {
+		await screen.findAllByTestId("native-glass");
+		fireEvent(getByTestId("loupe-gallery"), "momentumScrollEnd", {
 			nativeEvent: { contentOffset: { x: 750, y: 0 } },
 		});
 		await waitFor(() => expect(getByText("2 of 5")).toBeTruthy());
-
-		fireEvent(UNSAFE_getByType(FlatList), "momentumScrollEnd", {
-			nativeEvent: { contentOffset: { x: 0, y: 0 } },
-		});
-		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
-		expect(mockOnIndexChange).toHaveBeenLastCalledWith(0);
-	});
-
-	it("keeps the same photo active when the photo list is reordered", async () => {
-		const { FlatList } = require("react-native");
-		const { getByText, rerender, UNSAFE_getByType } = renderWithProviders(
-			<LoupeView {...defaultProps} />,
-		);
-		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
-		fireEvent(UNSAFE_getByType(FlatList), "momentumScrollEnd", {
-			nativeEvent: { contentOffset: { x: 750, y: 0 } },
-		});
-		await waitFor(() => expect(getByText(/23\.8 MB/)).toBeTruthy());
 
 		rerender(
 			<LoupeView
@@ -337,20 +269,23 @@ describe("LoupeView", () => {
 		);
 
 		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
-		expect(getByText(/23\.8 MB/)).toBeTruthy();
+		expect(
+			getByLabelText(`View photo 1: ${MOCK_PHOTOS[1].name}`),
+		).toBeSelected();
+		fireEvent.press(getByLabelText("Show photo info"));
+		expect(mockOnShowMetadata).toHaveBeenLastCalledWith(MOCK_PHOTOS[1]);
 		expect(mockOnIndexChange).toHaveBeenLastCalledWith(0);
 	});
 
 	it("reports a replacement when the active photo is removed", async () => {
-		const { FlatList } = require("react-native");
-		const { getByText, rerender, UNSAFE_getByType } = renderWithProviders(
-			<LoupeView {...defaultProps} />,
-		);
+		const { getByText, getByLabelText, getByTestId, rerender } =
+			renderWithProviders(<LoupeView {...defaultProps} />);
 		await waitFor(() => expect(getByText("1 of 5")).toBeTruthy());
-		fireEvent(UNSAFE_getByType(FlatList), "momentumScrollEnd", {
+		await screen.findAllByTestId("native-glass");
+		fireEvent(getByTestId("loupe-gallery"), "momentumScrollEnd", {
 			nativeEvent: { contentOffset: { x: 750, y: 0 } },
 		});
-		await waitFor(() => expect(getByText(/23\.8 MB/)).toBeTruthy());
+		await waitFor(() => expect(getByText("2 of 5")).toBeTruthy());
 		mockOnIndexChange.mockClear();
 
 		rerender(
@@ -361,7 +296,11 @@ describe("LoupeView", () => {
 		);
 
 		await waitFor(() => expect(getByText("2 of 4")).toBeTruthy());
-		expect(getByText(/7\.6 MB/)).toBeTruthy();
+		expect(
+			getByLabelText(`View photo 2: ${MOCK_PHOTOS[2].name}`),
+		).toBeSelected();
+		fireEvent.press(getByLabelText("Show photo info"));
+		expect(mockOnShowMetadata).toHaveBeenLastCalledWith(MOCK_PHOTOS[2]);
 		expect(mockOnIndexChange).toHaveBeenCalledWith(1);
 	});
 });

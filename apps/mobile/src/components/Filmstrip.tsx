@@ -1,11 +1,9 @@
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
-import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import React, { useCallback, useEffect, useRef } from "react";
-import { thumbnailUrl } from "@/config";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
-import { useColors } from "@/theme";
+import { thumbnailUrl } from "@/config";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -13,141 +11,115 @@ type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 interface FilmstripProps {
 	photos: PhotoMetadata[];
 	activePhotoId: number | null;
-	apiUrl: string;
 	onPhotoPress: (photo: PhotoMetadata) => void;
 }
 
-const THUMBNAIL_SIZE = 60;
-const THUMBNAIL_SPACING = 2;
+const ITEM_WIDTH = 52;
 
 export default function Filmstrip({
 	photos,
 	activePhotoId,
-	apiUrl,
 	onPhotoPress,
 }: FilmstripProps) {
-	const colors = useColors();
-	const flatListRef = useRef<FlatList>(null);
-
-	// Scroll to active photo when it changes
-	useEffect(() => {
-		if (activePhotoId !== null) {
-			const index = photos.findIndex((p) => p.id === activePhotoId);
-			if (index >= 0 && flatListRef.current) {
-				flatListRef.current.scrollToIndex({
-					index,
-					animated: true,
-					viewPosition: 0.5,
-				});
-			}
-		}
-	}, [activePhotoId, photos]);
-
-	const handlePress = useCallback(
-		(photo: PhotoMetadata) => {
-			Haptics.selectionAsync();
-			onPhotoPress(photo);
-		},
-		[onPhotoPress],
+	const flatListRef = useRef<FlatList<PhotoMetadata>>(null);
+	const [width, setWidth] = useState(0);
+	const activeIndex = Math.max(
+		0,
+		photos.findIndex((photo) => photo.id === activePhotoId),
 	);
+	const edgePadding = Math.max(0, (width - ITEM_WIDTH) / 2);
+	const centerActivePhoto = useCallback(() => {
+		if (width === 0 || photos.length === 0) return;
+		flatListRef.current?.scrollToOffset({
+			offset: activeIndex * ITEM_WIDTH,
+			animated: false,
+		});
+	}, [activeIndex, photos.length, width]);
+
+	useEffect(() => {
+		centerActivePhoto();
+	}, [centerActivePhoto]);
 
 	const renderItem = useCallback(
-		({ item }: { item: PhotoMetadata }) => {
-			const isActive = activePhotoId === item.id;
-
-			return (
-				<Pressable
-					onPress={() => handlePress(item)}
+		({ item, index }: { item: PhotoMetadata; index: number }) => (
+			<Pressable
+				accessibilityRole="button"
+				accessibilityLabel={`View photo ${index + 1}: ${item.name}`}
+				accessibilityState={{ selected: activePhotoId === item.id }}
+				onPress={() => onPhotoPress(item)}
+				style={styles.target}
+			>
+				<View
 					style={[
 						styles.thumbnail,
-						{ backgroundColor: colors.muted },
-						isActive && { borderColor: colors.selection, borderWidth: 2 },
+						activePhotoId === item.id && styles.selected,
 					]}
 				>
 					<Image
-						source={{ uri: thumbnailUrl(item.id, "tiny", item.thumbnailUpdatedAt) }}
+						testID={`filmstrip-thumbnail-${item.id}`}
+						source={{
+							uri: thumbnailUrl(item.id, "small", item.thumbnailUpdatedAt),
+						}}
 						style={styles.thumbnailImage}
 						contentFit="cover"
 						cachePolicy="memory-disk"
+						accessibilityIgnoresInvertColors
 					/>
-					{/* RAW indicator */}
-					{item.isRaw && (
-						<View style={styles.rawBadge}>
-							<View style={styles.rawDot} />
-						</View>
-					)}
-				</Pressable>
-			);
-		},
-		[activePhotoId, apiUrl, colors, handlePress],
+				</View>
+			</Pressable>
+		),
+		[activePhotoId, onPhotoPress],
 	);
 
-	const getItemLayout = useCallback(
-		(_: unknown, index: number) => ({
-			length: THUMBNAIL_SIZE + THUMBNAIL_SPACING,
-			offset: (THUMBNAIL_SIZE + THUMBNAIL_SPACING) * index,
-			index,
-		}),
-		[],
-	);
-
-	const keyExtractor = useCallback(
-		(item: PhotoMetadata) => item.id.toString(),
-		[],
-	);
-
-	if (photos.length === 0) {
-		return null;
-	}
+	if (photos.length === 0) return null;
 
 	return (
-		<View style={[styles.container, { backgroundColor: colors.filmstrip }]}>
+		<View
+			style={styles.container}
+			onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+		>
 			<FlatList
 				ref={flatListRef}
+				testID="loupe-filmstrip"
 				data={photos}
+				extraData={activePhotoId}
 				renderItem={renderItem}
-				keyExtractor={keyExtractor}
+				keyExtractor={(photo) => photo.id.toString()}
 				horizontal
 				showsHorizontalScrollIndicator={false}
-				getItemLayout={getItemLayout}
+				initialScrollIndex={activeIndex}
+				getItemLayout={(_, index) => ({
+					length: ITEM_WIDTH,
+					offset: edgePadding + ITEM_WIDTH * index,
+					index,
+				})}
+				onContentSizeChange={centerActivePhoto}
 				initialNumToRender={15}
 				maxToRenderPerBatch={10}
 				windowSize={5}
-				contentContainerStyle={styles.contentContainer}
+				contentContainerStyle={{ paddingHorizontal: edgePadding }}
 			/>
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		height: THUMBNAIL_SIZE + 16,
-		paddingVertical: 8,
-	},
-	contentContainer: {
-		paddingHorizontal: 8,
-		gap: THUMBNAIL_SPACING,
+	container: { height: 68 },
+	target: {
+		width: ITEM_WIDTH,
+		height: 68,
+		justifyContent: "center",
+		alignItems: "center",
 	},
 	thumbnail: {
-		width: THUMBNAIL_SIZE,
-		height: THUMBNAIL_SIZE,
-		borderRadius: 4,
+		width: 48,
+		height: 58,
+		borderRadius: 6,
+		borderWidth: 2,
+		borderColor: "transparent",
+		backgroundColor: "#1c1c1e",
 		overflow: "hidden",
-		marginHorizontal: THUMBNAIL_SPACING / 2,
 	},
-	thumbnailImage: {
-		width: "100%",
-		height: "100%",
-	},
-	rawBadge: {
-		position: "absolute",
-		top: 4,
-		left: 4,
-	},
-	rawDot: {
-		width: 6,
-		height: 6,
-		borderRadius: 3,
-		backgroundColor: "#f97316",
-	},
+	selected: { borderColor: "#ffffff" },
+	thumbnailImage: { width: "100%", height: "100%" },
 });
