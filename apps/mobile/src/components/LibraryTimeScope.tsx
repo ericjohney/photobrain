@@ -61,37 +61,44 @@ export default function LibraryTimeScope({
 
 			<GlassSurface style={styles.scopeSurface} fallbackStyle={fallbackStyle}>
 				<View accessibilityRole="tablist" style={styles.segments}>
-					{SCOPES.map(({ value, label }) => (
-						<Pressable
-							key={value}
-							accessibilityRole="tab"
-							accessibilityLabel={label}
-							accessibilityState={{ selected: grouping === value }}
-							onPress={() => onGroupingChange(value)}
-							style={({ pressed }) => [
-								styles.segment,
-								grouping === value && { backgroundColor: colors.primary },
-								pressed && styles.pressed,
-							]}
-						>
-							<Text
-								adjustsFontSizeToFit
-								minimumFontScale={0.75}
-								numberOfLines={1}
-								style={[
-									styles.label,
-									{
-										color:
-											grouping === value
-												? colors.primaryForeground
-												: colors.foreground,
-									},
-								]}
+					{SCOPES.map(({ value, label }) => {
+						const selected = grouping === value;
+						return (
+							<GlassSurface
+								key={value}
+								testID={`library-scope-surface-${value}`}
+								style={styles.segmentSurface}
+								fallbackStyle={{
+									backgroundColor: selected ? colors.secondary : "transparent",
+								}}
+								glassEffectStyle={{
+									style: selected ? "regular" : "none",
+									animate: true,
+								}}
+								isInteractive
 							>
-								{label}
-							</Text>
-						</Pressable>
-					))}
+								<Pressable
+									accessibilityRole="tab"
+									accessibilityLabel={label}
+									accessibilityState={{ selected }}
+									onPress={() => onGroupingChange(value)}
+									style={({ pressed }) => [
+										styles.segment,
+										pressed && styles.pressed,
+									]}
+								>
+									<Text
+										adjustsFontSizeToFit
+										minimumFontScale={0.75}
+										numberOfLines={1}
+										style={[styles.label, { color: colors.foreground }]}
+									>
+										{label}
+									</Text>
+								</Pressable>
+							</GlassSurface>
+						);
+					})}
 				</View>
 			</GlassSurface>
 
@@ -151,12 +158,17 @@ const styles = StyleSheet.create({
 		padding: 4,
 		gap: 2,
 	},
-	segment: {
+	segmentSurface: {
 		flex: 1,
 		minWidth: 0,
+		borderRadius: 24,
+		borderCurve: "continuous",
+		overflow: "hidden",
+	},
+	segment: {
+		flex: 1,
 		justifyContent: "center",
 		alignItems: "center",
-		borderRadius: 24,
 		paddingHorizontal: 4,
 	},
 	label: { fontSize: 14, fontWeight: "600", textAlign: "center" },

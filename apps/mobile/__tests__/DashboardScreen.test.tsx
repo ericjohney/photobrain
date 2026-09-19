@@ -187,15 +187,26 @@ describe("DashboardScreen", () => {
 		expect(setTabBarHidden).toHaveBeenLastCalledWith(false);
 	});
 
-	it("changes browsing scopes directly without filtering the full library", async () => {
+	it("uses Liquid Glass for each selected browsing scope", async () => {
 		const view = renderWithProviders(<DashboardScreen />);
 		await view.findByText("5 Items");
 		scrollLibrary(view, 1000);
 		expect(view.getByRole("tab", { name: "All", selected: true })).toBeTruthy();
+		await waitFor(() =>
+			expect(
+				view.getByTestId("library-scope-surface-all").props.glassEffectStyle,
+			).toEqual({ style: "regular", animate: true }),
+		);
+		expect(
+			view.getByTestId("library-scope-surface-months").props.glassEffectStyle,
+		).toEqual({ style: "none", animate: true });
 		fireEvent.press(view.getByRole("tab", { name: "Months" }));
 		expect(
 			view.getByRole("tab", { name: "Months", selected: true }),
 		).toBeTruthy();
+		expect(
+			view.getByTestId("library-scope-surface-months").props.glassEffectStyle,
+		).toEqual({ style: "regular", animate: true });
 		expect(view.getByText("June 2024")).toBeTruthy();
 		expect(view.getByText("July 2024")).toBeTruthy();
 		expect(view.getByText("August 2024")).toBeTruthy();
@@ -204,10 +215,12 @@ describe("DashboardScreen", () => {
 		expect(
 			view.getByRole("tab", { name: "Years", selected: true }),
 		).toBeTruthy();
+		expect(
+			view.getByTestId("library-scope-surface-years").props.glassEffectStyle,
+		).toEqual({ style: "regular", animate: true });
 		expect(view.getByText("2024")).toBeTruthy();
 		expect(view.queryByText("August 2024")).toBeNull();
 		fireEvent.press(view.getByRole("tab", { name: "All" }));
-		expect(view.queryByTestId("library-browsing-bar")).toBeNull();
 		expect(view.queryByText("2024")).toBeNull();
 		expect(view.getAllByTestId(/^photo-thumbnail-/)).toHaveLength(5);
 	});
