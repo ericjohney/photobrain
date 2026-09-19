@@ -1,14 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { fireEvent, waitFor } from "@testing-library/react-native";
+import {
+	fireEvent,
+	type RenderResult,
+	waitFor,
+} from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
-import { StyleSheet } from "react-native";
+import { FlatList, StyleSheet } from "react-native";
 
 const mockPhotosRefetch = jest.fn();
 const mockFilterOptionsRefetch = jest.fn();
 let mockPhotosError = false;
 let mockPhotosHaveData = true;
 let mockFilteredPhotosError = false;
-let mockPhotosQueryOptions: { placeholderData?: unknown } | undefined;
 let mockScanResult: {
 	success: boolean;
 	jobId?: string;
@@ -19,11 +22,7 @@ jest.mock("@/lib/trpc", () => ({
 	trpc: {
 		photos: {
 			useQuery: jest.fn(
-				(
-					input: { camera?: string; filterRaw?: "raw" | "standard" },
-					options?: { placeholderData?: unknown },
-				) => {
-					mockPhotosQueryOptions = options;
+				(input: { camera?: string; filterRaw?: "raw" | "standard" }) => {
 					const filteredRequestFailed =
 						input.camera !== undefined && mockFilteredPhotosError;
 					const photos = input.camera
@@ -77,7 +76,42 @@ jest.mock("@/lib/trpc", () => ({
 }));
 
 import DashboardScreen from "@/screens/DashboardScreen";
+import { MOCK_PHOTOS } from "./fixtures";
 import { renderWithProviders } from "./test-utils";
+
+function scrollLibrary(view: RenderResult, offset: number, photoId = 5) {
+	const grid = view
+		.UNSAFE_getAllByType(FlatList)
+		.find((list) => list.props.testID === "library-grid");
+	if (!grid) throw new Error("Expected library grid");
+	const index = grid.props.data.findIndex(
+		(item: { type: string; photos?: Array<{ id: number }> }) =>
+			item.type === "photo-row" &&
+			item.photos?.some((photo) => photo.id === photoId),
+	);
+	const item = grid.props.data[index];
+	fireEvent(grid, "viewableItemsChanged", {
+		viewableItems: [{ item, index, key: item.key, isViewable: true }],
+		changed: [],
+	});
+	fireEvent.scroll(view.getByTestId("library-grid"), {
+		nativeEvent: {
+			contentOffset: { x: 0, y: offset },
+			contentSize: { width: 375, height: 2000 },
+			layoutMeasurement: { width: 375, height: 600 },
+		},
+	});
+}
+
+function capturedDate(photoId: number) {
+	const photo = MOCK_PHOTOS.find((item) => item.id === photoId);
+	if (!photo?.exif?.dateTaken) throw new Error("Expected fixture date");
+	return new Date(photo.exif.dateTaken).toLocaleDateString(undefined, {
+		month: "long",
+		day: "numeric",
+		year: "numeric",
+	});
+}
 
 describe("DashboardScreen", () => {
 	beforeEach(() => {
@@ -86,26 +120,20 @@ describe("DashboardScreen", () => {
 		mockPhotosError = false;
 		mockPhotosHaveData = true;
 		mockFilteredPhotosError = false;
-		mockPhotosQueryOptions = undefined;
 		mockScanResult = { success: true, jobId: "test-job-123" };
 	});
 	afterEach(() => jest.useRealTimers());
 
-	it("renders the photo-backed library header and ungrouped grid", async () => {
-		const { getByLabelText, getByTestId, getByText, queryByText } =
-			renderWithProviders(<DashboardScreen />);
+	it("renders library controls and the ungrouped grid", async () => {
+		const { getByLabelText, getByText, queryByText } = renderWithProviders(
+			<DashboardScreen />,
+		);
 
 		await waitFor(() => expect(getByText("Library")).toBeTruthy());
 		expect(getByText("5 Items")).toBeTruthy();
 		expect(getByText("Select")).toBeTruthy();
 		expect(getByLabelText("Library options")).toBeTruthy();
-		expect(getByTestId("library-header-image").props.sourceUri).toContain(
-			"/thumbnail/medium",
-		);
 		expect(queryByText("August 2024")).toBeNull();
-		expect(mockPhotosQueryOptions?.placeholderData).toEqual(
-			expect.any(Function),
-		);
 	});
 
 	it("uses five edge-to-edge columns on compact phones", async () => {
@@ -190,24 +218,26 @@ describe("DashboardScreen", () => {
 		expect(getByText("5 Items")).toBeTruthy();
 	});
 
-	it("keeps a selection exit outside the scrolling photo list", async () => {
-		const { FlatList } = require("react-native");
-		const {
-			findByTestId,
-			getByLabelText,
-			queryByLabelText,
-			UNSAFE_getAllByType,
-		} = renderWithProviders(<DashboardScreen />);
-		fireEvent(await findByTestId("photo-thumbnail-5"), "longPress");
-		const exit = getByLabelText("Finish selection");
-		for (const list of UNSAFE_getAllByType(FlatList)) {
-			expect(
-				list.findAllByProps({ accessibilityLabel: "Finish selection" }),
-			).toHaveLength(0);
-		}
-		fireEvent.press(exit);
-		expect(queryByLabelText("Finish selection")).toBeNull();
-		expect(getByLabelText("Select photos")).toBeTruthy();
+	it("keeps options and selection exit usable while browsing beneath the header", async () => {
+		const view = renderWithProviders(<DashboardScreen />);
+		await view.findByTestId("photo-thumbnail-5");
+		scrollLibrary(view, 180);
+		expect(view.getByText(capturedDate(5))).toBeTruthy();
+		expect(view.queryByText("5 Items")).toBeNull();
+		fireEvent.press(view.getByLabelText("Library options"));
+		expect(view.getByLabelText("Recently Added")).toBeTruthy();
+		fireEvent.press(view.getByLabelText("Done"));
+
+		fireEvent.press(view.getByLabelText("Select photos"));
+		expect(view.getByText("Select Items")).toBeTruthy();
+		fireEvent.press(view.getByTestId("photo-thumbnail-5"));
+		expect(view.getByText("1 Selected")).toBeTruthy();
+		expect(view.getAllByLabelText("Finish selecting photos")).toHaveLength(1);
+		fireEvent.press(view.getByLabelText("Finish selecting photos"));
+		expect(view.getByText(capturedDate(5))).toBeTruthy();
+		expect(view.getByLabelText("Select photos")).toBeTruthy();
+		scrollLibrary(view, 0);
+		expect(view.getByText("5 Items")).toBeTruthy();
 	});
 
 	it("does not retain stale loupe metadata between photos", async () => {
@@ -338,16 +368,43 @@ describe("DashboardScreen", () => {
 		expect(queryByText("No photos match your filters")).toBeNull();
 	});
 
-	it("groups from the library without opening options", async () => {
+	it("tracks the visible photo date in grouped timelines and resets changed contexts", async () => {
 		const view = renderWithProviders(<DashboardScreen />);
-		fireEvent.press(await view.findByLabelText("Group library by months"));
-		expect(view.getByText("August 2024")).toBeTruthy();
-		expect(
-			view.getByLabelText("Group library by months").props.accessibilityState
-				.checked,
-		).toBe(true);
-		fireEvent.press(view.getByLabelText("Group library by all"));
-		expect(view.queryByText("August 2024")).toBeNull();
+		fireEvent.press(await view.findByLabelText("Library options"));
+		fireEvent.press(view.getByLabelText("Months"));
+		fireEvent.press(view.getByLabelText("Done"));
+		scrollLibrary(view, 320, 4);
+		expect(view.getByText(capturedDate(4))).toBeTruthy();
+		expect(view.queryByText(capturedDate(5))).toBeNull();
+
+		fireEvent.press(view.getByLabelText("Library options"));
+		fireEvent.press(view.getByLabelText("All Photos"));
+		fireEvent.press(view.getByLabelText("Done"));
+		expect(view.getByText("5 Items")).toBeTruthy();
+		expect(view.queryByText(capturedDate(4))).toBeNull();
+
+		scrollLibrary(view, 180);
+		expect(view.getByText(capturedDate(5))).toBeTruthy();
+		fireEvent.press(view.getByLabelText("Library options"));
+		fireEvent.press(view.getByLabelText("Filter"));
+		fireEvent.press(view.getByLabelText("RAW"));
+		fireEvent.press(view.getByLabelText("Done"));
+		expect(view.getByText("2 Items")).toBeTruthy();
+		expect(view.queryByText(capturedDate(5))).toBeNull();
+		fireEvent.press(view.getByLabelText("Show all items"));
+		expect(view.getByText("5 Items")).toBeTruthy();
+	});
+
+	it("retains the browsing date during a cached refetch failure", async () => {
+		const view = renderWithProviders(<DashboardScreen />);
+		await view.findByTestId("photo-thumbnail-5");
+		scrollLibrary(view, 180);
+		mockPhotosError = true;
+		view.rerender(<DashboardScreen />);
+		expect(view.getByText(capturedDate(5))).toBeTruthy();
+		expect(view.queryByText("Couldn't Load Library")).toBeNull();
+		scrollLibrary(view, 0);
+		expect(view.getByText("5 Items")).toBeTruthy();
 	});
 
 	it("filters RAW and standard photos, reopens filters directly, and resets from the grid", async () => {
@@ -390,13 +447,17 @@ describe("DashboardScreen", () => {
 				);
 		await view.findByLabelText("Library options");
 		expect(photoIds()).toEqual([5, 4, 3, 1, 2]);
-		fireEvent.press(view.getByLabelText("Group library by months"));
+		fireEvent.press(view.getByLabelText("Library options"));
+		fireEvent.press(view.getByLabelText("Months"));
+		fireEvent.press(view.getByLabelText("Done"));
 		fireEvent.press(view.getByLabelText("Library options"));
 		fireEvent.press(view.getByLabelText("Recently Added"));
 		fireEvent.press(view.getByLabelText("Done"));
 		expect(photoIds()).toEqual([5, 4, 3, 2, 1]);
 		expect(view.queryByText("August 2024")).toBeNull();
-		fireEvent.press(view.getByLabelText("Group library by months"));
+		fireEvent.press(view.getByLabelText("Library options"));
+		fireEvent.press(view.getByLabelText("Months"));
+		fireEvent.press(view.getByLabelText("Done"));
 		expect(photoIds()).toEqual([5, 4, 3, 1, 2]);
 	});
 

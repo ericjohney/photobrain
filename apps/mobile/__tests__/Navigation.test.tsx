@@ -21,9 +21,6 @@ describe("active Expo Router navigation", () => {
 		expect(
 			getByTestId("native-tab-index").props.disableAutomaticContentInsets,
 		).toBe(true);
-		expect(
-			getByTestId("native-tab-index").props.unstable_nativeProps.onWillAppear,
-		).toEqual(expect.any(Function));
 		expect(getByTestId("native-tab-search").props.role).toBe("search");
 	});
 

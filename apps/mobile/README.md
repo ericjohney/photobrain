@@ -48,12 +48,12 @@ Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN add
 ## Current Behavior
 
 - Photos are sorted newest-first in a continuous five-column phone grid, with optional year or month grouping and up to eight columns on wide layouts.
-- The photo-backed Library header exposes selection, Years/Months/All Photos, and Library Options. Options separates captured/recently-added sorting, filters, view grouping, scan initiation, and Settings.
+- The fixed Library header keeps Options and selection available while photos scroll beneath a live blur and soft fade. Its subtitle changes from item count to the visible photo date. Options contains Years/Months/All Photos, captured/recently-added sorting, filters, scan initiation, and Settings.
 - Filter combines RAW/standard choices with searchable camera/lens/ISO/month lists. Changes apply immediately; Done dismisses. All Items resets filters, and the library's active-filter summary offers direct editing and a one-tap reset.
 - The Search tab uses the native iOS search bar and debounces natural-language queries by 350 ms.
 - Tapping a photo opens a modal loupe with pinch/pan/zoom, swipe navigation, haptics, and metadata.
 - The loupe uses the `large` thumbnail URL; it does not request the original file route.
-- Liquid Glass is native on supported iOS versions and falls back when unavailable or Reduce Transparency is enabled.
+- Liquid Glass and the live header blur use opaque fallbacks when unavailable or Reduce Transparency is enabled. Larger text stacks the header controls without hiding them.
 - Collections is an active native tab but remains a placeholder.
 - Settings persists light/dark/system themes. Grid-column and haptic settings are currently disabled or hardcoded.
 - The loupe does not display unimplemented share/like/delete controls.
@@ -85,6 +85,8 @@ The `typecheck` script runs `tsc --noEmit` across active route and source files.
 `eas.json` defines `development`, `development-simulator`, `preview`, and `production` build profiles with matching EAS channels. `app.json` configures `expo-updates` with a fingerprint runtime policy and on-load checks.
 
 The current native stack uses Expo SDK 57 and an iOS deployment target of 26.0. Use EAS for device, simulator, preview, and TestFlight builds when a local Mac toolchain is unavailable.
+
+The Library header uses the native `expo-blur` and `@react-native-masked-view/masked-view` modules. Rebuild the development client after native dependency changes; a Metro reload or OTA update cannot install missing native modules.
 
 The GitHub Actions workflow publishes preview OTA updates on pushes to `main` and production iOS updates on version tags after API/web/mobile tests. Tagged releases first wait for a production iOS EAS build so native dependency changes have a matching binary. The manual `useOTAUpdates` hook is used by legacy `App.tsx`, not the active Expo Router layout; do not document an alert/restart flow as active without wiring it into the active layout.
 

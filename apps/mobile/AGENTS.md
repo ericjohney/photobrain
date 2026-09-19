@@ -25,6 +25,7 @@ Scope: `apps/mobile`.
 - `src/screens/CollectionsScreen.tsx`: placeholder.
 - `src/screens/AboutScreen.tsx`: app/about content.
 - `src/components/GlassSurface.tsx`: native Liquid Glass with platform and Reduce Transparency fallbacks.
+- `src/components/LibraryHeader.tsx`: persistent Library overlay, live masked blur, adaptive title/date, and selection controls.
 - `src/components/LoupeView.tsx`: core paged swipe viewer, native iOS zoom, haptics, and the implemented metadata action.
 - `src/components/MetadataPanel.tsx`: EXIF/RAW metadata modal.
 - `src/components/FilterSheet.tsx`: Library Options, sorting, and searchable RAW/standard/camera/lens/ISO/month filters.
@@ -62,14 +63,14 @@ Do not use React Navigation focus or navigation hooks inside `SearchScreen`. The
 Dashboard behavior:
 
 - Photos default to newest-first using EXIF date, modified date, or created date. Recently Added uses descending photo IDs (insertion order), not filesystem creation dates.
-- All Photos is a continuous edge-to-edge grid; Years/Months/All Photos are available in the Library header and Library Options. Date grouping selects captured-date sorting; Recently Added returns to All Photos to avoid splitting date groups.
+- All Photos is a continuous edge-to-edge grid; Years/Months/All Photos are available in Library Options. Date grouping selects captured-date sorting; Recently Added returns to All Photos to avoid splitting date groups.
 - The responsive grid uses five columns on phones and up to eight on wide layouts.
-- Library and Search grids use `small` thumbnails for Retina sharpness; the Library backdrop uses one blurred `medium` thumbnail.
+- Library and Search grids use `small` thumbnails for Retina sharpness. The Library header blurs the actual scrolling grid with `expo-blur` and a fading mask, not a copied photo.
 - Pull-to-refresh refetches photos and filter options.
 - Library Options separates sorting, a Filter destination, View Options grouping, and scan/Settings actions. Filter has RAW/Standard choices and camera/lens/ISO/month summaries that open searchable, virtualized checkmarked lists.
 - Filters combine across categories with one value per category, apply immediately, and remain in memory. Done dismisses without an apply transaction. All Items/Clear All resets filters, not sorting/grouping; each category's All clears only that category. Active values remain removable even if metadata disappears or fails to load.
-- The photo-backed Library header exposes Library Options and a basic selection mode. An active-filter summary opens Filter directly; its close button restores all items.
-- Selection has a persistent Done control outside the scrolling grid; bulk actions are not implemented. Library Options distinguishes filter loading, failure with retry, and empty metadata.
+- The fixed Library header exposes Library Options and selection. It shows the item count at rest, the visible photo date while scrolled, and the selection count in selection mode. Measured header height determines grid and refresh insets; larger text stacks its controls. Filter, grouping, sorting, and layout changes reset scroll/date context.
+- Selection exits through the header's persistent close control; bulk actions are not implemented. An active-filter summary opens Filter directly; its close button restores all items. Library Options distinguishes filter loading, failure with retry, and empty metadata.
 - Tapping a photo opens a full-screen modal loupe. The loupe uses the `large` thumbnail, not the original file route.
 - Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
 - Unknown scan progress is labeled as checking status, with an automatic-retry explanation when recovery requests fail instead of claiming processing has started.
@@ -81,6 +82,8 @@ Design references: [Apple iOS overview](https://www.apple.com/os/ios/) and [Phot
 Loupe chrome respects horizontal safe areas in landscape, and image failures offer per-photo retry. Metadata values wrap and are selectable, with stacked labels at larger text sizes. Search empty/loading/error states scroll with automatic native-header insets. Glass fallbacks remain opaque while Reduce Transparency is enabled or its initial value is unknown.
 
 On iOS, tab chrome, header search, and library chrome use native controls. `GlassSurface` renders `expo-glass-effect` only when the iOS APIs are available and Reduce Transparency is disabled; other environments receive an opaque semantic-color fallback. The modal loupe deliberately uses React Native's paged `FlatList`, opaque controls, and native iOS `ScrollView` zoom instead of a third-party Reanimated gallery; keep its thumbnail-tap tests on the real implementation rather than mocking the viewer.
+
+`LibraryHeader` shares the glass-availability policy through `useGlassAvailability`. Its live blur and dark fading scrim appear only over photos; the resting header uses the semantic background. Unsupported platforms and Reduce Transparency use an opaque background. `expo-blur` and `@react-native-masked-view/masked-view` are native dependencies: rebuild the development client when adding or changing them; Metro reload alone is insufficient.
 
 ## Runtime Configuration
 

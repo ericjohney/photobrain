@@ -104,6 +104,22 @@ jest.mock("expo-glass-effect", () => {
 	};
 });
 
+jest.mock("expo-blur", () => ({
+	BlurView: require("react-native").View,
+}));
+
+jest.mock("@react-native-masked-view/masked-view", () => {
+	const { View } = require("react-native");
+	return {
+		__esModule: true,
+		default: ({
+			maskElement: _maskElement,
+			...props
+		}: { maskElement?: React.ReactNode } & Record<string, unknown>) =>
+			require("react").createElement(View, props),
+	};
+});
+
 // Mock expo-constants
 jest.mock("expo-constants", () => ({
 	expoConfig: {

@@ -6,18 +6,23 @@ import { keepPreviousData } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	FlatList,
+	type LayoutChangeEvent,
 	Modal,
+	type NativeScrollEvent,
+	type NativeSyntheticEvent,
 	Pressable,
 	RefreshControl,
 	StyleSheet,
 	Text,
 	useWindowDimensions,
 	View,
+	type ViewToken,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ActivityBar from "@/components/ActivityBar";
@@ -28,7 +33,7 @@ import FilterSheet, {
 	type LibraryGrouping,
 	type LibrarySort,
 } from "@/components/FilterSheet";
-import GlassSurface from "@/components/GlassSurface";
+import LibraryHeader from "@/components/LibraryHeader";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
 import { thumbnailUrl } from "@/config";
@@ -114,7 +119,7 @@ function makeTimeline(
 }
 
 export default function DashboardScreen() {
-	const { colors } = useTheme();
+	const { colors, isDark } = useTheme();
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const { width, fontScale } = useWindowDimensions();
@@ -138,6 +143,17 @@ export default function DashboardScreen() {
 	const [optionsPage, setOptionsPage] = useState<"options" | "filters">(
 		"options",
 	);
+	const gridRef = useRef<FlatList<SectionItem>>(null);
+	const [headerHeight, setHeaderHeight] = useState(0);
+	const [isOverPhotos, setIsOverPhotos] = useState(false);
+	const [visibleDate, setVisibleDate] = useState("");
+	const [isVisible, setIsVisible] = useState(true);
+	const scrollPosition = useRef(0);
+	const contentHeaderHeight = useRef(0);
+	const firstGroupHeight = useRef(0);
+	const overPhotos = useRef(false);
+	const visiblePhoto = useRef<PhotoMetadata | null>(null);
+	const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 1 }).current;
 
 	const photosQuery = trpc.photos.useQuery(
 		{
@@ -237,7 +253,99 @@ export default function DashboardScreen() {
 		selectedPhotoIds.size === 0
 			? "Select Items"
 			: `${selectedPhotoIds.size.toLocaleString()} Selected`;
-	const headerPhoto = photos[0];
+	const scrollContext = JSON.stringify([
+		filters,
+		grouping,
+		sort,
+		width,
+		fontScale,
+	]);
+	const photoContext = useMemo(
+		() =>
+			photos
+				.map((photo) => `${photo.id}:${photoDate(photo).getTime()}`)
+				.join(","),
+		[photos],
+	);
+	const hasPhotos = useRef(photos.length > 0);
+	const firstPhoto = useRef(photos[0]);
+	firstPhoto.current = photos[0];
+	hasPhotos.current = photos.length > 0;
+
+	const updateOverPhotos = useCallback(() => {
+		const next =
+			hasPhotos.current &&
+			scrollPosition.current >
+				contentHeaderHeight.current + firstGroupHeight.current + 1;
+		if (next !== overPhotos.current) {
+			overPhotos.current = next;
+			setIsOverPhotos(next);
+		}
+		if (next && !visiblePhoto.current && firstPhoto.current) {
+			visiblePhoto.current = firstPhoto.current;
+			setVisibleDate(
+				photoDate(firstPhoto.current).toLocaleDateString(undefined, {
+					month: "long",
+					day: "numeric",
+					year: "numeric",
+				}),
+			);
+		}
+	}, []);
+	const handleScroll = useCallback(
+		(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+			scrollPosition.current = event.nativeEvent.contentOffset.y;
+			updateOverPhotos();
+		},
+		[updateOverPhotos],
+	);
+	const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
+		setHeaderHeight(event.nativeEvent.layout.height);
+	}, []);
+	const handleContentHeaderLayout = useCallback(
+		(event: LayoutChangeEvent) => {
+			contentHeaderHeight.current = event.nativeEvent.layout.height;
+			updateOverPhotos();
+		},
+		[updateOverPhotos],
+	);
+	const handleFirstGroupLayout = useCallback(
+		(event: LayoutChangeEvent) => {
+			firstGroupHeight.current = event.nativeEvent.layout.height;
+			updateOverPhotos();
+		},
+		[updateOverPhotos],
+	);
+	const handleViewableItemsChanged = useCallback(
+		({ viewableItems }: { viewableItems: ViewToken<SectionItem>[] }) => {
+			const row = viewableItems.find(
+				(token) => token.isViewable && token.item.type === "photo-row",
+			)?.item;
+			const photo = row?.type === "photo-row" ? row.photos[0] : null;
+			if (!photo || visiblePhoto.current === photo) return;
+			visiblePhoto.current = photo;
+			const date = photoDate(photo).toLocaleDateString(undefined, {
+				month: "long",
+				day: "numeric",
+				year: "numeric",
+			});
+			setVisibleDate((current) => (current === date ? current : date));
+		},
+		[],
+	);
+
+	useEffect(() => {
+		// Metadata-only/cached refetches retain the user's valid scroll position.
+		void scrollContext;
+		void photoContext;
+		scrollPosition.current = 0;
+		overPhotos.current = false;
+		visiblePhoto.current = null;
+		if (grouping === "all") firstGroupHeight.current = 0;
+		setIsOverPhotos(false);
+		setVisibleDate("");
+		gridRef.current?.scrollToOffset({ offset: 0, animated: false });
+	}, [grouping, photoContext, scrollContext]);
 
 	useEffect(() => {
 		if (!isSelecting) return;
@@ -310,6 +418,7 @@ export default function DashboardScreen() {
 		if (item.type === "header") {
 			return (
 				<View
+					onLayout={item === sections[0] ? handleFirstGroupLayout : undefined}
 					style={[styles.sectionHeader, { backgroundColor: colors.background }]}
 				>
 					<Text
@@ -396,126 +505,7 @@ export default function DashboardScreen() {
 	};
 
 	const listHeader = (
-		<>
-			<View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-				<View pointerEvents="none" style={styles.headerBackdrop}>
-					{headerPhoto && (
-						<Image
-							testID="library-header-image"
-							source={{
-								uri: thumbnailUrl(
-									headerPhoto.id,
-									"medium",
-									headerPhoto.thumbnailUpdatedAt,
-								),
-							}}
-							style={styles.headerBackdropPhoto}
-							contentFit="cover"
-							blurRadius={16}
-							cachePolicy="memory-disk"
-							accessibilityIgnoresInvertColors
-						/>
-					)}
-					<View style={styles.headerBackdropShade} />
-				</View>
-				<View
-					style={[styles.titleRow, fontScale > 1.3 && styles.titleRowStacked]}
-				>
-					<View style={styles.titleBlock}>
-						<Text style={styles.title}>Library</Text>
-						<Text style={styles.photoCount}>
-							{isSelecting ? selectionLabel : itemCountLabel}
-						</Text>
-					</View>
-					<View style={styles.headerActions}>
-						<GlassSurface
-							style={styles.optionsButtonSurface}
-							fallbackStyle={styles.darkGlassFallback}
-							glassEffectStyle="clear"
-							tintColor="rgba(28,28,30,0.48)"
-							colorScheme="dark"
-							isInteractive
-						>
-							<Pressable
-								accessibilityRole="button"
-								accessibilityLabel={
-									hasActiveFilters
-										? "Library options, filters active"
-										: "Library options"
-								}
-								onPress={() => openOptions("options")}
-								style={styles.headerButton}
-							>
-								<Ionicons
-									name="swap-vertical"
-									size={27}
-									color={hasActiveFilters ? "#64a8ff" : "#ffffff"}
-								/>
-							</Pressable>
-						</GlassSurface>
-						<GlassSurface
-							style={styles.selectButtonSurface}
-							fallbackStyle={styles.darkGlassFallback}
-							glassEffectStyle="clear"
-							tintColor="rgba(28,28,30,0.48)"
-							colorScheme="dark"
-							isInteractive
-						>
-							<Pressable
-								accessibilityRole="button"
-								accessibilityState={{ disabled: photos.length === 0 }}
-								accessibilityLabel={
-									isSelecting ? "Finish selecting photos" : "Select photos"
-								}
-								disabled={photos.length === 0}
-								onPress={toggleSelectionMode}
-								style={[
-									styles.selectButton,
-									photos.length === 0 && styles.disabledButton,
-								]}
-							>
-								<Text style={styles.selectButtonText}>
-									{isSelecting ? "Done" : "Select"}
-								</Text>
-							</Pressable>
-						</GlassSurface>
-					</View>
-				</View>
-				<GlassSurface
-					style={styles.timelineSurface}
-					fallbackStyle={styles.darkGlassFallback}
-					colorScheme="dark"
-				>
-					<View
-						style={[
-							styles.timelineControl,
-							fontScale > 1.3 && styles.timelineStacked,
-						]}
-					>
-						{(["years", "months", "all"] as const).map((value) => (
-							<Pressable
-								key={value}
-								accessibilityRole="radio"
-								accessibilityLabel={`Group library by ${value}`}
-								accessibilityState={{ checked: grouping === value }}
-								onPress={() => handleGroupingChange(value)}
-								style={[
-									styles.timelineOption,
-									grouping === value && styles.timelineSelected,
-								]}
-							>
-								<Text style={styles.timelineLabel}>
-									{value === "all"
-										? "All Photos"
-										: value === "months"
-											? "Months"
-											: "Years"}
-								</Text>
-							</Pressable>
-						))}
-					</View>
-				</GlassSurface>
-			</View>
+		<View onLayout={handleContentHeaderLayout}>
 			<ActivityBar
 				progress={jobProgress.progress}
 				isActive={jobProgress.isActive}
@@ -579,7 +569,7 @@ export default function DashboardScreen() {
 					</Pressable>
 				</View>
 			)}
-		</>
+		</View>
 	);
 
 	const emptyState = (
@@ -676,74 +666,81 @@ export default function DashboardScreen() {
 		</View>
 	);
 
-	if (photosQuery.isLoading) {
-		return (
-			<View style={[styles.loading, { backgroundColor: colors.background }]}>
-				<ActivityIndicator size="large" color={colors.primary} />
-			</View>
-		);
-	}
-
-	if (photosQuery.isError && !photosQuery.data && !hasActiveFilters) {
-		return (
-			<View
-				style={[
-					styles.loading,
-					{ backgroundColor: colors.background, paddingTop: insets.top },
-				]}
-			>
-				<Ionicons
-					name="cloud-offline-outline"
-					size={48}
-					color={colors.mutedForeground}
-				/>
-				<Text style={[styles.errorTitle, { color: colors.foreground }]}>
-					Couldn't Load Library
-				</Text>
-				<Text style={[styles.errorMessage, { color: colors.mutedForeground }]}>
-					Check your connection to the PhotoBrain server and try again.
-				</Text>
-				<Pressable
-					accessibilityRole="button"
-					onPress={handleRefresh}
-					style={[styles.emptyButton, { backgroundColor: colors.primary }]}
-				>
-					<Text
-						style={[
-							styles.emptyButtonText,
-							{ color: colors.primaryForeground },
-						]}
-					>
-						Try Again
-					</Text>
-				</Pressable>
-			</View>
-		);
-	}
-
 	return (
-		<View
-			style={[
-				styles.container,
-				{ backgroundColor: photos.length > 0 ? "#000000" : colors.background },
-			]}
-		>
+		<View style={[styles.container, { backgroundColor: colors.background }]}>
+			<NativeTabs.Trigger
+				unstable_nativeProps={{
+					onWillAppear: () => setIsVisible(true),
+					onWillDisappear: () => setIsVisible(false),
+				}}
+			/>
+			{isVisible && (
+				<ExpoStatusBar style={isOverPhotos || isDark ? "light" : "dark"} />
+			)}
 			<FlatList
-				style={photos.length > 0 ? styles.photoList : undefined}
+				ref={gridRef}
+				testID="library-grid"
+				onScroll={handleScroll}
+				scrollEventThrottle={16}
+				onViewableItemsChanged={handleViewableItemsChanged}
+				viewabilityConfig={viewabilityConfig}
 				data={sections}
 				keyExtractor={(item) => item.key}
 				renderItem={renderItem}
 				ListHeaderComponent={listHeader}
-				ListEmptyComponent={emptyState}
+				ListEmptyComponent={
+					photosQuery.isLoading ? (
+						<View style={styles.emptyContainer}>
+							<ActivityIndicator size="large" color={colors.primary} />
+						</View>
+					) : photosQuery.isError && !photosQuery.data && !hasActiveFilters ? (
+						<View style={styles.emptyContainer}>
+							<Ionicons
+								name="cloud-offline-outline"
+								size={48}
+								color={colors.mutedForeground}
+							/>
+							<Text style={[styles.errorTitle, { color: colors.foreground }]}>
+								Couldn't Load Library
+							</Text>
+							<Text
+								style={[styles.errorMessage, { color: colors.mutedForeground }]}
+							>
+								Check your connection to the PhotoBrain server and try again.
+							</Text>
+							<Pressable
+								accessibilityRole="button"
+								onPress={handleRefresh}
+								style={[
+									styles.emptyButton,
+									{ backgroundColor: colors.primary },
+								]}
+							>
+								<Text
+									style={[
+										styles.emptyButtonText,
+										{ color: colors.primaryForeground },
+									]}
+								>
+									Try Again
+								</Text>
+							</Pressable>
+						</View>
+					) : (
+						emptyState
+					)
+				}
 				contentContainerStyle={[
 					sections.length === 0 && styles.emptyList,
-					{ paddingBottom: insets.bottom + 86 },
+					{ paddingTop: headerHeight, paddingBottom: insets.bottom + 86 },
 				]}
 				contentInsetAdjustmentBehavior="never"
+				scrollIndicatorInsets={{ top: headerHeight }}
 				refreshControl={
 					<RefreshControl
 						refreshing={photosQuery.isFetching}
 						onRefresh={handleRefresh}
+						progressViewOffset={headerHeight}
 						tintColor={colors.primary}
 					/>
 				}
@@ -752,16 +749,22 @@ export default function DashboardScreen() {
 				windowSize={7}
 				removeClippedSubviews
 			/>
-			{isSelecting && (
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Finish selection"
-					onPress={toggleSelectionMode}
-					style={[styles.selectionExit, { bottom: insets.bottom + 90 }]}
-				>
-					<Text style={styles.selectButtonText}>Done selecting</Text>
-				</Pressable>
-			)}
+			<LibraryHeader
+				subtitle={
+					isSelecting
+						? selectionLabel
+						: isOverPhotos && visibleDate
+							? visibleDate
+							: itemCountLabel
+				}
+				isOverPhotos={isOverPhotos}
+				isSelecting={isSelecting}
+				selectionDisabled={photos.length === 0}
+				hasActiveFilters={hasActiveFilters}
+				onOptions={() => openOptions("options")}
+				onToggleSelection={toggleSelectionMode}
+				onLayout={handleHeaderLayout}
+			/>
 
 			<Modal
 				visible={library.viewMode === "loupe"}
@@ -770,7 +773,7 @@ export default function DashboardScreen() {
 				supportedOrientations={["portrait", "landscape"]}
 				onRequestClose={library.closeLoupe}
 			>
-				<ExpoStatusBar style="light" />
+				{library.viewMode === "loupe" && <ExpoStatusBar style="light" />}
 				<View style={styles.loupeRoot}>
 					<LoupeView
 						key={library.loupeSession}
@@ -826,99 +829,7 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
 	container: { flex: 1 },
-	photoList: { backgroundColor: "#000000" },
 	loupeRoot: { flex: 1 },
-	loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-	header: {
-		position: "relative",
-		minHeight: 150,
-		justifyContent: "flex-end",
-		paddingHorizontal: 20,
-		paddingBottom: 13,
-		backgroundColor: "#161616",
-		overflow: "hidden",
-	},
-	headerBackdrop: {
-		...StyleSheet.absoluteFill,
-	},
-	headerBackdropPhoto: {
-		...StyleSheet.absoluteFill,
-		transform: [{ scale: 1.08 }],
-	},
-	headerBackdropShade: {
-		...StyleSheet.absoluteFill,
-		backgroundColor: "rgba(0,0,0,0.52)",
-	},
-	titleRow: {
-		flexDirection: "row",
-		alignItems: "flex-end",
-		justifyContent: "space-between",
-		gap: 12,
-	},
-	titleBlock: { flex: 1, minWidth: 0, gap: 1 },
-	titleRowStacked: { flexDirection: "column", alignItems: "stretch" },
-	title: {
-		color: "#ffffff",
-		fontSize: 36,
-		fontWeight: "700",
-		letterSpacing: -1.25,
-	},
-	photoCount: {
-		color: "rgba(255,255,255,0.92)",
-		fontSize: 16,
-		fontWeight: "700",
-		letterSpacing: -0.15,
-	},
-	headerActions: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 10,
-		paddingBottom: 2,
-	},
-	darkGlassFallback: {
-		backgroundColor: "#343436",
-		borderColor: "rgba(255,255,255,0.16)",
-		borderWidth: StyleSheet.hairlineWidth,
-	},
-	optionsButtonSurface: {
-		width: 50,
-		height: 50,
-		borderRadius: 25,
-		borderCurve: "continuous",
-		overflow: "hidden",
-	},
-	headerButton: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	selectButtonSurface: {
-		minWidth: 88,
-		height: 50,
-		borderRadius: 25,
-		borderCurve: "continuous",
-		overflow: "hidden",
-	},
-	selectButton: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center",
-		paddingHorizontal: 18,
-	},
-	disabledButton: { opacity: 0.45 },
-	selectButtonText: { color: "#ffffff", fontSize: 17, fontWeight: "600" },
-	selectionExit: {
-		position: "absolute",
-		alignSelf: "center",
-		minHeight: 44,
-		paddingHorizontal: 20,
-		paddingVertical: 12,
-		borderRadius: 24,
-		backgroundColor: "#343436",
-		borderColor: "#636366",
-		borderWidth: StyleSheet.hairlineWidth,
-		justifyContent: "center",
-	},
 	filterSummary: {
 		minHeight: 44,
 		alignSelf: "stretch",
@@ -939,24 +850,6 @@ const styles = StyleSheet.create({
 		paddingVertical: 8,
 	},
 	filterSummaryText: { flex: 1, fontSize: 14, fontWeight: "600" },
-	timelineSurface: {
-		marginTop: 16,
-		borderRadius: 26,
-		overflow: "hidden",
-		borderCurve: "continuous",
-	},
-	timelineControl: { flexDirection: "row", padding: 4 },
-	timelineStacked: { flexDirection: "column" },
-	timelineOption: {
-		flex: 1,
-		minHeight: 44,
-		padding: 10,
-		alignItems: "center",
-		justifyContent: "center",
-		borderRadius: 22,
-	},
-	timelineSelected: { backgroundColor: "#636366" },
-	timelineLabel: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
 	errorBanner: {
 		flexDirection: "row",
 		alignItems: "center",

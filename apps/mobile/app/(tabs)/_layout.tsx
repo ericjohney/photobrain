@@ -1,15 +1,13 @@
 import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
 import { useTheme } from "../../src/theme";
 
 export default function TabLayout() {
 	const { colors, isDark } = useTheme();
-	const [libraryVisible, setLibraryVisible] = useState(true);
 
 	return (
 		<>
-			<StatusBar style={libraryVisible || isDark ? "light" : "dark"} />
+			<StatusBar style={isDark ? "light" : "dark"} />
 			<NativeTabs
 				minimizeBehavior="onScrollDown"
 				tintColor={colors.primary}
@@ -26,10 +24,6 @@ export default function TabLayout() {
 					name="index"
 					accessibilityLabel="Library"
 					disableAutomaticContentInsets
-					unstable_nativeProps={{
-						onWillAppear: () => setLibraryVisible(true),
-						onWillDisappear: () => setLibraryVisible(false),
-					}}
 				>
 					<NativeTabs.Trigger.Icon
 						sf={{

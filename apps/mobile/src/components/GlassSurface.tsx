@@ -18,16 +18,7 @@ interface GlassSurfaceProps extends GlassViewProps {
 	fallbackStyle?: ViewStyle;
 }
 
-export default function GlassSurface({
-	children,
-	style,
-	fallbackStyle,
-	glassEffectStyle = "regular",
-	tintColor,
-	colorScheme,
-	...props
-}: GlassSurfaceProps) {
-	const { isDark } = useTheme();
+export function useGlassAvailability() {
 	const [reduceTransparency, setReduceTransparency] = useState<boolean | null>(
 		null,
 	);
@@ -62,11 +53,25 @@ export default function GlassSurface({
 		};
 	}, []);
 
-	const canRenderGlass =
+	return (
 		Platform.OS === "ios" &&
 		reduceTransparency === false &&
 		isLiquidGlassAvailable() &&
-		isGlassEffectAPIAvailable();
+		isGlassEffectAPIAvailable()
+	);
+}
+
+export default function GlassSurface({
+	children,
+	style,
+	fallbackStyle,
+	glassEffectStyle = "regular",
+	tintColor,
+	colorScheme,
+	...props
+}: GlassSurfaceProps) {
+	const { isDark } = useTheme();
+	const canRenderGlass = useGlassAvailability();
 
 	if (canRenderGlass) {
 		return (
