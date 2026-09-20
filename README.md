@@ -156,7 +156,7 @@ cd packages/image-processing && cargo test
 | `INNGEST_BASE_URL` | SDK default | Server-to-server Inngest origin; set for self-hosting |
 | `INNGEST_EVENT_KEY` | unset | Server-only key used to submit events |
 | `INNGEST_SIGNING_KEY` | unset | Server-only key for authenticated callbacks and Realtime token creation |
-| `INNGEST_SERVE_ORIGIN` | inferred | Optional API origin reachable by Inngest for callbacks |
+| `INNGEST_SERVE_ORIGIN` | inferred | Optional callback origin parsed by the API and passed to Inngest as `serveHost` |
 | `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable HTTP(S) Inngest origin for WebSocket subscriptions |
 
 `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are parsed legacy values and are not used by the current image pipeline.
@@ -167,7 +167,7 @@ For the incremental-scan cutover, drain old **scan and embedding** runs, rebuild
 
 ### Self-hosted Inngest
 
-Run `inngest start`, not `inngest dev`, with a persistent data directory and matching event/signing keys on both Inngest and the API. Use `INNGEST_DEV=0` and set the API's `INNGEST_BASE_URL` to the runtime's internal origin. Register the API's `/api/inngest` endpoint with `--sdk-url`; `--poll-interval=60` picks up function changes after API deployments. Inngest v1.45.1 requires TypeScript SDK v3.54.0 or newer; this workspace uses v3.54.2.
+Run `inngest start`, not `inngest dev`, with a persistent data directory and matching event/signing keys on both Inngest and the API. Use `INNGEST_DEV=0` and set the API's `INNGEST_BASE_URL` to the runtime's internal origin. Set `INNGEST_SERVE_ORIGIN` to the API origin reachable from the runtime; PhotoBrain passes it explicitly as the SDK `serveHost` so internal registration requests cannot publish a `localhost` callback. Register the API's `/api/inngest` endpoint with `--sdk-url`; `--poll-interval=60` picks up function changes after API deployments. Inngest v1.45.1 requires TypeScript SDK v3.54.0 or newer; this workspace uses v3.54.2.
 
 The API returns `INNGEST_REALTIME_BASE_URL` alongside the short-lived subscription token. Web and mobile attach a keyless SDK client pointing to that origin. If unset, the existing SDK endpoint defaults apply. For self-hosting, use an origin reachable by the phone/browser, not a Kubernetes service name; expose `/v1/realtime/connect` through the gateway. Event submission, token minting, registration, and the dashboard do not need client-facing routes. Never put the event or signing key in `EXPO_PUBLIC_*` or `VITE_*` variables.
 

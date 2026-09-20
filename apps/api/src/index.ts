@@ -35,7 +35,11 @@ app.route("/api/photos", photosRouter);
 app.on(
 	["GET", "PUT", "POST"],
 	"/api/inngest",
-	serve({ client: inngest, functions }),
+	serve({
+		client: inngest,
+		functions,
+		serveHost: config.INNGEST_SERVE_ORIGIN,
+	}),
 );
 
 console.log(`🚀 PhotoBrain API starting on ${config.HOST}:${config.PORT}`);

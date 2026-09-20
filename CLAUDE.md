@@ -171,10 +171,11 @@ The schema and defaults are in `apps/api/src/config.ts`:
 | `FASTEMBED_CACHE_DIR` | unset | Optional Rust/FastEmbed model cache |
 | `PHOTO_PROCESSING_THREADS` | available CPU capacity | Positive integer read by Rust at pool initialization; lower it to reduce concurrent decoded-image memory |
 | `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable Inngest HTTP(S) origin returned alongside subscription tokens |
+| `INNGEST_SERVE_ORIGIN` | unset | API callback origin parsed and passed to the Inngest Hono handler as `serveHost` |
 
 `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are still parsed as legacy configuration but are not used by the current Rust preview pipeline. Do not document them as active RAW dependencies.
 
-The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, and `INNGEST_SERVE_ORIGIN` directly. Production/self-hosting requires `INNGEST_DEV=0`, matching runtime/API keys, and a reachable runtime. Keep `INNGEST_BASE_URL` server-internal if desired; `INNGEST_REALTIME_BASE_URL` must be reachable by web/mobile and expose `/v1/realtime/connect`. Both clients attach a keyless SDK client to initial/refreshed tokens. Never ship server keys in public client variables. The homelab runtime is managed in the external ArgoCD repository; it stores orchestration state separately from PhotoBrain's database/photos. See [self-hosted setup](README.md#self-hosted-inngest).
+The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` directly. PhotoBrain parses `INNGEST_SERVE_ORIGIN` and passes it to the Hono handler as `serveHost`; set it to an API origin reachable from the runtime so registration cannot infer `localhost` from an internal request. Production/self-hosting requires `INNGEST_DEV=0`, matching runtime/API keys, and a reachable runtime. Keep `INNGEST_BASE_URL` server-internal if desired; `INNGEST_REALTIME_BASE_URL` must be reachable by web/mobile and expose `/v1/realtime/connect`. Both clients attach a keyless SDK client to initial/refreshed tokens. Never ship server keys in public client variables. The homelab runtime is managed in the external ArgoCD repository; it stores orchestration state separately from PhotoBrain's database/photos. See [self-hosted setup](README.md#self-hosted-inngest).
 
 The tracked `.envrc` sets `PHOTO_DIRECTORY=/photos`, `PORT=3000`, and `VITE_API_URL=http://localhost:3000` when direnv loads it. Check the shell environment before diagnosing path behavior.
 

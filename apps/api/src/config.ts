@@ -7,6 +7,7 @@ const configSchema = z.object({
 	PHOTO_DIRECTORY: z.string().default("../../temp-photos"),
 	THUMBNAILS_DIRECTORY: z.string().default("./thumbnails"),
 	INNGEST_REALTIME_BASE_URL: z.string().url().optional(),
+	INNGEST_SERVE_ORIGIN: z.string().url().optional(),
 	NODE_ENV: z
 		.enum(["development", "production", "test"])
 		.default("development"),
