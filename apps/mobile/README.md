@@ -61,7 +61,7 @@ Use `http://10.0.2.2:3000` for an Android emulator or the host machine's LAN add
 - Photo Info supports wrapping, selectable values and larger text. Search messages remain scrollable below the native header.
 - Filter shows metadata loading and retry states without blocking media-type choices or clearing filters. Selection can be exited without scrolling back to the header; bulk actions are not implemented.
 
-The app uses tRPC for metadata, filters, search, scan, durable scan status, and Realtime tokens. REST is used for image and thumbnail URLs. Active scan IDs survive restarts in AsyncStorage and are cleared on terminal or missing durable status. The Library reports background work as Discover, Prepare, and Search stages with phase-specific details, counts, and percentage.
+The app uses tRPC for metadata, filters, search, scan, durable scan status, and Realtime tokens. REST is used for image and thumbnail URLs. Active scan IDs survive restarts in AsyncStorage and are cleared on terminal or missing durable status. A compact floating Liquid Glass card above the bottom navigation reports background work as Discover, Prepare, and Search stages with phase-specific details, counts, and percentage.
 
 ## Scripts and Tests
 

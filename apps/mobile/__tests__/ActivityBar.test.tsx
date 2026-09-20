@@ -21,9 +21,9 @@ describe("ActivityBar", () => {
 			<ActivityBar progress={unknownProgress} isActive isCompleted={false} />,
 		);
 
-		expect(getByText("Checking scan status")).toBeTruthy();
+		expect(getByText("Checking Sync")).toBeTruthy();
 		expect(queryByText("Processing")).toBeNull();
-		expect(queryByText("Progress unavailable")).toBeNull();
+		expect(queryByText("Progress Unavailable")).toBeNull();
 	});
 
 	it("explains automatic recovery without calling the scan failed", () => {
@@ -36,46 +36,34 @@ describe("ActivityBar", () => {
 			/>,
 		);
 
-		expect(getByText("Progress unavailable")).toBeTruthy();
+		expect(getByText("Progress Unavailable")).toBeTruthy();
 		expect(getByText(recoveryError)).toBeTruthy();
-		expect(queryByText("Scan Failed")).toBeNull();
-		expect(queryByText("Checking scan status")).toBeNull();
+		expect(queryByText("Sync Failed")).toBeNull();
+		expect(queryByText("Checking Sync")).toBeNull();
 
 		rerender(
 			<ActivityBar progress={unknownProgress} isActive isCompleted={false} />,
 		);
-		expect(getByText("Checking scan status")).toBeTruthy();
+		expect(getByText("Checking Sync")).toBeTruthy();
 		expect(queryByText(recoveryError)).toBeNull();
 	});
 
 	it.each([
-		["queued", "Scan Queued", "Waiting for the background service"],
-		[
-			"discovering",
-			"Discovering Photos",
-			"Finding supported photos in your library",
-		],
-		[
-			"processing",
-			"Preparing Photos",
-			"Reading metadata and creating thumbnails",
-		],
-		[
-			"scan-complete",
-			"Starting Search Index",
-			"Photo scan finished; search indexing starts next",
-		],
+		["queued", "Waiting to Sync", "Waiting for the sync service"],
+		["discovering", "Finding Photos", "Looking for new and changed photos"],
+		["processing", "Preparing Library", "Preparing previews and photo details"],
+		["scan-complete", "Starting Search", "Photos are ready. Search is next."],
 		[
 			"embedding",
-			"Building Search Index",
-			"Generating CLIP embeddings for semantic search",
+			"Building Search",
+			"Making your library searchable by meaning",
 		],
-		["completed", "Library Up to Date", "Photos and semantic search are ready"],
 		[
-			"failed",
-			"Scan Failed",
-			"The library update stopped before it could finish",
+			"completed",
+			"Library Up to Date",
+			"Every photo and search result is ready",
 		],
+		["failed", "Sync Failed", "Sync stopped before your library was ready"],
 	])("explains the %s phase", (phase, label, detail) => {
 		const { getByText, queryByText } = render(
 			<ActivityBar
@@ -90,7 +78,7 @@ describe("ActivityBar", () => {
 
 		expect(getByText(label)).toBeTruthy();
 		expect(getByText(detail)).toBeTruthy();
-		expect(queryByText("Progress unavailable")).toBeNull();
+		expect(queryByText("Progress Unavailable")).toBeNull();
 		expect(queryByText(recoveryError)).toBeNull();
 		if (phase === "failed") {
 			expect(getByText("Scan could not finish.")).toBeTruthy();
@@ -111,7 +99,7 @@ describe("ActivityBar", () => {
 			/>,
 		);
 
-		expect(getByText("1,234 of 2,000")).toBeTruthy();
+		expect(getByText("1,234 of 2,000 photos")).toBeTruthy();
 		expect(getByText("62%")).toBeTruthy();
 		expect(getByLabelText("Scan pipeline: stage 3 of 3")).toBeTruthy();
 	});

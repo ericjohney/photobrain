@@ -657,14 +657,6 @@ export default function DashboardScreen() {
 
 	const listHeader = (
 		<View onLayout={handleContentHeaderLayout}>
-			<ActivityBar
-				progress={jobProgress.progress}
-				isActive={jobProgress.isActive}
-				isCompleted={jobProgress.isCompleted}
-				isFailed={jobProgress.isFailed}
-				failureMessage={jobProgress.failureMessage}
-				error={jobProgress.error}
-			/>
 			{scanError && (
 				<View
 					accessibilityRole="alert"
@@ -919,6 +911,32 @@ export default function DashboardScreen() {
 				onToggleSelection={toggleSelectionMode}
 				onLayout={handleHeaderLayout}
 			/>
+			{(jobProgress.isActive ||
+				jobProgress.isCompleted ||
+				jobProgress.isFailed) && (
+				<View
+					pointerEvents="none"
+					style={[
+						styles.activityOverlay,
+						{
+							bottom: showTimeScope
+								? timeScopeBottom + timeScopeHeight + 12
+								: insets.bottom + 72,
+							left: insets.left + 12,
+							right: insets.right + 12,
+						},
+					]}
+				>
+					<ActivityBar
+						progress={jobProgress.progress}
+						isActive={jobProgress.isActive}
+						isCompleted={jobProgress.isCompleted}
+						isFailed={jobProgress.isFailed}
+						failureMessage={jobProgress.failureMessage}
+						error={jobProgress.error}
+					/>
+				</View>
+			)}
 			{showTimeScope && (
 				<View
 					pointerEvents="box-none"
@@ -1005,6 +1023,10 @@ const styles = StyleSheet.create({
 	container: { flex: 1 },
 	loupeRoot: { flex: 1 },
 	timeScopeOverlay: { position: "absolute" },
+	activityOverlay: {
+		position: "absolute",
+		zIndex: 10,
+	},
 	filterSummary: {
 		minHeight: 44,
 		alignSelf: "stretch",

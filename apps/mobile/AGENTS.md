@@ -31,7 +31,7 @@ Scope: `apps/mobile`.
 - `src/components/LoupeView.tsx`: core paged swipe viewer, native iOS zoom, glass date/time controls, filmstrip navigation, and metadata.
 - `src/components/MetadataPanel.tsx`: EXIF/RAW metadata modal.
 - `src/components/FilterSheet.tsx`: Library Options, sorting, and searchable RAW/standard/camera/lens/ISO/month filters.
-- `src/components/ActivityBar.tsx`: durable scan status presented as Discover, Prepare, and Search stages with phase-specific details, counts, and percentage.
+- `src/components/ActivityBar.tsx`: durable scan status in a compact floating Liquid Glass card above bottom navigation, with Discover, Prepare, and Search stages, phase details, counts, and percentage.
 - `src/hooks/use-library-state.ts`: in-memory grid/loupe and active-photo navigation.
 - `src/hooks/use-job-progress.ts`: Inngest Realtime subscription with durable `scanStatus` polling fallback.
 - `src/theme/ThemeContext.tsx`: persisted light/dark/system theme.
@@ -77,7 +77,7 @@ Dashboard behavior:
 - Scan Library is incremental by default. Library Options also offers Reprocess all photos behind a native confirmation explaining that thumbnails and search embeddings are regenerated, originals remain untouched, and it takes longer. Only confirmation sends `scan({ force: true })`; cancellation leaves Library Options open and confirmation closes it. Both actions are disabled during saved-scan restoration, mutation submission, and active scan/indexing work.
 - Successful scan IDs are persisted until durable status reports `completed`, `failed`, or missing. Terminal jobs invalidate library, folder, filter, and search queries.
 - Unknown scan progress is labeled as checking status, with an automatic-retry explanation when recovery requests fail instead of claiming processing has started.
-- Active progress distinguishes photo discovery, metadata/thumbnail preparation, the handoff to search indexing, and CLIP embedding generation instead of presenting every running state as generic processing.
+- Active progress distinguishes photo discovery, metadata/thumbnail preparation, the handoff to search indexing, and CLIP embedding generation instead of presenting every running state as generic processing. Its floating card stays above native tabs or the collapsed browsing bar rather than scrolling with library content.
 
 `useJobProgress` invalidates photos, folders, and filter options as `processing.current` advances. The first advance refreshes immediately; further advances coalesce into a trailing refresh at most once per second. Duplicate counts do not repeatedly refresh, and delayed processing updates after the indexing handoff do not restart processing refreshes. Entering `scan-complete` or the first `embedding` phase immediately refreshes the library, but neither phase is terminal: the job stays active while search indexing runs. Terminal progress cancels any queued refresh and invalidates library, folder, filter, and search queries once per job. Job changes and unmounts cancel stale refresh timers.
 
