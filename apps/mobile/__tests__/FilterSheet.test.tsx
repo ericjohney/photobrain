@@ -13,6 +13,7 @@ const mockOnClose = jest.fn();
 const mockOnFilterChange = jest.fn();
 const mockOnSortChange = jest.fn();
 const mockOnScan = jest.fn();
+const mockOnReprocess = jest.fn();
 const mockOnOpenSettings = jest.fn();
 const defaultProps = {
 	visible: true,
@@ -32,6 +33,7 @@ const defaultProps = {
 	sort: "captured" as const,
 	onSortChange: mockOnSortChange,
 	onScan: mockOnScan,
+	onReprocess: mockOnReprocess,
 	onOpenSettings: mockOnOpenSettings,
 };
 const combinedFilters: LibraryFilters = {
@@ -381,8 +383,10 @@ describe("FilterSheet", () => {
 		fireEvent.press(ui.getByLabelText("Back to Filter"));
 		fireEvent.press(ui.getByLabelText("Back to Library Options"));
 		fireEvent.press(ui.getByLabelText("Scan library"));
+		fireEvent.press(ui.getByLabelText("Reprocess all photos"));
 		fireEvent.press(ui.getByLabelText("Open settings"));
 		expect(mockOnScan).toHaveBeenCalledTimes(1);
+		expect(mockOnReprocess).toHaveBeenCalledTimes(1);
 		expect(mockOnOpenSettings).toHaveBeenCalledTimes(1);
 	});
 
@@ -425,10 +429,13 @@ describe("FilterSheet", () => {
 		const ui = renderWithProviders(
 			<FilterSheet {...defaultProps} {...state} />,
 		);
-		const scan = await ui.findByLabelText("Scan library");
-		expect(scan).toBeDisabled();
-		fireEvent.press(scan);
+		for (const label of ["Scan library", "Reprocess all photos"]) {
+			const action = await ui.findByLabelText(label);
+			expect(action).toBeDisabled();
+			fireEvent.press(action);
+		}
 		expect(mockOnScan).not.toHaveBeenCalled();
+		expect(mockOnReprocess).not.toHaveBeenCalled();
 		expect(ui.getByLabelText("Open settings")).toBeEnabled();
 	});
 

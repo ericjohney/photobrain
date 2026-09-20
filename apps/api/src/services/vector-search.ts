@@ -1,7 +1,8 @@
 import { clipTextEmbedding } from "@photobrain/image-processing";
 import { inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { photos as photosTable } from "../db/schema";
+import { photos as photosTable, publicPhotoColumns } from "../db/schema";
+import { EMBEDDING_MODEL_VERSION } from "./processing-versions";
 
 /**
  * Find similar photos using CLIP embedding vector similarity
@@ -23,9 +24,13 @@ export async function findSimilarPhotos(
 	const results = await db.all<{ photo_id: number; distance: number }>(
 		sql`
       SELECT
-        photo_id,
-        vec_distance_L2(embedding, ${embeddingBlob}) as distance
-      FROM photo_embedding
+        e.photo_id,
+        vec_distance_L2(e.embedding, ${embeddingBlob}) as distance
+      FROM photo_embedding e
+      INNER JOIN photos p ON p.id = e.photo_id
+      WHERE p.embedding_status = 'completed'
+        AND e.thumbnail_key IS p.thumbnail_key
+        AND e.model_version = ${EMBEDDING_MODEL_VERSION}
       ORDER BY distance ASC
       LIMIT ${limit}
     `,
@@ -36,6 +41,7 @@ export async function findSimilarPhotos(
 	const photosList =
 		photoIds.length > 0
 			? await db.query.photos.findMany({
+					columns: publicPhotoColumns,
 					where: inArray(photosTable.id, photoIds),
 					with: { exif: true },
 				})

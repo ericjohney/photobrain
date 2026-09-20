@@ -5,7 +5,10 @@ import type { PhotoProcessingResult } from "@photobrain/image-processing";
 
 type NativeOperations = Pick<
 	typeof NativeAddon,
-	"discoverPhotos" | "processPhotosBatch" | "batchGenerateClipEmbeddings"
+	| "discoverPhotos"
+	| "processPhotosBatch"
+	| "batchGenerateClipEmbeddings"
+	| "validateThumbnails"
 >;
 type Operation = keyof NativeOperations;
 
@@ -21,6 +24,7 @@ export interface PhotoStreamInput {
 	id: number;
 	filePath: string;
 	relativePath: string;
+	thumbnailKey?: string;
 }
 
 type WindowResult = { processed: number; done: boolean };
@@ -44,14 +48,23 @@ export type NativeResponse =
 			result: ReturnType<NativeOperations[Operation]> | WindowResult | null;
 	  }
 	| { id: number; error: string }
-	| { id: number; photoId: number; photo: PhotoProcessingResult }
+	| {
+			id: number;
+			photoId: number;
+			photo: PhotoProcessingResult;
+			thumbnailKey?: string;
+	  }
 	| { closed: true };
 
 type Consumer = {
 	jobId: string;
 	thumbnailsDir: string;
 	load: () => PhotoStreamInput[] | Promise<PhotoStreamInput[]>;
-	onResult: (id: number, result: PhotoProcessingResult) => void | Promise<void>;
+	onResult: (
+		id: number,
+		result: PhotoProcessingResult,
+		thumbnailKey?: string,
+	) => void | Promise<void>;
 	maxResults: number;
 };
 type Pending = {
@@ -238,7 +251,13 @@ export class NativeExecutor {
 				return;
 			}
 			pending.acknowledging = true;
-			void this.acknowledge(worker, pending, message.photoId, message.photo);
+			void this.acknowledge(
+				worker,
+				pending,
+				message.photoId,
+				message.photo,
+				message.thumbnailKey,
+			);
 			return;
 		}
 		if (pending.acknowledging) {
@@ -263,9 +282,10 @@ export class NativeExecutor {
 		pending: Pending,
 		id: number,
 		result: PhotoProcessingResult,
+		thumbnailKey?: string,
 	) {
 		try {
-			await pending.consumer?.onResult(id, result);
+			await pending.consumer?.onResult(id, result, thumbnailKey);
 		} catch (error) {
 			pending.consumerError = asError(error);
 		}

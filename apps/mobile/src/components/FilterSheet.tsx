@@ -45,6 +45,7 @@ interface FilterSheetProps {
 	onSortChange?: (sort: LibrarySort) => void;
 	initialPage?: "options" | "filters";
 	onScan?: () => void;
+	onReprocess?: () => void;
 	scanDisabled?: boolean;
 	isScanning?: boolean;
 	onOpenSettings?: () => void;
@@ -101,6 +102,7 @@ export default function FilterSheet({
 	onSortChange,
 	initialPage = "options",
 	onScan,
+	onReprocess,
 	scanDisabled = false,
 	isScanning = false,
 	onOpenSettings,
@@ -499,7 +501,7 @@ export default function FilterSheet({
 										last: true,
 									}),
 								)}
-								{(onScan || onOpenSettings) &&
+								{(onScan || onReprocess || onOpenSettings) &&
 									group(
 										"Library",
 										<>
@@ -511,6 +513,14 @@ export default function FilterSheet({
 													onPress: onScan,
 													disabled: scanDisabled || isScanning,
 													busy: isScanning,
+													last: !onReprocess && !onOpenSettings,
+												})}
+											{onReprocess &&
+												row({
+													label: "Reprocess all photos",
+													icon: "refresh-outline",
+													onPress: onReprocess,
+													disabled: scanDisabled || isScanning,
 													last: !onOpenSettings,
 												})}
 											{onOpenSettings &&

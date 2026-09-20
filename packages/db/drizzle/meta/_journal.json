@@ -43,6 +43,13 @@
       "when": 1789836778059,
       "tag": "0005_continuous_scan_work",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789850904017,
+      "tag": "0006_incremental_scan",
+      "breakpoints": true
     }
   ]
 }

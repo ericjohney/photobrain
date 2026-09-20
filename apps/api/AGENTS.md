@@ -9,15 +9,17 @@ Scope: `apps/api`.
 - `src/trpc/router.ts`: public tRPC contract.
 - `src/routes/photos.ts`: binary file and thumbnail routes plus one-off maintenance routes.
 - `src/inngest/client.ts`: typed event definitions and Realtime middleware.
-- `src/inngest/functions/scan.ts`: durable discovery, continuous Rust processing, and completed-result checkpoints.
+- `src/inngest/functions/scan.ts`: durable incremental planning, continuous Rust processing, and completed-result checkpoints.
 - `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches.
 - `src/services/vector-search.ts`: sqlite-vec text search.
 - `src/services/import-persistence.ts`: synchronous transactional scan and embedding batch writes.
+- `src/services/scan-planner.ts`: source/artifact freshness checks and conservative legacy adoption.
+- `src/services/processing-versions.ts`: manual media and embedding-model invalidation constants.
 - `src/services/native-executor.ts` and `native-worker.ts`: bounded persistent worker with a native photo stream surviving checkpoint windows; no database or Inngest state in the worker.
-- `src/services/scan-work.ts`: frozen manifests, priority-ordered pending work, atomic per-photo receipts/progress, and terminal cleanup.
+- `src/services/scan-work.ts`: frozen classifications, priority-ordered pending media, attempt/generation fences, atomic per-photo receipts/progress, and terminal cleanup.
 - `src/db/index.ts`: SQLite/Drizzle connection and optional startup migration.
 - `src/db/setup.ts`: Bun SQLite and sqlite-vec loading.
-- `src/db/schema.ts`: re-export of `@photobrain/db/schema`; do not add the authoritative schema here.
+- `src/db/schema.ts`: re-export of `@photobrain/db/schema` plus the public photo projection; do not add the authoritative schema here.
 - `src/__tests__/`: in-memory SQLite API tests.
 
 ## Commands
@@ -30,7 +32,7 @@ cd apps/api && bun run bench:import
 cd apps/api && bun run bench:exif /path/to/photo1.jpg /path/to/photo2.heic
 ```
 
-The API package has no separately deployed worker or build script. Inngest functions are registered in this API process at `/api/inngest`; a separate Inngest runtime invokes that endpoint. A lazy `node:worker_threads` worker offloads discovery, streaming media, HEIC maintenance, and CLIP image batches. It admits at most eight running/queued requests and owns one native photo stream. A completion window returns after 20 finished results, not 20 particular inputs; the stream remains alive and bounded between windows. Job/destination switches and other native operations cancel/drain an existing stream before replacement. Worker failures reject outstanding requests; resumed scans reload pending SQLite receipts. This is not a native process-crash or cross-process artifact-ownership boundary. Direct text search remains synchronous.
+The API package has no separately deployed worker or build script. Inngest functions are registered in this API process at `/api/inngest`; a separate Inngest runtime invokes that endpoint. A lazy `node:worker_threads` worker offloads discovery, streaming media, thumbnail validation, HEIC maintenance, and CLIP image batches. It admits at most eight running/queued requests and owns one native photo stream. A completion window returns after 20 finished results, not 20 particular inputs; the stream remains alive and bounded between windows. Job/destination switches and other native operations cancel/drain an existing stream before replacement. Worker failures reject outstanding requests; resumed scans reload pending SQLite receipts. The worker is not a native process-crash boundary or a distributed lease; source/attempt/committed-generation checks fence publication separately. Direct text search remains synchronous.
 
 ## HTTP Surface
 
@@ -55,11 +57,11 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `photos({ filterRaw?, folder?, camera?, lens?, iso?, dateMonth? })`: returns `{ photos, total, rawCount }` with EXIF relations. A folder query initially matches descendants, then JavaScript removes nested descendants so only direct files are returned.
 - `photo({ id })`: returns one photo with EXIF or throws `Photo not found`.
 - `searchPhotos({ query, limit? })`: generates a CLIP text embedding and returns nearest photo rows. `limit` is 1-100 and defaults to 20.
-- `scan()`: creates a durable queued `scan_jobs` row, sends an idempotently keyed `photos/scan.requested` event, and returns `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing.
+- `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar and mobile Library Options expose a confirmed **Reprocess all photos** action for force mode.
 - `scanStatus({ jobId })`: returns the durable scan row or `null` when the UUID is unknown.
 - `realtimeToken({ jobId })`: returns `{ token, baseUrl? }` for channel `job:{jobId}`, topic `progress`. `baseUrl` is the client-reachable `INNGEST_REALTIME_BASE_URL`; it must not be inferred from an internal service hostname.
 
-Keep the router as the source of client types. `src/types.ts` exports `AppRouter` for workspace consumers.
+Keep the router as the source of client types. `src/types.ts` exports `AppRouter` for workspace consumers. Photo list, detail, and search DTOs use `publicPhotoColumns` to omit six internal identity fields: `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, and `thumbnailFingerprint`.
 
 ## Inngest Flow
 
@@ -67,7 +69,7 @@ Typed events in `src/inngest/client.ts`:
 
 ```text
 photos/scan.requested
-  { directory, thumbnailsDir, jobId }
+  { directory, thumbnailsDir, jobId, force? }
 
 photos/embeddings.requested
   { photoIds, thumbnailsDir, jobId }
@@ -76,29 +78,34 @@ photos/embeddings.requested
 Scan function details:
 
 - Concurrency limit is 1 for executing steps, not an exclusive whole-job library lock.
-- Function ID is `scan-photos-v4`. `initialize-scan-work-v4` persists a frozen manifest, including empty discovery, rather than storing a library-sized path plan in Inngest checkpoints.
-- `initializeScanWork` stably orders new paths before existing paths. Workers dispatch in that priority order, but fast existing photos may commit while earlier new photos are still running. This does not skip unchanged photos.
+- Function ID is `scan-photos-v5`. `initialize-scan-work-v5` freezes discovery and classification, including empty discovery, in SQLite rather than storing a library-sized path plan in Inngest checkpoints. The manifest records canonical source root, resolved thumbnail root, and unchanged/media/embedding counts.
+- `createScanPlan` fingerprints sources as `size:mtimeNs:ctimeNs` under `realpath(directory)`. This is filesystem metadata, not a content hash. `MEDIA_VERSION` and `EMBEDDING_MODEL_VERSION` in `processing-versions.ts` are manually bumped invalidation constants, not automatically derived pipeline hashes.
+- Tracked media is reusable only with completed thumbnail/pHash statuses, a pHash row, dimensions, converted RAW status when applicable, matching source root/fingerprint/media version/thumbnail root, and matching stat fingerprints for all four nonempty thumbnail files. Missing EXIF alone does not cause endless media retries.
+- Legacy adoption requires all six identity fields to be null, matching size and stored whole-second mtime, a thumbnail timestamp, and no extension-stripped stem collision across known/discovered paths after NFC normalization and case folding. The source ctime must be strictly older than every thumbnail mtime; all four WebPs must decode at expected dimensions, and source/artifact stats are rechecked after validation. This is conservative heuristic provenance, not proof of historical content or root. Valid adoption preserves photo ID, artifacts, and cache timestamp while recording identity.
+- `initializeScanWork` durably classifies reusable items as `skip` or `embed`, media work as `media`, and source-stat failures as `failed`. Completed, current-model, matching-generation 2,048-byte vectors can be reused; missing, failed, wrong-model, wrong-generation, or truncated vectors recover without regenerating valid media. Reused and failed items count as processed at initialization; unchanged counts include embedding-only recovery. New media paths dispatch before existing media paths, without imposing a completion barrier.
+- Each pending media attempt receives a fresh `.versions/<UUID>/photo.image` key, producing `<thumbnailRoot>/<size>/.versions/<UUID>/photo.webp`. Restarts rotate attempt keys, so an abandoned native writer cannot overwrite current artifacts; different source extensions sharing a stem no longer collide.
 - Native ready/results queues each hold at most twice the CPU-sized worker count; metadata prefetch is separate from media completion. The API pulls one result and acknowledges it after its commit. `consumePhotos` binds loaders/consumers to their calling async context so Inngest Realtime works from worker event callbacks.
-- Each `consume-photo-results-v4-*` step consumes up to 20 completions while retaining the live stream. Every result transaction includes photo/EXIF/pHash saves, its success/failure receipt, manifest counters, and scan progress. A rollback leaves that item pending; an acknowledged receipt is not redone after a lost checkpoint or process restart. Checkpoints return compact counters, not paths/native results/EXIF. First completion publishes immediately, with at most one in-flight Realtime publication and one coalesced latest snapshot inside the step.
-- Existing rows are matched by unique relative `photos.path`.
-- Photo rows use a path-keyed upsert that preserves their IDs and original creation dates. EXIF and pHash sidecars are upserted only when new data exists, preserving sidecar IDs.
-- Every successfully processed photo is marked `thumbnailStatus: "completed"`, `thumbnailUpdatedAt: new Date()`, and `embeddingStatus: "pending"`.
-- A successful scan sends exactly the photo IDs saved by that scan in one final embedding event, not one event per media batch.
+- Each `consume-photo-results-v5-*` step consumes up to 20 completions while retaining the live stream. Before publication, the source must still match its frozen fingerprint and all four artifacts must have valid nonempty file stats. The transaction checks the current attempt key and the previous committed photo ID/key/source fingerprint; stale results cannot overwrite a newer generation.
+- Every accepted result transaction includes photo/EXIF/pHash saves, its success/failure receipt, manifest counters, and scan progress. A rollback leaves that item pending; an acknowledged receipt is not redone after a lost checkpoint or process restart. Checkpoints return compact counters, not paths/native results/EXIF. First completion publishes immediately, with at most one in-flight Realtime publication and one coalesced latest snapshot inside the step.
+- Photo rows are matched/upserted by unique relative `photos.path`, preserving IDs and original creation dates. New sidecar data is upserted without changing sidecar IDs; absent EXIF or pHash does not delete an old sidecar.
+- Successfully committed media stores its source identity and thumbnail root/key/fingerprint, marks thumbnails completed, sets pHash status from the result, and sets embeddings pending. `thumbnailUpdatedAt` advances by at least one stored second over its previous value, even for same-second commits or a backwards clock. Unchanged media and embedding-only recovery preserve the cache token.
+- Final embedding selection includes successful media and embedding-only items whose committed generation still matches the ledger and whose vector still needs recovery. One final event carries those IDs; fully unchanged scans complete without an embedding child.
 - Durable and Realtime progress phases are `queued`, `discovering`, `processing`, `scan-complete`, `embedding`, `completed`, and `failed`.
 - Terminal database states are monotonic. Each function's initial progress update acts as a durable claim and missing or terminal jobs exit before media work. Both functions mark exhausted retries failed and attempt to publish terminal Realtime progress; a nonempty all-failed scan is also failed.
 - `scan-complete` is persisted before dispatching the embedding child; the parent performs no progress writes after dispatch, preventing it from overwriting a fast child completion.
-- The current 7,961-file library needs 399 completed-result windows plus fixed steps, below the documented 1,000-step ceiling. Native path arrays and the final embedding ID list still grow with the library.
-- Drain active old runs, rebuild the native addon, and apply migration `0005_continuous_scan_work.sql` before deploying `scan-photos-v4`. Receipts remain until final IDs/dispatch are checkpointed; success and terminal failure clean them up. Cancellation failure cannot leave an exhausted job running. Local verification is not a production deployment.
+- A full-media scan of the 7,961-file library needs 399 completed-result windows; embedding all files needs 498 batch steps. Each function remains below the documented 1,000-step ceiling including fixed overhead. Incremental scans reduce media windows. Discovery/planning arrays and the final embedding ID list still grow with the library.
+- Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006_incremental_scan.sql` (after prior migrations). New function IDs alone do not fence old code.
+- Receipts remain until final IDs/dispatch are checkpointed; success and terminal failure clean them up. Cancellation failure cannot leave an exhausted job running. Retired and abandoned artifact generations are retained: there is no artifact GC, deletion reconciliation, content hashing, outbox/reconciler, distributed lease, or native process-crash isolation.
 
-Both clients refresh library queries as committed processing counts advance: first advance immediately, then coalesced trailing refreshes at most once per second. They also refresh on `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web polls durable `scanStatus` every 1,500 ms while active; mobile retains its fallback/recovery polling. Public event/progress payloads are unchanged; the internal work-ledger schema is new.
+Both clients refresh library queries as committed processing counts advance: first advance immediately, then coalesced trailing refreshes at most once per second. They also refresh on `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web polls durable `scanStatus` every 1,500 ms while active; mobile retains its fallback/recovery polling. Progress payloads retain their existing shape; the scan event adds optional `force`.
 
 Embedding function details:
 
-- Concurrency limit is 1.
-- Reads `large` thumbnail paths from the database and processes batches of 16.
-- Upserts `photo_embedding` and photo embedding statuses in one synchronous transaction per batch, after inference. Failed inference retains any old vector and marks the photo failed. A database failure rolls back the batch; inference and saving still share one checkpointed step, so a retry repeats inference.
+- Function ID is `generate-embeddings-v3`, with concurrency limit 1.
+- Freezes photo IDs and committed thumbnail keys/roots before inference, then reads `large` WebPs in batches of 16. It uses each photo's committed `thumbnailRoot`, not a stale event root; only untracked legacy rows fall back to event `thumbnailsDir` and photo path.
+- Upserts `photo_embedding` with `EMBEDDING_MODEL_VERSION` and the inferred thumbnail key, together with photo statuses, in one synchronous transaction per batch after inference. Both successful and failed saves compare the target key against the current photo generation; stale saves leave it untouched. Current-generation inference failure retains any old vector and marks the photo failed. A database failure rolls back the batch; inference and saving share one checkpointed step, so retry repeats inference.
 - Converts the Rust number array to a `Float32Array` buffer before storage.
-- Marks each photo `completed` or `failed` and publishes progress.
+- Marks current-generation photos `completed` or `failed` and publishes progress. Search excludes noncompleted, wrong-model, and wrong-generation vectors.
 - Marks the scan job failed if no requested embedding can be generated; partial success still completes the job.
 
 ## Configuration
@@ -132,16 +139,16 @@ The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, `I
 
 ## REST File Rules
 
-- Standard files are served from `join(PHOTO_DIRECTORY, photo.path)`.
-- Converted RAW files serve the `large` WebP because browsers cannot display the original RAW.
-- Thumbnail paths are computed from the database path and mirror its directories under the configured thumbnail root.
+- Standard files are served from `join(photo.sourceRoot ?? PHOTO_DIRECTORY, photo.path)`.
+- Converted RAW files serve the committed generation's `large` WebP because browsers cannot display the original RAW.
+- Thumbnail paths use `photo.thumbnailRoot ?? THUMBNAILS_DIRECTORY` and `photo.thumbnailKey ?? photo.path`. New media uses UUID generation paths; adopted legacy media retains its old path-shaped key, and unadopted rows retain the configured-root/path fallback.
 - Valid thumbnail sizes are `tiny`, `small`, `medium`, and `large`.
 - Missing thumbnails redirect to the file route.
-- Thumbnail responses use one-year immutable caching and ETags based on file mtime and size.
+- Thumbnail responses use one-year immutable caching and ETags containing generation key, file mtime, and size. Clients use the monotonic `thumbnailUpdatedAt` token for URL cache busting. Original/RAW file responses retain their one-hour cache policy.
 - Validate numeric IDs and thumbnail sizes before filesystem work.
 - Preserve path normalization and do not expose arbitrary filesystem paths.
 
-The two POST maintenance routes are operational leftovers. Do not add new callers to them; remove them after confirming their one-off migration work is complete.
+The two POST maintenance routes are operational leftovers. HEIC reprocessing force-plans existing HEIC/HEIF rows from the configured source root and uses the same generation-aware ledger, commit fence, and embedding dispatch; it does not overwrite committed artifacts in place. Timestamp backfill only fills null timestamps on completed-thumbnail rows; it does not establish source/artifact provenance or adopt legacy rows. Do not add new callers to these routes; remove them after confirming their one-off migration work is complete.
 
 ## Tests
 
@@ -149,10 +156,12 @@ The two POST maintenance routes are operational leftovers. Do not add new caller
 
 `src/__tests__/scan.test.ts` exercises real SQLite manifests/receipts with controlled native/Inngest dependencies: new-first dispatch with free completion order, early visibility, partial ACK restart, lost checkpoints, atomic rollback, publication failure, final dispatch/fast-child ordering, empty and terminal jobs, cleanup, and the 7,961-input checkpoint budget. These are not actual Inngest delivery or native integration tests.
 
-`src/__tests__/import-persistence.test.ts` covers native-result mapping, stable IDs, retry behavior, missing sidecars/vectors, batch boundaries, and transaction rollback using SQLite failure triggers. It does not execute native image processing or Inngest delivery.
+`src/__tests__/scan-planner.test.ts` uses temporary source/artifact files and SQLite with controlled native validation to cover unchanged reuse, embedding-only recovery, conservative legacy adoption, stat changes, artifact repair, root changes, and stale source/attempt/generation rejection. Rust tests exercise actual WebP decoding and output-key behavior.
+
+`src/__tests__/import-persistence.test.ts` covers stable IDs, generation invalidation, monotonic cache tokens, stale embedding saves, retry behavior, missing sidecars/vectors, and transaction rollback using SQLite failure triggers. It does not execute native image processing or Inngest delivery.
 
 `bun run bench:import` compares legacy per-photo writes with the shared transactional batch helper using 200 synthetic results, three repeats, and isolated file-backed databases. It checks persisted-data equivalence and reports fresh-import, rescan, and embedding-write medians with SQLite pragmas. It does not exercise streaming receipts, native work, or end-to-end import latency; use the real-photo/runtime measurements for those boundaries.
 
 `src/__tests__/native-executor.test.ts` uses real worker threads with a controlled TypeScript fixture. It covers persistent completion windows, persistence ACK backpressure, per-checkpoint async context, session switching, early stream termination/invalid indices, restart, bounded admission, and shutdown. The release addon and actual local Inngest/API/web flow were also exercised on Apple M4 Pro/macOS 26.5.1, including interrupted-import receipt recovery and real HEIC maintenance; see [measurement boundaries and results](../../docs/import-performance.md). Revalidate the deployed Bun/native environment during rollout.
 
-`bun run bench:exif <1-20 distinct photo paths>` requires ExifTool but not the addon, reads the Rust metadata flags, and compares batched versus four-concurrent per-file metadata extraction with exact JSON equivalence checks. `EXIFTOOL_BIN` selects an executable for this benchmark only. See [import architecture and measurements](../../docs/import-performance.md) for measured scope, implemented receipts, and remaining incremental/generation-aware work.
+`bun run bench:exif <1-20 distinct photo paths>` requires ExifTool but not the addon, reads the Rust metadata flags, and compares batched versus four-concurrent per-file metadata extraction with exact JSON equivalence checks. `EXIFTOOL_BIN` selects an executable for this benchmark only. See [import architecture and measurements](../../docs/import-performance.md) for historical measurements, locally verified incremental behavior, and remaining architectural options.

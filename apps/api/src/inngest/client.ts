@@ -7,6 +7,7 @@ type PhotoEvents = {
 			directory: string;
 			thumbnailsDir: string;
 			jobId: string;
+			force?: boolean;
 		};
 	};
 	"photos/embeddings.requested": {

@@ -22,3 +22,4 @@ module.exports.perceptualHash = notAvailable("perceptualHash");
 module.exports.processPhoto = notAvailable("processPhoto");
 module.exports.processPhotosBatch = notAvailable("processPhotosBatch");
 module.exports.startPhotoProcessing = notAvailable("startPhotoProcessing");
+module.exports.validateThumbnails = notAvailable("validateThumbnails");

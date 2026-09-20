@@ -66,6 +66,7 @@ export function startPhotoProcessing(
 	filePaths: string[],
 	relativePaths: string[],
 	thumbnailsDir: string,
+	thumbnailPaths?: string[],
 ): PhotoProcessingStream;
 export function extractExif(path: string): ExifData | null;
 export function perceptualHash(path: string): string;
@@ -76,6 +77,15 @@ export function generateThumbnailsFromFile(
 	baseDir: string,
 	orientation?: number,
 ): void;
+export interface ThumbnailValidationItem {
+	path: string;
+	width: number;
+	height: number;
+}
+export function validateThumbnails(
+	items: ThumbnailValidationItem[],
+	baseDir: string,
+): boolean[];
 export function clipTextEmbedding(text: string): number[];
 export function batchGenerateClipEmbeddings(
 	paths: string[],

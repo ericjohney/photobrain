@@ -12,23 +12,26 @@ const BATCH_SIZE = 16;
 
 export const generateEmbeddingsFunction = inngest.createFunction(
 	{
-		id: "generate-embeddings",
+		id: "generate-embeddings-v3",
 		concurrency: { limit: 1 },
 		onFailure: async ({ event, error, publish, step }) => {
 			const jobId = event.data.event.data.jobId;
-			const failedJob = await step.run("persist-terminal-failure", () =>
-				failJob(jobId, error),
-			);
-			if (!failedJob) return;
-			try {
-				await publish({
-					channel: `job:${jobId}`,
-					topic: "progress",
-					data: { phase: "failed", ...failedJob },
-				});
-			} catch (publishError) {
-				console.error(`Failed to publish failure for ${jobId}:`, publishError);
-			}
+			await step.run("persist-terminal-failure-v3", async () => {
+				const failedJob = await failJob(jobId, error);
+				if (!failedJob) return;
+				try {
+					await publish({
+						channel: `job:${jobId}`,
+						topic: "progress",
+						data: { phase: "failed", ...failedJob },
+					});
+				} catch (publishError) {
+					console.error(
+						`Failed to publish failure for ${jobId}:`,
+						publishError,
+					);
+				}
+			});
 		},
 	},
 	{ event: "photos/embeddings.requested" },
@@ -46,8 +49,8 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 			}
 		};
 
-		console.log(`🧠 Starting batch embedding for ${photoIds.length} photos`);
-		const jobStarted = await step.run("claim-embedding-job-v2", () =>
+		console.log(`Starting batch embedding for ${photoIds.length} photos`);
+		const jobStarted = await step.run("claim-embedding-job-v3", () =>
 			updateJobProgress(jobId, "embedding", 0, photoIds.length),
 		);
 		if (!jobStarted) {
@@ -55,110 +58,113 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 			return { processed: 0, successful: 0 };
 		}
 
-		// Get photo paths from database
-		const photoData = await step.run("get-photo-paths", async () => {
-			return db
-				.select({ id: photos.id, path: photos.path })
+		// Freeze the generation used for inference and the transactional save fence.
+		const photoData = await step.run("get-photo-generations-v3", () =>
+			db
+				.select({
+					id: photos.id,
+					path: photos.path,
+					thumbnailKey: photos.thumbnailKey,
+					thumbnailRoot: photos.thumbnailRoot,
+				})
 				.from(photos)
 				.where(inArray(photos.id, photoIds))
-				.all();
-		});
+				.all(),
+		);
 
 		if (photoData.length === 0) {
-			console.log("No photos found for embedding (may have been deleted)");
-			await step.run("mark-empty-embedding-completed", () =>
-				updateJobProgress(jobId, "completed", 0, 0),
-			);
-			await publishProgress({ phase: "completed", current: 0, total: 0 });
+			await step.run("mark-empty-embedding-completed-v3", async () => {
+				if (await updateJobProgress(jobId, "completed", 0, 0)) {
+					await publishProgress({ phase: "completed", current: 0, total: 0 });
+				}
+			});
 			return { processed: 0, successful: 0 };
 		}
 
-		await step.run("update-embedding-total", () =>
-			updateJobProgress(jobId, "embedding", 0, photoData.length),
-		);
-		await publishProgress({
-			phase: "embedding",
-			current: 0,
-			total: photoData.length,
+		await step.run("update-embedding-total-v3", async () => {
+			if (await updateJobProgress(jobId, "embedding", 0, photoData.length)) {
+				await publishProgress({
+					phase: "embedding",
+					current: 0,
+					total: photoData.length,
+				});
+			}
 		});
 
 		let processedCount = 0;
 		let successCount = 0;
 
-		// Process in batches
-		const batches = [];
-		for (let i = 0; i < photoData.length; i += BATCH_SIZE) {
-			batches.push(photoData.slice(i, i + BATCH_SIZE));
-		}
-
-		for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-			const batch = batches[batchIndex];
-
+		for (let offset = 0; offset < photoData.length; offset += BATCH_SIZE) {
+			const batch = photoData.slice(offset, offset + BATCH_SIZE);
+			const batchIndex = offset / BATCH_SIZE;
+			// Keep inference, persistence, progress and Realtime in one checkpoint.
 			const batchResult = await step.run(
-				`process-batch-${batchIndex}`,
+				`process-batch-v3-${batchIndex}`,
 				async () => {
-					const thumbnailPaths = batch.map((p) =>
-						path.join(thumbnailsDir, getThumbnailPath(p.path, "large")),
+					const thumbnailPaths = batch.map((photo) =>
+						path.join(
+							photo.thumbnailRoot ?? thumbnailsDir,
+							getThumbnailPath(photo.thumbnailKey ?? photo.path, "large"),
+						),
 					);
-
 					const started = performance.now();
 					const embeddings = await nativeExecutor.run(
 						"batchGenerateClipEmbeddings",
 						thumbnailPaths,
 					);
 					const inferenceFinished = performance.now();
-
-					const result = saveEmbeddingBatch(
-						db,
-						batch.map((photo) => photo.id),
-						embeddings,
-					);
+					const result = saveEmbeddingBatch(db, batch, embeddings);
 					console.log(
 						`Embedding batch ${batchIndex}: native queue + image load/model/inference ${Math.round(inferenceFinished - started)}ms, database save ${Math.round(performance.now() - inferenceFinished)}ms for ${batch.length} photos`,
 					);
+					const current = processedCount + result.processed;
+					if (
+						await updateJobProgress(
+							jobId,
+							"embedding",
+							current,
+							photoData.length,
+						)
+					) {
+						await publishProgress({
+							phase: "embedding",
+							current,
+							total: photoData.length,
+						});
+					}
 					return result;
 				},
 			);
-
 			processedCount += batchResult.processed;
 			successCount += batchResult.successful;
-
-			await step.run(`mark-batch-${batchIndex}-embedded`, () =>
-				updateJobProgress(jobId, "embedding", processedCount, photoData.length),
-			);
-			await publishProgress({
-				phase: "embedding",
-				current: processedCount,
-				total: photoData.length,
-			});
-
-			if (processedCount % 64 === 0 || processedCount === photoData.length) {
-				console.log(
-					`  Embedding progress: ${processedCount}/${photoData.length}`,
-				);
-			}
 		}
 
 		console.log(
-			`✅ Batch embedding complete: ${successCount}/${photoData.length} successful`,
+			`Batch embedding complete: ${successCount}/${photoData.length} successful`,
 		);
-
-		const finalPhase = successCount === 0 ? "failed" : "completed";
-		if (finalPhase === "failed") {
-			await step.run("mark-embedding-failed", () =>
-				failJob(jobId, new Error("No photo embeddings could be generated")),
-			);
-		} else {
-			await step.run("mark-embedding-completed", () =>
-				updateJobProgress(jobId, "completed", processedCount, processedCount),
-			);
-		}
-		await publishProgress({
-			phase: finalPhase,
-			current: processedCount,
-			total: processedCount,
+		await step.run("finish-embedding-job-v3", async () => {
+			const phase = successCount === 0 ? "failed" : "completed";
+			const updated =
+				phase === "failed"
+					? await failJob(
+							jobId,
+							new Error("No photo embeddings could be generated"),
+						)
+					: await updateJobProgress(
+							jobId,
+							"completed",
+							processedCount,
+							processedCount,
+						);
+			if (updated) {
+				await publishProgress({
+					phase,
+					current: processedCount,
+					total: processedCount,
+				});
+			}
 		});
 
-		return { processed: photoData.length, successful: successCount };
+		return { processed: processedCount, successful: successCount };
 	},
 );

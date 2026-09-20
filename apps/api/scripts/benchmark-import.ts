@@ -10,6 +10,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import type { db } from "../src/db";
 import {
+	type EmbeddingTarget,
 	saveEmbeddingBatch,
 	saveScanBatch,
 } from "../src/services/import-persistence";
@@ -107,11 +108,11 @@ async function legacyScan(
 
 async function legacyEmbedding(
 	database: typeof db,
-	photoIds: readonly number[],
+	targets: readonly EmbeddingTarget[],
 	embeddings: readonly (number[] | null | undefined)[],
 ) {
 	let successful = 0;
-	for (const [index, photoId] of photoIds.entries()) {
+	for (const [index, { id: photoId }] of targets.entries()) {
 		const embedding = embeddings[index];
 		if (embedding) {
 			await database
@@ -135,7 +136,7 @@ async function legacyEmbedding(
 				.where(eq(photos.id, photoId));
 		}
 	}
-	return { processed: photoIds.length, successful };
+	return { processed: targets.length, successful };
 }
 
 const results: PhotoProcessingResult[] = Array.from(
@@ -198,7 +199,9 @@ const embeddings = results.map((_, i) =>
 	),
 );
 
-function snapshot(sqlite: Database, embedded: boolean) {
+type PersistenceSnapshot = Record<string, unknown>[][];
+
+function snapshot(sqlite: Database, embedded: boolean): PersistenceSnapshot {
 	return ["photos", "photo_exif", "photo_phash", "photo_embedding"].map(
 		(table) => {
 			const isPhoto = table === "photos";
@@ -255,7 +258,7 @@ const variants = [
 ];
 const phases = ["fresh inserts", "rescans", "embedding writes"];
 const timings = new Map<string, number[]>();
-const expected = new Map<string, ReturnType<typeof snapshot>>();
+const expected = new Map<string, PersistenceSnapshot>();
 try {
 	for (let repeat = 0; repeat < repeats; repeat++) {
 		// Alternate execution order to reduce systematic cache/order bias.
@@ -294,7 +297,9 @@ try {
 							outcomes.push(
 								await variant.embed(
 									database,
-									ids.slice(i, i + 16),
+									ids
+										.slice(i, i + 16)
+										.map((id) => ({ id, thumbnailKey: null })),
 									embeddings.slice(i, i + 16),
 								),
 							);
@@ -339,7 +344,7 @@ try {
 						for (let i = 0; i < count; i += 16)
 							await legacyEmbedding(
 								database,
-								ids.slice(i, i + 16),
+								ids.slice(i, i + 16).map((id) => ({ id, thumbnailKey: null })),
 								embeddings
 									.slice(i, i + 16)
 									.map((vector) => vector.map((value) => -value)),

@@ -5,6 +5,7 @@ import {
 	discoverPhotos,
 	processPhotosBatch,
 	startPhotoProcessing,
+	validateThumbnails,
 } from "@photobrain/image-processing";
 import type {
 	NativeRequest,
@@ -63,6 +64,7 @@ async function execute(
 						inputs.map((input) => input.filePath),
 						inputs.map((input) => input.relativePath),
 						request.thumbnailsDir,
+						inputs.map((input) => input.thumbnailKey ?? input.relativePath),
 					),
 				};
 			}
@@ -90,6 +92,7 @@ async function execute(
 					id: request.id,
 					photoId: input.id,
 					photo: photo.result,
+					thumbnailKey: input.thumbnailKey,
 				} satisfies NativeResponse);
 				await ack.promise;
 				current.inputs[photo.index] = undefined;
@@ -124,6 +127,12 @@ async function execute(
 					response = {
 						id: request.id,
 						result: batchGenerateClipEmbeddings(...request.args),
+					};
+					break;
+				case "validateThumbnails":
+					response = {
+						id: request.id,
+						result: validateThumbnails(...request.args),
 					};
 					break;
 			}

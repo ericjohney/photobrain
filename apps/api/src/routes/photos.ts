@@ -1,11 +1,26 @@
 import { join } from "node:path";
-import { THUMBNAIL_CONFIG, type ThumbnailSize } from "@photobrain/utils";
-import { eq, like, or, sql } from "drizzle-orm";
+import {
+	getThumbnailPath,
+	THUMBNAIL_CONFIG,
+	type ThumbnailSize,
+} from "@photobrain/utils";
+import { like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { config } from "../config";
 import { db } from "../db";
-import { photos } from "../db/schema";
+import { photos, scanJobs } from "../db/schema";
+import { inngest } from "../inngest/client";
+import { failJob, updateJobProgress } from "../inngest/progress";
 import { nativeExecutor } from "../services/native-executor";
+import { createScanPlan } from "../services/scan-planner";
+import {
+	clearScanWork,
+	commitScanResult,
+	getScanWorkProgress,
+	initializeScanWork,
+	pendingScanWork,
+	scanEmbeddingPhotoIds,
+} from "../services/scan-work";
 
 const router = new Hono();
 
@@ -44,11 +59,9 @@ router.get("/:id/file", async (c) => {
 			}
 
 			// Serve the large thumbnail as the "full" image
-			const pathWithoutExt = photo.path.replace(/\.[^/.]+$/, "");
 			const thumbnailPath = join(
-				config.THUMBNAILS_DIRECTORY,
-				"large",
-				`${pathWithoutExt}.webp`,
+				photo.thumbnailRoot ?? config.THUMBNAILS_DIRECTORY,
+				getThumbnailPath(photo.thumbnailKey ?? photo.path, "large"),
 			);
 
 			const thumbnailFile = Bun.file(thumbnailPath);
@@ -69,7 +82,10 @@ router.get("/:id/file", async (c) => {
 		}
 
 		// Standard image: serve the original file
-		const absolutePath = join(config.PHOTO_DIRECTORY, photo.path);
+		const absolutePath = join(
+			photo.sourceRoot ?? config.PHOTO_DIRECTORY,
+			photo.path,
+		);
 
 		// Read the file using Bun.file
 		const file = Bun.file(absolutePath);
@@ -125,13 +141,10 @@ router.get("/:id/thumbnail/:size", async (c) => {
 			return c.json({ error: "Photo not found in database" }, 404);
 		}
 
-		// Construct thumbnail path using photo's relative path
-		// Thumbnails mirror the directory structure: thumbnails/{size}/{path}.webp
-		const pathWithoutExt = photo.path.replace(/\.[^/.]+$/, "");
+		// Resolve the committed generation; unadopted legacy rows retain their old path.
 		const thumbnailPath = join(
-			config.THUMBNAILS_DIRECTORY,
-			size,
-			`${pathWithoutExt}.webp`,
+			photo.thumbnailRoot ?? config.THUMBNAILS_DIRECTORY,
+			getThumbnailPath(photo.thumbnailKey ?? photo.path, size),
 		);
 
 		// Read the thumbnail file
@@ -146,9 +159,9 @@ router.get("/:id/thumbnail/:size", async (c) => {
 			return c.redirect(`/api/photos/${id}/file`);
 		}
 
-		// ETag based on file mtime + size — changes when thumbnail is regenerated
+		// Generation identity prevents same-size/same-timestamp outputs sharing an ETag.
 		const mtime = file.lastModified;
-		const etag = `"${mtime}-${file.size}"`;
+		const etag = `"${encodeURIComponent(photo.thumbnailKey ?? photo.path)}-${mtime}-${file.size}"`;
 
 		// Check conditional request — return 304 if thumbnail hasn't changed
 		const ifNoneMatch = c.req.header("if-none-match");
@@ -179,9 +192,10 @@ router.get("/:id/thumbnail/:size", async (c) => {
 // Call via: POST /api/photos/reprocess-heic
 // Remove this endpoint after running it once.
 router.post("/reprocess-heic", async (c) => {
+	const jobId = crypto.randomUUID();
 	try {
-		const heicPhotos = await db
-			.select({ id: photos.id, path: photos.path })
+		const heicPhotos = db
+			.select({ path: photos.path })
 			.from(photos)
 			.where(
 				or(
@@ -192,59 +206,86 @@ router.post("/reprocess-heic", async (c) => {
 				),
 			)
 			.all();
-
-		if (heicPhotos.length === 0) {
+		if (heicPhotos.length === 0)
 			return c.json({ message: "No HEIC photos found", count: 0 });
-		}
-
-		const pending = new Map(
-			heicPhotos.map((photo) => [
-				photo.id,
-				{
-					id: photo.id,
-					filePath: join(config.PHOTO_DIRECTORY, photo.path),
-					relativePath: photo.path,
-				},
-			]),
+		const now = new Date();
+		db.insert(scanJobs)
+			.values({
+				id: jobId,
+				phase: "processing",
+				status: "running",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		const plan = await createScanPlan(
+			db,
+			{
+				filePaths: heicPhotos.map((photo) =>
+					join(config.PHOTO_DIRECTORY, photo.path),
+				),
+				relativePaths: heicPhotos.map((photo) => photo.path),
+			},
+			config.PHOTO_DIRECTORY,
+			config.THUMBNAILS_DIRECTORY,
+			true,
 		);
-		const sessionId = crypto.randomUUID();
-		try {
-			let done = false;
-			while (!done) {
-				({ done } = await nativeExecutor.consumePhotos(
-					sessionId,
-					config.THUMBNAILS_DIRECTORY,
-					() => [...pending.values()],
-					(id, result) => {
-						if (result.success && result.width && result.height) {
-							db.update(photos)
-								.set({
-									width: result.width,
-									height: result.height,
-									thumbnailStatus: "completed",
-									thumbnailUpdatedAt: new Date(),
-								})
-								.where(eq(photos.id, id))
-								.run();
-						}
-						pending.delete(id);
-					},
-				));
-			}
-		} finally {
-			await nativeExecutor.cancelPhotos(sessionId);
+		let progress = initializeScanWork(db, jobId, plan);
+		while (progress.pending > 0) {
+			await nativeExecutor.consumePhotos(
+				jobId,
+				config.THUMBNAILS_DIRECTORY,
+				() => pendingScanWork(db, jobId),
+				async (id, result, thumbnailKey) => {
+					const saved = await commitScanResult(
+						db,
+						jobId,
+						id,
+						result,
+						thumbnailKey,
+					);
+					if (!saved.active) throw new Error("HEIC reprocess became terminal");
+				},
+			);
+			progress = getScanWorkProgress(db, jobId);
 		}
-
+		if (progress.successful === 0)
+			throw new Error("No HEIC photos could be processed");
+		const photoIds = scanEmbeddingPhotoIds(db, jobId);
+		await updateJobProgress(
+			jobId,
+			photoIds.length ? "scan-complete" : "completed",
+			progress.processed,
+			progress.total,
+		);
+		if (photoIds.length)
+			await inngest.send({
+				id: `heic-embeddings-${jobId}`,
+				name: "photos/embeddings.requested",
+				data: { jobId, photoIds, thumbnailsDir: config.THUMBNAILS_DIRECTORY },
+			});
 		return c.json({
-			message: `Re-processed ${heicPhotos.length} HEIC photos`,
-			count: heicPhotos.length,
+			message: `Re-processed ${progress.successful} HEIC photos`,
+			count: progress.successful,
+			jobId,
 		});
 	} catch (error) {
+		await failJob(
+			jobId,
+			error instanceof Error ? error : new Error(String(error)),
+		);
 		console.error("HEIC reprocess error:", error);
 		return c.json(
 			{ error: error instanceof Error ? error.message : "Unknown error" },
 			500,
 		);
+	} finally {
+		try {
+			await nativeExecutor.cancelPhotos(jobId);
+		} catch (error) {
+			console.error("Failed to drain HEIC reprocess", error);
+		}
+		clearScanWork(db, jobId);
 	}
 });
 

@@ -2,13 +2,14 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { scanJobs, scanManifests } from "../../db/schema";
 import { nativeExecutor } from "../../services/native-executor";
+import { createScanPlan } from "../../services/scan-planner";
 import {
 	clearScanWork,
 	commitScanResult,
-	completedScanPhotoIds,
 	getScanWorkProgress,
 	initializeScanWork,
 	pendingScanWork,
+	scanEmbeddingPhotoIds,
 } from "../../services/scan-work";
 import { inngest } from "../client";
 import { failJob, updateJobProgress } from "../progress";
@@ -21,12 +22,12 @@ function scanActive(jobId: string) {
 export const scanPhotosFunction = inngest.createFunction(
 	{
 		// Drain old scan runs before deploying this new checkpoint graph.
-		id: "scan-photos-v4",
+		id: "scan-photos-v5",
 		concurrency: { limit: 1 },
 		onFailure: async ({ event, error, publish, step }) => {
 			const jobId = event.data.event.data.jobId;
 			const failedJob = await step.run(
-				"persist-terminal-failure-v4",
+				"persist-terminal-failure-v5",
 				async () => {
 					try {
 						await nativeExecutor.cancelPhotos(jobId);
@@ -56,14 +57,14 @@ export const scanPhotosFunction = inngest.createFunction(
 	},
 	{ event: "photos/scan.requested" },
 	async ({ event, step, publish }) => {
-		const { directory, thumbnailsDir, jobId } = event.data;
+		const { directory, thumbnailsDir, jobId, force = false } = event.data;
 		const publishProgress = (data: {
 			phase: string;
 			current: number;
 			total: number;
 		}) => publish({ channel: `job:${jobId}`, topic: "progress", data });
 
-		const started = await step.run("claim-scan-job-v4", async () => {
+		const started = await step.run("claim-scan-job-v5", async () => {
 			const job = db
 				.select()
 				.from(scanJobs)
@@ -79,7 +80,7 @@ export const scanPhotosFunction = inngest.createFunction(
 		});
 		if (!started) return { processed: 0, successful: 0 };
 
-		let progress = await step.run("initialize-scan-work-v4", async () => {
+		let progress = await step.run("initialize-scan-work-v5", async () => {
 			if (!scanActive(jobId)) return null;
 			// The durable header freezes discovery even when there are zero files.
 			if (
@@ -93,11 +94,19 @@ export const scanPhotosFunction = inngest.createFunction(
 			}
 			const discovery = await nativeExecutor.run("discoverPhotos", directory);
 			if (!scanActive(jobId)) return null;
-			return initializeScanWork(db, jobId, discovery);
+			const plan = await createScanPlan(
+				db,
+				discovery,
+				directory,
+				thumbnailsDir,
+				force,
+			);
+			if (!scanActive(jobId)) return null;
+			return initializeScanWork(db, jobId, plan);
 		});
 		if (!progress) return { processed: 0, successful: 0 };
 
-		const processing = await step.run("mark-processing-v4", async () => {
+		const processing = await step.run("mark-processing-v5", async () => {
 			if (!scanActive(jobId)) return false;
 			const durable = getScanWorkProgress(db, jobId);
 			await updateJobProgress(
@@ -118,7 +127,7 @@ export const scanPhotosFunction = inngest.createFunction(
 
 		for (let window = 0; progress.pending > 0; window++) {
 			const checkpoint = await step.run(
-				`consume-photo-results-v4-${window}`,
+				`consume-photo-results-v5-${window}`,
 				async () => {
 					if (!scanActive(jobId)) {
 						await nativeExecutor.cancelPhotos(jobId);
@@ -163,8 +172,14 @@ export const scanPhotosFunction = inngest.createFunction(
 							jobId,
 							thumbnailsDir,
 							() => pendingScanWork(db, jobId),
-							(id, result) => {
-								const committed = commitScanResult(db, jobId, id, result);
+							async (id, result, thumbnailKey) => {
+								const committed = await commitScanResult(
+									db,
+									jobId,
+									id,
+									result,
+									thumbnailKey,
+								);
 								if (!committed.active) throw stopped;
 								if (committed.committed) {
 									latest = {
@@ -215,7 +230,7 @@ export const scanPhotosFunction = inngest.createFunction(
 			successful: progress.successful,
 		};
 		if (result.processed > 0 && result.successful === 0) {
-			await step.run("mark-scan-failed-v4", async () => {
+			await step.run("mark-scan-failed-v5", async () => {
 				await nativeExecutor.cancelPhotos(jobId);
 				const failed = await failJob(
 					jobId,
@@ -235,16 +250,16 @@ export const scanPhotosFunction = inngest.createFunction(
 
 		// Checkpoint IDs before terminal progress or dispatch; retain receipts until
 		// the event checkpoint succeeds, including retries after a lost response.
-		const photoIds = await step.run("completed-scan-photo-ids-v4", () =>
-			completedScanPhotoIds(db, jobId),
+		const photoIds = await step.run("completed-scan-photo-ids-v5", () =>
+			scanEmbeddingPhotoIds(db, jobId),
 		);
 		const phase = photoIds.length > 0 ? "scan-complete" : "completed";
 		const total = progress.total;
-		const finished = await step.run("mark-scan-finished-v4", async () => {
+		const finished = await step.run("mark-scan-finished-v5", async () => {
 			if (await updateJobProgress(jobId, phase, result.processed, total))
 				return true;
-			// Empty scans become terminal here. Losing this checkpoint must still
-			// allow their final publication, without reopening a terminal job.
+			// Empty and fully indexed unchanged scans become terminal here. A lost
+			// checkpoint must still allow publication without reopening the job.
 			const job = db
 				.select()
 				.from(scanJobs)
@@ -259,18 +274,18 @@ export const scanPhotosFunction = inngest.createFunction(
 			);
 		});
 		if (finished) {
-			await step.run("publish-scan-finished-v4", () =>
+			await step.run("publish-scan-finished-v5", () =>
 				publishProgress({ phase, current: result.processed, total }),
 			);
 			if (photoIds.length > 0) {
-				await step.sendEvent("trigger-embeddings-v4", {
+				await step.sendEvent("trigger-embeddings-v5", {
 					name: "photos/embeddings.requested",
 					data: { photoIds, thumbnailsDir, jobId },
 				});
 			}
 		}
 		// No parent progress writes after dispatch: the child may already be done.
-		await step.run("clear-scan-work-v4", async () => {
+		await step.run("clear-scan-work-v5", async () => {
 			await nativeExecutor.cancelPhotos(jobId);
 			clearScanWork(db, jobId);
 		});

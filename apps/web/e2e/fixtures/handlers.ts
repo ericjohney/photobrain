@@ -1,5 +1,5 @@
 import type { Page, Route } from "@playwright/test";
-import superjson from "superjson";
+import superjson, { type SuperJSONResult } from "superjson";
 import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
 import { FIXTURE_FOLDERS, FIXTURE_PHOTOS, searchPhotosByQuery } from "./photos";
 
@@ -10,20 +10,19 @@ function parseTrpcBatchRequest(
 ) {
 	const pathSegments = url.pathname.replace(/^.*\/trpc\//, "").split(",");
 	const inputParam = url.searchParams.get("input");
-	const inputs: Record<string, unknown> = inputParam
+	const inputs: Record<string, SuperJSONResult> = inputParam
 		? JSON.parse(inputParam)
 		: {};
-	const body: Record<string, unknown> =
+	const body: Record<string, SuperJSONResult> =
 		method === "POST" && postData ? JSON.parse(postData) : {};
 	return pathSegments.map((path, i) => {
 		const key = i.toString();
-		const queryInput = inputs[key] as { json?: unknown } | undefined;
-		const bodyInput = body[key] as { json?: unknown } | undefined;
+		const serializedInput = inputs[key] ?? body[key];
 		return {
 			path,
-			// superjson wraps inputs as { json: value }
-			input:
-				queryInput?.json ?? bodyInput?.json ?? queryInput ?? bodyInput ?? null,
+			input: serializedInput
+				? superjson.deserialize(serializedInput)
+				: undefined,
 		};
 	});
 }

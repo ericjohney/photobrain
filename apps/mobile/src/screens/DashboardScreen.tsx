@@ -11,6 +11,7 @@ import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
+	Alert,
 	FlatList,
 	type LayoutChangeEvent,
 	Modal,
@@ -493,9 +494,28 @@ export default function DashboardScreen() {
 		void Promise.all([photosQuery.refetch(), filterOptionsQuery.refetch()]);
 	}, [filterOptionsQuery, photosQuery]);
 	const handleScan = useCallback(() => {
+		if (scanDisabled) return;
 		setScanError(null);
 		scanMutation.mutate();
-	}, [scanMutation]);
+	}, [scanDisabled, scanMutation]);
+	const handleReprocess = () => {
+		if (scanDisabled) return;
+		Alert.alert(
+			"Reprocess all photos?",
+			"This regenerates thumbnails and search embeddings for every photo. Original files are left untouched. This takes longer than a normal library scan.",
+			[
+				{ text: "Cancel", style: "cancel" },
+				{
+					text: "Reprocess all photos",
+					onPress: () => {
+						setFilterVisible(false);
+						setScanError(null);
+						scanMutation.mutate({ force: true });
+					},
+				},
+			],
+		);
+	};
 	const handleFilterChange = useCallback((nextFilters: LibraryFilters) => {
 		setFilters(nextFilters);
 		setIsSelecting(false);
@@ -967,6 +987,7 @@ export default function DashboardScreen() {
 					setFilterVisible(false);
 					handleScan();
 				}}
+				onReprocess={handleReprocess}
 				scanDisabled={scanDisabled}
 				isScanning={scanMutation.isPending || jobProgress.isActive}
 				onOpenSettings={() => {

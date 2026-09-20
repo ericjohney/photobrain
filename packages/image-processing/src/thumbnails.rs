@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 
+use crate::batch::processing_pool;
 use crate::orientation::apply_orientation;
 
 #[napi(object)]
@@ -42,6 +43,59 @@ impl Default for ThumbnailSizes {
       },
     }
   }
+}
+
+impl ThumbnailSizes {
+  fn configs(&self) -> [(&str, &ThumbnailConfig); 4] {
+    [
+      ("tiny", &self.tiny),
+      ("small", &self.small),
+      ("medium", &self.medium),
+      ("large", &self.large),
+    ]
+  }
+}
+
+#[napi(object)]
+pub struct ThumbnailValidationItem {
+  /// Thumbnail-relative key, or the original relative path for legacy thumbnails.
+  pub path: String,
+  /// Dimensions of the orientation-corrected decoded source.
+  pub width: u32,
+  pub height: u32,
+}
+
+/// Decode every configured WebP and verify the same no-upscale fit used by generation.
+/// Artifact errors are isolated to their item; pool initialization errors reject the call.
+#[napi]
+pub fn validate_thumbnails(
+  items: Vec<ThumbnailValidationItem>,
+  base_dir: String,
+) -> napi::Result<Vec<bool>> {
+  let sizes = ThumbnailSizes::default();
+  Ok(processing_pool()?.install(|| {
+    items
+      .par_iter()
+      .map(|item| {
+        if item.width == 0 || item.height == 0 {
+          return false;
+        }
+        let path_without_ext = Path::new(&item.path).with_extension("");
+        sizes.configs().iter().all(|(size_name, config)| {
+          let output_path = format!(
+            "{}/{}/{}.webp",
+            base_dir,
+            size_name,
+            path_without_ext.to_string_lossy()
+          );
+          image::open(output_path).is_ok_and(|image| {
+            image.dimensions()
+              == thumbnail_dimensions((item.width, item.height), config.max_dimension)
+          })
+        })
+      })
+      .collect()
+  }))
 }
 
 fn thumbnail_dimensions((width, height): (u32, u32), max_dim: u32) -> (u32, u32) {
@@ -225,6 +279,78 @@ mod tests {
       }
     }
   }
+
+  #[test]
+  fn validation_decodes_all_sizes_and_isolates_invalid_items() {
+    let temp = tempfile::tempdir().unwrap();
+    let base_dir = temp.path().to_str().unwrap();
+    let mut items = Vec::new();
+    let mut expected = Vec::new();
+    for (path, width, height) in [
+      ("landscape.jpg", 401, 267),
+      ("portrait.jpg", 267, 401),
+      (".versions/small/photo.png", 32, 16),
+    ] {
+      generate_all_thumbnails_internal(&DynamicImage::new_rgb8(width, height), path, base_dir)
+        .unwrap();
+      items.push(ThumbnailValidationItem {
+        path: path.into(),
+        width,
+        height,
+      });
+      expected.push(true);
+    }
+    for (name, size) in [
+      ("missing", "small"),
+      ("corrupt", "medium"),
+      ("wrong-size", "large"),
+      ("wrong-format", "tiny"),
+    ] {
+      let path = format!("{name}.jpg");
+      generate_all_thumbnails_internal(&DynamicImage::new_rgb8(32, 16), &path, base_dir).unwrap();
+      let artifact = temp.path().join(size).join(format!("{name}.webp"));
+      match name {
+        "missing" => fs::remove_file(artifact).unwrap(),
+        "corrupt" => {
+          let mut bytes = fs::read(&artifact).unwrap();
+          bytes.truncate(bytes.len() / 2);
+          fs::write(artifact, bytes).unwrap();
+        }
+        "wrong-size" => DynamicImage::new_rgb8(31, 16).save(artifact).unwrap(),
+        "wrong-format" => DynamicImage::new_rgb8(32, 16)
+          .save_with_format(artifact, image::ImageFormat::Png)
+          .unwrap(),
+        _ => unreachable!(),
+      }
+      items.push(ThumbnailValidationItem {
+        path,
+        width: 32,
+        height: 16,
+      });
+      expected.push(false);
+    }
+    // The same intact files are valid only for their actual source dimensions.
+    items.push(ThumbnailValidationItem {
+      path: ".versions/small/photo.png".into(),
+      width: 0,
+      height: 16,
+    });
+    expected.push(false);
+    items.push(ThumbnailValidationItem {
+      path: ".versions/small/photo.png".into(),
+      width: 32,
+      height: 16,
+    });
+    expected.push(true);
+    assert_eq!(
+      validate_thumbnails(items, base_dir.into()).unwrap(),
+      expected
+    );
+    assert_eq!(
+      validate_thumbnails(vec![], base_dir.into()).unwrap(),
+      Vec::<bool>::new()
+    );
+  }
 }
 
 /// Generate thumbnails from a file with a custom relative path
@@ -293,12 +419,7 @@ pub fn generate_all_thumbnails_internal(
   let path_obj = Path::new(relative_path);
   let path_without_ext = path_obj.with_extension("").to_string_lossy().to_string();
 
-  let thumbnail_configs = [
-    ("tiny", &sizes.tiny),
-    ("small", &sizes.small),
-    ("medium", &sizes.medium),
-    ("large", &sizes.large),
-  ];
+  let thumbnail_configs = sizes.configs();
 
   // Reuse the large pixels, including a borrowed source when no resize is needed.
   thumbnail_configs
