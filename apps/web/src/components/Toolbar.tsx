@@ -15,6 +15,16 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import {
+	Sheet,
+	SheetClose,
+	SheetContent,
+	SheetDescription,
+	SheetFooter,
+	SheetHeader,
+	SheetTitle,
+	SheetTrigger,
+} from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import {
 	Tooltip,
@@ -45,6 +55,7 @@ interface ToolbarProps {
 
 	// Actions
 	onRefresh: () => void;
+	onReprocess: () => void;
 	isRefreshing?: boolean;
 
 	// Processing indicator
@@ -69,6 +80,7 @@ export function Toolbar({
 	onSearchChange,
 	onSearch,
 	onRefresh,
+	onReprocess,
 	isRefreshing,
 	hasActiveJobs,
 	processingProgress,
@@ -76,6 +88,8 @@ export function Toolbar({
 	className,
 }: ToolbarProps) {
 	const [isDarkMode, setIsDarkMode] = useState(false);
+	const [reprocessOpen, setReprocessOpen] = useState(false);
+	const scanDisabled = isRefreshing || hasActiveJobs;
 
 	useEffect(() => {
 		const isDark = document.documentElement.classList.contains("dark");
@@ -206,7 +220,7 @@ export function Toolbar({
 							size="icon"
 							className="h-7 w-7"
 							onClick={onRefresh}
-							disabled={isRefreshing || hasActiveJobs}
+							disabled={scanDisabled}
 							aria-label="Scan for new photos"
 						>
 							<RefreshCw
@@ -220,6 +234,45 @@ export function Toolbar({
 							: "Scan for new photos"}
 					</TooltipContent>
 				</Tooltip>
+
+				<Sheet open={reprocessOpen} onOpenChange={setReprocessOpen}>
+					<SheetTrigger asChild>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-7 text-xs"
+							disabled={scanDisabled}
+						>
+							Reprocess all photos…
+						</Button>
+					</SheetTrigger>
+					<SheetContent>
+						<SheetHeader>
+							<SheetTitle>Reprocess all photos?</SheetTitle>
+							<SheetDescription>
+								This regenerates thumbnails and embeddings for every photo. Your
+								original files are left untouched. This takes longer than a
+								normal scan, which only processes new or changed photos and
+								repairs incomplete processing.
+							</SheetDescription>
+						</SheetHeader>
+						<SheetFooter className="mt-6 gap-2">
+							<SheetClose asChild>
+								<Button variant="outline">Cancel</Button>
+							</SheetClose>
+							<Button
+								disabled={scanDisabled}
+								onClick={() => {
+									if (scanDisabled) return;
+									setReprocessOpen(false);
+									onReprocess();
+								}}
+							>
+								Reprocess all photos
+							</Button>
+						</SheetFooter>
+					</SheetContent>
+				</Sheet>
 
 				{/* Theme toggle */}
 				<Tooltip>

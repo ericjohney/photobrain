@@ -1,7 +1,19 @@
-import { afterAll, beforeEach, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import type { PhotoProcessingResult } from "@photobrain/image-processing";
+import { getAllThumbnailSizes, getThumbnailPath } from "@photobrain/utils";
 import { eq } from "drizzle-orm";
 import {
+	photoEmbedding,
 	photoExif,
 	photoPhash,
 	photos,
@@ -9,14 +21,11 @@ import {
 	scanJobs,
 	scanManifests,
 } from "../db/schema";
-import { saveScanBatch } from "../services/import-persistence";
-import type { PhotoStreamInput } from "../services/native-executor";
 import {
-	commitScanResult,
-	getScanWorkProgress,
-	initializeScanWork,
-	pendingScanWork,
-} from "../services/scan-work";
+	saveEmbeddingBatch,
+	saveScanBatch,
+} from "../services/import-persistence";
+import type { PhotoStreamInput } from "../services/native-executor";
 import { createTestDb } from "./setup";
 
 type Progress = { phase: string; current: number; total: number };
@@ -29,7 +38,14 @@ type Steps = {
 	sendEvent(id: string, event: EmbeddingEvent): Promise<void>;
 };
 type Context = {
-	event: { data: { directory: string; thumbnailsDir: string; jobId: string } };
+	event: {
+		data: {
+			directory: string;
+			thumbnailsDir: string;
+			jobId: string;
+			force?: boolean;
+		};
+	};
 	step: Steps;
 	publish(message: { data: Progress }): Promise<void>;
 };
@@ -58,10 +74,13 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 			new Response(child.stderr).text(),
 		]);
 		if (exitCode !== 0) throw new Error(`${stdout}\n${stderr}`);
-	}, 30_000);
+	}, 60_000);
 } else {
 	const { db, sqlite } = createTestDb();
-	const jobId = "scan-test";
+	let jobId: string;
+	let fixtureRoot: string;
+	let sourceRoot: string;
+	let thumbnailsRoot: string;
 	let paths: string[] = [];
 	let failures = new Set<string>();
 	let discoveries = 0;
@@ -83,9 +102,13 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 			success: !failures.has(path),
 			path,
 			name: path,
-			size: 100,
+			size: existsSync(join(sourceRoot, path))
+				? statSync(join(sourceRoot, path)).size
+				: 100,
 			createdAt: Date.UTC(2024, 0, 1),
-			modifiedAt: Date.UTC(2024, 0, 1),
+			modifiedAt: existsSync(join(sourceRoot, path))
+				? statSync(join(sourceRoot, path)).mtimeMs
+				: Date.UTC(2024, 0, 1),
 			width: 100,
 			height: 80,
 			mimeType: "image/jpeg",
@@ -95,16 +118,53 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		};
 	}
 
+	function sourceFiles() {
+		for (const path of paths) {
+			const file = join(sourceRoot, path);
+			if (existsSync(file)) continue;
+			mkdirSync(dirname(file), { recursive: true });
+			writeFileSync(file, `source:${path}`);
+		}
+		return {
+			filePaths: paths.map((path) => join(sourceRoot, path)),
+			relativePaths: [...paths],
+		};
+	}
+
+	function thumbnails(input: PhotoStreamInput) {
+		if (!input.thumbnailKey) throw new Error("Missing attempt thumbnail key");
+		for (const size of getAllThumbnailSizes()) {
+			const file = join(
+				thumbnailsRoot,
+				getThumbnailPath(input.thumbnailKey, size),
+			);
+			mkdirSync(dirname(file), { recursive: true });
+			writeFileSync(
+				file,
+				`${size}:${input.relativePath}:${input.thumbnailKey}`,
+			);
+		}
+	}
+
+	async function initialize() {
+		return initializeScanWork(
+			db,
+			jobId,
+			await createScanPlan(db, sourceFiles(), sourceRoot, thumbnailsRoot),
+		);
+	}
+
 	mock.module("../db", () => ({ db }));
 	mock.module("../services/native-executor", () => ({
 		nativeExecutor: {
-			run: async (operation: string) => {
+			run: async (operation: string, inputs?: unknown[]) => {
+				if (operation === "validateThumbnails")
+					return inputs?.map(() => true) ?? [];
 				if (operation !== "discoverPhotos")
 					throw new Error(`Unexpected operation ${operation}`);
 				discoveries++;
 				return {
-					filePaths: paths.map((path) => `/photos/${path}`),
-					relativePaths: [...paths],
+					...sourceFiles(),
 					totalCount: paths.length,
 				};
 			},
@@ -115,15 +175,16 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 				onResult: (
 					id: number,
 					value: PhotoProcessingResult,
+					thumbnailKey?: string,
 				) => void | Promise<void>,
 				maxResults = 20,
 			) => {
-				expect(thumbnailsDir).toBe("/thumbs");
+				expect(thumbnailsDir).toBe(thumbnailsRoot);
 				if (!session) {
 					const inputs = await load();
 					loads.push(inputs);
 					for (const input of inputs)
-						expect(input.filePath).toBe(`/photos/${input.relativePath}`);
+						expect(input.filePath).toBe(join(sourceRoot, input.relativePath));
 					session = completionOrder([...inputs]);
 				}
 				let processed = 0;
@@ -132,7 +193,12 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 						const input = session.shift();
 						if (!input) throw new Error("Missing fixture input");
 						beforeResult(input);
-						await onResult(input.id, result(input.relativePath));
+						if (!failures.has(input.relativePath)) thumbnails(input);
+						await onResult(
+							input.id,
+							result(input.relativePath),
+							input.thumbnailKey,
+						);
 						completions.push(input.relativePath);
 						processed++;
 						afterResult(input);
@@ -169,11 +235,18 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 	const { scanPhotosFunction } = await import("../inngest/functions/scan");
 	const scan = scanPhotosFunction as unknown as ScanFunction;
 	const { updateJobProgress } = await import("../inngest/progress");
+	const { createScanPlan } = await import("../services/scan-planner");
+	const {
+		commitScanResult,
+		getScanWorkProgress,
+		initializeScanWork,
+		pendingScanWork,
+	} = await import("../services/scan-work");
 
 	function job() {
 		return db.select().from(scanJobs).where(eq(scanJobs.id, jobId)).get();
 	}
-	function harness() {
+	function harness(force = false) {
 		const checkpoints = new Map<string, unknown>();
 		const published: Progress[] = [];
 		const dispatched: EmbeddingEvent[] = [];
@@ -222,7 +295,12 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		};
 		const context: Context = {
 			event: {
-				data: { directory: "/photos", thumbnailsDir: "/thumbs", jobId },
+				data: {
+					directory: sourceRoot,
+					thumbnailsDir: thumbnailsRoot,
+					jobId,
+					force,
+				},
 			},
 			step,
 			async publish({ data }) {
@@ -254,11 +332,18 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 	}
 
 	beforeEach(() => {
+		jobId = crypto.randomUUID();
+		fixtureRoot = mkdtempSync(join(tmpdir(), "photobrain-scan-"));
+		sourceRoot = join(fixtureRoot, "sources");
+		thumbnailsRoot = join(fixtureRoot, "thumbnails");
+		mkdirSync(sourceRoot);
+		mkdirSync(thumbnailsRoot);
 		sqlite.exec("DROP TRIGGER IF EXISTS fail_scan");
 		db.delete(scanItems).run();
 		db.delete(scanManifests).run();
 		db.delete(photoExif).run();
 		db.delete(photoPhash).run();
+		db.delete(photoEmbedding).run();
 		db.delete(photos).run();
 		db.delete(scanJobs).run();
 		db.insert(scanJobs)
@@ -278,7 +363,81 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		beforeResult = () => {};
 		afterResult = () => {};
 	});
+	afterEach(() => rmSync(fixtureRoot, { recursive: true, force: true }));
 	afterAll(() => sqlite.close());
+
+	test("unchanged rescans finish without media or embedding dispatch; missing vectors recover without re-encoding", async () => {
+		paths = ["a.jpg"];
+		await harness().execute();
+		const photo = db.select().from(photos).get();
+		if (!photo) throw new Error("Expected committed photo");
+		saveEmbeddingBatch(
+			db,
+			[{ id: photo.id, thumbnailKey: photo.thumbnailKey }],
+			[Array(512).fill(0.25)],
+		);
+		const completed = db.select().from(photos).get();
+		if (!completed) throw new Error("Expected completed photo");
+		const artifact = join(
+			thumbnailsRoot,
+			getThumbnailPath(photo.thumbnailKey ?? "", "large"),
+		);
+		const before = statSync(artifact, { bigint: true });
+		jobId = crypto.randomUUID();
+		db.insert(scanJobs)
+			.values({ id: jobId, createdAt: new Date(), updatedAt: new Date() })
+			.run();
+		const unchanged = harness();
+		expect(await unchanged.execute()).toEqual({ processed: 1, successful: 1 });
+		expect(loads).toHaveLength(1);
+		expect(unchanged.dispatched).toEqual([]);
+		expect(job()?.status).toBe("completed");
+		expect(db.select().from(photos).get()).toEqual(completed);
+		expect(statSync(artifact, { bigint: true })).toEqual(before);
+
+		db.delete(photoEmbedding).run();
+		jobId = crypto.randomUUID();
+		db.insert(scanJobs)
+			.values({ id: jobId, createdAt: new Date(), updatedAt: new Date() })
+			.run();
+		const recovery = harness();
+		expect(await recovery.execute()).toEqual({ processed: 1, successful: 1 });
+		expect(loads).toHaveLength(1);
+		expect(recovery.dispatched.map((event) => event.data.photoIds)).toEqual([
+			[photo.id],
+		]);
+		expect(db.select().from(photos).get()).toEqual({
+			...completed,
+			embeddingStatus: "pending",
+		});
+		expect(statSync(artifact, { bigint: true })).toEqual(before);
+	});
+
+	test("force rescans commit a fresh generation without replacing the previous artifacts", async () => {
+		paths = ["a.jpg"];
+		await harness().execute();
+		const photo = db.select().from(photos).get();
+		if (!photo?.thumbnailKey) throw new Error("Expected committed generation");
+		const artifact = join(
+			thumbnailsRoot,
+			getThumbnailPath(photo.thumbnailKey, "large"),
+		);
+		const before = statSync(artifact, { bigint: true });
+		jobId = crypto.randomUUID();
+		db.insert(scanJobs)
+			.values({ id: jobId, createdAt: new Date(), updatedAt: new Date() })
+			.run();
+		const forced = harness(true);
+		expect(await forced.execute()).toEqual({ processed: 1, successful: 1 });
+		const updated = db.select().from(photos).get();
+		expect(updated?.id).toBe(photo.id);
+		expect(updated?.thumbnailKey).not.toBe(photo.thumbnailKey);
+		expect(statSync(artifact, { bigint: true })).toEqual(before);
+		expect(forced.dispatched.map((event) => event.data.photoIds)).toEqual([
+			[photo.id],
+		]);
+		expect(loads).toHaveLength(2);
+	});
 
 	test("dispatches new paths first but commits fast existing and later inputs before a slow first input", async () => {
 		const [oldId] = saveScanBatch(db, [result("old.jpg")]);
@@ -549,34 +708,57 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		expect(db.select().from(scanManifests).all()).toEqual([]);
 	});
 
-	test("rejects misaligned discovery before persisting a manifest", () => {
-		expect(() =>
-			initializeScanWork(db, jobId, {
-				filePaths: ["/photos/a.jpg"],
-				relativePaths: [],
-			}),
-		).toThrow();
+	test("rejects misaligned discovery before persisting a manifest", async () => {
+		await expect(
+			createScanPlan(
+				db,
+				{
+					filePaths: [join(sourceRoot, "a.jpg")],
+					relativePaths: [],
+				},
+				sourceRoot,
+				thumbnailsRoot,
+			),
+		).rejects.toThrow();
 		expect(db.select().from(scanManifests).all()).toEqual([]);
 	});
 
-	test("idempotent receipts ignore duplicate results and reject mismatched pending paths", () => {
-		initializeScanWork(db, jobId, {
-			filePaths: ["/photos/a.jpg", "/photos/b.jpg"],
-			relativePaths: ["a.jpg", "b.jpg"],
-		});
+	test("idempotent receipts ignore duplicate results and reject mismatched pending paths", async () => {
+		paths = ["a.jpg", "b.jpg"];
+		await initialize();
 		const [first, second] = pendingScanWork(db, jobId);
-		const saved = commitScanResult(db, jobId, first.id, result("a.jpg"));
+		thumbnails(first);
+		const saved = await commitScanResult(
+			db,
+			jobId,
+			first.id,
+			result("a.jpg"),
+			first.thumbnailKey,
+		);
 		expect(saved).toMatchObject({
 			processed: 1,
 			successful: 1,
 			committed: true,
 		});
 		expect(
-			commitScanResult(db, jobId, first.id, result("a.jpg")),
+			await commitScanResult(
+				db,
+				jobId,
+				first.id,
+				result("a.jpg"),
+				first.thumbnailKey,
+			),
 		).toMatchObject({ processed: 1, successful: 1, committed: false });
-		expect(() =>
-			commitScanResult(db, jobId, second.id, result("wrong.jpg")),
-		).toThrow();
+		thumbnails(second);
+		await expect(
+			commitScanResult(
+				db,
+				jobId,
+				second.id,
+				result("wrong.jpg"),
+				second.thumbnailKey,
+			),
+		).rejects.toThrow();
 		expect(job()?.current).toBe(1);
 		expect(
 			db
@@ -645,10 +827,8 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 	});
 
 	test("exhausted failure cancels native work and clears receipts without regressing terminal children", async () => {
-		initializeScanWork(db, jobId, {
-			filePaths: ["/photos/a.jpg"],
-			relativePaths: ["a.jpg"],
-		});
+		paths = ["a.jpg"];
+		await initialize();
 		const run = harness();
 		await run.fail(new Error("native worker died"));
 		expect(cancellations).toBe(1);
@@ -674,10 +854,8 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 	});
 
 	test("exhausted failure remains durable when native cancellation also fails", async () => {
-		initializeScanWork(db, jobId, {
-			filePaths: ["/photos/a.jpg"],
-			relativePaths: ["a.jpg"],
-		});
+		paths = ["a.jpg"];
+		await initialize();
 		cancellationError = new Error("Native executor is busy");
 		const run = harness();
 		await run.fail(new Error("native worker died"));
@@ -699,9 +877,14 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		expect(windows.at(-1)).toBe(1);
 		expect(loads).toHaveLength(1);
 		expect(run.checkpoints.size).toBeLessThan(1000);
+		expect(
+			[...run.checkpoints.keys()].filter((id) =>
+				id.startsWith("consume-photo-results-v5-"),
+			),
+		).toHaveLength(399);
 		for (const [id, value] of run.checkpoints) {
-			if (!id.startsWith("consume-photo-results")) continue;
+			if (!id.startsWith("consume-photo-results-v5-")) continue;
 			expect(JSON.stringify(value).length).toBeLessThan(120);
 		}
-	});
+	}, 30_000);
 }

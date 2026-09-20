@@ -277,6 +277,7 @@ jest.mock("@photobrain/utils", () => ({
 
 // Mock useJobProgress hook (not under test)
 jest.mock("@/hooks/use-job-progress", () => ({
+	__esModule: true,
 	useJobProgress: () => ({
 		progress: null,
 		isActive: false,

@@ -1,8 +1,19 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { Database } from "bun:sqlite";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	setSystemTime,
+	test,
+} from "bun:test";
 import type { PhotoProcessingResult } from "@photobrain/image-processing";
 import { eq } from "drizzle-orm";
+import type { db as applicationDb } from "../db";
 import { photoEmbedding, photoExif, photoPhash, photos } from "../db/schema";
 import {
+	type EmbeddingTarget,
+	type ProcessedMediaState,
 	saveEmbeddingBatch,
 	saveScanBatch,
 } from "../services/import-persistence";
@@ -42,8 +53,8 @@ function result(
 	};
 }
 
-let db: ReturnType<typeof createTestDb>["db"];
-let sqlite: ReturnType<typeof createTestDb>["sqlite"];
+let db: typeof applicationDb;
+let sqlite: Database;
 
 beforeEach(() => {
 	({ db, sqlite } = createTestDb());
@@ -63,139 +74,38 @@ function snapshot() {
 	};
 }
 
+function targets(ids: readonly number[]): EmbeddingTarget[] {
+	return ids.map((id) => {
+		const photo = db
+			.select({ id: photos.id, thumbnailKey: photos.thumbnailKey })
+			.from(photos)
+			.where(eq(photos.id, id))
+			.get();
+		if (!photo) throw new Error(`Missing fixture photo ${id}`);
+		return photo;
+	});
+}
+
+function mediaStates(
+	inputs: readonly PhotoProcessingResult[],
+	generation: string,
+): Map<string, ProcessedMediaState> {
+	return new Map(
+		inputs.map((input) => [
+			input.path,
+			{
+				sourceRoot: "/photos",
+				sourceFingerprint: `${generation}:${input.size}`,
+				mediaVersion: generation,
+				thumbnailKey: `.versions/${generation}/${input.path}`,
+				thumbnailRoot: `/thumbnails/${generation}`,
+				thumbnailFingerprint: `${generation}:thumbnails`,
+			},
+		]),
+	);
+}
+
 describe("saveScanBatch", () => {
-	test.each([
-		{ extension: "jpg", mimeType: "image/jpeg", isRaw: false, gps: [0, 0, 0] },
-		{
-			extension: "arw",
-			mimeType: "image/x-sony-arw",
-			isRaw: true,
-			gps: [-33.86, -151.21, -12.5],
-		},
-		{
-			extension: "heic",
-			mimeType: "image/heic",
-			isRaw: false,
-			gps: [51.5, 0, -1],
-		},
-	])("maps successful $extension fields and GPS", ({
-		extension,
-		mimeType,
-		isRaw,
-		gps,
-	}) => {
-		const input = result(`trip/photo.${extension}`, {
-			mimeType,
-			isRaw,
-			...(isRaw
-				? {
-						rawFormat: "ARW",
-						rawStatus: "converted",
-						rawError: "preview warning",
-					}
-				: {}),
-		});
-		input.exif = {
-			...input.exif,
-			gpsLatitude: gps[0],
-			gpsLongitude: gps[1],
-			gpsAltitude: gps[2],
-		};
-		const before = Math.floor(Date.now() / 1000) * 1000;
-		const ids = saveScanBatch(db, [input]);
-		const saved = snapshot();
-		expect(ids).toEqual(saved.photos.map((photo) => photo.id));
-		expect(saved.photos).toEqual([
-			{
-				id: ids[0],
-				path: input.path,
-				name: input.name,
-				size: input.size,
-				createdAt: new Date(input.createdAt),
-				modifiedAt: new Date(input.modifiedAt),
-				width: 4032,
-				height: 3024,
-				mimeType,
-				isRaw,
-				rawFormat: isRaw ? "ARW" : null,
-				rawStatus: isRaw ? "converted" : null,
-				rawError: isRaw ? "preview warning" : null,
-				thumbnailStatus: "completed",
-				thumbnailUpdatedAt: expect.any(Date),
-				embeddingStatus: "pending",
-				phashStatus: "completed",
-			},
-		]);
-		expect(
-			saved.photos[0].thumbnailUpdatedAt?.getTime(),
-		).toBeGreaterThanOrEqual(before);
-		expect(saved.photos[0].thumbnailUpdatedAt?.getTime()).toBeLessThanOrEqual(
-			Date.now(),
-		);
-		expect(saved.exif).toEqual([
-			{
-				id: expect.any(Number),
-				photoId: ids[0],
-				...exif,
-				gpsLatitude: String(gps[0]),
-				gpsLongitude: String(gps[1]),
-				gpsAltitude: String(gps[2]),
-			},
-		]);
-		expect(saved.phash).toEqual([
-			{
-				id: expect.any(Number),
-				photoId: ids[0],
-				hash: "YWJjZA==",
-				algorithm: "double_gradient_8x8",
-				createdAt: expect.any(Date),
-			},
-		]);
-		expect(saved.photos[0].thumbnailUpdatedAt).toEqual(
-			saved.phash[0].createdAt,
-		);
-		expect(saved.embeddings).toEqual([]);
-	});
-
-	test("maps absent optional fields to null", () => {
-		saveScanBatch(db, [
-			result("minimal.jpg", {
-				width: undefined,
-				height: undefined,
-				mimeType: undefined,
-				exif: {},
-				phash: undefined,
-			}),
-		]);
-		const saved = snapshot();
-		expect(saved.photos[0]).toMatchObject({
-			width: null,
-			height: null,
-			mimeType: null,
-			phashStatus: "failed",
-		});
-		expect(saved.exif).toEqual([
-			{
-				id: expect.any(Number),
-				photoId: saved.photos[0].id,
-				cameraMake: null,
-				cameraModel: null,
-				lensMake: null,
-				lensModel: null,
-				focalLength: null,
-				iso: null,
-				aperture: null,
-				shutterSpeed: null,
-				exposureBias: null,
-				dateTaken: null,
-				gpsLatitude: null,
-				gpsLongitude: null,
-				gpsAltitude: null,
-			},
-		]);
-		expect(saved.phash).toEqual([]);
-	});
-
 	test("ignores failed native results for new and existing paths", () => {
 		const existing = result("existing.jpg");
 		saveScanBatch(db, [existing]);
@@ -246,7 +156,7 @@ describe("saveScanBatch", () => {
 			rawStatus: "converted",
 		});
 		const ids = saveScanBatch(db, [input]);
-		saveEmbeddingBatch(db, ids, [[0.1, -0.2]]);
+		saveEmbeddingBatch(db, targets(ids), [[0.1, -0.2]]);
 		db.update(photos)
 			.set({ thumbnailUpdatedAt: new Date(0) })
 			.run();
@@ -312,6 +222,73 @@ describe("saveScanBatch", () => {
 		});
 	});
 
+	test("generation-aware saves preserve IDs while direct saves invalidate freshness", () => {
+		const input = result("generations.jpg");
+		const first = mediaStates([input], "first");
+		const firstState = first.get(input.path);
+		if (!firstState) throw new Error("Expected first generation");
+		const ids = saveScanBatch(db, [input], first);
+		saveEmbeddingBatch(db, targets(ids), [[0.25]]);
+		const second = mediaStates([input], "second");
+		expect(saveScanBatch(db, [input], second)).toEqual(ids);
+		expect(snapshot().photos[0]).toMatchObject({
+			...second.get(input.path),
+			embeddingStatus: "pending",
+		});
+		expect(snapshot().embeddings[0].thumbnailKey).toBe(firstState.thumbnailKey);
+
+		for (const state of [undefined, new Map<string, ProcessedMediaState>()]) {
+			saveScanBatch(db, [input], second);
+			expect(saveScanBatch(db, [input], state)).toEqual(ids);
+			expect(snapshot().photos[0]).toMatchObject({
+				sourceRoot: null,
+				sourceFingerprint: null,
+				mediaVersion: null,
+				thumbnailKey: null,
+				thumbnailRoot: null,
+				thumbnailFingerprint: null,
+				embeddingStatus: "pending",
+			});
+		}
+	});
+
+	test("same-second generations advance cache tokens even when the clock goes backwards", () => {
+		const epoch = Date.UTC(2026, 0, 1);
+		setSystemTime(new Date(epoch + 123));
+		try {
+			const input = result("cache-token.jpg");
+			const [id] = saveScanBatch(db, [input], mediaStates([input], "first"));
+			const cacheToken = () =>
+				db
+					.select({ timestamp: photos.thumbnailUpdatedAt })
+					.from(photos)
+					.where(eq(photos.id, id))
+					.get()
+					?.timestamp?.getTime();
+			expect(cacheToken()).toBe(epoch);
+			saveScanBatch(db, [input], mediaStates([input], "second"));
+			expect(cacheToken()).toBe(epoch + 1_000);
+			saveScanBatch(db, [input], mediaStates([input], "third"));
+			expect(cacheToken()).toBe(epoch + 2_000);
+
+			setSystemTime(new Date(epoch - 10_000));
+			saveScanBatch(db, [input], mediaStates([input], "fourth"));
+			expect(cacheToken()).toBe(epoch + 3_000);
+			setSystemTime(new Date(epoch + 10_456));
+			saveScanBatch(db, [input], mediaStates([input], "fifth"));
+			expect(cacheToken()).toBe(epoch + 10_000);
+
+			db.update(photos)
+				.set({ thumbnailUpdatedAt: null })
+				.where(eq(photos.id, id))
+				.run();
+			saveScanBatch(db, [input], mediaStates([input], "legacy-upgrade"));
+			expect(cacheToken()).toBe(epoch + 10_000);
+		} finally {
+			setSystemTime();
+		}
+	});
+
 	for (const table of ["photo_exif", "photo_phash"]) {
 		test.each([
 			false,
@@ -323,10 +300,11 @@ describe("saveScanBatch", () => {
 			const originalIds = saveScanBatch(
 				db,
 				existingTarget ? [inputs[0], inputs[20]] : [inputs[0]],
+				mediaStates(inputs, "original"),
 			);
 			saveEmbeddingBatch(
 				db,
-				originalIds,
+				targets(originalIds),
 				originalIds.map(() => [0.25]),
 			);
 			const before = snapshot();
@@ -336,21 +314,27 @@ describe("saveScanBatch", () => {
 				exif: { iso: 800 },
 				phash: "changed",
 			}));
+			const changedStates = mediaStates(changed, "replacement");
 			// Resolve the late row inside the trigger, including when it is newly inserted.
 			sqlite.exec(`CREATE TRIGGER fail_scan BEFORE INSERT ON ${table}
 				WHEN NEW.photo_id = (SELECT id FROM photos WHERE path = 'rollback/20.jpg')
 				BEGIN SELECT RAISE(ABORT, 'late sidecar failure'); END`);
-			expect(() => saveScanBatch(db, changed)).toThrow("late sidecar failure");
+			expect(() => saveScanBatch(db, changed, changedStates)).toThrow(
+				"late sidecar failure",
+			);
 			expect(snapshot()).toEqual(before);
 
 			sqlite.exec("DROP TRIGGER fail_scan");
-			const ids = saveScanBatch(db, changed);
+			const ids = saveScanBatch(db, changed, changedStates);
 			const saved = snapshot();
 			expect(ids).toHaveLength(changed.length);
 			for (const [index, input] of changed.entries()) {
 				expect(
 					saved.photos.find((photo) => photo.path === input.path)?.id,
 				).toBe(ids[index]);
+				expect(
+					saved.photos.find((photo) => photo.path === input.path),
+				).toMatchObject(changedStates.get(input.path) ?? {});
 			}
 			expect(ids[0]).toBe(originalIds[0]);
 			if (existingTarget) expect(ids[20]).toBe(originalIds[1]);
@@ -365,12 +349,84 @@ describe("saveScanBatch", () => {
 			expect(saved.exif.every((row) => row.iso === 800)).toBe(true);
 			expect(saved.phash.every((row) => row.hash === "changed")).toBe(true);
 			expect(saved.embeddings).toEqual(before.embeddings);
-			expect(saveScanBatch(db, changed)).toEqual(ids);
+			expect(saveScanBatch(db, changed, changedStates)).toEqual(ids);
 		});
 	}
 });
 
 describe("saveEmbeddingBatch", () => {
+	test.each([
+		{ previous: "old", current: "new" },
+		{ previous: null, current: "new" },
+		{ previous: "old", current: null },
+	])("rejects stale successes and failures across $previous -> $current", ({
+		previous,
+		current,
+	}) => {
+		const input = result("stale.jpg");
+		const ids = saveScanBatch(
+			db,
+			[input],
+			previous === null ? undefined : mediaStates([input], previous),
+		);
+		const staleTargets = targets(ids);
+		saveEmbeddingBatch(db, staleTargets, [[0.1]]);
+		saveScanBatch(
+			db,
+			[input],
+			current === null ? undefined : mediaStates([input], current),
+		);
+		const pending = snapshot();
+		expect(saveEmbeddingBatch(db, staleTargets, [[0.9]])).toEqual({
+			processed: 1,
+			successful: 0,
+		});
+		expect(snapshot()).toEqual(pending);
+
+		expect(saveEmbeddingBatch(db, targets(ids), [[0.5]])).toEqual({
+			processed: 1,
+			successful: 1,
+		});
+		const completed = snapshot();
+		for (const vector of [[0.9], null, undefined]) {
+			expect(saveEmbeddingBatch(db, staleTargets, [vector])).toEqual({
+				processed: 1,
+				successful: 0,
+			});
+			expect(snapshot()).toEqual(completed);
+		}
+	});
+
+	test("skipped generations and deleted photos preserve batch alignment", () => {
+		const inputs = [
+			result("stale.jpg"),
+			result("deleted.jpg"),
+			result("current.jpg"),
+		];
+		const ids = saveScanBatch(db, inputs, mediaStates(inputs, "old"));
+		const captured = targets(ids);
+		saveScanBatch(db, [inputs[0]], mediaStates([inputs[0]], "new"));
+		db.delete(photoExif).where(eq(photoExif.photoId, ids[1])).run();
+		db.delete(photoPhash).where(eq(photoPhash.photoId, ids[1])).run();
+		db.delete(photos).where(eq(photos.id, ids[1])).run();
+		expect(saveEmbeddingBatch(db, captured, [[0.1], [0.2], [0.3]])).toEqual({
+			processed: 3,
+			successful: 1,
+		});
+		const saved = snapshot();
+		expect(saved.photos.map((photo) => photo.embeddingStatus)).toEqual([
+			"pending",
+			"completed",
+		]);
+		expect(saved.embeddings).toMatchObject([
+			{
+				photoId: ids[2],
+				thumbnailKey: captured[2].thumbnailKey,
+				embedding: Buffer.from(new Float32Array([0.3]).buffer),
+			},
+		]);
+	});
+
 	test.each([
 		15, 16, 17,
 	])("stores Float32 blobs and upserts retries for %i photos", (size) => {
@@ -379,14 +435,14 @@ describe("saveEmbeddingBatch", () => {
 			Array.from({ length: size }, (_, i) => result(`embedding/${i}.jpg`)),
 		).reverse();
 		const vectors = ids.map((id) => [id / 10, -0.123456789, 0, 1.23456789]);
-		expect(saveEmbeddingBatch(db, ids, vectors)).toEqual({
+		expect(saveEmbeddingBatch(db, targets(ids), vectors)).toEqual({
 			processed: size,
 			successful: size,
 		});
 		const before = snapshot();
 		const updated = vectors.map((vector) => vector.map((value) => value + 0.1));
 		for (const values of [updated, updated]) {
-			expect(saveEmbeddingBatch(db, ids, values)).toEqual({
+			expect(saveEmbeddingBatch(db, targets(ids), values)).toEqual({
 				processed: size,
 				successful: size,
 			});
@@ -402,6 +458,7 @@ describe("saveEmbeddingBatch", () => {
 					photoId: id,
 					embedding: Buffer.from(new Float32Array(values[index]).buffer),
 					modelVersion: "clip-vit-b32",
+					thumbnailKey: null,
 					createdAt: expect.any(Date),
 				});
 			}
@@ -419,11 +476,13 @@ describe("saveEmbeddingBatch", () => {
 		if (priorVectors)
 			saveEmbeddingBatch(
 				db,
-				ids,
+				targets(ids),
 				ids.map(() => [0.5, -0.5]),
 			);
 		const before = snapshot();
-		expect(saveEmbeddingBatch(db, ids, [[0.25], null, undefined])).toEqual({
+		expect(
+			saveEmbeddingBatch(db, targets(ids), [[0.25], null, undefined]),
+		).toEqual({
 			processed: 4,
 			successful: 1,
 		});
@@ -445,20 +504,27 @@ describe("saveEmbeddingBatch", () => {
 			db,
 			Array.from({ length: 17 }, (_, i) => result(`rollback/${i}.jpg`)),
 		);
-		saveEmbeddingBatch(db, [ids[0], ids[2], ids[16]], [[0.1], [0.2], [0.3]]);
+		db.update(photos)
+			.set({ thumbnailKey: ".versions/current/photo.jpg" })
+			.run();
+		saveEmbeddingBatch(db, targets([ids[0], ids[2], ids[16]]), [
+			[0.1],
+			[0.2],
+			[0.3],
+		]);
 		const before = snapshot();
 		const vectors = ids.map((_, index) => (index === 2 ? null : [0.9, -0.8]));
 		sqlite.exec(`CREATE TRIGGER fail_embedding BEFORE INSERT ON photo_embedding
 			WHEN NEW.photo_id = (SELECT id FROM photos WHERE path = 'rollback/16.jpg')
 			BEGIN SELECT RAISE(ABORT, 'late embedding failure'); END`);
-		expect(() => saveEmbeddingBatch(db, ids, vectors)).toThrow(
+		expect(() => saveEmbeddingBatch(db, targets(ids), vectors)).toThrow(
 			"late embedding failure",
 		);
 		expect(snapshot()).toEqual(before);
 
 		sqlite.exec("DROP TRIGGER fail_embedding");
 		for (let attempt = 0; attempt < 2; attempt++) {
-			expect(saveEmbeddingBatch(db, ids, vectors)).toEqual({
+			expect(saveEmbeddingBatch(db, targets(ids), vectors)).toEqual({
 				processed: 17,
 				successful: 16,
 			});

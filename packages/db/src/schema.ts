@@ -28,6 +28,13 @@ export const photos = sqliteTable("photos", {
 	thumbnailUpdatedAt: integer("thumbnail_updated_at", { mode: "timestamp" }),
 	embeddingStatus: text("embedding_status").default("pending"),
 	phashStatus: text("phash_status").default("pending"),
+	// Precise identity and the committed thumbnail generation used by incremental scans.
+	sourceRoot: text("source_root"),
+	sourceFingerprint: text("source_fingerprint"),
+	mediaVersion: text("media_version"),
+	thumbnailKey: text("thumbnail_key"),
+	thumbnailRoot: text("thumbnail_root"),
+	thumbnailFingerprint: text("thumbnail_fingerprint"),
 });
 
 export const photoExif = sqliteTable(
@@ -95,6 +102,7 @@ export const photoEmbedding = sqliteTable("photo_embedding", {
 		.references(() => photos.id, { onDelete: "cascade" }),
 	embedding: blob("embedding").notNull(),
 	modelVersion: text("model_version").default("clip-vit-b32"),
+	thumbnailKey: text("thumbnail_key"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -128,6 +136,11 @@ export const scanManifests = sqliteTable("scan_manifests", {
 	total: integer("total").notNull(),
 	processed: integer("processed").notNull().default(0),
 	successful: integer("successful").notNull().default(0),
+	sourceRoot: text("source_root"),
+	thumbnailsRoot: text("thumbnails_root"),
+	unchanged: integer("unchanged").notNull().default(0),
+	media: integer("media").notNull().default(0),
+	embedding: integer("embedding").notNull().default(0),
 });
 
 export const scanItems = sqliteTable(
@@ -139,6 +152,12 @@ export const scanItems = sqliteTable(
 		ordinal: integer("ordinal").notNull(),
 		filePath: text("file_path").notNull(),
 		relativePath: text("relative_path").notNull(),
+		// An output attempt has its own key; obsolete workers cannot publish over it.
+		action: text("action").notNull().default("media"),
+		sourceFingerprint: text("source_fingerprint"),
+		thumbnailKey: text("thumbnail_key"),
+		previousThumbnailKey: text("previous_thumbnail_key"),
+		previousSourceFingerprint: text("previous_source_fingerprint"),
 		status: text("status").notNull().default("pending"),
 		photoId: integer("photo_id"),
 		error: text("error"),

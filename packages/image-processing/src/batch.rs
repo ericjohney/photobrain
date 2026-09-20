@@ -141,6 +141,7 @@ pub(crate) fn process_photo_internal(
   file_path: &str,
   relative_path: &str,
   thumbnails_dir: &str,
+  thumbnail_path: &str,
   load_exif: impl FnOnce() -> Option<ExifData>,
 ) -> PhotoProcessingResult {
   let path = Path::new(file_path);
@@ -222,7 +223,7 @@ pub(crate) fn process_photo_internal(
       let phash = Some(generate_phash_from_image(&img));
 
       // A successful result guarantees every thumbnail was written.
-      let thumbnail_error = generate_all_thumbnails_internal(&img, relative_path, thumbnails_dir)
+      let thumbnail_error = generate_all_thumbnails_internal(&img, thumbnail_path, thumbnails_dir)
         .err()
         .map(|error| format!("Failed to generate thumbnails: {}", error));
 
@@ -321,7 +322,7 @@ pub fn process_photos_batch(
         .map(|(i, (path, exif))| {
           let index = chunk_index * METADATA_CHUNK_SIZE + i;
           let rel_path = relative_paths.get(index).map(|s| s.as_str()).unwrap_or("");
-          process_photo_internal(path, rel_path, &thumbnails_dir, || exif)
+          process_photo_internal(path, rel_path, &thumbnails_dir, rel_path, || exif)
         })
         .collect()
     });
@@ -345,9 +346,13 @@ pub fn process_photo(
   thumbnails_dir: String,
 ) -> napi::Result<PhotoProcessingResult> {
   Ok(processing_pool()?.install(|| {
-    process_photo_internal(&file_path, &relative_path, &thumbnails_dir, || {
-      extract_exif_internal(&file_path)
-    })
+    process_photo_internal(
+      &file_path,
+      &relative_path,
+      &thumbnails_dir,
+      &relative_path,
+      || extract_exif_internal(&file_path),
+    )
   }))
 }
 
@@ -399,6 +404,7 @@ mod tests {
         source.to_str().unwrap(),
         "photo.png",
         thumbnails.to_str().unwrap(),
+        "photo.png",
         || None,
       )
     });
@@ -421,6 +427,7 @@ mod tests {
         source.to_str().unwrap(),
         "photo.png",
         thumbnails.to_str().unwrap(),
+        "photo.png",
         || None,
       )
     });

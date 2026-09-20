@@ -67,6 +67,7 @@ export function Dashboard() {
 
 	// Job progress tracking via Inngest Realtime
 	const jobProgress = useJobProgress(activeJobId);
+	const scanDisabled = scanMutation.isPending || jobProgress.isActive;
 
 	// Determine which data to use
 	const photosData = searchQuery ? searchPhotosQuery.data : photosQuery.data;
@@ -115,11 +116,15 @@ export function Dashboard() {
 		// Query is reactive, nothing needed here
 	}, []);
 
-	const handleRefresh = useCallback(() => {
-		setSearchQuery("");
-		setSelectedFolder(null);
-		scanMutation.mutate();
-	}, [scanMutation]);
+	const handleScan = useCallback(
+		(force = false) => {
+			if (scanDisabled) return;
+			setSearchQuery("");
+			setSelectedFolder(null);
+			scanMutation.mutate(force ? { force: true } : undefined);
+		},
+		[scanMutation, scanDisabled],
+	);
 
 	const handleFolderSelect = useCallback((folder: string | null) => {
 		setSelectedFolder(folder);
@@ -157,7 +162,8 @@ export function Dashboard() {
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={handleRefresh}
+							onClick={() => handleScan()}
+							disabled={scanDisabled}
 							className="mt-4"
 						>
 							Try again
@@ -204,7 +210,8 @@ export function Dashboard() {
 					searchQuery={searchQuery}
 					onSearchChange={setSearchQuery}
 					onSearch={handleSearch}
-					onRefresh={handleRefresh}
+					onRefresh={() => handleScan()}
+					onReprocess={() => handleScan(true)}
 					isRefreshing={scanMutation.isPending}
 					hasActiveJobs={jobProgress.isActive}
 					processingProgress={{

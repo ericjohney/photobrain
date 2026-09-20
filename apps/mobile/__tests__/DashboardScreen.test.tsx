@@ -1,14 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+	act,
 	fireEvent,
 	type RenderResult,
 	waitFor,
 } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
-import { FlatList, StyleSheet } from "react-native";
+import { Alert, FlatList, StyleSheet } from "react-native";
+import * as jobProgress from "@/hooks/use-job-progress";
 
 const mockPhotosRefetch = jest.fn();
 const mockFilterOptionsRefetch = jest.fn();
+const mockScanMutate = jest.fn();
+let mockScanPending = false;
 let mockPhotosError = false;
 let mockPhotosHaveData = true;
 let mockFilteredPhotosError = false;
@@ -69,8 +73,11 @@ jest.mock("@/lib/trpc", () => ({
 			useMutation: (options?: {
 				onSuccess?: (result: typeof mockScanResult) => void;
 			}) => ({
-				mutate: jest.fn(() => options?.onSuccess?.(mockScanResult)),
-				isPending: false,
+				mutate: (...args: unknown[]) => {
+					mockScanMutate(...args);
+					options?.onSuccess?.(mockScanResult);
+				},
+				isPending: mockScanPending,
 			}),
 		},
 	},
@@ -122,9 +129,13 @@ describe("DashboardScreen", () => {
 		mockPhotosError = false;
 		mockPhotosHaveData = true;
 		mockFilteredPhotosError = false;
+		mockScanPending = false;
 		mockScanResult = { success: true, jobId: "test-job-123" };
 	});
-	afterEach(() => jest.useRealTimers());
+	afterEach(() => {
+		jest.useRealTimers();
+		jest.restoreAllMocks();
+	});
 
 	it("renders library controls and the ungrouped grid", async () => {
 		const { getByLabelText, getByText, queryByText } = renderWithProviders(
@@ -572,7 +583,12 @@ describe("DashboardScreen", () => {
 			expect(successful.getByLabelText("Library options")).toBeTruthy(),
 		);
 		fireEvent.press(successful.getByLabelText("Library options"));
+		await waitFor(() =>
+			expect(successful.getByLabelText("Scan library")).toBeEnabled(),
+		);
 		fireEvent.press(successful.getByLabelText("Scan library"));
+		expect(mockScanMutate).toHaveBeenCalledWith();
+		expect(successful.queryByText("Library Options")).toBeNull();
 		await waitFor(() =>
 			expect(AsyncStorage.setItem).toHaveBeenCalledWith(
 				"@photobrain/active-scan",
@@ -588,9 +604,90 @@ describe("DashboardScreen", () => {
 			expect(failed.getByLabelText("Library options")).toBeTruthy(),
 		);
 		fireEvent.press(failed.getByLabelText("Library options"));
+		await waitFor(() =>
+			expect(failed.getByLabelText("Scan library")).toBeEnabled(),
+		);
 		fireEvent.press(failed.getByLabelText("Scan library"));
 		expect(AsyncStorage.setItem).not.toHaveBeenCalled();
 		expect(failed.getByText("Database unavailable")).toBeTruthy();
+	});
+
+	it("starts full reprocessing only after confirmation, not cancellation", async () => {
+		const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+		const ui = renderWithProviders(<DashboardScreen />);
+		fireEvent.press(await ui.findByLabelText("Library options"));
+		await waitFor(() =>
+			expect(ui.getByLabelText("Reprocess all photos")).toBeEnabled(),
+		);
+		fireEvent.press(ui.getByLabelText("Reprocess all photos"));
+		expect(mockScanMutate).not.toHaveBeenCalled();
+		expect(alert).toHaveBeenCalledTimes(1);
+		const buttons = alert.mock.calls[0][2];
+		const cancel = buttons?.find((button) => button.style === "cancel");
+		expect(cancel).toBeDefined();
+		act(() => cancel?.onPress?.());
+		expect(mockScanMutate).not.toHaveBeenCalled();
+		expect(ui.getByText("Library Options")).toBeTruthy();
+
+		fireEvent.press(ui.getByLabelText("Reprocess all photos"));
+		const confirm = alert.mock.calls[1][2]?.find(
+			(button) => button.text === "Reprocess all photos",
+		);
+		act(() => confirm?.onPress?.());
+		expect(mockScanMutate).toHaveBeenCalledTimes(1);
+		expect(mockScanMutate).toHaveBeenCalledWith({ force: true });
+		expect(ui.queryByText("Library Options")).toBeNull();
+	});
+
+	it.each([
+		"pending",
+		"active",
+	])("blocks both scan modes while a scan is %s", async (state) => {
+		const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+		mockScanPending = state === "pending";
+		jest.spyOn(jobProgress, "useJobProgress").mockReturnValue({
+			...jobProgress.useJobProgress(null),
+			isActive: state === "active",
+		});
+		const ui = renderWithProviders(<DashboardScreen />);
+		fireEvent.press(await ui.findByLabelText("Library options"));
+		for (const label of ["Scan library", "Reprocess all photos"]) {
+			const action = ui.getByLabelText(label);
+			expect(action).toBeDisabled();
+			fireEvent.press(action);
+		}
+		expect(mockScanMutate).not.toHaveBeenCalled();
+		expect(alert).not.toHaveBeenCalled();
+	});
+
+	it("blocks both scan modes until saved scan recovery finishes", async () => {
+		let restoreScan!: (jobId: string | null) => void;
+		const savedScan = new Promise<string | null>((resolve) => {
+			restoreScan = resolve;
+		});
+		const getItem = jest.mocked(AsyncStorage.getItem);
+		const originalGetItem = getItem.getMockImplementation();
+		if (!originalGetItem) throw new Error("AsyncStorage mock is missing");
+		getItem.mockImplementation((key) =>
+			key === "@photobrain/active-scan" ? savedScan : originalGetItem(key),
+		);
+		try {
+			const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+			const ui = renderWithProviders(<DashboardScreen />);
+			fireEvent.press(await ui.findByLabelText("Library options"));
+			for (const label of ["Scan library", "Reprocess all photos"]) {
+				const action = ui.getByLabelText(label);
+				expect(action).toBeDisabled();
+				fireEvent.press(action);
+			}
+			expect(mockScanMutate).not.toHaveBeenCalled();
+			expect(alert).not.toHaveBeenCalled();
+			await act(async () => restoreScan(null));
+			expect(ui.getByLabelText("Scan library")).toBeEnabled();
+			expect(ui.getByLabelText("Reprocess all photos")).toBeEnabled();
+		} finally {
+			getItem.mockImplementation(originalGetItem);
+		}
 	});
 
 	it("opens settings from library options", async () => {

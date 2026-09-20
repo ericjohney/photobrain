@@ -61,6 +61,7 @@ The tRPC client uses `httpBatchLink` for queries/mutations and `unstable_httpSub
 ## Current UI Behavior
 
 - The layout has a left library panel, center content, right metadata panel, toolbar, and optional loupe filmstrip.
+- The toolbar's primary scan action is incremental: it processes new/changed photos and repairs incomplete processing. The secondary **Reprocess all photos…** action opens a confirmation sheet explaining that thumbnails and embeddings will be regenerated, originals remain untouched, and the operation takes longer. Only confirming sends `scan({ force: true })`; cancelling sends nothing. Both actions are disabled while the mutation or scan/indexing job is active.
 - Panel widths are currently fixed at 256px left, 288px right, and 96px filmstrip height in `PanelLayout`. Persisted width/height state is not applied to those classes.
 - Grid click sets one active photo; double-click opens loupe. There is no multi-photo selection state.
 - Loupe supports fit, fill, 100% zoom modes, keyboard navigation, and metadata display.
@@ -100,7 +101,7 @@ The API resolves the photo's path and serves mirrored WebP files. The optional `
 
 ## Tests
 
-Playwright specs cover loading, search, filters, scan initiation and incremental refresh, panels, loupe navigation, metadata, and thumbnail sizing. Fixtures in `e2e/fixtures/handlers.ts` mock tRPC batch responses, image endpoints, and Inngest requests. These are deterministic UI tests, not API/realtime integration tests.
+Playwright specs cover loading, search, filters, incremental scan initiation and refresh, confirmed full reprocessing and cancellation, panels, loupe navigation, metadata, and thumbnail sizing. Fixtures in `e2e/fixtures/handlers.ts` mock tRPC batch responses, image endpoints, and Inngest requests. These are deterministic UI tests, not API/realtime integration tests.
 
 When adding a test:
 

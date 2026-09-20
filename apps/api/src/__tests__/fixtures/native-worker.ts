@@ -69,6 +69,11 @@ mock.module("@photobrain/image-processing", () => ({
 			path === "missing" ? null : [index + 0.25, -0.5],
 		);
 	},
+	validateThumbnails() {
+		throw new Error(
+			"Unexpected thumbnail validation in the worker transport fixture",
+		);
+	},
 	startPhotoProcessing(
 		filePaths: string[],
 		relativePaths: string[],

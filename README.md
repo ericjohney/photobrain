@@ -12,6 +12,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 - Standard image, HEIF/HEIC, and common RAW file discovery.
 - RAW display through embedded JPEG previews extracted with `exiftool`; this checkout does not demosaic RAW files.
 - Perceptual hashes stored for future duplicate-detection features.
+- Incremental scans reuse unchanged media and recover embeddings separately. Confirmed **Reprocess all photos** controls in the web toolbar and mobile Library Options deliberately rebuild the library's derived media.
 - SQLite/Drizzle persistence with runtime `sqlite-vec` vector search.
 
 ## Architecture
@@ -160,7 +161,9 @@ cd packages/image-processing && cargo test
 
 `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are parsed legacy values and are not used by the current image pipeline.
 
-More photo workers use more decoded-image memory. Reduce `PHOTO_PROCESSING_THREADS` on memory-constrained hosts; storage, ExifTool, startup, and the final few photos can still leave CPUs idle. See [measured CPU, memory, and throughput](docs/import-performance.md#continuous-pool--2026-09-19). For this architecture cutover, drain active old scan runs, rebuild the native addon, and apply migration `0005_continuous_scan_work.sql` before starting `scan-photos-v4` (`RUN_DB_INIT=true` performs migrations on startup; the API Docker image enables it).
+More photo workers use more decoded-image memory. Reduce `PHOTO_PROCESSING_THREADS` on memory-constrained hosts; storage, ExifTool, startup, and the final few photos can still leave CPUs idle. See [historical measured CPU, memory, and throughput](docs/import-performance.md#continuous-pool--2026-09-19).
+
+For the incremental-scan cutover, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006_incremental_scan.sql` (and any earlier unapplied migrations) before starting `scan-photos-v5` and `generate-embeddings-v3`. Their function/checkpoint graphs are replay-sensitive. `RUN_DB_INIT=true` performs migrations on startup; the API Docker image enables it.
 
 ### Self-hosted Inngest
 
@@ -216,15 +219,27 @@ All current API routes are unauthenticated.
 
 ## Image and Job Flow
 
-Scanning is requested through `trpc.scan`, which creates a durable `scan_jobs` row before sending an Inngest event. SQLite freezes priority-ordered work and records each completion. New paths enter the continuously fed pool first; workers do not wait for an input batch, and photos appear in web/mobile as they finish and commit. Existing photos are still reprocessed, not skipped. Inngest checkpoints every 20 completed results while native work continues behind bounded queues. After media processing, one embedding job reads saved `large` WebP previews in batches of 16 and stores CLIP vectors. Embedding remains active work, not completion. Both clients combine Realtime with durable polling; mobile also recovers active work after an app restart.
+`trpc.scan()` and `trpc.scan({})` request an incremental scan. It creates a durable `scan_jobs` row before sending an Inngest event, then freezes discovery, source identity, and work classification in SQLite. Unchanged photos with valid media and current vectors are left untouched; missing, failed, wrong-model, wrong-generation, or truncated vectors recover in a separate embedding phase without regenerating valid media. New or changed sources, obsolete media versions, and missing or invalid thumbnails require media processing. Missing EXIF alone does not cause endless retries.
+
+Use **Reprocess all photos** in the web toolbar or mobile **Library Options** and confirm the prompt to deliberately regenerate every discovered file, including unchanged files. This submits `trpc.scan({ force: true })`; it preserves photo IDs and original files, but creates new derived-media generations and embeddings.
+
+Media work enters a continuously fed pool with new paths first; workers do not wait for an input batch, and photos appear in web/mobile as they finish and commit. Inngest checkpoints every 20 completed results while native work continues behind bounded queues. After media processing, one embedding job reads committed `large` WebP previews in batches of 16 and stores CLIP vectors. Embedding remains active work, not completion. Both clients combine Realtime with durable polling; mobile also recovers active work after an app restart.
 
 The native pipeline independently prefetches `exiftool` metadata (up to 20 photos per command), uses separate ExifTool commands for embedded RAW previews, `libheif-rs` for HEIF decoding, and the Rust `image` crate for standard formats. A shared Rayon pool defaults to available CPU capacity, with `PHOTO_PROCESSING_THREADS` as a memory/concurrency override. See [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md) for format and processing caveats.
 
 Generated previews use lossy WebP color encoding (quality 80/85/85/90 for tiny/small/medium/large) and lossless alpha encoding. Original photo files are not modified. A thumbnail generation failure does not mark that photo ready.
 
+Freshness uses the canonical source root (`realpath`) and source size, nanosecond mtime, and nanosecond ctime—not a content hash. Tracked reuse also requires completed thumbnails/pHash, a stored pHash, dimensions, converted RAW state when applicable, matching `MEDIA_VERSION`, and matching stat fingerprints for all four thumbnails. `MEDIA_VERSION` and `EMBEDDING_MODEL_VERSION` are manual invalidation constants: maintainers must advance the relevant version when processing or model semantics change. Metadata fingerprints cannot prove byte identity; force reprocessing is available when metadata-based reuse is not sufficient.
+
+Existing untracked photos get one conservative legacy-adoption opportunity. All six freshness fields must be null, source size and stored whole-second mtime must match, and a thumbnail timestamp must exist. Reuse also requires no NFC-normalized/case-insensitive stem collision, source ctime strictly older than every thumbnail mtime, four decoded WebPs with expected dimensions, and a post-validation stat recheck. This is heuristic provenance, not proof of historical content or root. Successful adoption preserves IDs, artifacts, and thumbnail timestamps; embedding recovery is independent. Rows that cannot qualify are reprocessed.
+
+Every media attempt writes a unique `.versions/<UUID>/photo.image` key, producing `{thumbnailRoot}/{size}/.versions/<UUID>/photo.webp`. The photo row commits its thumbnail root, key, and fingerprint only after source/attempt/previous-generation checks succeed; stale results cannot replace a newer committed generation. Embedding saves check the generation too, inference uses its committed thumbnail root, and semantic search excludes noncompleted, wrong-model, or wrong-generation vectors. Cache-busting timestamps advance monotonically in whole seconds even within one second or after a backwards clock change.
+
+Retired and abandoned artifact generations remain on disk. This avoids overwriting a generation being served or embedded, but repeated repairs and force reprocessing consume additional storage; there is no artifact garbage collector yet. Scans also do not reconcile deleted source files.
+
 Each streamed completion commits photo/EXIF/pHash data, its durable receipt, counters, and scan progress atomically. A failed transaction leaves the photo pending; an acknowledged receipt prevents duplicate work after checkpoint loss or restart. Embedding writes remain transactional batches. `bun run bench:import` from `apps/api` still benchmarks the shared batch-persistence helper against legacy writes; it does not measure the rolling scheduler or end-to-end import speed.
 
-Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare batched metadata extraction with per-file extraction without modifying photos. It requires ExifTool, not the native addon. [Import performance and architecture](docs/import-performance.md) records continuous-pool throughput, memory, live visibility, and restart checks, and separates implemented receipts from future incremental scans, artifact generations, and distributed ownership.
+Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare batched metadata extraction with per-file extraction without modifying photos. It requires ExifTool, not the native addon. [Import performance and architecture](docs/import-performance.md) records historical continuous-pool measurements and current incremental-scan smoke evidence, and separates implemented identity/classification/generation fencing from future outbox delivery, garbage collection, distributed ownership, and streamed embeddings.
 
 ## Production Builds
 

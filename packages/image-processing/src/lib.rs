@@ -21,4 +21,7 @@ pub use discovery::{DiscoveryResult, discover_photos};
 pub use exif::{ExifData, extract_exif};
 pub use phash::generate_phash;
 pub use stream::{PhotoProcessingStream, PhotoStreamResult, start_photo_processing};
-pub use thumbnails::{ThumbnailConfig, ThumbnailSizes, generate_thumbnails_from_file};
+pub use thumbnails::{
+  ThumbnailConfig, ThumbnailSizes, ThumbnailValidationItem, generate_thumbnails_from_file,
+  validate_thumbnails,
+};

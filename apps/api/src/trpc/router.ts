@@ -3,7 +3,12 @@ import { getSubscriptionToken } from "@inngest/realtime";
 import { and, eq, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "../config";
-import { photoExif, photos as photosTable, scanJobs } from "../db/schema";
+import {
+	photoExif,
+	photos as photosTable,
+	publicPhotoColumns,
+	scanJobs,
+} from "../db/schema";
 import { inngest } from "../inngest/client";
 import { searchPhotosByText } from "../services/vector-search";
 import { publicProcedure, router } from "./trpc";
@@ -217,6 +222,7 @@ export const appRouter = router({
 			}
 
 			const photosList = await ctx.db.query.photos.findMany({
+				columns: publicPhotoColumns,
 				where:
 					conditions.length > 0
 						? sql`${sql.join(conditions, sql` AND `)}`
@@ -248,6 +254,7 @@ export const appRouter = router({
 		.input(z.object({ id: z.number() }))
 		.query(async ({ ctx, input }) => {
 			const photo = await ctx.db.query.photos.findFirst({
+				columns: publicPhotoColumns,
 				where: (photos, { eq }) => eq(photos.id, input.id),
 				with: {
 					exif: true,
@@ -279,68 +286,72 @@ export const appRouter = router({
 		}),
 
 	// Start a scan job (Inngest-based async scan)
-	scan: publicProcedure.mutation(async ({ ctx }) => {
-		const jobId = crypto.randomUUID();
-		let jobCreated = false;
-		try {
-			const now = new Date();
-			await ctx.db.insert(scanJobs).values({
-				id: jobId,
-				phase: "queued",
-				current: 0,
-				total: 0,
-				status: "queued",
-				createdAt: now,
-				updatedAt: now,
-			});
-			jobCreated = true;
-			// Resolve relative paths to absolute paths for Inngest functions
-			const absolutePhotoDir = path.resolve(config.PHOTO_DIRECTORY);
-			const absoluteThumbnailsDir = path.resolve(config.THUMBNAILS_DIRECTORY);
-			const event = {
-				id: jobId,
-				name: "photos/scan.requested",
-				data: {
-					directory: absolutePhotoDir,
-					thumbnailsDir: absoluteThumbnailsDir,
-					jobId,
-				},
-			} as const;
-			let dispatchError: unknown;
-			for (let attempt = 0; attempt < 2; attempt++) {
-				try {
-					await inngest.send(event);
-					dispatchError = null;
-					break;
-				} catch (error) {
-					dispatchError = error;
+	scan: publicProcedure
+		.input(z.object({ force: z.boolean().default(false) }).optional())
+		.mutation(async ({ ctx, input }) => {
+			const jobId = crypto.randomUUID();
+			let jobCreated = false;
+			try {
+				const now = new Date();
+				await ctx.db.insert(scanJobs).values({
+					id: jobId,
+					phase: "queued",
+					current: 0,
+					total: 0,
+					status: "queued",
+					createdAt: now,
+					updatedAt: now,
+				});
+				jobCreated = true;
+				// Resolve relative paths to absolute paths for Inngest functions
+				const absolutePhotoDir = path.resolve(config.PHOTO_DIRECTORY);
+				const absoluteThumbnailsDir = path.resolve(config.THUMBNAILS_DIRECTORY);
+				const event = {
+					id: jobId,
+					name: "photos/scan.requested",
+					data: {
+						directory: absolutePhotoDir,
+						thumbnailsDir: absoluteThumbnailsDir,
+						jobId,
+						force: input?.force ?? false,
+					},
+				} as const;
+				let dispatchError: unknown;
+				for (let attempt = 0; attempt < 2; attempt++) {
+					try {
+						await inngest.send(event);
+						dispatchError = null;
+						break;
+					} catch (error) {
+						dispatchError = error;
+					}
 				}
-			}
-			if (dispatchError) throw dispatchError;
-			return { success: true, jobId };
-		} catch (error) {
-			const message = error instanceof Error ? error.message : "Unknown error";
-			if (jobCreated) {
-				const markedFailed = await ctx.db
-					.update(scanJobs)
-					.set({
-						phase: "failed",
-						status: "failed",
-						error: message,
-						updatedAt: new Date(),
-					})
-					.where(and(eq(scanJobs.id, jobId), eq(scanJobs.status, "queued")))
-					.returning({ id: scanJobs.id });
-				if (markedFailed.length === 0) {
-					return { success: true, jobId };
+				if (dispatchError) throw dispatchError;
+				return { success: true, jobId };
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
+				if (jobCreated) {
+					const markedFailed = await ctx.db
+						.update(scanJobs)
+						.set({
+							phase: "failed",
+							status: "failed",
+							error: message,
+							updatedAt: new Date(),
+						})
+						.where(and(eq(scanJobs.id, jobId), eq(scanJobs.status, "queued")))
+						.returning({ id: scanJobs.id });
+					if (markedFailed.length === 0) {
+						return { success: true, jobId };
+					}
 				}
+				console.error("Failed to start scan job:", message);
+				return jobCreated
+					? { success: false, error: message, jobId }
+					: { success: false, error: message };
 			}
-			console.error("Failed to start scan job:", message);
-			return jobCreated
-				? { success: false, error: message, jobId }
-				: { success: false, error: message };
-		}
-	}),
+		}),
 
 	scanStatus: publicProcedure
 		.input(z.object({ jobId: z.string().uuid() }))

@@ -3,24 +3,65 @@ import { DEFAULT_HANDLERS, FIXTURE_JOB_ID } from "./fixtures/handlers";
 import { FIXTURE_PHOTOS } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
-test("clicking refresh triggers scan mutation", async ({
+test("clicking refresh starts an incremental scan without confirmation", async ({
 	page,
 	mockBackend,
 }) => {
-	let scanCalled = false;
+	const scanInputs: unknown[] = [];
 	await mockBackend({
-		scan: () => {
-			scanCalled = true;
+		scan: (input) => {
+			scanInputs.push(input);
 			return { success: true, jobId: FIXTURE_JOB_ID };
 		},
 	});
 	await page.goto("/");
 	await expect(page.getByText("12 photos")).toBeVisible();
 	await page.getByRole("button", { name: /scan for new photos/i }).click();
-	await expect.poll(() => scanCalled).toBe(true);
+	await expect.poll(() => scanInputs).toEqual([undefined]);
+	await expect(page.getByRole("dialog")).not.toBeVisible();
 });
 
-test("refresh stays disabled from mutation through queued and running until terminal", async ({
+test("reprocessing requires confirmation and cancel does not dispatch", async ({
+	page,
+	mockBackend,
+}) => {
+	const scanInputs: unknown[] = [];
+	await mockBackend({
+		scan: (input) => {
+			scanInputs.push(input);
+			return { success: true, jobId: FIXTURE_JOB_ID };
+		},
+	});
+	await page.goto("/");
+	await page.getByRole("button", { name: "Reprocess all photos…" }).click();
+	const confirmation = page.getByRole("dialog", {
+		name: "Reprocess all photos?",
+	});
+	await expect(confirmation).toBeVisible();
+	await expect(confirmation).toContainText("thumbnails and embeddings");
+	await expect(confirmation).toContainText("original files are left untouched");
+	await expect(confirmation).toContainText("takes longer");
+	await confirmation.getByRole("button", { name: "Cancel" }).click();
+	await expect(confirmation).not.toBeVisible();
+	// Allow a mistakenly dispatched mutation to cross the tRPC batch boundary.
+	await page.waitForTimeout(200);
+	expect(scanInputs).toEqual([]);
+
+	await page.getByRole("button", { name: "Reprocess all photos…" }).click();
+	await confirmation
+		.getByRole("button", { name: "Reprocess all photos", exact: true })
+		.click();
+	await expect.poll(() => scanInputs).toEqual([{ force: true }]);
+	await expect(confirmation).not.toBeVisible();
+	await expect(
+		page.getByRole("button", { name: /scan for new photos/i }),
+	).toBeDisabled();
+	await expect(
+		page.getByRole("button", { name: "Reprocess all photos…" }),
+	).toBeDisabled();
+});
+
+test("both scan modes stay disabled from mutation through queued and running until terminal", async ({
 	page,
 	mockBackend,
 }) => {
@@ -42,17 +83,23 @@ test("refresh stays disabled from mutation through queued and running until term
 	await page.goto("/");
 	await expect(page.getByText("12 photos")).toBeVisible();
 	const button = page.getByRole("button", { name: /scan for new photos/i });
+	const reprocessButton = page.getByRole("button", {
+		name: "Reprocess all photos…",
+	});
 	await button.click();
 	await expect(button).toBeDisabled();
+	await expect(reprocessButton).toBeDisabled();
 	resolveScan();
 	const activity = page.getByRole("region", { name: "Activity" });
 	await expect(activity.getByText("Queued", { exact: true })).toBeVisible();
 	await expect(button).toBeDisabled();
+	await expect(reprocessButton).toBeDisabled();
 
 	status = { phase: "processing", status: "running", current: 2, total: 10 };
 	await expect(activity.getByText("2/10", { exact: true })).toBeVisible();
 	await expect(activity).toHaveAttribute("aria-busy", "true");
 	await expect(button).toBeDisabled();
+	await expect(reprocessButton).toBeDisabled();
 
 	status = {
 		phase: "scan-complete",
@@ -63,10 +110,12 @@ test("refresh stays disabled from mutation through queued and running until term
 	await expect(activity.getByText("10/10", { exact: true })).toBeVisible();
 	await expect(activity).toHaveAttribute("aria-busy", "true");
 	await expect(button).toBeDisabled();
+	await expect(reprocessButton).toBeDisabled();
 
 	status = { phase: "completed", status: "completed", current: 10, total: 10 };
 	await expect(activity).toHaveAttribute("aria-busy", "false");
 	await expect(button).toBeEnabled();
+	await expect(reprocessButton).toBeEnabled();
 });
 
 test("self-hosted Realtime updates scan progress after starting a job", async ({

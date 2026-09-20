@@ -172,15 +172,31 @@ pub fn start_photo_processing(
   file_paths: Vec<String>,
   relative_paths: Vec<String>,
   thumbnails_dir: String,
+  thumbnail_paths: Option<Vec<String>>,
 ) -> Result<PhotoProcessingStream> {
+  if thumbnail_paths
+    .as_ref()
+    .is_some_and(|paths| paths.len() != file_paths.len())
+  {
+    return Err(Error::from_reason(
+      "Photo filePaths and thumbnailPaths must have equal lengths",
+    ));
+  }
   let pool = processing_pool()?;
   start_stream(
     file_paths,
     relative_paths,
     pool.current_num_threads(),
     extract_exif_batch,
-    move |_, path, relative_path, exif| {
-      pool.install(|| process_photo_internal(path, relative_path, &thumbnails_dir, || exif))
+    move |index, path, relative_path, exif| {
+      let thumbnail_path = thumbnail_paths
+        .as_ref()
+        .map_or(relative_path, |paths| paths[index].as_str());
+      pool.install(|| {
+        process_photo_internal(path, relative_path, &thumbnails_dir, thumbnail_path, || {
+          exif
+        })
+      })
     },
   )
 }
@@ -503,6 +519,106 @@ mod tests {
       result(index, relative)
     })
     .unwrap();
+    assert!(stream.state.next_result().unwrap().is_none());
+  }
+
+  #[test]
+  fn thumbnail_keys_keep_same_stem_sources_distinct_and_preserve_result_identity() {
+    let temp = tempfile::tempdir().unwrap();
+    let thumbnails = temp.path().join("thumbnails");
+    let relatives = vec!["album/photo.png".to_string(), "album/photo.jpg".to_string()];
+    let keys = vec![
+      ".versions/first/preview.png".to_string(),
+      ".versions/second/preview.jpg".to_string(),
+    ];
+    let dimensions = [(32, 16), (16, 32)];
+    let mut files = Vec::new();
+    for (relative, (width, height)) in relatives.iter().zip(dimensions) {
+      let source = temp.path().join(relative);
+      std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+      image::DynamicImage::new_rgb8(width, height)
+        .save(&source)
+        .unwrap();
+      files.push(source.to_string_lossy().into_owned());
+    }
+    let stream = start_photo_processing(
+      files.clone(),
+      relatives.clone(),
+      thumbnails.to_string_lossy().into_owned(),
+      Some(keys.clone()),
+    )
+    .unwrap();
+    let mut seen = [false; 2];
+    for _ in 0..2 {
+      let photo = stream.state.results.recv_timeout(TIMEOUT).unwrap();
+      let index = photo.index as usize;
+      assert!(!std::mem::replace(&mut seen[index], true));
+      assert!(photo.result.success, "{:?}", photo.result.error);
+      assert_eq!(photo.result.path, relatives[index]);
+      assert_eq!(
+        photo.result.name,
+        if index == 0 { "photo.png" } else { "photo.jpg" }
+      );
+    }
+    assert!(stream.state.next_result().unwrap().is_none());
+    for (key, expected) in keys.iter().zip(dimensions) {
+      for size in ["tiny", "small", "medium", "large"] {
+        let artifact = thumbnails.join(size).join(key).with_extension("webp");
+        let image = image::open(artifact).unwrap();
+        assert_eq!((image.width(), image.height()), expected);
+        assert!(!thumbnails.join(size).join("album/photo.webp").exists());
+      }
+    }
+
+    // Omitting output keys still writes the mirrored original path.
+    let stream = start_photo_processing(
+      vec![files[0].clone()],
+      vec![relatives[0].clone()],
+      thumbnails.to_string_lossy().into_owned(),
+      None,
+    )
+    .unwrap();
+    let photo = stream.state.results.recv_timeout(TIMEOUT).unwrap();
+    assert!(photo.result.success, "{:?}", photo.result.error);
+    assert_eq!(photo.result.path, relatives[0]);
+    assert!(stream.state.next_result().unwrap().is_none());
+    for size in ["tiny", "small", "medium", "large"] {
+      let image = image::open(thumbnails.join(size).join("album/photo.webp")).unwrap();
+      assert_eq!((image.width(), image.height()), dimensions[0]);
+    }
+  }
+
+  #[test]
+  fn output_keys_must_align_and_do_not_replace_failed_source_identity() {
+    for keys in [vec![], vec!["one.jpg".into(), "two.jpg".into()]] {
+      assert!(
+        start_photo_processing(
+          vec!["missing.jpg".into()],
+          vec!["album/missing.jpg".into()],
+          "unused".into(),
+          Some(keys),
+        )
+        .is_err()
+      );
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let stream = start_photo_processing(
+      vec![
+        temp
+          .path()
+          .join("missing.jpg")
+          .to_string_lossy()
+          .into_owned(),
+      ],
+      vec!["album/missing.jpg".into()],
+      temp.path().to_string_lossy().into_owned(),
+      Some(vec![".versions/attempt/preview.jpg".into()]),
+    )
+    .unwrap();
+    let photo = stream.state.results.recv_timeout(TIMEOUT).unwrap();
+    assert!(!photo.result.success);
+    assert_eq!(photo.result.path, "album/missing.jpg");
+    assert_eq!(photo.result.name, "missing.jpg");
     assert!(stream.state.next_result().unwrap().is_none());
   }
 }
