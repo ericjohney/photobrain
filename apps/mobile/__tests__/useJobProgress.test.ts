@@ -10,6 +10,11 @@ const mockSearchPhotosInvalidate = jest.fn();
 const mockRealtimeTokenUseQuery = jest.fn();
 const mockScanStatusUseQuery = jest.fn();
 const mockUseInngestSubscription = jest.fn();
+const mockInngestConstructor = jest.fn(
+	(options: { id: string; baseUrl?: string }) => ({
+		apiBaseUrl: options.baseUrl,
+	}),
+);
 
 interface ProgressMessage {
 	channel: string;
@@ -18,7 +23,7 @@ interface ProgressMessage {
 }
 
 interface TokenQueryResult {
-	data?: { token: { jwt: string } };
+	data?: { token: { jwt: string }; baseUrl?: string };
 	error: Error | null;
 	refetch: jest.Mock;
 }
@@ -49,6 +54,10 @@ interface SubscriptionResult {
 let mockTokenQueryResult: TokenQueryResult;
 let mockStatusQueryResult: StatusQueryResult;
 let mockSubscriptionResult: SubscriptionResult;
+
+jest.mock("inngest", () => ({
+	Inngest: mockInngestConstructor,
+}));
 
 jest.mock("@/lib/trpc", () => ({
 	trpc: {
@@ -326,6 +335,20 @@ describe("useJobProgress", () => {
 		});
 		expect(result.current.isActive).toBe(true);
 		expect(result.current.isConnected).toBe(true);
+	});
+
+	it("uses a WebSocket URL for self-hosted Realtime", () => {
+		mockTokenQueryResult.data = {
+			token: { jwt: "test-token" },
+			baseUrl: "https://photobrain-api.example.com",
+		};
+
+		renderHook(() => useJobProgress(JOB_ID));
+
+		expect(mockInngestConstructor).toHaveBeenCalledWith({
+			id: "photobrain",
+			baseUrl: "wss://photobrain-api.example.com",
+		});
 	});
 
 	it("refreshes an expired Realtime token", async () => {

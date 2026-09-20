@@ -3,6 +3,18 @@ import { Inngest } from "inngest";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 
+const nativeWebSocket = globalThis.WebSocket;
+if (nativeWebSocket) {
+	// Inngest passes a WHATWG URL object, but React Native 0.86's native module
+	// requires a string and aborts the app before JavaScript can handle the error.
+	globalThis.WebSocket = new Proxy(nativeWebSocket, {
+		construct(target, args, newTarget) {
+			const [url, ...rest] = args;
+			return Reflect.construct(target, [String(url), ...rest], newTarget);
+		},
+	});
+}
+
 const PROGRESS_PHASES = [
 	"queued",
 	"discovering",
@@ -74,6 +86,16 @@ function compareProgress(left: ProgressData, right: ProgressData) {
 	return left.total - right.total;
 }
 
+function toWebSocketBaseUrl(baseUrl: string) {
+	if (baseUrl.startsWith("https://")) {
+		return `wss://${baseUrl.slice("https://".length)}`;
+	}
+	if (baseUrl.startsWith("http://")) {
+		return `ws://${baseUrl.slice("http://".length)}`;
+	}
+	return baseUrl;
+}
+
 export function useJobProgress(jobId: string | null) {
 	const utils = trpc.useUtils();
 	const refreshState = useRef({
@@ -122,7 +144,10 @@ export function useJobProgress(jobId: string | null) {
 		if (!response?.baseUrl) return response?.token;
 		return {
 			...response.token,
-			app: new Inngest({ id: "photobrain", baseUrl: response.baseUrl }),
+			app: new Inngest({
+				id: "photobrain",
+				baseUrl: toWebSocketBaseUrl(response.baseUrl),
+			}),
 		};
 	}, [tokenQuery.data]);
 	const refreshRealtimeToken = useCallback(async () => {
@@ -134,7 +159,10 @@ export function useJobProgress(jobId: string | null) {
 		return result.data.baseUrl
 			? {
 					...result.data.token,
-					app: new Inngest({ id: "photobrain", baseUrl: result.data.baseUrl }),
+					app: new Inngest({
+						id: "photobrain",
+						baseUrl: toWebSocketBaseUrl(result.data.baseUrl),
+					}),
 				}
 			: result.data.token;
 	}, [tokenQuery.refetch]);
