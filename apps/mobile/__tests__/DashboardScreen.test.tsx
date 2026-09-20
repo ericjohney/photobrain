@@ -198,26 +198,25 @@ describe("DashboardScreen", () => {
 		expect(setTabBarHidden).toHaveBeenLastCalledWith(false);
 	});
 
-	it("uses Liquid Glass for each selected browsing scope", async () => {
+	it("moves one Liquid Glass selection across browsing scopes", async () => {
 		const view = renderWithProviders(<DashboardScreen />);
 		await view.findByText("5 Items");
 		scrollLibrary(view, 1000);
+		fireEvent(view.getByTestId("library-scope-track"), "layout", {
+			nativeEvent: { layout: { width: 250, height: 52, x: 0, y: 0 } },
+		});
 		expect(view.getByRole("tab", { name: "All", selected: true })).toBeTruthy();
 		await waitFor(() =>
 			expect(
-				view.getByTestId("library-scope-surface-all").props.glassEffectStyle,
-			).toEqual({ style: "regular", animate: true }),
+				view.getByTestId("library-scope-selection").props.glassEffectStyle,
+			).toBe("regular"),
 		);
-		expect(
-			view.getByTestId("library-scope-surface-months").props.glassEffectStyle,
-		).toEqual({ style: "none", animate: true });
+		expect(view.getAllByTestId("library-scope-selection")).toHaveLength(1);
 		fireEvent.press(view.getByRole("tab", { name: "Months" }));
 		expect(
 			view.getByRole("tab", { name: "Months", selected: true }),
 		).toBeTruthy();
-		expect(
-			view.getByTestId("library-scope-surface-months").props.glassEffectStyle,
-		).toEqual({ style: "regular", animate: true });
+		expect(view.getAllByTestId("library-scope-selection")).toHaveLength(1);
 		expect(view.getByText("June 2024")).toBeTruthy();
 		expect(view.getByText("July 2024")).toBeTruthy();
 		expect(view.getByText("August 2024")).toBeTruthy();
@@ -226,9 +225,7 @@ describe("DashboardScreen", () => {
 		expect(
 			view.getByRole("tab", { name: "Years", selected: true }),
 		).toBeTruthy();
-		expect(
-			view.getByTestId("library-scope-surface-years").props.glassEffectStyle,
-		).toEqual({ style: "regular", animate: true });
+		expect(view.getAllByTestId("library-scope-selection")).toHaveLength(1);
 		expect(view.getByText("2024")).toBeTruthy();
 		expect(view.queryByText("August 2024")).toBeNull();
 		fireEvent.press(view.getByRole("tab", { name: "All" }));

@@ -1,5 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useRef, useState } from "react";
 import {
+	Animated,
+	Easing,
 	type LayoutChangeEvent,
 	Pressable,
 	StyleSheet,
@@ -15,6 +18,11 @@ const SCOPES: Array<{ value: LibraryGrouping; label: string }> = [
 	{ value: "months", label: "Months" },
 	{ value: "all", label: "All" },
 ];
+
+const SEGMENT_GAP = 2;
+const SEGMENT_PADDING = 4;
+const SELECTION_DURATION_MS = 260;
+const USE_NATIVE_DRIVER = process.env.NODE_ENV !== "test";
 
 interface LibraryTimeScopeProps {
 	grouping: LibraryGrouping;
@@ -33,6 +41,64 @@ export default function LibraryTimeScope({
 }: LibraryTimeScopeProps) {
 	const colors = useColors();
 	const fallbackStyle = { backgroundColor: colors.card };
+	const selectedIndex = SCOPES.findIndex(({ value }) => value === grouping);
+	const [segmentsWidth, setSegmentsWidth] = useState(0);
+	const position = useRef(new Animated.Value(selectedIndex)).current;
+	const stretch = useRef(new Animated.Value(1)).current;
+	const previousIndex = useRef(selectedIndex);
+	const segmentWidth =
+		segmentsWidth > 0
+			? (segmentsWidth -
+					SEGMENT_PADDING * 2 -
+					SEGMENT_GAP * (SCOPES.length - 1)) /
+				SCOPES.length
+			: 0;
+
+	useEffect(() => {
+		if (segmentWidth === 0) return;
+
+		const priorIndex = previousIndex.current;
+		position.stopAnimation();
+		stretch.stopAnimation();
+
+		if (priorIndex === selectedIndex) {
+			position.setValue(selectedIndex);
+			stretch.setValue(1);
+			return;
+		}
+
+		const distance = Math.abs(selectedIndex - priorIndex);
+		previousIndex.current = selectedIndex;
+		stretch.setValue(1);
+
+		Animated.parallel([
+			Animated.timing(position, {
+				toValue: selectedIndex,
+				duration: SELECTION_DURATION_MS,
+				easing: Easing.bezier(0.2, 0.8, 0.2, 1),
+				useNativeDriver: USE_NATIVE_DRIVER,
+			}),
+			Animated.sequence([
+				Animated.timing(stretch, {
+					toValue: 1 + distance * 0.75,
+					duration: 110,
+					easing: Easing.out(Easing.cubic),
+					useNativeDriver: USE_NATIVE_DRIVER,
+				}),
+				Animated.timing(stretch, {
+					toValue: 1,
+					duration: SELECTION_DURATION_MS - 110,
+					easing: Easing.inOut(Easing.cubic),
+					useNativeDriver: USE_NATIVE_DRIVER,
+				}),
+			]),
+		]).start();
+	}, [position, segmentWidth, selectedIndex, stretch]);
+
+	const selectionOffset = position.interpolate({
+		inputRange: [0, SCOPES.length - 1],
+		outputRange: [0, (SCOPES.length - 1) * (segmentWidth + SEGMENT_GAP)],
+	});
 
 	return (
 		<View
@@ -59,44 +125,65 @@ export default function LibraryTimeScope({
 				</Pressable>
 			</GlassSurface>
 
-			<GlassSurface style={styles.scopeSurface} fallbackStyle={fallbackStyle}>
-				<View accessibilityRole="tablist" style={styles.segments}>
+			<GlassSurface
+				style={styles.scopeSurface}
+				fallbackStyle={fallbackStyle}
+				glassEffectStyle="clear"
+			>
+				<View
+					testID="library-scope-track"
+					accessibilityRole="tablist"
+					onLayout={({ nativeEvent }) =>
+						setSegmentsWidth(nativeEvent.layout.width)
+					}
+					style={styles.segments}
+				>
+					{segmentWidth > 0 && (
+						<Animated.View
+							pointerEvents="none"
+							testID="library-scope-selection-track"
+							style={[
+								styles.selectionTrack,
+								{
+									width: segmentWidth,
+									transform: [
+										{ translateX: selectionOffset },
+										{ scaleX: stretch },
+									],
+								},
+							]}
+						>
+							<GlassSurface
+								testID="library-scope-selection"
+								style={styles.selectionSurface}
+								fallbackStyle={{ backgroundColor: colors.secondary }}
+								isInteractive
+							/>
+						</Animated.View>
+					)}
 					{SCOPES.map(({ value, label }) => {
 						const selected = grouping === value;
 						return (
-							<GlassSurface
+							<Pressable
 								key={value}
-								testID={`library-scope-surface-${value}`}
-								style={styles.segmentSurface}
-								fallbackStyle={{
-									backgroundColor: selected ? colors.secondary : "transparent",
-								}}
-								glassEffectStyle={{
-									style: selected ? "regular" : "none",
-									animate: true,
-								}}
-								isInteractive
+								accessibilityRole="tab"
+								accessibilityLabel={label}
+								accessibilityState={{ selected }}
+								onPress={() => onGroupingChange(value)}
+								style={({ pressed }) => [
+									styles.segment,
+									pressed && styles.pressed,
+								]}
 							>
-								<Pressable
-									accessibilityRole="tab"
-									accessibilityLabel={label}
-									accessibilityState={{ selected }}
-									onPress={() => onGroupingChange(value)}
-									style={({ pressed }) => [
-										styles.segment,
-										pressed && styles.pressed,
-									]}
+								<Text
+									adjustsFontSizeToFit
+									minimumFontScale={0.75}
+									numberOfLines={1}
+									style={[styles.label, { color: colors.foreground }]}
 								>
-									<Text
-										adjustsFontSizeToFit
-										minimumFontScale={0.75}
-										numberOfLines={1}
-										style={[styles.label, { color: colors.foreground }]}
-									>
-										{label}
-									</Text>
-								</Pressable>
-							</GlassSurface>
+									{label}
+								</Text>
+							</Pressable>
 						);
 					})}
 				</View>
@@ -155,20 +242,29 @@ const styles = StyleSheet.create({
 	segments: {
 		height: 52,
 		flexDirection: "row",
-		padding: 4,
-		gap: 2,
+		padding: SEGMENT_PADDING,
+		gap: SEGMENT_GAP,
+		position: "relative",
 	},
-	segmentSurface: {
+	selectionTrack: {
+		position: "absolute",
+		top: SEGMENT_PADDING,
+		left: SEGMENT_PADDING,
+		height: 44,
+	},
+	selectionSurface: {
 		flex: 1,
-		minWidth: 0,
-		borderRadius: 24,
+		borderRadius: 22,
 		borderCurve: "continuous",
 		overflow: "hidden",
 	},
 	segment: {
+		zIndex: 1,
 		flex: 1,
+		minWidth: 0,
 		justifyContent: "center",
 		alignItems: "center",
+		borderRadius: 22,
 		paddingHorizontal: 4,
 	},
 	label: { fontSize: 14, fontWeight: "600", textAlign: "center" },
