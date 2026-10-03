@@ -15,13 +15,17 @@ const configSchema = z.object({
 		.string()
 		.default("false")
 		.transform((val) => val === "true" || val === "1"),
+	V1_NATIVE_SCAN_MUTATIONS_ENABLED: z
+		.enum(["true", "false", "1", "0"])
+		.default("false")
+		.transform((value) => value === "true" || value === "1"),
 	// RAW conversion settings
 	DARKTABLE_CLI_PATH: z.string().default("darktable-cli"),
 	RAW_CONVERSION_TIMEOUT: z.coerce.number().default(120000), // 2 minutes
 });
 
-function loadConfig() {
-	const result = configSchema.safeParse(process.env);
+export function parseConfig(environment: NodeJS.ProcessEnv) {
+	const result = configSchema.safeParse(environment);
 
 	if (!result.success) {
 		console.error("❌ Invalid environment variables:");
@@ -32,4 +36,4 @@ function loadConfig() {
 	return result.data;
 }
 
-export const config = loadConfig();
+export const config = parseConfig(process.env);

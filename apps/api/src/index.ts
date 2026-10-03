@@ -3,8 +3,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "inngest/hono";
 import { config } from "./config";
+import { db } from "./db";
 import { functions, inngest } from "./inngest";
 import photosRouter from "./routes/photos";
+import { createV1Router } from "./routes/v1";
+import { searchPhotosByText } from "./services/vector-search";
 import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
 
@@ -17,6 +20,17 @@ app.use("*", cors());
 app.get("/api/health", (c) => {
 	return c.json({ status: "ok", timestamp: new Date().toISOString() });
 });
+app.route(
+	"/api/v1",
+	createV1Router({
+		database: db,
+		searchPhotos: searchPhotosByText,
+		dispatchScan: (event) => inngest.send(event),
+		photoDirectory: config.PHOTO_DIRECTORY,
+		thumbnailsDirectory: config.THUMBNAILS_DIRECTORY,
+		nativeScanMutationsEnabled: config.V1_NATIVE_SCAN_MUTATIONS_ENABLED,
+	}),
+);
 
 // tRPC endpoint
 app.all("/api/trpc/*", async (c) => {
