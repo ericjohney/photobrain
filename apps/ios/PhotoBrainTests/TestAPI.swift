@@ -63,6 +63,8 @@ actor TestAPI: PhotoBrainAPI {
     /// Server-side reject flags set by duplicate resolution.
     var duplicateRejected: Set<Int> = []
     var dismissedDuplicateKeys: Set<String> = []
+    /// Server-side RAW+JPEG partners (both directions); curation routes also update partners.
+    var photoPartners: [Int: Int] = [:]
     /// Server-side smart albums, kept sorted by name like the real list route.
     var smartAlbumList: [SmartAlbumDTO] = []
     var smartAlbumFailures: [SmartAlbumRoute: PhotoBrainAPIError] = [:]
@@ -188,6 +190,19 @@ actor TestAPI: PhotoBrainAPI {
 
     func serverResolvedJunk() -> [Int: JunkAction] {
         resolvedJunk
+    }
+
+    /// Pairs each `(a, b)` so resolutions that touch one also update the other.
+    func setPhotoPartners(_ pairs: [(Int, Int)]) {
+        for (a, b) in pairs {
+            photoPartners[a] = b
+            photoPartners[b] = a
+        }
+    }
+
+    /// `ids` plus their partners, ascending, like the server's `updated`.
+    private func withPartners(_ ids: [Int]) -> [Int] {
+        Set(ids + ids.compactMap { photoPartners[$0] }).sorted()
     }
 
     func setPhotos(_ response: PhotosResponseDTO, failing: Bool = false) {
@@ -541,7 +556,7 @@ actor TestAPI: PhotoBrainAPI {
         if resolveDelay > .zero { try await Task.sleep(for: resolveDelay) }
         if let failure { throw failure }
         let known = Set(junkCandidates.map(\.id))
-        let updated = ids.filter(known.contains)
+        let updated = withPartners(ids.filter(known.contains))
         junkCandidates.removeAll { updated.contains($0.id) }
         for id in updated { resolvedJunk[id] = action }
         return ResolveJunkResponseDTO(updated: updated)
@@ -577,7 +592,7 @@ actor TestAPI: PhotoBrainAPI {
             guard !keepIds.isEmpty, Set(keepIds).isSubset(of: members) else {
                 throw PhotoBrainAPIError.server(status: 400, code: "INVALID_REQUEST", message: "Invalid keepIds")
             }
-            let rejected = members.filter { !keepIds.contains($0) }
+            let rejected = withPartners(members.filter { !keepIds.contains($0) })
             duplicateRejected.formUnion(rejected)
             // Rejected photos leave grouping: every group containing one changes membership.
             duplicateGroupList.removeAll { $0.key == key || $0.photos.contains { rejected.contains($0.id) } }
@@ -662,21 +677,27 @@ enum TestModels {
         taken: String? = "2024-01-01T12:00:00Z",
         rating: Int = 0,
         flag: PhotoFlag? = nil,
-        junkReasons: [JunkReason] = []
+        junkReasons: [JunkReason] = [],
+        name: String? = nil,
+        isRaw: Bool = false,
+        rawFormat: String? = nil,
+        pairedPhotoId: Int? = nil,
+        pairedFormat: String? = nil
     ) -> PhotoDTO {
-        PhotoDTO(
+        let name = name ?? "photo_\(id).jpg"
+        return PhotoDTO(
             id: id,
-            path: "synthetic/photo_\(id).jpg",
-            name: "photo_\(id).jpg",
+            path: "synthetic/\(name)",
+            name: name,
             size: 1_024,
             createdAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(id)),
             modifiedAt: Date(timeIntervalSince1970: 1_700_000_100 + Double(id)),
             width: 4_000,
             height: 3_000,
-            mimeType: "image/jpeg",
-            isRaw: false,
-            rawFormat: nil,
-            rawStatus: nil,
+            mimeType: isRaw ? "image/x-raw" : "image/jpeg",
+            isRaw: isRaw,
+            rawFormat: rawFormat,
+            rawStatus: isRaw ? "converted" : nil,
             rawError: nil,
             thumbnailStatus: "completed",
             thumbnailUpdatedAt: Date(timeIntervalSince1970: 1_700_000_200 + Double(id)),
@@ -701,6 +722,8 @@ enum TestModels {
             ),
             rating: rating,
             flag: flag,
+            pairedPhotoId: pairedPhotoId,
+            pairedFormat: pairedFormat,
             junkReasons: junkReasons
         )
     }

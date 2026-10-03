@@ -7,7 +7,12 @@ import {
 	photos as photosTable,
 	publicPhotoColumns,
 } from "../db/schema";
-import type { ApiDatabase } from "./photo-catalog";
+import {
+	type ApiDatabase,
+	pairedPhotoExtras,
+	pairedPhotoIdSql,
+	photoIdsWithPartnersSql,
+} from "./photo-catalog";
 import { QUALITY_VERSION } from "./processing-versions";
 
 export const DUPLICATE_KINDS = ["duplicate", "burst"] as const;
@@ -92,7 +97,9 @@ type ComputedGroup = {
 /**
  * Every grouping input (a pHash row and a flag other than `reject`) with the
  * keeper and burst attributes, in one statement. Sharpness counts only for a
- * current-version measurement of the committed thumbnail generation.
+ * current-version measurement of the committed thumbnail generation. A RAW
+ * whose pair partner is itself a candidate is not a candidate: the pair is one
+ * photo, represented by its standard file.
  */
 function loadCandidates(database: Pick<ApiDatabase, "all">): CandidateRow[] {
 	return database.all<CandidateRow>(sql`
@@ -116,6 +123,14 @@ function loadCandidates(database: Pick<ApiDatabase, "all">): CandidateRow[] {
 			AND photo_quality.thumbnail_key = photos.thumbnail_key
 			AND photo_quality.quality_version = ${QUALITY_VERSION}
 		WHERE photos.flag IS NOT 'reject'
+			AND NOT (
+				ifnull(photos.is_raw, 0) = 1
+				AND ifnull(${pairedPhotoIdSql()} IN (
+					SELECT photo_phash.photo_id FROM photo_phash
+					JOIN photos ON photos.id = photo_phash.photo_id
+					WHERE photos.flag IS NOT 'reject'
+				), 0)
+			)
 	`);
 }
 
@@ -337,6 +352,7 @@ export async function duplicateGroups(
 	const rows = pageIds.length
 		? await database.query.photos.findMany({
 				columns: publicPhotoColumns,
+				extras: pairedPhotoExtras,
 				with: { exif: true },
 				where: sql`photos.id IN (SELECT value FROM json_each(${JSON.stringify(pageIds)}))`,
 			})
@@ -370,9 +386,9 @@ export type ResolveDuplicateGroupResult =
  * Recomputes the key's kind inside one transaction and requires a current
  * group with exactly that membership (`GROUP_CHANGED` otherwise). `keep`
  * rejects every member not in `keepIds` (1+ members, else `INVALID_KEEP_IDS`)
- * in one UPDATE and dismisses the group the kept members form, so a decision
- * to keep several photos is not asked again until membership changes;
- * `dismiss` records the key. Files are never touched.
+ * and their RAW+JPEG pair partners in one UPDATE, and dismisses the group the
+ * kept members form, so a decision to keep several photos is not asked again
+ * until membership changes; `dismiss` records the key. Files are never touched.
  */
 export function resolveDuplicateGroup(
 	database: ApiDatabase,
@@ -431,9 +447,7 @@ export function resolveDuplicateGroup(
 		const rejected = tx
 			.update(photosTable)
 			.set({ flag: "reject" })
-			.where(
-				sql`${photosTable.id} IN (SELECT value FROM json_each(${JSON.stringify(others)}))`,
-			)
+			.where(sql`${photosTable.id} IN (${photoIdsWithPartnersSql(others)})`)
 			.returning({ id: photosTable.id })
 			.all()
 			.map((photo) => photo.id)

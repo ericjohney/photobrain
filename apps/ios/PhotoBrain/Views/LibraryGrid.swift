@@ -317,12 +317,15 @@ enum LibraryGridDiff {
         return ids.sorted()
     }
 
-    /// Every field `PhotoGridCell.configure` draws: image, RAW badge, label, rating, and flag.
+    /// Every field `PhotoGridCell.configure` draws: image, format badge, label, rating, and flag.
     static func rendersDifferently(_ old: PhotoRecord, _ new: PhotoRecord) -> Bool {
         old.thumbnailURL != new.thumbnailURL
             || old.rating != new.rating
             || old.flag != new.flag
             || old.isRaw != new.isRaw
+            || old.rawFormat != new.rawFormat
+            || old.pairedPhotoId != new.pairedPhotoId
+            || old.pairedFormat != new.pairedFormat
             || old.filename != new.filename
     }
 }
@@ -407,7 +410,6 @@ private final class PhotoGridCell: UICollectionViewCell {
         checkmark.backgroundColor = .systemBlue
         checkmark.layer.cornerRadius = 10
         checkmark.translatesAutoresizingMaskIntoConstraints = false
-        rawBadge.text = "RAW"
         rawBadge.font = .preferredFont(forTextStyle: .caption2)
         rawBadge.adjustsFontForContentSizeCategory = true
         rawBadge.textColor = .white
@@ -478,9 +480,11 @@ private final class PhotoGridCell: UICollectionViewCell {
         representedID = photo.id
         imageView.alpha = photo.isRejected ? Self.rejectedAlpha : 1
         checkmark.isHidden = !selected
-        rawBadge.isHidden = !photo.isRaw
+        let badge = photo.formatBadge
+        rawBadge.text = badge
+        rawBadge.isHidden = badge == nil
         configureCurationBadge(rating: photo.rating, flag: photo.flag)
-        let base = photo.isRaw ? "\(photo.filename), RAW photo" : photo.filename
+        let base = photo.accessibilityName
         accessibilityLabel = base + CurationBadgeText.accessibilitySuffix(rating: photo.rating, flag: photo.flag)
         accessibilityTraits = selected ? [.button, .selected] : [.button]
 

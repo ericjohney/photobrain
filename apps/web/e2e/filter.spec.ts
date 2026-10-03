@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures/test";
-import { FIXTURE_PHOTOS } from "./fixtures/photos";
+import { FIXTURE_LIBRARY } from "./fixtures/photos";
 
 test.beforeEach(async ({ page }) => {
 	await page.goto("/");
@@ -21,7 +21,7 @@ test("selecting a camera filter updates photo count", async ({
 	page,
 	mockBackend,
 }) => {
-	const sonyPhotos = FIXTURE_PHOTOS.filter(
+	const sonyPhotos = FIXTURE_LIBRARY.filter(
 		(p) => p.exif?.cameraModel === "A7III",
 	);
 	await mockBackend({
@@ -34,8 +34,8 @@ test("selecting a camera filter updates photo count", async ({
 				};
 			}
 			return {
-				photos: FIXTURE_PHOTOS,
-				total: FIXTURE_PHOTOS.length,
+				photos: FIXTURE_LIBRARY,
+				total: FIXTURE_LIBRARY.length,
 				rawCount: 0,
 			};
 		},
@@ -56,7 +56,7 @@ test("clearing a filter restores full photo list", async ({
 	page,
 	mockBackend,
 }) => {
-	const sonyPhotos = FIXTURE_PHOTOS.filter(
+	const sonyPhotos = FIXTURE_LIBRARY.filter(
 		(p) => p.exif?.cameraModel === "A7III",
 	);
 	await mockBackend({
@@ -69,8 +69,8 @@ test("clearing a filter restores full photo list", async ({
 				};
 			}
 			return {
-				photos: FIXTURE_PHOTOS,
-				total: FIXTURE_PHOTOS.length,
+				photos: FIXTURE_LIBRARY,
+				total: FIXTURE_LIBRARY.length,
 				rawCount: 0,
 			};
 		},

@@ -1,5 +1,6 @@
 import { Camera } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
+import { rawBadge } from "@/lib/raw-badge";
 import { getThumbnailUrl } from "@/lib/thumbnails";
 import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,7 @@ export function Filmstrip({
 				const isActive = activePhotoId === photo.id;
 				const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
 				const isRejected = photo.flag === "reject";
+				const formatBadge = rawBadge(photo);
 
 				return (
 					<button
@@ -96,10 +98,14 @@ export function Filmstrip({
 							/>
 						)}
 
-						{/* RAW indicator */}
-						{photo.isRaw && (
-							<div className="absolute left-0.5 top-0.5 rounded bg-orange-500/90 px-0.5 text-[8px] font-semibold text-white">
-								R
+						{/* RAW / RAW+JPEG pair indicator */}
+						{formatBadge && (
+							<div
+								data-testid="filmstrip-raw-badge"
+								title={formatBadge.label}
+								className="absolute left-0.5 top-0.5 rounded bg-orange-500/90 px-0.5 text-[8px] font-semibold text-white"
+							>
+								{formatBadge.compact}
 							</div>
 						)}
 					</button>

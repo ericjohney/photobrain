@@ -9,6 +9,8 @@ import {
 	type ApiDatabase,
 	type PhotoCatalogRepresentation,
 	type PhotoFilters,
+	pairedPhotoExtras,
+	pairedPhotoIdSql,
 	photoFilterConditions,
 } from "./photo-catalog";
 import { EMBEDDING_MODEL_VERSION } from "./processing-versions";
@@ -24,6 +26,7 @@ async function hydrateRankedPhotos(
 	if (rankedIds.length === 0) return [];
 	const rows = await database.query.photos.findMany({
 		columns: publicPhotoColumns,
+		extras: pairedPhotoExtras,
 		where: inArray(photosTable.id, [...rankedIds]),
 		with: { exif: true },
 	});
@@ -37,8 +40,8 @@ async function hydrateRankedPhotos(
 /**
  * Find photos nearest to a query embedding using the photo_embedding sidecar table.
  * Only completed vectors for the current model and committed thumbnail generation qualify.
- * Catalog filters apply inside the same statement, before ranking and LIMIT, with the
- * same semantics as the library listing.
+ * Catalog filters (including RAW+JPEG pair stacking) apply inside the same
+ * statement, before ranking and LIMIT, with the same semantics as the library listing.
  */
 export async function findSimilarPhotos(
 	database: ApiDatabase,
@@ -51,11 +54,10 @@ export async function findSimilarPhotos(
 		embedding instanceof Float32Array
 			? Buffer.from(embedding.buffer)
 			: Buffer.from(new Float32Array(embedding).buffer);
-	const filterConditions = photoFilterConditions(filters, representation);
-	const filterClause =
-		filterConditions.length > 0
-			? sql` AND ${sql.join(filterConditions, sql` AND `)}`
-			: sql``;
+	const filterClause = sql.join(
+		photoFilterConditions(filters, representation),
+		sql` AND `,
+	);
 
 	const results = await database.all<{ photo_id: number; distance: number }>(
 		sql`
@@ -66,7 +68,8 @@ export async function findSimilarPhotos(
       INNER JOIN photos ON photos.id = e.photo_id
       WHERE photos.embedding_status = 'completed'
         AND e.thumbnail_key IS photos.thumbnail_key
-        AND e.model_version = ${EMBEDDING_MODEL_VERSION}${filterClause}
+        AND e.model_version = ${EMBEDDING_MODEL_VERSION}
+        AND ${filterClause}
       ORDER BY distance ASC
       LIMIT ${limit}
     `,
@@ -115,9 +118,10 @@ type SimilarRow = {
  *
  * One statement resolves the source vector, applies the text-search validity
  * filters and any catalog filters to candidates (before ranking and LIMIT),
- * excludes the source, and orders by distance then ID. Filters never apply to
- * the source itself. The source row is always returned (left-joined to
- * neighbours) so existence and indexing state need no extra round trip.
+ * excludes the source and its RAW+JPEG pair partner, and orders by distance
+ * then ID. Filters never apply to the source itself. The source row is always
+ * returned (left-joined to neighbours) so existence and indexing state need no
+ * extra round trip.
  *
  * @returns `null` when the photo does not exist; `indexed: false` when it has no
  * usable vector.
@@ -128,16 +132,13 @@ export async function findSimilarToPhoto(
 	limit: number,
 	filters: PhotoFilters = {},
 ): Promise<SimilarPhotosResult | null> {
-	const filterConditions = photoFilterConditions(filters);
-	const filterClause =
-		filterConditions.length > 0
-			? sql` AND ${sql.join(filterConditions, sql` AND `)}`
-			: sql``;
+	const filterClause = sql.join(photoFilterConditions(filters), sql` AND `);
 	const rows = await database.all<SimilarRow>(
 		sql`
       WITH source AS (
         SELECT
           p.id AS id,
+          ${pairedPhotoIdSql("p")} AS partner_id,
           CASE
             WHEN p.embedding_status = 'completed'
               AND e.model_version = ${EMBEDDING_MODEL_VERSION}
@@ -155,12 +156,14 @@ export async function findSimilarToPhoto(
         FROM source s
         INNER JOIN photo_embedding e
           ON e.photo_id != s.id
+          AND e.photo_id IS NOT s.partner_id
           AND length(e.embedding) = length(s.embedding)
         INNER JOIN photos ON photos.id = e.photo_id
         WHERE s.embedding IS NOT NULL
           AND photos.embedding_status = 'completed'
           AND e.thumbnail_key IS photos.thumbnail_key
-          AND e.model_version = ${EMBEDDING_MODEL_VERSION}${filterClause}
+          AND e.model_version = ${EMBEDDING_MODEL_VERSION}
+          AND ${filterClause}
         ORDER BY distance ASC, e.photo_id ASC
         LIMIT ${limit}
       )

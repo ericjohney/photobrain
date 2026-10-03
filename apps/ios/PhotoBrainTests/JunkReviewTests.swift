@@ -418,6 +418,31 @@ final class ReviewStoreTests: XCTestCase {
         XCTAssertEqual(spy.applied.first?.curation.flag, .reject)
     }
 
+    func testRejectAdoptsServerUpdatedPartnersAndIgnoresUnloadedOnes() async {
+        let api = TestAPI()
+        await api.setJunkCandidates(Self.candidates([(2, [.dark]), (1, [.dark])]))
+        await api.setPhotos(PhotosResponseDTO(photos: [TestModels.photo(id: 22)], total: 1, rawCount: 0))
+        // 22 is loaded in the Library; 11 is not loaded anywhere.
+        await api.setPhotoPartners([(2, 22), (1, 11)])
+        let curation = PhotoCurationCenter(api: api)
+        let spy = CurationSpy()
+        curation.register(spy)
+        let library = LibraryStore(api: api, curation: curation)
+        await library.load()
+        let store = ReviewStore(api: api, curation: curation)
+        await store.load().value
+
+        await store.resolve([1, 2], action: .reject)?.value
+
+        XCTAssertEqual(spy.applied.map(\.id), [1, 2, 11, 22])
+        XCTAssertTrue(spy.applied.allSatisfy { $0.curation.flag == .reject })
+        XCTAssertEqual(library.records.map(\.id), [22])
+        XCTAssertEqual(library.records.first?.flag, .reject)
+        XCTAssertEqual(library.records.first?.rating, 0)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertTrue(store.records.isEmpty)
+    }
+
     func testLoupeResolveAdvancesToNextPhotoThenClosesWhenNoneLeft() async {
         let api = TestAPI()
         await api.setJunkCandidates(Self.candidates([(5, [.dark]), (4, [.dark]), (3, [.dark])]))
@@ -473,6 +498,10 @@ private final class CurationSpy: CurationApplying {
 
     func applyCuration(id: Int, curation: PhotoCuration) {
         applied.append((id, curation))
+    }
+
+    func applyFlag(id: Int, flag: PhotoFlag?) {
+        applied.append((id, PhotoCuration(rating: 0, flag: flag)))
     }
 }
 

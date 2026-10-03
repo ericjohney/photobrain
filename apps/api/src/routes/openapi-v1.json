@@ -1391,6 +1391,8 @@
 					"phashStatus",
 					"rating",
 					"flag",
+					"pairedPhotoId",
+					"pairedFormat",
 					"exif"
 				],
 				"properties": {
@@ -1466,6 +1468,15 @@
 					"flag": {
 						"type": ["string", "null"],
 						"enum": ["pick", "reject", null]
+					},
+					"pairedPhotoId": {
+						"type": ["integer", "null"],
+						"minimum": 1,
+						"description": "ID of this photo's RAW+JPEG pair partner (same folder and file stem), or null when unpaired. Lists show one row per pair; curation applies to both files."
+					},
+					"pairedFormat": {
+						"type": ["string", "null"],
+						"description": "The pair partner's format: its rawFormat when the partner is RAW, otherwise its upper-cased file extension (e.g. JPG, HEIC); null when unpaired."
 					},
 					"exif": {
 						"oneOf": [

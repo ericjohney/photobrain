@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import {
+	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
@@ -56,7 +57,7 @@ function gate() {
 
 async function openLibrary(page: Page) {
 	await page.goto("/");
-	await expect(page.getByText(`${FIXTURE_PHOTOS.length} photos`)).toBeVisible();
+	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
 }
 
 test("0-5, P, X and U curate the active photo and update panel and grid immediately", async ({
@@ -385,8 +386,8 @@ test("Rating and Flag filters scope the library and search and clear with Clear 
 
 	// The unfiltered library may render from cache, so assert what is shown.
 	await page.getByRole("button", { name: "Clear search" }).click();
-	await expect(page.getByText(`${FIXTURE_PHOTOS.length} photos`)).toBeVisible();
+	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
 	await expect
 		.poll(() => gridIds(page))
-		.toEqual(FIXTURE_PHOTOS.map((p) => p.id));
+		.toEqual(FIXTURE_LIBRARY.map((p) => p.id));
 });

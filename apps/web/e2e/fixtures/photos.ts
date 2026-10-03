@@ -12,6 +12,10 @@ export type FixturePhoto = {
 	rawFormat: string | null;
 	rawStatus: string | null;
 	rawError: string | null;
+	/** The other file of a RAW+standard pair (same folder and stem), like the API. */
+	pairedPhotoId: number | null;
+	/** Partner's RAW format, or its upper-cased extension when it is standard. */
+	pairedFormat: string | null;
 	thumbnailStatus: string;
 	embeddingStatus: string;
 	phashStatus: string;
@@ -54,6 +58,8 @@ function makePhoto(
 		rawFormat: null,
 		rawStatus: null,
 		rawError: null,
+		pairedPhotoId: null,
+		pairedFormat: null,
 		thumbnailStatus: "completed",
 		embeddingStatus: "completed",
 		phashStatus: "completed",
@@ -137,16 +143,38 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		path: "photos/2024/forest.jpg",
 		rating: 4,
 		flag: "pick",
+		pairedPhotoId: 13,
+		pairedFormat: "ARW",
 	}),
 	makePhoto(9, { name: "city.jpg", path: "photos/2024/city.jpg" }),
 	makePhoto(10, { name: "flower.jpg", path: "photos/2024/flower.jpg" }),
 	makePhoto(11, { name: "cat.jpg", path: "photos/2024/cat.jpg", exif: null }),
 	makePhoto(12, { name: "dog.jpg", path: "photos/2024/dog.jpg" }),
+	// RAW half of the forest pair: stacked under forest.jpg (8) unless a filter
+	// keeps only the RAW. Curated together with its partner, like the API does.
+	makePhoto(13, {
+		name: "forest.arw",
+		path: "photos/2024/forest.arw",
+		isRaw: true,
+		rawFormat: "ARW",
+		rawStatus: "converted",
+		mimeType: "image/x-sony-arw",
+		rating: 4,
+		flag: "pick",
+		pairedPhotoId: 8,
+		pairedFormat: "JPG",
+	}),
 ];
 
+/** Folder counts are per file (not stacked), like the API's folder tree. */
 export const FIXTURE_FOLDERS = {
 	folders: [
-		{ name: "2024", path: "photos/2024", photoCount: 12, children: [] },
+		{
+			name: "2024",
+			path: "photos/2024",
+			photoCount: FIXTURE_PHOTOS.length,
+			children: [],
+		},
 	],
 	totalPhotos: FIXTURE_PHOTOS.length,
 };
@@ -291,12 +319,17 @@ function cameraLabel(exif: NonNullable<FixturePhoto["exif"]>) {
 		: `${exif.cameraMake} ${exif.cameraModel}`;
 }
 
-/** Mirrors the API's shared library/search filter semantics (folder = direct children only). */
+/**
+ * Mirrors the API's shared library/search filter semantics (folder = direct
+ * children only), including RAW+standard stacking: a RAW is omitted when its
+ * pair partner also matches, so `all` shows a pair as its standard file while
+ * `raw` (or a collection holding only the RAW) shows the RAW.
+ */
 export function filterFixturePhotos(
 	photos: FixturePhoto[],
 	filters: FixturePhotoFilters = {},
 ): FixturePhoto[] {
-	return photos.filter((p) => {
+	const matching = photos.filter((p) => {
 		if (
 			filters.folder !== undefined &&
 			p.path.slice(0, p.path.lastIndexOf("/")) !== filters.folder
@@ -335,4 +368,16 @@ export function filterFixturePhotos(
 		}
 		return true;
 	});
+	const matchingIds = new Set(matching.map((p) => p.id));
+	return matching.filter(
+		(p) =>
+			!(
+				p.isRaw &&
+				p.pairedPhotoId !== null &&
+				matchingIds.has(p.pairedPhotoId)
+			),
+	);
 }
+
+/** The unfiltered library grid: every fixture photo with pairs stacked. */
+export const FIXTURE_LIBRARY = filterFixturePhotos(FIXTURE_PHOTOS);

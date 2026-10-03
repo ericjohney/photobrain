@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCaptureTime } from "@/lib/duplicates";
+import { rawBadge } from "@/lib/raw-badge";
 import { getThumbnailUrl } from "@/lib/thumbnails";
 import type { DuplicateGroup, PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -129,6 +130,7 @@ function DuplicateGroupCard({
 			<div className="flex gap-2 overflow-x-auto p-2">
 				{group.photos.map((photo) => {
 					const isKept = keepIds.has(photo.id);
+					const formatBadge = rawBadge(photo);
 					return (
 						<button
 							key={photo.id}
@@ -177,9 +179,9 @@ function DuplicateGroupCard({
 										Suggested
 									</span>
 								)}
-								{photo.isRaw && (
+								{formatBadge && (
 									<span className="absolute right-1 top-1 rounded bg-orange-500/90 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm">
-										{photo.rawFormat || "RAW"}
+										{formatBadge.label}
 									</span>
 								)}
 								<span

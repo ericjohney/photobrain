@@ -16,11 +16,18 @@ export const publicPhotoColumns = {
 } as const;
 
 /**
- * Photo row as emitted to clients: private identity stripped, EXIF sidecar attached.
+ * Photo row as emitted to clients: private identity stripped, EXIF sidecar attached,
+ * plus the RAW+JPEG pair fields (`pairedPhotoExtras` in `services/photo-catalog.ts`).
  * `exif` mirrors Drizzle's relational inference for the reverse one-to-one relation
  * (non-null) so tRPC client types are unchanged; rows without EXIF carry `null` at runtime.
  */
 export type PublicPhotoWithExif = Omit<
 	Photo,
 	keyof typeof publicPhotoColumns
-> & { exif: PhotoExif };
+> & {
+	exif: PhotoExif;
+	/** The pair partner's photo ID, or `null` when unpaired. */
+	pairedPhotoId: number | null;
+	/** The partner's `rawFormat` (RAW partner) or upper-cased extension (`JPG`), or `null`. */
+	pairedFormat: string | null;
+};

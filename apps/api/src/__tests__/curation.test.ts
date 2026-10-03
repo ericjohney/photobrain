@@ -170,7 +170,10 @@ describe("updatePhotoCuration", () => {
 				!/^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i.test(statement),
 		);
 		expect(dataStatements).toHaveLength(1);
-		expect(dataStatements[0]).toMatch(/^update "photos" set .* returning/i);
+		// The ID set spans lines: listed IDs plus their pair partners.
+		expect(dataStatements[0]).toMatch(
+			/^update "photos" set [\s\S]* returning/i,
+		);
 		expect(curationState()).toEqual([
 			{ id: ids[0], rating: 4, flag: "pick" },
 			{ id: ids[1], rating: 0, flag: null },

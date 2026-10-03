@@ -1,13 +1,14 @@
 import type { Page } from "@playwright/test";
 import type { HandlerOverrides } from "./fixtures/handlers";
 import {
+	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
 	filterFixturePhotos,
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
-const ALL_IDS = FIXTURE_PHOTOS.map((p) => p.id);
+const ALL_IDS = FIXTURE_LIBRARY.map((p) => p.id);
 
 async function gridIds(page: Page) {
 	return page
@@ -40,7 +41,7 @@ async function openAlbumMenu(page: Page, name: string) {
 
 async function openLibrary(page: Page) {
 	await page.goto("/");
-	await expect(page.getByText(`${FIXTURE_PHOTOS.length} photos`)).toBeVisible();
+	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
 }
 
 async function pickRaw(page: Page) {

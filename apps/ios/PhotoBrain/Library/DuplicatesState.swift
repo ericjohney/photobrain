@@ -123,6 +123,12 @@ final class DuplicatesStore: ObservableObject, CurationApplying {
         }
     }
 
+    func applyFlag(id: Int, flag: PhotoFlag?) {
+        for index in groups.indices {
+            groups[index].photos.applyFlag(id: id, flag: flag)
+        }
+    }
+
     // MARK: - Loading
 
     /// Replaces the list with the first page for the current kind. Pull-to-refresh keeps the
@@ -259,9 +265,9 @@ final class DuplicatesStore: ObservableObject, CurationApplying {
             do {
                 let response = try await api.resolveDuplicateGroup(key: group.key, resolution: resolution)
                 if case .keep = resolution {
+                    // Includes RAW+JPEG partners of rejected members, which may not be loaded.
                     let rejected = Set(response.rejected ?? group.rejectedIDs)
-                    let records = group.photos.filter { rejected.contains($0.id) }
-                    curation.adoptConfirmed(flag: .reject, for: records)
+                    curation.adoptConfirmed(flag: .reject, ids: rejected.sorted())
                     // Groups sharing a rejected photo changed membership on the server.
                     if groups.contains(where: { $0.photos.contains { rejected.contains($0.id) } }) {
                         needsReload = true

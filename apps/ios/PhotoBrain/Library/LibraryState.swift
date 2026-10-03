@@ -381,6 +381,11 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         presentationRevision &+= 1
     }
 
+    func applyFlag(id: Int, flag: PhotoFlag?) {
+        guard let existing = recordsByID[id] else { return }
+        applyCuration(id: id, curation: PhotoCuration(rating: existing.rating, flag: flag))
+    }
+
     func retryFilterOptions() async {
         filterOptionsError = nil
         do {
@@ -637,6 +642,10 @@ final class SearchStore: ObservableObject, FilterEditingStore, CurationApplying 
         records.applyCuration(id: id, curation: curation)
     }
 
+    func applyFlag(id: Int, flag: PhotoFlag?) {
+        records.applyFlag(id: id, flag: flag)
+    }
+
     func retry() {
         schedule(immediate: true)
     }
@@ -749,6 +758,10 @@ final class SimilarPhotosStore: ObservableObject, CurationApplying {
         records.applyCuration(id: id, curation: curation)
     }
 
+    func applyFlag(id: Int, flag: PhotoFlag?) {
+        records.applyFlag(id: id, flag: flag)
+    }
+
     /// Starts loading neighbours for `sourceID` unless that source already has a settled result.
     /// A different source supersedes any in-flight request; its late response is discarded.
     @discardableResult
@@ -819,5 +832,11 @@ extension Array where Element == PhotoRecord {
               self[index].rating != curation.rating || self[index].flag != curation.flag else { return }
         self[index].rating = curation.rating
         self[index].flag = curation.flag
+    }
+
+    /// Replaces one record's flag in place, keeping its rating; a no-op when absent or unchanged.
+    mutating func applyFlag(id: Int, flag: PhotoFlag?) {
+        guard let index = firstIndex(where: { $0.id == id }), self[index].flag != flag else { return }
+        self[index].flag = flag
     }
 }

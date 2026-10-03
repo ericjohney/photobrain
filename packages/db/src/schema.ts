@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { type AnyColumn, relations, type SQL, sql } from "drizzle-orm";
 import {
 	blob,
 	check,
@@ -10,6 +10,17 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+
+/**
+ * RAW+JPEG pair stem: the lower-cased relative path without its final
+ * extension (`2024/DSC_0001.ARW` -> `2024/dsc_0001`). The path includes the
+ * folder, so only same-folder siblings share a stem. `idx_photos_pair_stem`
+ * indexes exactly this expression; queries must build it with this function
+ * (on any alias of `photos.path`) for SQLite to match the index.
+ */
+export function pairStem(path: SQL | AnyColumn): SQL {
+	return sql`lower(substr(${path}, 1, length(rtrim(${path}, replace(${path}, '.', ''))) - 1))`;
+}
 
 export const photos = sqliteTable(
 	"photos",
@@ -58,6 +69,8 @@ export const photos = sqliteTable(
 			table.flag,
 			table.rating,
 		),
+		// Query-time RAW+JPEG pairing looks partners up by stem.
+		index("idx_photos_pair_stem").on(pairStem(table.path)),
 		check("photos_rating_range", sql`${table.rating} BETWEEN 0 AND 5`),
 		check(
 			"photos_flag_values",

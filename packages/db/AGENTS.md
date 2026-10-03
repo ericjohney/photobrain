@@ -28,6 +28,8 @@ Scan and embedding saves never write these columns, so a rescan or generation up
 
 `junkDismissed` (`junk_dismissed`, integer boolean, NOT NULL default 0) is internal review state written only by the API's junk-review `keep` action (`apps/api/src/services/junk-review.ts`); scans never write it and the public photo projection omits it. `idx_photos_junk_review` on `(junk_dismissed, flag, rating)` serves the junk-review candidate filter.
 
+`idx_photos_pair_stem` is an expression index on the RAW+JPEG pair stem: `lower(substr(path, 1, length(rtrim(path, replace(path, '.', ''))) - 1))`, the lower-cased relative path without its final extension (`2024/DSC_0001.ARW` → `2024/dsc_0001`; the folder is part of the path, so only same-folder files share a stem). There is no stored column; pairing is evaluated at query time by the API (`pairedPhotoIdSql` in `apps/api/src/services/photo-catalog.ts`). Build the expression only with the exported `pairStem(column)` helper from `src/schema.ts` (on any alias of `photos.path`) so SQLite matches the index; a hand-written variant silently falls back to a scan.
+
 Six nullable internal identity fields describe committed media:
 
 - `sourceRoot`: canonical `realpath` of the scanned source directory.
@@ -82,6 +84,7 @@ Current migrations:
 11. `0010_junk_review.sql`: pure `CREATE TABLE photo_quality`, `ALTER TABLE photos ADD junk_dismissed integer DEFAULT false NOT NULL`, and `CREATE INDEX idx_photos_junk_review`; no table is rebuilt, so existing photos, EXIF, tags, collections, and vectors are untouched and every completed thumbnail becomes eligible for the quality backfill. `bun run db:generate` reports no drift afterward.
 12. `0011_smart_albums.sql`: pure `CREATE TABLE smart_albums` and `CREATE UNIQUE INDEX smart_albums_name_nocase_unique`; no table is rebuilt or altered. `bun run db:generate` reports no drift afterward.
 13. `0012_duplicate_dismissals.sql`: pure `CREATE TABLE duplicate_dismissals`; no table is rebuilt or altered. `bun run db:generate` reports no drift afterward.
+14. `0013_pair_stem.sql`: pure `CREATE INDEX idx_photos_pair_stem` on the pair-stem expression; no table is rebuilt or altered, so existing rows are untouched. `bun run db:generate` reports no drift afterward.
 
 Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006` after preceding migrations. New function IDs do not protect against old code still publishing unfenced writes.
 

@@ -1,0 +1,1 @@
+CREATE INDEX `idx_photos_pair_stem` ON `photos` (lower(substr("path", 1, length(rtrim("path", replace("path", '.', ''))) - 1)));

@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import {
+	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
@@ -53,7 +54,7 @@ function photoTagChips(page: Page) {
 async function openLibrary(page: Page) {
 	await page.goto("/");
 	await expect(
-		page.getByText(`${FIXTURE_PHOTOS.length} photos`, { exact: true }),
+		page.getByText(`${FIXTURE_LIBRARY.length} photos`, { exact: true }),
 	).toBeVisible();
 }
 

@@ -348,12 +348,14 @@ private struct PhotoMetadataView: View {
     /// Nil when no Library is reachable; chips then render without an action.
     let onSelectTag: ShowTagInLibraryAction?
     @StateObject private var tags: PhotoTagsStore
+    @StateObject private var pair: PhotoPairStore
     @Environment(\.dismiss) private var dismiss
 
     init(photo: PhotoRecord, api: any PhotoBrainAPI, onSelectTag: ShowTagInLibraryAction?) {
         self.photo = photo
         self.onSelectTag = onSelectTag
         _tags = StateObject(wrappedValue: PhotoTagsStore(photoID: photo.id, api: api))
+        _pair = StateObject(wrappedValue: PhotoPairStore(photo: photo, api: api))
     }
 
     var body: some View {
@@ -402,6 +404,13 @@ private struct PhotoMetadataView: View {
                     }
                 }
 
+                if let partner = pair.partner {
+                    Section("Pair") {
+                        row("Partner", partner.filename)
+                        row("Format", partner.format)
+                    }
+                }
+
                 if let exif = photo.exif {
                     Section("Camera") {
                         row("Make", exif.cameraMake)
@@ -427,6 +436,7 @@ private struct PhotoMetadataView: View {
                 }
             }
             .task { await tags.load() }
+            .task { await pair.load() }
             .navigationTitle("Photo Info")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

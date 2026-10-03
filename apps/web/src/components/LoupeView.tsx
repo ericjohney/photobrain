@@ -13,6 +13,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { rawBadge } from "@/lib/raw-badge";
 import { getFullImageUrl, getThumbnailUrl } from "@/lib/thumbnails";
 import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,7 @@ export function LoupeView({
 	}
 
 	const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
+	const formatBadge = rawBadge(photo);
 
 	const getImageSrc = () => {
 		if (zoomLevel === "100") {
@@ -146,13 +148,13 @@ export function LoupeView({
 				</div>
 			)}
 
-			{/* RAW badge */}
-			{photo.isRaw && (
+			{/* RAW / RAW+JPEG pair badge */}
+			{formatBadge && (
 				<div
 					data-testid="loupe-raw-badge"
 					className="absolute left-3 top-3 rounded bg-orange-500/90 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
 				>
-					{photo.rawFormat || "RAW"}
+					{formatBadge.label}
 				</div>
 			)}
 

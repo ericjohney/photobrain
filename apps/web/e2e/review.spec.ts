@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import {
 	FIXTURE_JUNK_REASONS,
+	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
 	filterFixturePhotos,
 } from "./fixtures/photos";
@@ -60,7 +61,7 @@ function gate() {
 
 async function openReview(page: Page) {
 	await page.goto("/");
-	await expect(page.getByText(`${FIXTURE_PHOTOS.length} photos`)).toBeVisible();
+	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
 	await expect(reviewItem(page)).toContainText(String(CANDIDATE_IDS.length));
 	await reviewItem(page).click();
 	await expect.poll(() => gridIds(page)).toEqual(CANDIDATE_IDS);
@@ -196,7 +197,7 @@ test("Keep all sends keep for the shown photos and they stay out of Review", asy
 
 	// Keeping does not flag anything in the library.
 	await headerButton(page, /^Exit review/).click();
-	await expect(page.getByText(`${FIXTURE_PHOTOS.length} photos`)).toBeVisible();
+	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
 	await expect(gridCell(page, 12)).not.toHaveAttribute("data-rejected");
 });
 

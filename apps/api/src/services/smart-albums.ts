@@ -192,8 +192,9 @@ type LiveStatsRow = {
 
 /**
  * Evaluates a row into its DTO. Filter-only albums get one aggregate statement
- * (COUNT plus MAX(id) under the shared catalog filter conditions, joined back
- * for the cover's cache token); query albums have no stable count or cover.
+ * (COUNT plus MAX(id) under the shared catalog filter conditions, which stack
+ * RAW+JPEG pairs like the listing, joined back for the cover's cache token);
+ * query albums have no stable count or cover.
  */
 function toSmartAlbum(
 	database: Executor,
@@ -218,7 +219,7 @@ function toSmartAlbum(
 			FROM (
 				SELECT count(*) AS photo_count, max(photos.id) AS cover_id
 				FROM photos
-				WHERE ${conditions.length > 0 ? sql.join(conditions, sql` AND `) : sql`1`}
+				WHERE ${sql.join(conditions, sql` AND `)}
 			) stats
 			LEFT JOIN photos cover ON cover.id = stats.cover_id
 		`);

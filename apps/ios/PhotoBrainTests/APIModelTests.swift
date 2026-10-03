@@ -15,6 +15,30 @@ final class APIModelTests: XCTestCase {
         }
     }
 
+    func testPhotoPairFieldsDecodeWhenPresentAndDefaultToNilWhenAbsentOrNull() throws {
+        let common = #""path":"synthetic/DSC_0001.JPG","name":"DSC_0001.JPG","size":1024,"createdAt":"2024-01-02T03:04:05.000Z","modifiedAt":"2024-01-02T03:04:06Z","isRaw":false"#
+        let paired = try APIModelCoding.decoder().decode(
+            PhotoDTO.self,
+            from: Data(#"{"id":1,\#(common),"pairedPhotoId":2,"pairedFormat":"ARW"}"#.utf8)
+        )
+        XCTAssertEqual(paired.pairedPhotoId, 2)
+        XCTAssertEqual(paired.pairedFormat, "ARW")
+        let record = PhotoRecord(dto: paired, apiBaseURL: URL(string: "https://photos.example.invalid")!)
+        XCTAssertEqual(record.pairedPhotoId, 2)
+        XCTAssertEqual(record.pairedFormat, "ARW")
+
+        let nulls = try APIModelCoding.decoder().decode(
+            PhotoDTO.self,
+            from: Data(#"{"id":1,\#(common),"pairedPhotoId":null,"pairedFormat":null}"#.utf8)
+        )
+        XCTAssertNil(nulls.pairedPhotoId)
+        XCTAssertNil(nulls.pairedFormat)
+
+        let legacy = try APIModelCoding.decoder().decode(PhotoDTO.self, from: Data(#"{"id":1,\#(common)}"#.utf8))
+        XCTAssertNil(legacy.pairedPhotoId)
+        XCTAssertNil(legacy.pairedFormat)
+    }
+
     func testScanTerminalAndProgressSemantics() {
         let running = TestModels.scan(
             id: "00000000-0000-0000-0000-000000000001",

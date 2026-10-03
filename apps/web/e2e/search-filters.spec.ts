@@ -81,7 +81,7 @@ test("selecting a folder while searching limits results to its direct children",
 }) => {
 	const nested = {
 		...FIXTURE_PHOTOS[5],
-		id: 13,
+		id: 14,
 		name: "beach-trip.jpg",
 		path: "photos/2024/trip/beach-trip.jpg",
 	};
@@ -120,7 +120,7 @@ test("selecting a folder while searching limits results to its direct children",
 	await expect(page.getByTestId("search-header")).toHaveText(
 		"2 results for “beach”",
 	);
-	expect(await gridIds(page)).toEqual([6, 13]);
+	expect(await gridIds(page)).toEqual([6, 14]);
 
 	await page
 		.getByTestId("left-panel")

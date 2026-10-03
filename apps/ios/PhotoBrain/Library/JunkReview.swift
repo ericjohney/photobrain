@@ -57,6 +57,10 @@ final class ReviewStore: ObservableObject, CurationApplying {
         records.applyCuration(id: id, curation: curation)
     }
 
+    func applyFlag(id: Int, flag: PhotoFlag?) {
+        records.applyFlag(id: id, flag: flag)
+    }
+
     func loadIfNeeded() {
         if case .idle = state { load() }
     }
@@ -187,11 +191,13 @@ final class ReviewStore: ObservableObject, CurationApplying {
 
         return Task { [api] in
             var settled = Set<Int>()
+            // The server's `updated` also lists RAW+JPEG partners it changed alongside them.
+            var updated: [Int] = []
             do {
                 let batchSize = CollectionName.maximumPhotoBatch
                 for start in stride(from: 0, to: removedIDs.count, by: batchSize) {
                     let batch = Array(removedIDs[start..<min(start + batchSize, removedIDs.count)])
-                    _ = try await api.resolveJunk(ids: batch, action: action)
+                    updated += try await api.resolveJunk(ids: batch, action: action).updated
                     settled.formUnion(batch)
                 }
             } catch {
@@ -203,7 +209,7 @@ final class ReviewStore: ObservableObject, CurationApplying {
                 if !(error is CancellationError) { errorMessage = Self.message(for: error) }
             }
             if action == .reject {
-                curation.adoptConfirmed(flag: .reject, for: removed.filter { settled.contains($0.id) })
+                curation.adoptConfirmed(flag: .reject, ids: updated)
             }
             pendingIDs.subtract(removedIDs)
             settleIfIdle()

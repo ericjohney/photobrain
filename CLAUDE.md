@@ -270,6 +270,8 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 
 It emits explicit ISO JSON DTOs, normalizes Rust EXIF month prefixes from `YYYY:MM` to `YYYY-MM`, and never exposes the six private source/artifact identity fields. The shared catalog service keeps this as a `/api/v1` representation option so tRPC wire behavior does not change. The OpenAPI contract is checked in at `apps/api/src/routes/openapi-v1.json`.
 
+RAW+JPEG pairs are derived at query time, with no scan changes: two photos pair when their case-insensitive relative path minus extension (`idx_photos_pair_stem`, migration `0013`) matches exactly two rows, one RAW and one not, and both `date_taken` values agree when both are present. Every public photo payload carries `pairedPhotoId`/`pairedFormat`. In any filtered set, a RAW row is omitted when its partner also matches, so `all` shows one cell per pair (the standard file) and `raw`/`standard` show their own file type. Curation updates apply to partners in the same UPDATE, and duplicate `keep` rejects partners of the rejected members. A RAW that has a partner is excluded from junk and duplicate candidates. Collection membership is never expanded. Clients badge pairs as e.g. `ARW+JPG`.
+
 REST routes under `/api/photos`:
 
 - `GET /api/photos/:id/file`: streams the original standard image; serves the `large` WebP for converted RAW files.

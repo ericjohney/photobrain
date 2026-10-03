@@ -1,16 +1,18 @@
 import type { Page } from "@playwright/test";
 import {
+	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
 	type FixturePhotoFilters,
+	filterFixturePhotos,
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
-const RAW_IDS = [2, 4];
-const STANDARD_IDS = FIXTURE_PHOTOS.map((p) => p.id).filter(
-	(id) => !RAW_IDS.includes(id),
-);
-const ALL_IDS = FIXTURE_PHOTOS.map((p) => p.id);
+// RAW shows every RAW file, including forest.arw (13) whose JPEG partner is
+// filtered out; All stacks that pair into forest.jpg (8).
+const RAW_IDS = [2, 4, 13];
+const STANDARD_IDS = FIXTURE_PHOTOS.filter((p) => !p.isRaw).map((p) => p.id);
+const ALL_IDS = FIXTURE_LIBRARY.map((p) => p.id);
 
 async function gridIds(page: Page) {
 	return page
@@ -99,12 +101,12 @@ test("the type filter scopes search requests and the search header", async ({
 	const query = "photos";
 	const rawMatches = searchPhotosByQuery(
 		query,
-		FIXTURE_PHOTOS.filter((p) => p.isRaw),
+		filterFixturePhotos(FIXTURE_PHOTOS, { filterRaw: "raw" }),
 	).map((p) => p.id);
 	expect(rawMatches).toEqual(RAW_IDS);
 	await page.getByPlaceholder("Search photos...").fill(query);
 	await expect(page.getByTestId("search-header")).toHaveText(
-		`2 results for “${query}” · RAW only`,
+		`${RAW_IDS.length} results for “${query}” · RAW only`,
 	);
 	expect(await gridIds(page)).toEqual(RAW_IDS);
 	expect(calls.searchPhotos?.at(-1)).toEqual({
@@ -116,7 +118,7 @@ test("the type filter scopes search requests and the search header", async ({
 	await typeRadio(page, "Standard").click();
 	const standardMatches = searchPhotosByQuery(
 		query,
-		FIXTURE_PHOTOS.filter((p) => !p.isRaw),
+		filterFixturePhotos(FIXTURE_PHOTOS, { filterRaw: "standard" }),
 	);
 	await expect(page.getByTestId("search-header")).toHaveText(
 		`${standardMatches.length} results for “${query}” · Standard only`,
@@ -128,7 +130,7 @@ test("the type filter scopes search requests and the search header", async ({
 	});
 
 	await typeRadio(page, "All").click();
-	const allMatches = searchPhotosByQuery(query, FIXTURE_PHOTOS);
+	const allMatches = searchPhotosByQuery(query, FIXTURE_LIBRARY);
 	await expect(page.getByTestId("search-header")).toHaveText(
 		`${allMatches.length} results for “${query}”`,
 	);

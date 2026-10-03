@@ -241,6 +241,17 @@ function createDefaultHandlers(): Record<string, Handler> {
 		const members = collections.get(collectionId)?.photoIds ?? [];
 		return library.filter((p) => members.includes(p.id));
 	};
+	/**
+	 * Library photos with these IDs plus their RAW+standard partners, in
+	 * ascending ID order (the library's order), like the API's
+	 * `updatePhotoCuration` behind setPhotoCuration, junk reject and duplicate keep.
+	 */
+	const withPartners = (photoIds: readonly number[]) =>
+		library.filter(
+			(p) =>
+				photoIds.includes(p.id) ||
+				(p.pairedPhotoId !== null && photoIds.includes(p.pairedPhotoId)),
+		);
 	/** Suggested keeper order like the API (no sharpness in the fixtures). */
 	const keeperOrder = (a: FixturePhoto, b: FixturePhoto) =>
 		b.rating - a.rating ||
@@ -256,8 +267,16 @@ function createDefaultHandlers(): Record<string, Handler> {
 	 */
 	const duplicateGroups = () =>
 		FIXTURE_DUPLICATE_GROUPS.flatMap(({ kind, photoIds, maxDistance }) => {
+			// A RAW whose partner is also a candidate is one photo with it.
 			const members = library.filter(
-				(p) => photoIds.includes(p.id) && p.flag !== "reject",
+				(p) =>
+					photoIds.includes(p.id) &&
+					p.flag !== "reject" &&
+					!(
+						p.isRaw &&
+						p.pairedPhotoId !== null &&
+						photoIds.includes(p.pairedPhotoId)
+					),
 			);
 			if (members.length < (kind === "burst" ? 3 : 2)) return [];
 			const key = `${kind}:${members.map((p) => p.id).join(",")}`;
@@ -290,7 +309,9 @@ function createDefaultHandlers(): Record<string, Handler> {
 			return {
 				photos,
 				total: photos.length,
-				rawCount: photos.filter((p) => p.isRaw).length,
+				// RAW rows plus standard rows stacking a RAW partner.
+				rawCount: photos.filter((p) => p.isRaw || p.pairedPhotoId !== null)
+					.length,
 			};
 		},
 		searchPhotos: (input) => {
@@ -308,19 +329,27 @@ function createDefaultHandlers(): Record<string, Handler> {
 			);
 			return { photos, total: photos.length, query };
 		},
+		photo: (input) => {
+			const { id } = input as { id: number };
+			const photo = library.find((p) => p.id === id);
+			if (!photo) throw new Error("Photo not found");
+			return photo;
+		},
 		similarPhotos: (input) => {
 			const { photoId, collectionId, tag } = (input ??
 				{}) as CollectionScope & {
 				photoId?: number;
 				tag?: string;
 			};
-			if (!library.some((p) => p.id === photoId)) {
+			const source = library.find((p) => p.id === photoId);
+			if (!source) {
 				throw new Error(`Photo ${photoId} not found`);
 			}
+			// Never the source itself or its own pair partner.
 			const photos = filterFixturePhotos(scopeToCollection({ collectionId }), {
 				tag,
 			})
-				.filter((p) => p.id !== photoId)
+				.filter((p) => p.id !== photoId && p.id !== source.pairedPhotoId)
 				.reverse();
 			return {
 				photos,
@@ -331,13 +360,11 @@ function createDefaultHandlers(): Record<string, Handler> {
 		},
 		setPhotoCuration: (input) => {
 			const { photoIds, rating, flag } = input as CurationInput;
-			const updated = library
-				.filter((p) => photoIds.includes(p.id))
-				.map((p) => {
-					if (rating !== undefined) p.rating = rating;
-					if (flag !== undefined) p.flag = flag;
-					return { id: p.id, rating: p.rating, flag: p.flag };
-				});
+			const updated = withPartners(photoIds).map((p) => {
+				if (rating !== undefined) p.rating = rating;
+				if (flag !== undefined) p.flag = flag;
+				return { id: p.id, rating: p.rating, flag: p.flag };
+			});
 			return { updated };
 		},
 		junkReview: (input) => {
@@ -354,14 +381,15 @@ function createDefaultHandlers(): Record<string, Handler> {
 				throw new TrpcFixtureError("BAD_REQUEST", "Invalid limit");
 			}
 			// Newest first (id desc: fixture dates are equal), with the API's
-			// exclusions: dismissed, picked/rejected, or rated photos.
+			// exclusions: dismissed, picked/rejected, rated, or a paired RAW.
 			const candidates = library
 				.filter(
 					(p) =>
 						FIXTURE_JUNK_REASONS[p.id] !== undefined &&
 						!junkDismissed.has(p.id) &&
 						p.flag === null &&
-						p.rating < 1,
+						p.rating < 1 &&
+						!(p.isRaw && p.pairedPhotoId !== null),
 				)
 				.sort((a, b) => b.id - a.id)
 				.map((p) => ({ ...p, junkReasons: FIXTURE_JUNK_REASONS[p.id] }));
@@ -394,11 +422,18 @@ function createDefaultHandlers(): Record<string, Handler> {
 			if (photoIds.length < 1 || photoIds.length > 500) {
 				throw new TrpcFixtureError("BAD_REQUEST", "Invalid photoIds");
 			}
+			if (action === "reject") {
+				// Through the curation update, so pair partners follow.
+				const updated = withPartners(photoIds).map((p) => {
+					p.flag = "reject";
+					return p.id;
+				});
+				return { updated };
+			}
 			const updated = library
 				.filter((p) => photoIds.includes(p.id))
 				.map((p) => {
-					if (action === "reject") p.flag = "reject";
-					else junkDismissed.add(p.id);
+					junkDismissed.add(p.id);
 					return p.id;
 				});
 			return { updated };
@@ -451,13 +486,17 @@ function createDefaultHandlers(): Record<string, Handler> {
 			) {
 				throw new TrpcFixtureError("BAD_REQUEST", "Invalid keepIds");
 			}
-			const rejected = group.photos.filter((p) => !keepIds.includes(p.id));
-			for (const photo of rejected) photo.flag = "reject";
+			const rejected = withPartners(
+				group.photos.filter((p) => !keepIds.includes(p.id)).map((p) => p.id),
+			).map((p) => {
+				p.flag = "reject";
+				return p.id;
+			});
 			if (keepIds.length > 1) {
 				const kept = [...keepIds].sort((a, b) => a - b).join(",");
 				duplicateDismissals.add(`${group.kind}:${kept}`);
 			}
-			return { rejected: rejected.map((p) => p.id) };
+			return { rejected };
 		},
 		collections: () => ({
 			collections: [...collections.values()]

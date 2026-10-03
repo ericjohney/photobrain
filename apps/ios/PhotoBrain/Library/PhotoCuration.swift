@@ -55,6 +55,8 @@ struct CurationPatch: Equatable, Sendable {
 @MainActor
 protocol CurationApplying: AnyObject {
     func applyCuration(id: Int, curation: PhotoCuration)
+    /// Sets only the flag, keeping the store's own rating; a no-op when the photo is not shown.
+    func applyFlag(id: Int, flag: PhotoFlag?)
 }
 
 /// Owns optimistic rating/flag edits for every store showing the same photos.
@@ -137,14 +139,17 @@ final class PhotoCurationCenter: ObservableObject {
     }
 
     /// Publishes a flag the server already committed through another route (junk review's
-    /// reject), keeping any outstanding PATCH intent layered on top.
-    func adoptConfirmed(flag: PhotoFlag?, for records: [PhotoRecord]) {
-        for record in records {
-            if states[record.id] != nil {
-                states[record.id]?.confirmed.flag = flag
-                if let state = states[record.id] { publish(id: record.id, curation: state.displayed) }
+    /// reject, duplicate keep), keeping any outstanding PATCH intent layered on top. `ids` may
+    /// include photos no store has loaded (e.g. RAW+JPEG partners the server flagged too);
+    /// those are ignored by every store and leave no state behind.
+    func adoptConfirmed(flag: PhotoFlag?, ids: some Sequence<Int>) {
+        stores.removeAll { $0.store == nil }
+        for id in ids {
+            if states[id] != nil {
+                states[id]?.confirmed.flag = flag
+                if let state = states[id] { publish(id: id, curation: state.displayed) }
             } else {
-                publish(id: record.id, curation: PhotoCuration(rating: record.rating, flag: flag))
+                for entry in stores { entry.store?.applyFlag(id: id, flag: flag) }
             }
         }
     }

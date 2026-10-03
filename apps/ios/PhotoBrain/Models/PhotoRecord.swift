@@ -25,11 +25,50 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
     /// Mutable so a single record can be patched optimistically without a reload.
     var rating: Int
     var flag: PhotoFlag?
+    /// RAW+JPEG partner id and format (see `PhotoDTO`); nil when unpaired.
+    let pairedPhotoId: Int?
+    let pairedFormat: String?
     /// Why the photo is in the junk review; empty outside it.
     var junkReasons: [JunkReason] = []
 
     var isConvertedRAW: Bool {
         isRaw && rawStatus == "converted"
+    }
+
+    /// Grid badge, e.g. `ARW`, `RAW`, or `ARW+JPG`; nil for an unpaired standard photo.
+    var formatBadge: String? {
+        Self.formatBadge(filename: filename, isRaw: isRaw, rawFormat: rawFormat, pairedPhotoID: pairedPhotoId, pairedFormat: pairedFormat)
+    }
+
+    /// VoiceOver name for grid cells, e.g. "DSC_0001.JPG, ARW plus JPG pair" or "DSC_0002.ARW, RAW photo".
+    var accessibilityName: String {
+        Self.accessibilityName(filename: filename, isRaw: isRaw, pairedPhotoID: pairedPhotoId, badge: formatBadge)
+    }
+
+    /// Paired: `rawPart+stdPart`, where the RAW side is the RAW file's format (falling back to
+    /// `RAW`) and the standard side is the standard file's extension. Unpaired RAW: its format
+    /// or `RAW`.
+    static func formatBadge(
+        filename: String,
+        isRaw: Bool,
+        rawFormat: String?,
+        pairedPhotoID: Int?,
+        pairedFormat: String?
+    ) -> String? {
+        let ownRawFormat = rawFormat.flatMap { $0.isEmpty ? nil : $0 } ?? "RAW"
+        guard pairedPhotoID != nil, let partner = pairedFormat, !partner.isEmpty else {
+            return isRaw ? ownRawFormat : nil
+        }
+        if isRaw { return "\(ownRawFormat)+\(partner)" }
+        let ownExtension = (filename as NSString).pathExtension.uppercased()
+        return ownExtension.isEmpty ? partner : "\(partner)+\(ownExtension)"
+    }
+
+    static func accessibilityName(filename: String, isRaw: Bool, pairedPhotoID: Int?, badge: String?) -> String {
+        if pairedPhotoID != nil, let badge, badge.contains("+") {
+            return "\(filename), \(badge.replacingOccurrences(of: "+", with: " plus ")) pair"
+        }
+        return isRaw ? "\(filename), RAW photo" : filename
     }
 
     var isRejected: Bool { flag == .reject }
@@ -72,6 +111,8 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
         flag = nil
         self.cameraModel = cameraModel
         self.lensModel = lensModel
+        pairedPhotoId = nil
+        pairedFormat = nil
     }
 
     init(dto: PhotoDTO, apiBaseURL: URL) {
@@ -109,6 +150,8 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
         rating = dto.rating
         flag = dto.flag
         junkReasons = dto.junkReasons
+        pairedPhotoId = dto.pairedPhotoId
+        pairedFormat = dto.pairedFormat
         cameraModel = dto.exif?.cameraDescription
         lensModel = dto.exif?.lensDescription
     }

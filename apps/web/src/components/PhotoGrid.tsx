@@ -1,6 +1,7 @@
 import { AlertCircle, Camera, Flag, ImageIcon, Star, X } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { rawBadge } from "@/lib/raw-badge";
 import { getThumbnailSrcSet, getThumbnailUrl } from "@/lib/thumbnails";
 import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -70,6 +71,7 @@ export function PhotoGrid<T extends PhotoMetadata>({
 						const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
 						const isRejected = photo.flag === "reject";
 						const badge = badgeLabel?.(photo);
+						const formatBadge = rawBadge(photo);
 
 						return (
 							<div
@@ -117,10 +119,13 @@ export function PhotoGrid<T extends PhotoMetadata>({
 									)}
 								/>
 
-								{/* RAW badge */}
-								{photo.isRaw && (
-									<div className="absolute left-1 top-1 rounded bg-orange-500/90 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm">
-										{photo.rawFormat || "RAW"}
+								{/* RAW / RAW+JPEG pair badge */}
+								{formatBadge && (
+									<div
+										data-testid="raw-badge"
+										className="absolute left-1 top-1 rounded bg-orange-500/90 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
+									>
+										{formatBadge.label}
 									</div>
 								)}
 

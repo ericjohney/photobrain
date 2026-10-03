@@ -1,6 +1,7 @@
 import { eq, gte, isNull, type SQL, sql } from "drizzle-orm";
 import type { db as productionDb } from "../db";
 import {
+	pairStem,
 	photoExif,
 	photos as photosTable,
 	publicPhotoColumns,
@@ -34,6 +35,84 @@ export type PhotoFilters = {
 export type PhotoCatalogRepresentation = {
 	normalizeDateMonths?: boolean;
 };
+
+/**
+ * RAW+JPEG pairing, evaluated at query time over `idx_photos_pair_stem`.
+ *
+ * Two photos are a pair iff their pair stem (lower-cased relative path minus
+ * the final extension, so same folder) has exactly two rows, exactly one of
+ * them RAW, and their `photo_exif.date_taken` values are equal whenever both
+ * are present (guards reused camera counters). Three or more rows pair nothing.
+ *
+ * The partner's ID for the row visible as `photo` in the enclosing query, or
+ * NULL: one aggregate over the stem's index range (the row itself included)
+ * names the candidate, and only then are the two dates compared by primary
+ * key, so an unpaired row costs a single index probe. Every pair lookup in the
+ * API goes through this builder.
+ */
+export function pairedPhotoIdSql(photo = "photos"): SQL {
+	const own = sql.identifier(photo);
+	return sql`(SELECT pair_candidate.id FROM (
+			SELECT CASE
+				WHEN count(*) = 2 AND total(ifnull(pair_member.is_raw, 0)) = 1
+				THEN max(CASE WHEN pair_member.id <> ${own}.id THEN pair_member.id END)
+			END AS id
+			FROM photos pair_member
+			WHERE ${pairStem(sql`pair_member.path`)} = ${pairStem(sql`${own}.path`)}
+		) pair_candidate
+		WHERE pair_candidate.id IS NOT NULL
+			AND NOT EXISTS (SELECT 1 FROM photo_exif own_exif
+				JOIN photo_exif partner_exif ON partner_exif.photo_id = pair_candidate.id
+				WHERE own_exif.photo_id = ${own}.id AND own_exif.date_taken <> partner_exif.date_taken))`;
+}
+
+/**
+ * The pair partner's format for the row visible as `photo`, or NULL: its
+ * `raw_format` when the partner is RAW (its extension if that is unknown),
+ * otherwise its upper-cased extension without the dot (`JPG`, `HEIC`).
+ */
+export function pairedFormatSql(photo = "photos"): SQL {
+	const extension = sql`upper(substr(partner.path, length(rtrim(partner.path, replace(partner.path, '.', ''))) + 1))`;
+	return sql`(SELECT CASE WHEN ifnull(partner.is_raw, 0) = 1 THEN coalesce(partner.raw_format, ${extension}) ELSE ${extension} END
+		FROM photos partner WHERE partner.id = ${pairedPhotoIdSql(photo)})`;
+}
+
+/** Relational-query `extras` adding the pair fields to every public photo. */
+export const pairedPhotoExtras = {
+	pairedPhotoId: sql<number | null>`${pairedPhotoIdSql()}`.as(
+		"paired_photo_id",
+	),
+	pairedFormat: sql<string | null>`${pairedFormatSql()}`.as("paired_format"),
+};
+
+/**
+ * Subquery for `id IN (...)`: the given photo IDs plus their pair partners.
+ * Curation and duplicate rejection apply to both files of a pair.
+ */
+export function photoIdsWithPartnersSql(ids: readonly number[]): SQL {
+	const json = JSON.stringify(ids);
+	return sql`SELECT value FROM json_each(${json})
+		UNION
+		SELECT partner_id FROM (
+			SELECT ${pairedPhotoIdSql("source")} AS partner_id
+			FROM photos source
+			WHERE source.id IN (SELECT value FROM json_each(${json}))
+		) WHERE partner_id IS NOT NULL`;
+}
+
+/**
+ * Pair stacking over the row visible as `photos`: a RAW row is omitted iff its
+ * partner also satisfies every `scope` condition (with no scope, iff it has a
+ * partner). Only RAW rows reach the partner lookup. The derived table resolves
+ * the partner ID against the outer row; the joined `photos` then shadows it, so
+ * the unchanged scope conditions test the single partner row by primary key.
+ */
+function pairStackingCondition(scope: readonly SQL[]): SQL {
+	const partner = pairedPhotoIdSql();
+	return scope.length === 0
+		? sql`NOT (ifnull(photos.is_raw, 0) = 1 AND ${partner} IS NOT NULL)`
+		: sql`NOT (ifnull(photos.is_raw, 0) = 1 AND EXISTS (SELECT 1 FROM (SELECT ${partner} AS id) pair_partner INNER JOIN photos ON photos.id = pair_partner.id WHERE ${sql.join([...scope], sql` AND `)}))`;
+}
 
 export async function listFolders(database: ApiDatabase) {
 	const results = await database
@@ -150,8 +229,11 @@ export async function listFilterOptions(
 
 /**
  * SQL conditions over `photos` (and correlated `photo_exif` lookups) shared by the
- * library listing and vector search so filter meaning cannot drift between them.
- * `folder` matches direct children only. Returns an empty array when no filter applies.
+ * library listing, vector search, similarity, and smart-album counts so filter
+ * meaning cannot drift between them. `folder` matches direct children only.
+ * The last condition stacks RAW+JPEG pairs: a RAW row is dropped when its
+ * partner also satisfies every other condition, so the set never shows both
+ * files of a pair (omitted under `filterRaw` raw/standard, which already does).
  */
 export function photoFilterConditions(
 	input: PhotoFilters,
@@ -216,6 +298,10 @@ export function photoFilterConditions(
 			sql`${photosTable.id} IN (SELECT photo_id FROM photo_tags WHERE tag = ${input.tag})`,
 		);
 	}
+	// A type filter already excludes the partner of every row it admits.
+	if (input.filterRaw !== "raw" && input.filterRaw !== "standard") {
+		conditions.push(pairStackingCondition(conditions));
+	}
 	return conditions;
 }
 
@@ -227,23 +313,25 @@ export async function listPhotos(
 	const conditions = photoFilterConditions(input, representation);
 	const photos = await database.query.photos.findMany({
 		columns: publicPhotoColumns,
-		where:
-			conditions.length > 0
-				? sql`${sql.join(conditions, sql` AND `)}`
-				: undefined,
+		extras: pairedPhotoExtras,
+		where: sql.join(conditions, sql` AND `),
 		with: { exif: true },
 	});
 
 	return {
 		photos,
 		total: photos.length,
-		rawCount: photos.filter((photo) => photo.isRaw).length,
+		// A standard row's partner is always the RAW file of its pair.
+		rawCount: photos.filter(
+			(photo) => photo.isRaw || photo.pairedPhotoId !== null,
+		).length,
 	};
 }
 
 export async function getPhoto(database: ApiDatabase, id: number) {
 	return database.query.photos.findFirst({
 		columns: publicPhotoColumns,
+		extras: pairedPhotoExtras,
 		where: (photos, operators) => operators.eq(photos.id, id),
 		with: { exif: true },
 	});

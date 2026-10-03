@@ -10,11 +10,12 @@ import {
 	filterOptionsResponseSchema,
 	photoCurationPatchSchema,
 	photoFlagSchema,
+	photoSchema,
 	photoTagsResponseSchema,
 	scanPhaseSchema,
 	scanStatusSchema,
 } from "../routes/v1-schemas";
-import type { ApiDatabase } from "../services/photo-catalog";
+import { type ApiDatabase, pairedPhotoExtras } from "../services/photo-catalog";
 import type { ScanRequestedEvent } from "../services/scan-jobs";
 import {
 	MAX_TAG_SLUG_LENGTH,
@@ -54,7 +55,10 @@ function createHttpApp(
 			photoDirectory: "../../test-photos",
 			thumbnailsDirectory: "./test-thumbnails",
 			searchPhotos: async () =>
-				database.query.photos.findMany({ with: { exif: true } }),
+				database.query.photos.findMany({
+					extras: pairedPhotoExtras,
+					with: { exif: true },
+				}),
 		}),
 	);
 	return app;
@@ -629,6 +633,15 @@ describe("API v1 contract", () => {
 		).toEqual(["200", "400", "404", "500"]);
 		const photo = document.components.schemas.Photo;
 		expect(photo.required).toEqual(expect.arrayContaining(["rating", "flag"]));
+		// Every DTO field, including the nullable pair fields, is required.
+		expect([...photo.required].sort()).toEqual(
+			Object.keys(photoSchema.shape).sort(),
+		);
+		expect(Object.keys(photo.properties).sort()).toEqual(
+			Object.keys(photoSchema.shape).sort(),
+		);
+		expect(photo.properties.pairedPhotoId.type).toEqual(["integer", "null"]);
+		expect(photo.properties.pairedFormat.type).toEqual(["string", "null"]);
 		expect(photo.properties.rating).toMatchObject({
 			type: "integer",
 			minimum: 0,

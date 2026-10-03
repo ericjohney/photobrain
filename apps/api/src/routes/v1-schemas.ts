@@ -157,6 +157,10 @@ export const photoSchema = z.object({
 	phashStatus: z.string().nullable(),
 	rating: z.number().int().min(0).max(5),
 	flag: photoFlagSchema.nullable(),
+	/** RAW+JPEG pair partner's ID, or null when unpaired. */
+	pairedPhotoId: z.number().int().positive().nullable(),
+	/** Partner's `rawFormat` (RAW partner) or upper-cased extension, or null. */
+	pairedFormat: z.string().nullable(),
 	exif: photoExifSchema.nullable(),
 });
 

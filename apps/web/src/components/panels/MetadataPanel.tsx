@@ -25,6 +25,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { CurationPatch } from "@/hooks/use-photo-curation";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
+import { rawBadge } from "@/lib/raw-badge";
+import { trpc } from "@/lib/trpc";
 import type { JunkAction, JunkReason, PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -88,6 +90,27 @@ function MetadataRow({
 		<div className="metadata-row">
 			<span className="metadata-label">{label}</span>
 			<span className="metadata-value">{value}</span>
+		</div>
+	);
+}
+
+/** RAW-section row naming the other file of a RAW+standard pair. */
+function PairRow({
+	pairedPhotoId,
+	pairedFormat,
+}: {
+	pairedPhotoId: number;
+	pairedFormat: string;
+}) {
+	const partnerQuery = trpc.photo.useQuery({ id: pairedPhotoId });
+	return (
+		<div data-testid="photo-pair" className="metadata-row">
+			<span className="metadata-label">Pair</span>
+			<span className="metadata-value" title={partnerQuery.data?.name}>
+				{partnerQuery.data?.name ??
+					(partnerQuery.error ? "Unavailable" : "Loading…")}{" "}
+				<span className="text-muted-foreground">{pairedFormat}</span>
+			</span>
 		</div>
 	);
 }
@@ -251,6 +274,7 @@ export function MetadataPanel({
 	}
 
 	const hasExif = photo.exif !== null && photo.exif !== undefined;
+	const formatBadge = rawBadge(photo);
 
 	return (
 		<ScrollArea className={cn("h-full", className)}>
@@ -294,31 +318,40 @@ export function MetadataPanel({
 					</div>
 				</MetadataSection>
 
-				{/* RAW File Info */}
-				{photo.isRaw && (
+				{/* RAW File Info (RAW files and RAW+standard pairs) */}
+				{formatBadge && (
 					<MetadataSection title="RAW" icon={Camera}>
 						<div className="space-y-2 pt-1">
 							<div className="flex items-center gap-2">
 								<span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-2xs font-semibold text-orange-400">
-									{photo.rawFormat || "RAW"}
+									{formatBadge.label}
 								</span>
-								<span
-									className={cn(
-										"text-2xs font-medium",
-										photo.rawStatus === "converted" && "text-green-400",
-										photo.rawStatus === "failed" && "text-red-400",
-										photo.rawStatus === "no_converter" && "text-yellow-400",
-									)}
-								>
-									{photo.rawStatus === "converted"
-										? "Converted"
-										: photo.rawStatus === "failed"
-											? "Failed"
-											: photo.rawStatus === "no_converter"
-												? "No Converter"
-												: "Unknown"}
-								</span>
+								{photo.isRaw && (
+									<span
+										className={cn(
+											"text-2xs font-medium",
+											photo.rawStatus === "converted" && "text-green-400",
+											photo.rawStatus === "failed" && "text-red-400",
+											photo.rawStatus === "no_converter" && "text-yellow-400",
+										)}
+									>
+										{photo.rawStatus === "converted"
+											? "Converted"
+											: photo.rawStatus === "failed"
+												? "Failed"
+												: photo.rawStatus === "no_converter"
+													? "No Converter"
+													: "Unknown"}
+									</span>
+								)}
 							</div>
+							{photo.pairedPhotoId !== null && photo.pairedFormat !== null && (
+								<PairRow
+									key={photo.pairedPhotoId}
+									pairedPhotoId={photo.pairedPhotoId}
+									pairedFormat={photo.pairedFormat}
+								/>
+							)}
 							{photo.rawError && (
 								<p className="text-2xs text-red-400 bg-red-500/10 rounded px-2 py-1">
 									{photo.rawError}

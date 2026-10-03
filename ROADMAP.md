@@ -300,6 +300,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [x] **Camera, lens, ISO, and month filtering**
 - [x] **RAW/standard filtering in the API**
 - [x] **RAW/standard filter controls in clients** (web Type control, native iOS Media Type picker, Expo filter sheet)
+- [x] **RAW+JPEG pairing** (one stacked photo per pair, combined badge, partner-wide curation on web and native iOS)
 - [ ] **Aperture and shutter-speed filtering**
 - [ ] **Dimension, orientation, and MIME-type filtering**
 

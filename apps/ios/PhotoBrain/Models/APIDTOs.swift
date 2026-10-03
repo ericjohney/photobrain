@@ -193,6 +193,11 @@ struct PhotoDTO: Codable, Hashable, Identifiable, Sendable {
     let rating: Int
     /// Servers that predate curation omit it and decode as unflagged.
     let flag: PhotoFlag?
+    /// RAW+JPEG partner (same folder and stem). Servers that predate pairing omit both and
+    /// decode as unpaired.
+    let pairedPhotoId: Int?
+    /// Partner's `rawFormat` when it is RAW, else its upper-cased extension (e.g. `JPG`).
+    let pairedFormat: String?
     /// Junk-review reasons (only populated by `GET /review/junk`); unknown values are dropped.
     var junkReasons: [JunkReason] = []
 }
@@ -220,6 +225,8 @@ extension PhotoDTO {
         exif = try container.decodeIfPresent(PhotoEXIFDTO.self, forKey: .exif)
         rating = try container.decodeIfPresent(Int.self, forKey: .rating) ?? 0
         flag = try container.decodeIfPresent(PhotoFlag.self, forKey: .flag)
+        pairedPhotoId = try container.decodeIfPresent(Int.self, forKey: .pairedPhotoId)
+        pairedFormat = try container.decodeIfPresent(String.self, forKey: .pairedFormat)
         junkReasons = (try container.decodeIfPresent([String].self, forKey: .junkReasons) ?? [])
             .compactMap(JunkReason.init(rawValue:))
     }

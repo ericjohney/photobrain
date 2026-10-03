@@ -4,7 +4,11 @@ import {
 	photos as photosTable,
 	publicPhotoColumns,
 } from "../db/schema";
-import type { ApiDatabase } from "./photo-catalog";
+import {
+	type ApiDatabase,
+	pairedPhotoExtras,
+	pairedPhotoIdSql,
+} from "./photo-catalog";
 import { MAX_CURATION_IDS, updatePhotoCuration } from "./photo-curation";
 import { QUALITY_VERSION } from "./processing-versions";
 
@@ -35,8 +39,10 @@ const DOCUMENT_TAGS = ["document", "receipt", "whiteboard", "text"] as const;
 export type JunkCounts = { all: number } & Record<JunkReason, number>;
 
 // Every fragment references the `photos` alias used by both the relational
-// page query and the raw counts query.
-const CANDIDATE = sql`photos.junk_dismissed = 0 AND photos.flag IS NULL AND photos.rating = 0`;
+// page query and the raw counts query. A RAW with a pair partner is never a
+// candidate: the pair is reviewed once through its standard file, and
+// `reject` (via `updatePhotoCuration`) flags both files.
+const CANDIDATE = sql`photos.junk_dismissed = 0 AND photos.flag IS NULL AND photos.rating = 0 AND NOT (ifnull(photos.is_raw, 0) = 1 AND ${pairedPhotoIdSql()} IS NOT NULL)`;
 
 const tagReason = (tags: readonly string[]) =>
 	sql`EXISTS (SELECT 1 FROM photo_tags WHERE photo_tags.photo_id = photos.id AND photo_tags.tag IN (${sql.join(
@@ -114,6 +120,7 @@ export async function junkReview(
 		columns: publicPhotoColumns,
 		with: { exif: true },
 		extras: {
+			...pairedPhotoExtras,
 			junkScreenshot: sql<number>`${REASON_SQL.screenshot}`.as(
 				"junk_screenshot",
 			),

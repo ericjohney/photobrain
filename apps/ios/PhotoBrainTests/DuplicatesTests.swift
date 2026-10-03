@@ -390,6 +390,33 @@ final class DuplicatesStoreTests: XCTestCase {
         XCTAssertTrue(patches.isEmpty, "The server already committed the rejects; nothing is re-sent")
     }
 
+    func testKeepRejectsUnloadedPartnersHarmlesslyAndLoadedPartnersVisibly() async {
+        let api = TestAPI()
+        // 2's JPEG partner 12 is listed in the Library; 3's partner 13 is not loaded anywhere.
+        await api.setPhotos(PhotosResponseDTO(
+            photos: [1, 2, 3, 12].map { TestModels.photo(id: $0) },
+            total: 4,
+            rawCount: 0
+        ))
+        await api.setPhotoPartners([(2, 12), (3, 13)])
+        await api.setDuplicateGroups([TestModels.duplicateGroup(ids: [1, 2, 3], keeper: 1)])
+        let curation = PhotoCurationCenter(api: api)
+        let library = LibraryStore(api: api, curation: curation)
+        await library.load()
+        let store = DuplicatesStore(api: api, curation: curation)
+        await store.load().value
+
+        await store.keepSelected(groupKey: "duplicate:1,2,3")?.value
+
+        let flags = Dictionary(uniqueKeysWithValues: library.records.map { ($0.id, $0.flag) })
+        XCTAssertEqual(flags, [1: nil, 2: .reject, 3: .reject, 12: .reject])
+        XCTAssertNil(store.errorMessage)
+        let rejected = await api.serverDuplicateRejected()
+        XCTAssertEqual(rejected, [2, 3, 12, 13])
+        let patches = await api.recordedCurationRequests()
+        XCTAssertTrue(patches.isEmpty)
+    }
+
     func testDismissPublishesNoCurationAndRecordsKey() async {
         let api = TestAPI()
         await api.setDuplicateGroups([TestModels.duplicateGroup(.burst, ids: [1, 2, 3])])
@@ -488,6 +515,10 @@ private final class CurationSpy: CurationApplying {
 
     func applyCuration(id: Int, curation: PhotoCuration) {
         applied.append((id, curation))
+    }
+
+    func applyFlag(id: Int, flag: PhotoFlag?) {
+        applied.append((id, PhotoCuration(rating: 0, flag: flag)))
     }
 }
 
