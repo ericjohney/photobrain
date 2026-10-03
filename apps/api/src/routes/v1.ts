@@ -182,6 +182,7 @@ export function createV1Router(dependencies: V1Dependencies) {
 			const result = await searchPhotoCatalog(
 				dependencies.searchPhotos,
 				input.data,
+				{ normalizeDateMonths: true },
 			);
 			return jsonResponse(
 				searchResponseSchema,

@@ -8,8 +8,9 @@ actor TestAPI: PhotoBrainAPI {
     var activeResponse = ActiveScansResponseDTO(jobs: [])
     var scans: [String: ScanDTO] = [:]
     var shouldFailPhotos = false
-    var searchDelays: [String: Duration] = [:]
-    var searchResponses: [String: SearchResponseDTO] = [:]
+    var searchDelays: [SearchKey: Duration] = [:]
+    var searchResponses: [SearchKey: SearchResponseDTO] = [:]
+    var searchRequests: [SearchKey] = []
     var startResponse = StartScanResponseDTO(
         success: true,
         jobId: "00000000-0000-0000-0000-000000000001"
@@ -31,9 +32,24 @@ actor TestAPI: PhotoBrainAPI {
         shouldFailPhotos = failing
     }
 
-    func setSearch(query: String, delay: Duration, response: SearchResponseDTO) {
-        searchDelays[query] = delay
-        searchResponses[query] = response
+    struct SearchKey: Hashable, Sendable {
+        let query: String
+        let filters: PhotoQuery
+    }
+
+    func setSearch(
+        query: String,
+        filters: PhotoQuery = PhotoQuery(),
+        delay: Duration,
+        response: SearchResponseDTO
+    ) {
+        let key = SearchKey(query: query, filters: filters)
+        searchDelays[key] = delay
+        searchResponses[key] = response
+    }
+
+    func recordedSearchRequests() -> [SearchKey] {
+        searchRequests
     }
 
     func setSimilar(
@@ -94,9 +110,11 @@ actor TestAPI: PhotoBrainAPI {
         return photo
     }
 
-    func search(query: String, limit: Int) async throws -> SearchResponseDTO {
-        if let delay = searchDelays[query] { try await Task.sleep(for: delay) }
-        return searchResponses[query] ?? SearchResponseDTO(photos: [], total: 0, query: query)
+    func search(query: String, limit: Int, filters: PhotoQuery) async throws -> SearchResponseDTO {
+        let key = SearchKey(query: query, filters: filters)
+        searchRequests.append(key)
+        if let delay = searchDelays[key] { try await Task.sleep(for: delay) }
+        return searchResponses[key] ?? SearchResponseDTO(photos: [], total: 0, query: query)
     }
 
     func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO {
@@ -195,4 +213,79 @@ enum TestModels {
             updatedAt: updatedAt
         )
     }
+}
+
+/// Intercepts every request made by an `APIClient` built with `StubURLProtocol.makeClient()`.
+final class StubURLProtocol: URLProtocol, @unchecked Sendable {
+    static func makeClient() -> APIClient {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        return APIClient(
+            baseURL: URL(string: "https://photos.example.test")!,
+            session: URLSession(configuration: configuration)
+        )
+    }
+
+    /// URLSession moves POST bodies into `httpBodyStream` before a protocol sees them;
+    /// recorded requests carry the drained bytes back in `httpBody`.
+    private static func body(of request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var recorded: [URLRequest] = []
+    nonisolated(unsafe) private static var response: (status: Int, body: Data) = (500, Data())
+
+    static var requests: [URLRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    static func respond(status: Int, body: String) {
+        lock.lock()
+        response = (status, Data(body.utf8))
+        lock.unlock()
+    }
+
+    static func reset() {
+        lock.lock()
+        recorded = []
+        response = (500, Data())
+        lock.unlock()
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        var recordedRequest = request
+        recordedRequest.httpBody = Self.body(of: request)
+        Self.lock.lock()
+        Self.recorded.append(recordedRequest)
+        let (status, body) = Self.response
+        Self.lock.unlock()
+        let http = HTTPURLResponse(
+            url: request.url!,
+            statusCode: status,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: http, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

@@ -23,20 +23,62 @@ struct LibraryFilters: Equatable, Sendable {
     var iso: Int?
     var dateMonth: String?
 
+    enum Field: Hashable, Sendable {
+        case mediaKind
+        case camera
+        case lens
+        case iso
+        case dateMonth
+    }
+
     var isActive: Bool {
         mediaKind != .all || camera != nil || lens != nil || iso != nil || dateMonth != nil
     }
 
+    struct ActiveFilter: Identifiable, Equatable, Sendable {
+        let field: Field
+        let title: String
+        var id: Field { field }
+    }
+
+    /// Active filters in display order, each with its user-facing title.
+    var activeFields: [ActiveFilter] {
+        var fields: [ActiveFilter] = []
+        if mediaKind != .all { fields.append(ActiveFilter(field: .mediaKind, title: mediaKind.title)) }
+        if let camera { fields.append(ActiveFilter(field: .camera, title: camera)) }
+        if let lens { fields.append(ActiveFilter(field: .lens, title: lens)) }
+        if let iso { fields.append(ActiveFilter(field: .iso, title: "ISO \(iso)")) }
+        if let dateMonth { fields.append(ActiveFilter(field: .dateMonth, title: Self.formatMonth(dateMonth))) }
+        return fields
+    }
+
     var summary: String {
-        let values: [String?] = [
-            mediaKind == .all ? nil : mediaKind.title,
-            camera,
-            lens,
-            iso.map { "ISO \($0)" },
-            dateMonth.map(Self.formatMonth),
-        ]
-        let summary = values.compactMap { $0 }.joined(separator: ", ")
+        let summary = activeFields.map(\.title).joined(separator: ", ")
         return summary.isEmpty ? "All Items" : summary
+    }
+
+    /// Wire representation shared by the library listing and filtered search.
+    var photoQuery: PhotoQuery {
+        PhotoQuery(
+            filterRaw: mediaKind,
+            folder: nil,
+            camera: camera,
+            lens: lens,
+            iso: iso,
+            dateMonth: dateMonth
+        )
+    }
+
+    func removing(_ field: Field) -> Self {
+        var updated = self
+        switch field {
+        case .mediaKind: updated.mediaKind = .all
+        case .camera: updated.camera = nil
+        case .lens: updated.lens = nil
+        case .iso: updated.iso = nil
+        case .dateMonth: updated.dateMonth = nil
+        }
+        return updated
     }
 
     mutating func clear() {
@@ -53,8 +95,18 @@ struct LibraryFilters: Equatable, Sendable {
     }
 }
 
+/// A store whose results are narrowed by `LibraryFilters`; drives the shared filter UI.
 @MainActor
-final class LibraryStore: ObservableObject {
+protocol FilterEditingStore: ObservableObject {
+    var filters: LibraryFilters { get }
+    var filterOptions: FilterOptionsDTO? { get }
+    var filterOptionsError: String? { get }
+    func applyFilters(_ filters: LibraryFilters)
+    func retryFilterOptions() async
+}
+
+@MainActor
+final class LibraryStore: ObservableObject, FilterEditingStore {
     enum LoadState: Equatable {
         case idle
         case loading
@@ -127,14 +179,7 @@ final class LibraryStore: ObservableObject {
             loadState = .loading
         }
         refreshError = nil
-        let query = PhotoQuery(
-            filterRaw: filters.mediaKind,
-            folder: nil,
-            camera: filters.camera,
-            lens: filters.lens,
-            iso: filters.iso,
-            dateMonth: filters.dateMonth
-        )
+        let query = filters.photoQuery
         let task = Task { [api] in
             let photosTask = Task { try await api.photos(query: query) }
             let optionsTask = Task { try await api.filterOptions(folder: nil) }
@@ -398,7 +443,7 @@ enum LibraryPresentationBuilder {
 }
 
 @MainActor
-final class SearchStore: ObservableObject {
+final class SearchStore: ObservableObject, FilterEditingStore {
     enum State: Equatable {
         case idle
         case waiting
@@ -408,15 +453,22 @@ final class SearchStore: ObservableObject {
         case failed(String)
     }
 
+    static let resultLimit = 50
+
     @Published var query = "" {
         didSet { schedule() }
     }
+    @Published private(set) var filters = LibraryFilters()
+    @Published private(set) var filterOptions: FilterOptionsDTO?
+    @Published private(set) var filterOptionsError: String?
     @Published private(set) var state: State = .idle
     @Published private(set) var records: [PhotoRecord] = []
     @Published var activePhotoID: Int?
 
     private let api: any PhotoBrainAPI
     private var task: Task<Void, Never>?
+    private var optionsTask: Task<Void, Never>?
+    /// Bumped for every new (query, filters) request; responses from older generations are dropped.
     private var generation = 0
 
     init(api: any PhotoBrainAPI) {
@@ -431,16 +483,54 @@ final class SearchStore: ObservableObject {
         query = ""
     }
 
+    /// Filters are part of the request identity: a change supersedes any in-flight search
+    /// for the previous combination and re-runs the current query immediately.
+    func applyFilters(_ filters: LibraryFilters) {
+        guard filters != self.filters else { return }
+        self.filters = filters
+        schedule(immediate: true)
+    }
+
+    func clearFilters() {
+        applyFilters(LibraryFilters())
+    }
+
+    /// Loads filter options the first time the filter UI is shown.
+    func loadFilterOptionsIfNeeded() async {
+        guard filterOptions == nil else { return }
+        await retryFilterOptions()
+    }
+
+    /// Fetches library-wide filter options (the same scope the Library filter UI uses).
+    func retryFilterOptions() async {
+        if let optionsTask { return await optionsTask.value }
+        filterOptionsError = nil
+        let task = Task { [api] in
+            do {
+                filterOptions = try await api.filterOptions(folder: nil)
+            } catch is CancellationError {
+                return
+            } catch {
+                filterOptionsError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
+        optionsTask = task
+        await task.value
+        optionsTask = nil
+    }
+
     private func schedule(immediate: Bool = false) {
         generation += 1
         let currentGeneration = generation
         task?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
+            task = nil
             records = []
             state = .idle
             return
         }
+        let request = filters.photoQuery
         state = immediate ? .loading : .waiting
         task = Task { [api] in
             do {
@@ -449,7 +539,7 @@ final class SearchStore: ObservableObject {
                 }
                 guard !Task.isCancelled, currentGeneration == generation else { return }
                 state = .loading
-                let response = try await api.search(query: trimmed, limit: 50)
+                let response = try await api.search(query: trimmed, limit: Self.resultLimit, filters: request)
                 guard !Task.isCancelled, currentGeneration == generation else { return }
                 records = response.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) }
                 state = records.isEmpty ? .empty : .results

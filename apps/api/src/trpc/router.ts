@@ -60,11 +60,18 @@ export const appRouter = router({
 			z.object({
 				query: z.string().min(1),
 				limit: z.number().min(1).max(100).default(20),
+				filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
+				folder: z.string().optional(),
+				camera: z.string().optional(),
+				lens: z.string().optional(),
+				iso: z.number().int().optional(),
+				dateMonth: z.string().optional(),
 			}),
 		)
 		.query(({ ctx, input }) =>
 			searchPhotoCatalog(
-				(query, limit) => searchPhotosByText(ctx.db, query, limit),
+				(query, limit, filters, representation) =>
+					searchPhotosByText(ctx.db, query, limit, filters, representation),
 				input,
 			),
 		),

@@ -44,7 +44,7 @@ Active browser routes:
 - `/preferences` -> placeholder `Preferences`
 - `/about` -> `About`
 
-`Dashboard` owns search text, selected folder, camera/lens/ISO/month filters, and the active scan job ID. It queries `folders`, `filterOptions`, `photos`, and `searchPhotos` through tRPC. Search is reactive: a non-empty query enables `searchPhotos`, while ordinary photo/filter queries are disabled.
+`Dashboard` owns search text, selected folder, camera/lens/ISO/month filters, and the active scan job ID. It queries `folders`, `filterOptions`, `photos`, and `searchPhotos` through tRPC. Search is reactive: a non-empty query enables `searchPhotos` (with the selected folder and camera/lens/ISO/month filters) and disables the `photos` library query; `filterOptions({ folder })` stays active so filters remain selectable during search.
 
 The dashboard scan mutation receives an Inngest `jobId`; `useJobProgress` obtains a Realtime token through `realtimeToken` and subscribes to `job:{jobId}`. An advancing `processing.current` invalidates photos, folders, and filter options: the first advance refreshes immediately, and subsequent advances coalesce into a trailing refresh at most once per second. Duplicate or stale progress does not trigger another processing refresh. Entering `scan-complete` or the first `embedding` phase refreshes the library immediately, without waiting for embeddings to finish.
 
@@ -66,7 +66,7 @@ The tRPC client uses `httpBatchLink` for queries/mutations and `unstable_httpSub
 - Grid click sets one active photo; double-click opens loupe. There is no multi-photo selection state.
 - Loupe supports fit, fill, 100% zoom modes, keyboard navigation, and metadata display.
 - The filmstrip is rendered when loupe mode is active and its visibility is enabled.
-- Folders and camera/lens/ISO/date filters combine as query filters. Search hides the filter options and folder browsing content.
+- Folders and camera/lens/ISO/date filters combine as query filters for both the library and search. The library panel stays fully visible during search; changing the folder or a filter re-runs the search with that scope. A results header shows the count, query, and scope (e.g. `12 results for “beach” in photos/2024 · Sony A7III`) with a ✕ that clears the search and returns to the library grid with the same folder and filters.
 - **Find similar** (metadata panel button or `S` with an active photo, ignored while typing) queries `similarPhotos({ photoId, limit: 60 })` and shows a dismissible "Similar to …" grid. ✕, `Escape` in grid view, a non-empty search, folder selection, or starting a scan exits it; `indexed: false` shows a run-a-scan message.
 - Implemented shortcuts are `G`, `E`, `S`, `Tab`, `Shift+Space`, left/right arrows, and `Escape`.
 - Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Do not document or test them as supported behavior.

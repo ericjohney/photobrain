@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { cn, formatMonthLabel } from "@/lib/utils";
 
 interface FolderNode {
 	name: string;
@@ -21,7 +21,6 @@ interface FolderNode {
 
 interface LibraryPanelProps {
 	photoCount: number;
-	searchQuery?: string;
 	folders?: FolderNode[];
 	selectedFolder: string | null;
 	onFolderSelect: (folder: string | null) => void;
@@ -194,7 +193,6 @@ function FolderItem({
 
 export function LibraryPanel({
 	photoCount,
-	searchQuery,
 	folders = [],
 	selectedFolder,
 	onFolderSelect,
@@ -232,7 +230,7 @@ export function LibraryPanel({
 						icon={<Images className="h-4 w-4" />}
 						label="All Photos"
 						count={photoCount}
-						active={selectedFolder === null && !searchQuery}
+						active={selectedFolder === null}
 						onClick={() => onFolderSelect(null)}
 					/>
 					<NavItem
@@ -268,94 +266,81 @@ export function LibraryPanel({
 					)}
 				</Section>
 
-				{/* Filter By Section — hidden during search */}
-				{!searchQuery && (
-					<Section title="Filter By" defaultOpen={false}>
-						{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
-							<Section title="Camera" defaultOpen={false}>
-								{filterOptions.cameras.map((cam) => (
-									<NavItem
-										key={cam}
-										icon={<Camera className="h-4 w-4" />}
-										label={cam}
-										active={activeFilters.camera === cam}
-										onClick={() =>
-											onFilterChange({
-												...activeFilters,
-												camera: activeFilters.camera === cam ? null : cam,
-											})
-										}
-									/>
-								))}
-							</Section>
-						)}
-						{filterOptions?.lenses && filterOptions.lenses.length > 0 && (
-							<Section title="Lens" defaultOpen={false}>
-								{filterOptions.lenses.map((lens) => (
-									<NavItem
-										key={lens}
-										icon={<ChevronRight className="h-4 w-4" />}
-										label={lens}
-										active={activeFilters.lens === lens}
-										onClick={() =>
-											onFilterChange({
-												...activeFilters,
-												lens: activeFilters.lens === lens ? null : lens,
-											})
-										}
-									/>
-								))}
-							</Section>
-						)}
-						{filterOptions?.isos && filterOptions.isos.length > 0 && (
-							<Section title="ISO" defaultOpen={false}>
-								{filterOptions.isos.map((iso) => (
-									<NavItem
-										key={iso}
-										icon={<ChevronRight className="h-4 w-4" />}
-										label={`ISO ${iso}`}
-										active={activeFilters.iso === iso}
-										onClick={() =>
-											onFilterChange({
-												...activeFilters,
-												iso: activeFilters.iso === iso ? null : iso,
-											})
-										}
-									/>
-								))}
-							</Section>
-						)}
-						{filterOptions?.dates && filterOptions.dates.length > 0 && (
-							<Section title="Date" defaultOpen={false}>
-								{filterOptions.dates.map((d) => {
-									const [year, month] = d.split("-");
-									const label = new Date(
-										Number(year),
-										Number(month) - 1,
-									).toLocaleDateString("en-US", {
-										year: "numeric",
-										month: "long",
-									});
-									return (
-										<NavItem
-											key={d}
-											icon={<Calendar className="h-4 w-4" />}
-											label={label}
-											active={activeFilters.dateMonth === d}
-											onClick={() =>
-												onFilterChange({
-													...activeFilters,
-													dateMonth:
-														activeFilters.dateMonth === d ? null : d,
-												})
-											}
-										/>
-									);
-								})}
-							</Section>
-						)}
-					</Section>
-				)}
+				{/* Filter By Section — also scopes an active search */}
+				<Section title="Filter By" defaultOpen={false}>
+					{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
+						<Section title="Camera" defaultOpen={false}>
+							{filterOptions.cameras.map((cam) => (
+								<NavItem
+									key={cam}
+									icon={<Camera className="h-4 w-4" />}
+									label={cam}
+									active={activeFilters.camera === cam}
+									onClick={() =>
+										onFilterChange({
+											...activeFilters,
+											camera: activeFilters.camera === cam ? null : cam,
+										})
+									}
+								/>
+							))}
+						</Section>
+					)}
+					{filterOptions?.lenses && filterOptions.lenses.length > 0 && (
+						<Section title="Lens" defaultOpen={false}>
+							{filterOptions.lenses.map((lens) => (
+								<NavItem
+									key={lens}
+									icon={<ChevronRight className="h-4 w-4" />}
+									label={lens}
+									active={activeFilters.lens === lens}
+									onClick={() =>
+										onFilterChange({
+											...activeFilters,
+											lens: activeFilters.lens === lens ? null : lens,
+										})
+									}
+								/>
+							))}
+						</Section>
+					)}
+					{filterOptions?.isos && filterOptions.isos.length > 0 && (
+						<Section title="ISO" defaultOpen={false}>
+							{filterOptions.isos.map((iso) => (
+								<NavItem
+									key={iso}
+									icon={<ChevronRight className="h-4 w-4" />}
+									label={`ISO ${iso}`}
+									active={activeFilters.iso === iso}
+									onClick={() =>
+										onFilterChange({
+											...activeFilters,
+											iso: activeFilters.iso === iso ? null : iso,
+										})
+									}
+								/>
+							))}
+						</Section>
+					)}
+					{filterOptions?.dates && filterOptions.dates.length > 0 && (
+						<Section title="Date" defaultOpen={false}>
+							{filterOptions.dates.map((d) => (
+								<NavItem
+									key={d}
+									icon={<Calendar className="h-4 w-4" />}
+									label={formatMonthLabel(d)}
+									active={activeFilters.dateMonth === d}
+									onClick={() =>
+										onFilterChange({
+											...activeFilters,
+											dateMonth: activeFilters.dateMonth === d ? null : d,
+										})
+									}
+								/>
+							))}
+						</Section>
+					)}
+				</Section>
 
 				{/* Active filters indicator */}
 				{(activeFilters.camera ||
@@ -381,15 +366,8 @@ export function LibraryPanel({
 					</div>
 				)}
 
-				{/* Search results indicator */}
-				{searchQuery && (
-					<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary">
-						Showing results for "{searchQuery}"
-					</div>
-				)}
-
 				{/* Selected folder indicator */}
-				{selectedFolder && !searchQuery && (
+				{selectedFolder && (
 					<div className="mt-4 rounded bg-secondary px-2 py-1.5 text-xs text-muted-foreground">
 						Showing: {selectedFolder}
 					</div>

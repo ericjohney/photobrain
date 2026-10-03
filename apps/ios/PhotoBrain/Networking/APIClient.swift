@@ -1,6 +1,6 @@
 import Foundation
 
-struct PhotoQuery: Equatable, Sendable {
+struct PhotoQuery: Hashable, Sendable {
     var filterRaw: LibraryFilters.MediaKind = .all
     var folder: String?
     var camera: String?
@@ -15,7 +15,7 @@ protocol PhotoBrainAPI: Sendable {
     func filterOptions(folder: String?) async throws -> FilterOptionsDTO
     func photos(query: PhotoQuery) async throws -> PhotosResponseDTO
     func photo(id: Int) async throws -> PhotoDTO
-    func search(query: String, limit: Int) async throws -> SearchResponseDTO
+    func search(query: String, limit: Int, filters: PhotoQuery) async throws -> SearchResponseDTO
     func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO
     func startScan(force: Bool) async throws -> StartScanResponseDTO
     func scan(id: String) async throws -> ScanDTO?
@@ -75,16 +75,15 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         return try await get(path: ["photos", String(id)])
     }
 
-    func search(query: String, limit: Int = 50) async throws -> SearchResponseDTO {
+    func search(query: String, limit: Int = 50, filters: PhotoQuery = PhotoQuery()) async throws -> SearchResponseDTO {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, (1...100).contains(limit) else {
             throw PhotoBrainAPIError.invalidRequest
         }
-        struct SearchRequest: Encodable {
-            let query: String
-            let limit: Int
-        }
-        return try await post(path: ["search"], body: SearchRequest(query: trimmed, limit: limit))
+        return try await post(
+            path: ["search"],
+            body: SearchRequestDTO(query: trimmed, limit: limit, filters: filters)
+        )
     }
 
     func similarPhotos(id: Int, limit: Int = 30) async throws -> SimilarPhotosResponseDTO {

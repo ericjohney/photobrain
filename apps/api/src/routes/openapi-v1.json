@@ -680,6 +680,28 @@
 						"minimum": 1,
 						"maximum": 100,
 						"default": 20
+					},
+					"filterRaw": {
+						"type": "string",
+						"enum": ["all", "raw", "standard"],
+						"default": "all"
+					},
+					"folder": {
+						"type": "string",
+						"description": "Restricts results to direct children of this folder"
+					},
+					"camera": {
+						"type": "string"
+					},
+					"lens": {
+						"type": "string"
+					},
+					"iso": {
+						"type": "integer"
+					},
+					"dateMonth": {
+						"type": "string",
+						"pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
 					}
 				}
 			},

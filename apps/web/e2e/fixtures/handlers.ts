@@ -1,7 +1,13 @@
 import type { Page, Route } from "@playwright/test";
 import superjson, { type SuperJSONResult } from "superjson";
 import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
-import { FIXTURE_FOLDERS, FIXTURE_PHOTOS, searchPhotosByQuery } from "./photos";
+import {
+	FIXTURE_FOLDERS,
+	FIXTURE_PHOTOS,
+	type FixturePhotoFilters,
+	filterFixturePhotos,
+	searchPhotosByQuery,
+} from "./photos";
 
 function parseTrpcBatchRequest(
 	url: URL,
@@ -35,15 +41,26 @@ export const FIXTURE_JOB_ID = "11111111-1111-4111-8111-111111111111";
 
 export const DEFAULT_HANDLERS: Record<string, Handler> = {
 	folders: () => FIXTURE_FOLDERS,
-	photos: () => ({
-		photos: FIXTURE_PHOTOS,
-		total: FIXTURE_PHOTOS.length,
-		rawCount: FIXTURE_PHOTOS.filter((p) => p.isRaw).length,
-	}),
+	photos: (input) => {
+		const photos = filterFixturePhotos(
+			FIXTURE_PHOTOS,
+			(input ?? {}) as FixturePhotoFilters,
+		);
+		return {
+			photos,
+			total: photos.length,
+			rawCount: photos.filter((p) => p.isRaw).length,
+		};
+	},
 	searchPhotos: (input) => {
-		const q = (input as { query?: string } | null)?.query ?? "";
-		const photos = searchPhotosByQuery(q);
-		return { photos, total: photos.length, query: q };
+		const { query = "", ...filters } = (input ?? {}) as FixturePhotoFilters & {
+			query?: string;
+		};
+		const photos = searchPhotosByQuery(
+			query,
+			filterFixturePhotos(FIXTURE_PHOTOS, filters),
+		);
+		return { photos, total: photos.length, query };
 	},
 	similarPhotos: (input) => {
 		const photoId =
@@ -93,18 +110,22 @@ export const DEFAULT_HANDLERS: Record<string, Handler> = {
 	}),
 };
 
+/** Inputs received by each mocked procedure, in request order. */
+export type TrpcCallLog = Record<string, unknown[]>;
+
 export async function installTrpcHandlers(
 	page: Page,
 	overrides: HandlerOverrides = {},
-) {
+): Promise<TrpcCallLog> {
 	const handlers = { ...DEFAULT_HANDLERS, ...overrides };
+	const calls: TrpcCallLog = {};
 
 	await page.route(/\/trpc\//, async (route: Route) => {
 		const req = route.request();
 		const url = new URL(req.url());
-		const calls = parseTrpcBatchRequest(url, req.method(), req.postData());
+		const batch = parseTrpcBatchRequest(url, req.method(), req.postData());
 		const results = await Promise.all(
-			calls.map(async ({ path, input }) => {
+			batch.map(async ({ path, input }) => {
 				const handler = handlers[path];
 				if (!handler) {
 					return {
@@ -113,6 +134,7 @@ export async function installTrpcHandlers(
 						},
 					};
 				}
+				(calls[path] ??= []).push(input);
 				// superjson response envelope preserves Date/undefined/etc via meta
 				const value = await handler(input);
 				const serialized = superjson.serialize(value);
@@ -149,4 +171,6 @@ export async function installTrpcHandlers(
 	await page.route(/inngest\.com|\/api\/inngest/, (route) =>
 		route.fulfill({ status: 204, body: "" }),
 	);
+
+	return calls;
 }

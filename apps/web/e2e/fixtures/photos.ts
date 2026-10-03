@@ -131,9 +131,58 @@ export const FIXTURE_FOLDERS = {
 	totalPhotos: FIXTURE_PHOTOS.length,
 };
 
-export function searchPhotosByQuery(query: string): FixturePhoto[] {
+export function searchPhotosByQuery(
+	query: string,
+	photos: FixturePhoto[] = FIXTURE_PHOTOS,
+): FixturePhoto[] {
 	const q = query.toLowerCase();
-	return FIXTURE_PHOTOS.filter(
+	return photos.filter(
 		(p) => p.name.toLowerCase().includes(q) || p.path.toLowerCase().includes(q),
 	);
+}
+
+export type FixturePhotoFilters = {
+	folder?: string;
+	camera?: string;
+	lens?: string;
+	iso?: number;
+	dateMonth?: string;
+};
+
+/** Camera label as the API composes it: model alone when it already starts with the make. */
+function cameraLabel(exif: NonNullable<FixturePhoto["exif"]>) {
+	if (!exif.cameraMake || !exif.cameraModel) return null;
+	return exif.cameraModel.startsWith(exif.cameraMake)
+		? exif.cameraModel
+		: `${exif.cameraMake} ${exif.cameraModel}`;
+}
+
+/** Mirrors the API's shared library/search filter semantics (folder = direct children only). */
+export function filterFixturePhotos(
+	photos: FixturePhoto[],
+	filters: FixturePhotoFilters = {},
+): FixturePhoto[] {
+	return photos.filter((p) => {
+		if (
+			filters.folder !== undefined &&
+			p.path.slice(0, p.path.lastIndexOf("/")) !== filters.folder
+		) {
+			return false;
+		}
+		const exif = p.exif;
+		if (filters.camera !== undefined) {
+			if (!exif || cameraLabel(exif) !== filters.camera) return false;
+		}
+		if (filters.lens !== undefined && exif?.lensModel !== filters.lens) {
+			return false;
+		}
+		if (filters.iso !== undefined && exif?.iso !== filters.iso) return false;
+		if (
+			filters.dateMonth !== undefined &&
+			exif?.dateTaken?.slice(0, 7) !== filters.dateMonth
+		) {
+			return false;
+		}
+		return true;
+	});
 }

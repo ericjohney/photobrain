@@ -141,6 +141,29 @@ struct SearchResponseDTO: Codable, Equatable, Sendable {
     let query: String
 }
 
+/// `POST /api/v1/search` body. `filterRaw` is always sent; optional filters are omitted when nil.
+struct SearchRequestDTO: Encodable, Equatable, Sendable {
+    let query: String
+    let limit: Int
+    let filterRaw: String
+    let folder: String?
+    let camera: String?
+    let lens: String?
+    let iso: Int?
+    let dateMonth: String?
+
+    init(query: String, limit: Int, filters: PhotoQuery) {
+        self.query = query
+        self.limit = limit
+        filterRaw = filters.filterRaw.rawValue
+        folder = filters.folder
+        camera = filters.camera
+        lens = filters.lens
+        iso = filters.iso
+        dateMonth = filters.dateMonth
+    }
+}
+
 struct SimilarPhotosResponseDTO: Codable, Equatable, Sendable {
     let photos: [PhotoDTO]
     let total: Int

@@ -53,6 +53,7 @@ coverage/
 # Cache
 .cache/
 .nx/
+.fastembed_cache/
 
 # Test photos
 /tmp/test-photos/

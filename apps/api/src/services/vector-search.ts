@@ -5,7 +5,12 @@ import {
 	photos as photosTable,
 	publicPhotoColumns,
 } from "../db/schema";
-import type { ApiDatabase } from "./photo-catalog";
+import {
+	type ApiDatabase,
+	type PhotoCatalogRepresentation,
+	type PhotoFilters,
+	photoFilterConditions,
+} from "./photo-catalog";
 import { EMBEDDING_MODEL_VERSION } from "./processing-versions";
 
 /**
@@ -32,16 +37,25 @@ async function hydrateRankedPhotos(
 /**
  * Find photos nearest to a query embedding using the photo_embedding sidecar table.
  * Only completed vectors for the current model and committed thumbnail generation qualify.
+ * Catalog filters apply inside the same statement, before ranking and LIMIT, with the
+ * same semantics as the library listing.
  */
 export async function findSimilarPhotos(
 	database: ApiDatabase,
 	embedding: Float32Array | number[],
 	limit = 10,
+	filters: PhotoFilters = {},
+	representation: PhotoCatalogRepresentation = {},
 ) {
 	const embeddingBlob =
 		embedding instanceof Float32Array
 			? Buffer.from(embedding.buffer)
 			: Buffer.from(new Float32Array(embedding).buffer);
+	const filterConditions = photoFilterConditions(filters, representation);
+	const filterClause =
+		filterConditions.length > 0
+			? sql` AND ${sql.join(filterConditions, sql` AND `)}`
+			: sql``;
 
 	const results = await database.all<{ photo_id: number; distance: number }>(
 		sql`
@@ -49,10 +63,10 @@ export async function findSimilarPhotos(
         e.photo_id,
         vec_distance_L2(e.embedding, ${embeddingBlob}) as distance
       FROM photo_embedding e
-      INNER JOIN photos p ON p.id = e.photo_id
-      WHERE p.embedding_status = 'completed'
-        AND e.thumbnail_key IS p.thumbnail_key
-        AND e.model_version = ${EMBEDDING_MODEL_VERSION}
+      INNER JOIN photos ON photos.id = e.photo_id
+      WHERE photos.embedding_status = 'completed'
+        AND e.thumbnail_key IS photos.thumbnail_key
+        AND e.model_version = ${EMBEDDING_MODEL_VERSION}${filterClause}
       ORDER BY distance ASC
       LIMIT ${limit}
     `,
@@ -65,14 +79,22 @@ export async function findSimilarPhotos(
 }
 
 /**
- * Search photos using a CLIP text embedding of the query.
+ * Search photos using a CLIP text embedding of the query, optionally scoped by catalog filters.
  */
 export async function searchPhotosByText(
 	database: ApiDatabase,
 	text: string,
 	limit = 20,
+	filters: PhotoFilters = {},
+	representation: PhotoCatalogRepresentation = {},
 ) {
-	return findSimilarPhotos(database, clipTextEmbedding(text), limit);
+	return findSimilarPhotos(
+		database,
+		clipTextEmbedding(text),
+		limit,
+		filters,
+		representation,
+	);
 }
 
 export type SimilarPhotosResult = {

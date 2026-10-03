@@ -97,6 +97,12 @@ export const searchRequestSchema = z
 	.object({
 		query: z.string().min(1),
 		limit: z.number().int().min(1).max(100).default(20),
+		filterRaw: photoFiltersSchema.shape.filterRaw,
+		folder: photoFiltersSchema.shape.folder,
+		camera: photoFiltersSchema.shape.camera,
+		lens: photoFiltersSchema.shape.lens,
+		iso: z.number().int().optional(),
+		dateMonth: photoFiltersSchema.shape.dateMonth,
 	})
 	.strict();
 

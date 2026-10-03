@@ -91,63 +91,12 @@ final class SimilarPhotosAPITests: XCTestCase {
     }
 
     private func makeClient() -> APIClient {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [StubURLProtocol.self]
-        return APIClient(
-            baseURL: URL(string: "https://photos.example.test")!,
-            session: URLSession(configuration: configuration)
-        )
+        StubURLProtocol.makeClient()
     }
 
     private static func photoJSON(id: Int) -> String {
         #"{"id":\#(id),"path":"synthetic/photo_\#(id).jpg","name":"photo_\#(id).jpg","size":1024,"createdAt":"2024-01-02T03:04:05.000Z","modifiedAt":"2024-01-02T03:04:06Z","width":4000,"height":3000,"mimeType":"image/jpeg","isRaw":false,"rawFormat":null,"rawStatus":null,"rawError":null,"thumbnailStatus":"completed","thumbnailUpdatedAt":"2024-01-02T03:04:07.123Z","embeddingStatus":"completed","phashStatus":"completed","exif":null}"#
     }
-}
-
-private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var recorded: [URLRequest] = []
-    nonisolated(unsafe) private static var response: (status: Int, body: Data) = (500, Data())
-
-    static var requests: [URLRequest] {
-        lock.lock()
-        defer { lock.unlock() }
-        return recorded
-    }
-
-    static func respond(status: Int, body: String) {
-        lock.lock()
-        response = (status, Data(body.utf8))
-        lock.unlock()
-    }
-
-    static func reset() {
-        lock.lock()
-        recorded = []
-        response = (500, Data())
-        lock.unlock()
-    }
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        Self.lock.lock()
-        Self.recorded.append(request)
-        let (status, body) = Self.response
-        Self.lock.unlock()
-        let http = HTTPURLResponse(
-            url: request.url!,
-            statusCode: status,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
-        )!
-        client?.urlProtocol(self, didReceive: http, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: body)
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
 }
 
 @MainActor

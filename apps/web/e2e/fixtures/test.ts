@@ -1,8 +1,13 @@
 import { test as base, expect } from "@playwright/test";
-import { type HandlerOverrides, installTrpcHandlers } from "./handlers";
+import {
+	type HandlerOverrides,
+	installTrpcHandlers,
+	type TrpcCallLog,
+} from "./handlers";
 
 type Fixtures = {
-	mockBackend: (overrides?: HandlerOverrides) => Promise<void>;
+	/** Replaces the default handlers; resolves to the per-procedure input log. */
+	mockBackend: (overrides?: HandlerOverrides) => Promise<TrpcCallLog>;
 };
 
 export const test = base.extend<Fixtures>({
@@ -11,8 +16,8 @@ export const test = base.extend<Fixtures>({
 		const fn = async (overrides: HandlerOverrides = {}) => {
 			if (installed) throw new Error("mockBackend called twice");
 			await page.unrouteAll();
-			await installTrpcHandlers(page, overrides);
 			installed = true;
+			return installTrpcHandlers(page, overrides);
 		};
 		await use(fn);
 	},

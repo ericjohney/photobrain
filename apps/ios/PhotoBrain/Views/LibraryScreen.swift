@@ -367,14 +367,15 @@ private struct LibraryOptionsView: View {
     }
 }
 
-private struct FilterView: View {
-    @ObservedObject var store: LibraryStore
+/// Filter editor shared by Library and Search; each store re-runs its own request on change.
+struct FilterView<Store: FilterEditingStore>: View {
+    @ObservedObject var store: Store
 
     var body: some View {
         List {
             if store.filters.isActive {
                 Section {
-                    Button("Clear All", role: .destructive) { store.clearFilters() }
+                    Button("Clear All", role: .destructive) { store.applyFilters(LibraryFilters()) }
                 }
             }
 

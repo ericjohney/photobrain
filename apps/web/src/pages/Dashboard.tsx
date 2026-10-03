@@ -1,4 +1,4 @@
-import { Loader2, Sparkles, X } from "lucide-react";
+import { Loader2, Search, Sparkles, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
@@ -15,6 +15,7 @@ import { useLibraryState } from "@/hooks/use-library-state";
 import { usePanelState } from "@/hooks/use-panel-state";
 import { trpc } from "@/lib/trpc";
 import type { PhotoMetadata } from "@/lib/types";
+import { formatMonthLabel } from "@/lib/utils";
 
 export function Dashboard() {
 	const [searchQuery, setSearchQuery] = useState("");
@@ -34,10 +35,9 @@ export function Dashboard() {
 	// tRPC queries
 	const foldersQuery = trpc.folders.useQuery();
 
-	const filterOptionsQuery = trpc.filterOptions.useQuery(
-		{ folder: selectedFolder ?? undefined },
-		{ enabled: !searchQuery },
-	);
+	const filterOptionsQuery = trpc.filterOptions.useQuery({
+		folder: selectedFolder ?? undefined,
+	});
 
 	const photosQuery = trpc.photos.useQuery(
 		{
@@ -52,8 +52,17 @@ export function Dashboard() {
 		},
 	);
 
+	// Search is scoped by the same folder and EXIF filters as the library.
 	const searchPhotosQuery = trpc.searchPhotos.useQuery(
-		{ query: searchQuery, limit: 50 },
+		{
+			query: searchQuery,
+			limit: 50,
+			folder: selectedFolder ?? undefined,
+			camera: filters.camera ?? undefined,
+			lens: filters.lens ?? undefined,
+			iso: filters.iso ?? undefined,
+			dateMonth: filters.dateMonth ?? undefined,
+		},
 		{ enabled: !!searchQuery },
 	);
 
@@ -158,8 +167,8 @@ export function Dashboard() {
 	);
 
 	const handleFolderSelect = useCallback((folder: string | null) => {
+		// Folder selection scopes an active search rather than clearing it.
 		setSelectedFolder(folder);
-		setSearchQuery(""); // Clear search when selecting folder
 		setSimilarSource(null);
 	}, []);
 
@@ -257,6 +266,38 @@ export function Dashboard() {
 		</div>
 	);
 
+	const searchScope = [
+		filters.camera,
+		filters.lens,
+		filters.iso !== null ? `ISO ${filters.iso}` : null,
+		filters.dateMonth !== null ? formatMonthLabel(filters.dateMonth) : null,
+	].filter((part): part is string => part !== null);
+	const searchResultCount = searchPhotosQuery.data?.photos.length;
+	const searchHeader = searchQuery && (
+		<div
+			data-testid="search-header"
+			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
+		>
+			<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			<span className="min-w-0 flex-1 truncate">
+				{searchResultCount === undefined
+					? "Searching"
+					: `${searchResultCount} ${searchResultCount === 1 ? "result" : "results"}`}{" "}
+				for “{searchQuery}”{selectedFolder ? ` in ${selectedFolder}` : ""}
+				{searchScope.length > 0 ? ` · ${searchScope.join(" · ")}` : ""}
+			</span>
+			<button
+				type="button"
+				aria-label="Clear search"
+				onClick={() => setSearchQuery("")}
+				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+			>
+				<X className="h-3.5 w-3.5" />
+			</button>
+		</div>
+	);
+	const banner = similarChip || searchHeader;
+
 	return (
 		<PanelLayout
 			toolbar={
@@ -288,7 +329,6 @@ export function Dashboard() {
 					<div className="flex-1 overflow-auto">
 						<LibraryPanel
 							photoCount={foldersQuery.data?.totalPhotos ?? photos.length}
-							searchQuery={searchQuery}
 							folders={foldersQuery.data?.folders}
 							selectedFolder={selectedFolder}
 							onFolderSelect={handleFolderSelect}
@@ -321,9 +361,9 @@ export function Dashboard() {
 			rightPanelVisible={panels.rightPanelVisible}
 			filmstripVisible={panels.filmstripVisible && library.viewMode === "loupe"}
 		>
-			{similarChip ? (
+			{banner ? (
 				<div className="flex h-full flex-col">
-					{similarChip}
+					{banner}
 					<div className="min-h-0 flex-1">{renderContent()}</div>
 				</div>
 			) : (

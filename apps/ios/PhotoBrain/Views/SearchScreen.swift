@@ -4,10 +4,16 @@ struct SearchScreen: View {
     @ObservedObject var store: SearchStore
     let api: any PhotoBrainAPI
 
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var filtersPresented = false
+
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
                 content(width: geometry.size.width)
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if store.filters.isActive { filterChips }
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
@@ -18,6 +24,33 @@ struct SearchScreen: View {
             )
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        filtersPresented = true
+                    } label: {
+                        Image(
+                            systemName: store.filters.isActive
+                                ? "line.3.horizontal.decrease.circle.fill"
+                                : "line.3.horizontal.decrease.circle"
+                        )
+                    }
+                    .accessibilityLabel(
+                        store.filters.isActive ? "Filters, \(store.filters.summary)" : "Filters"
+                    )
+                }
+            }
+        }
+        .sheet(isPresented: $filtersPresented) {
+            NavigationStack {
+                FilterView(store: store)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { filtersPresented = false }
+                        }
+                    }
+            }
+            .task { await store.loadFilterOptionsIfNeeded() }
         }
         .fullScreenCover(isPresented: loupePresented) {
             if let activeID = store.activePhotoID {
@@ -59,7 +92,11 @@ struct SearchScreen: View {
             ContentUnavailableView(
                 "No Results",
                 systemImage: "magnifyingglass",
-                description: Text("Try a broader description or a different phrase.")
+                description: Text(
+                    store.filters.isActive
+                        ? "Try clearing one or more filters."
+                        : "Try a broader description or a different phrase."
+                )
             )
         case let .failed(message):
             ContentUnavailableView {
@@ -79,6 +116,42 @@ struct SearchScreen: View {
     private func example(_ query: String) -> some View {
         Button(query) { store.query = query }
             .buttonStyle(.bordered)
+    }
+
+    /// Removable chips for each active filter, shown under the search bar.
+    private var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(store.filters.activeFields) { entry in
+                    Button {
+                        store.applyFilters(store.filters.removing(entry.field))
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(entry.title).lineLimit(1)
+                            Image(systemName: "xmark")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove filter \(entry.title)")
+                }
+                Button("Clear All") { store.clearFilters() }
+                    .accessibilityLabel("Clear all filters")
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
+        .background {
+            if reduceTransparency {
+                Color(uiColor: .systemBackground)
+            } else {
+                Rectangle().fill(.ultraThinMaterial)
+            }
+        }
     }
 
     private var loupePresented: Binding<Bool> {

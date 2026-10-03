@@ -226,7 +226,7 @@ The tRPC and `/api/v1` procedures are public; there is no authentication or auth
 | `filterOptions` | query | Distinct camera, lens, ISO, and stored date-month prefixes, optionally folder-scoped |
 | `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, and month filters |
 | `photo` | query | Returns one photo with EXIF by numeric ID |
-| `searchPhotos` | query | CLIP text search, limit 1-100 |
+| `searchPhotos` | query | CLIP text search, limit 1-100, optionally scoped by the same raw/type, direct-folder, camera, lens, ISO, and month filters as `photos` (applied inside the KNN query) |
 | `similarPhotos` | query | Nearest CLIP neighbours of a photo's committed vector, limit 1-100; `{ photos, total, sourcePhotoId, indexed }`, `NOT_FOUND` for unknown IDs |
 | `scan` | mutation | Defaults to incremental scanning; optional `{ force: true }` reprocesses all discovered files. Creates a durable job and returns `{ success, jobId? }` |
 | `scanStatus` | query | Returns durable progress for a scan UUID or `null` |
@@ -266,7 +266,7 @@ The active route tree is in `apps/web/src/App.tsx`:
 - `/preferences` -> placeholder page
 - `/about` -> informational page
 
-The dashboard combines folder navigation, EXIF filters, semantic search, similar-photo search, grid/loupe views, metadata, scan progress, and a loupe filmstrip. The web uses single active-photo state, not multi-selection. **Find similar** in the metadata panel (or `S`) replaces the grid with the active photo's nearest neighbours until dismissed, searched, or navigated away.
+The dashboard combines folder navigation, EXIF filters, semantic search, similar-photo search, grid/loupe views, metadata, scan progress, and a loupe filmstrip. The web uses single active-photo state, not multi-selection. Folder and EXIF filters stay visible during search and scope it; a results header names the query and scope. **Find similar** in the metadata panel (or `S`) replaces the grid with the active photo's nearest neighbours until dismissed, searched, or navigated away.
 
 The normal scan control is incremental. The separate **Reprocess all photos…** control requires confirmation before regenerating thumbnails and embeddings; originals remain untouched.
 
@@ -284,7 +284,7 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 
 ### Native iOS
 
-`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering, semantic search, loupe **Find Similar** results, theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
+`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering, semantic search scoped by the shared Library filter sheet, loupe **Find Similar** results, theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
 
 ### Expo Android/web
 

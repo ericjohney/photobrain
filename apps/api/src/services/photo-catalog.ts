@@ -1,4 +1,4 @@
-import { eq, like, sql } from "drizzle-orm";
+import { eq, type SQL, sql } from "drizzle-orm";
 import type { db as productionDb } from "../db";
 import {
 	photoExif,
@@ -132,13 +132,16 @@ export async function listFilterOptions(
 	};
 }
 
-export async function listPhotos(
-	database: ApiDatabase,
-	input: PhotoFilters = {},
+/**
+ * SQL conditions over `photos` (and correlated `photo_exif` lookups) shared by the
+ * library listing and vector search so filter meaning cannot drift between them.
+ * `folder` matches direct children only. Returns an empty array when no filter applies.
+ */
+export function photoFilterConditions(
+	input: PhotoFilters,
 	representation: PhotoCatalogRepresentation = {},
-) {
-	const folder = input.folder;
-	const conditions = [];
+): SQL[] {
+	const conditions: SQL[] = [];
 	const dateMonthExpression = representation.normalizeDateMonths
 		? sql`replace(substr(photo_exif.date_taken, 1, 7), ':', '-')`
 		: sql`substr(photo_exif.date_taken, 1, 7)`;
@@ -147,8 +150,12 @@ export async function listPhotos(
 	} else if (input.filterRaw === "standard") {
 		conditions.push(eq(photosTable.isRaw, false));
 	}
-	if (folder) {
-		conditions.push(like(photosTable.path, `${folder}/%`));
+	if (input.folder) {
+		// Escape LIKE wildcards so `_`, `%`, and `\` in folder names match literally.
+		const folderPrefix = `${input.folder.replace(/[\\%_]/g, "\\$&")}/%`;
+		conditions.push(
+			sql`(${photosTable.path} LIKE ${folderPrefix} ESCAPE '\\' AND instr(substr(${photosTable.path}, length(${input.folder}) + 2), '/') = 0)`,
+		);
 	}
 	if (input.camera) {
 		conditions.push(sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND (
@@ -173,7 +180,15 @@ export async function listPhotos(
 			sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND ${dateMonthExpression} = ${input.dateMonth})`,
 		);
 	}
+	return conditions;
+}
 
+export async function listPhotos(
+	database: ApiDatabase,
+	input: PhotoFilters = {},
+	representation: PhotoCatalogRepresentation = {},
+) {
+	const conditions = photoFilterConditions(input, representation);
 	const photos = await database.query.photos.findMany({
 		columns: publicPhotoColumns,
 		where:
@@ -182,17 +197,11 @@ export async function listPhotos(
 				: undefined,
 		with: { exif: true },
 	});
-	const directPhotos = folder
-		? photos.filter((photo) => {
-				const relativePath = photo.path.substring(folder.length + 1);
-				return !relativePath.includes("/");
-			})
-		: photos;
 
 	return {
-		photos: directPhotos,
-		total: directPhotos.length,
-		rawCount: directPhotos.filter((photo) => photo.isRaw).length,
+		photos,
+		total: photos.length,
+		rawCount: photos.filter((photo) => photo.isRaw).length,
 	};
 }
 
