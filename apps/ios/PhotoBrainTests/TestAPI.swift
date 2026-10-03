@@ -50,6 +50,12 @@ actor TestAPI: PhotoBrainAPI {
     var resolveFailure: PhotoBrainAPIError?
     /// Server-side decisions by photo id.
     var resolvedJunk: [Int: JunkAction] = [:]
+    /// Server-side smart albums, kept sorted by name like the real list route.
+    var smartAlbumList: [SmartAlbumDTO] = []
+    var smartAlbumFailures: [SmartAlbumRoute: PhotoBrainAPIError] = [:]
+    var smartAlbumDelay: Duration = .zero
+    var smartAlbumRequests: [SmartAlbumRequest] = []
+    private var nextSmartAlbumID = 1
     private var nextCollectionID = 1
 
     enum CollectionRoute: Hashable, Sendable {
@@ -64,6 +70,17 @@ actor TestAPI: PhotoBrainAPI {
         case add(id: Int, photoIds: [Int])
         case remove(id: Int, photoIds: [Int])
         case forPhoto(id: Int)
+    }
+
+    enum SmartAlbumRoute: Hashable, Sendable {
+        case list, create, rename, delete
+    }
+
+    enum SmartAlbumRequest: Equatable, Sendable {
+        case list
+        case create(name: String, filters: SmartAlbumFilters, query: String?)
+        case rename(id: Int, name: String)
+        case delete(id: Int)
     }
 
     struct CurationRequest: Equatable, Sendable {
@@ -237,6 +254,27 @@ actor TestAPI: PhotoBrainAPI {
         collectionList
     }
 
+    func setSmartAlbums(_ albums: [SmartAlbumDTO]) {
+        smartAlbumList = albums
+        nextSmartAlbumID = (albums.map(\.id).max() ?? 0) + 1
+    }
+
+    func setSmartAlbumFailure(_ route: SmartAlbumRoute, _ failure: PhotoBrainAPIError?) {
+        smartAlbumFailures[route] = failure
+    }
+
+    func setSmartAlbumDelay(_ delay: Duration) {
+        smartAlbumDelay = delay
+    }
+
+    func recordedSmartAlbumRequests() -> [SmartAlbumRequest] {
+        smartAlbumRequests
+    }
+
+    func serverSmartAlbums() -> [SmartAlbumDTO] {
+        smartAlbumList
+    }
+
     func folders() async throws -> FoldersResponseDTO {
         FoldersResponseDTO(folders: [], totalPhotos: photosResponse.total)
     }
@@ -353,6 +391,74 @@ actor TestAPI: PhotoBrainAPI {
         try await collectionCall(.forPhoto, .forPhoto(id: id))
         let ids = collectionMembers.filter { $0.value.contains(id) }.map(\.key).sorted()
         return PhotoCollectionsDTO(collectionIds: ids)
+    }
+
+    func smartAlbums() async throws -> SmartAlbumsResponseDTO {
+        try await smartAlbumCall(.list, .list)
+        return SmartAlbumsResponseDTO(albums: smartAlbumList)
+    }
+
+    func createSmartAlbum(name: String, filters: SmartAlbumFilters, query: String?) async throws -> SmartAlbumDTO {
+        try await smartAlbumCall(.create, .create(name: name, filters: filters, query: query))
+        try ensureSmartAlbumNameAvailable(name, excluding: nil)
+        let id = nextSmartAlbumID
+        nextSmartAlbumID += 1
+        let created = TestModels.smartAlbum(
+            id: id,
+            name: name,
+            filters: filters,
+            query: query,
+            photoCount: query == nil ? 0 : nil
+        )
+        smartAlbumList.append(created)
+        sortSmartAlbums()
+        return created
+    }
+
+    func renameSmartAlbum(id: Int, name: String) async throws -> SmartAlbumDTO {
+        try await smartAlbumCall(.rename, .rename(id: id, name: name))
+        guard let index = smartAlbumList.firstIndex(where: { $0.id == id }) else { throw Self.smartAlbumNotFound }
+        try ensureSmartAlbumNameAvailable(name, excluding: id)
+        smartAlbumList[index].name = name
+        let renamed = smartAlbumList[index]
+        sortSmartAlbums()
+        return renamed
+    }
+
+    func deleteSmartAlbum(id: Int) async throws {
+        try await smartAlbumCall(.delete, .delete(id: id))
+        guard smartAlbumList.contains(where: { $0.id == id }) else { throw Self.smartAlbumNotFound }
+        smartAlbumList.removeAll { $0.id == id }
+    }
+
+    static let smartAlbumNotFound = PhotoBrainAPIError.server(
+        status: 404,
+        code: "SMART_ALBUM_NOT_FOUND",
+        message: "Smart album not found"
+    )
+
+    private func smartAlbumCall(_ route: SmartAlbumRoute, _ request: SmartAlbumRequest) async throws {
+        smartAlbumRequests.append(request)
+        let failure = smartAlbumFailures[route]
+        if smartAlbumDelay > .zero { try await Task.sleep(for: smartAlbumDelay) }
+        if let failure { throw failure }
+    }
+
+    private func ensureSmartAlbumNameAvailable(_ name: String, excluding id: Int?) throws {
+        let taken = smartAlbumList.contains {
+            $0.id != id && $0.name.compare(name, options: .caseInsensitive) == .orderedSame
+        }
+        if taken {
+            throw PhotoBrainAPIError.server(
+                status: 409,
+                code: "SMART_ALBUM_NAME_TAKEN",
+                message: "A smart album with that name already exists"
+            )
+        }
+    }
+
+    private func sortSmartAlbums() {
+        smartAlbumList.sort { $0.name.compare($1.name, options: .caseInsensitive) == .orderedAscending }
     }
 
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO {
@@ -533,6 +639,26 @@ enum TestModels {
         CollectionDTO(
             id: id,
             name: name,
+            photoCount: photoCount,
+            cover: cover,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(id))
+        )
+    }
+
+    static func smartAlbum(
+        id: Int,
+        name: String,
+        filters: SmartAlbumFilters = SmartAlbumFilters(filterRaw: .raw),
+        query: String? = nil,
+        photoCount: Int? = 0,
+        cover: CollectionCoverDTO? = nil
+    ) -> SmartAlbumDTO {
+        SmartAlbumDTO(
+            id: id,
+            name: name,
+            filters: filters,
+            query: query,
             photoCount: photoCount,
             cover: cover,
             createdAt: Date(timeIntervalSince1970: 1_700_000_000),

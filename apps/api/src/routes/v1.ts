@@ -24,6 +24,13 @@ import { searchPhotoCatalog } from "../services/photo-search";
 import { getPhotoTags } from "../services/photo-tagging";
 import type { ScanEventDispatcher } from "../services/scan-jobs";
 import { getScan, listActiveScans, startScan } from "../services/scan-jobs";
+import {
+	createSmartAlbum,
+	deleteSmartAlbum,
+	listSmartAlbums,
+	SmartAlbumError,
+	updateSmartAlbum,
+} from "../services/smart-albums";
 import { findSimilarToPhoto } from "../services/vector-search";
 import {
 	activeScansResponseSchema,
@@ -33,6 +40,7 @@ import {
 	collectionSchema,
 	collectionsResponseSchema,
 	createCollectionRequestSchema,
+	createSmartAlbumRequestSchema,
 	errorResponseSchema,
 	filterOptionsQuerySchema,
 	filterOptionsResponseSchema,
@@ -62,10 +70,15 @@ import {
 	serializeScan,
 	serializeSearchResponse,
 	serializeSimilarPhotosResponse,
+	serializeSmartAlbum,
 	similarPhotosQuerySchema,
 	similarPhotosResponseSchema,
+	smartAlbumIdSchema,
+	smartAlbumSchema,
+	smartAlbumsResponseSchema,
 	startScanRequestSchema,
 	startScanResponseSchema,
+	updateSmartAlbumRequestSchema,
 } from "./v1-schemas";
 
 export type V1Dependencies = {
@@ -128,6 +141,29 @@ function collectionError(error: unknown): Response {
 					409,
 				)
 			: errorResponse("COLLECTION_NOT_FOUND", "Collection not found", 404);
+	}
+	return internalError(error);
+}
+
+/** Maps smart album domain errors to stable envelopes; anything else is a 500. */
+function smartAlbumError(error: unknown): Response {
+	if (error instanceof SmartAlbumError) {
+		switch (error.code) {
+			case "NAME_TAKEN":
+				return errorResponse(
+					"SMART_ALBUM_NAME_TAKEN",
+					"A smart album with that name already exists",
+					409,
+				);
+			case "NOT_FOUND":
+				return errorResponse(
+					"SMART_ALBUM_NOT_FOUND",
+					"Smart album not found",
+					404,
+				);
+			case "EMPTY":
+				return invalidRequest();
+		}
 	}
 	return internalError(error);
 }
@@ -391,6 +427,67 @@ export function createV1Router(dependencies: V1Dependencies) {
 			);
 		} catch (error) {
 			return collectionError(error);
+		}
+	});
+
+	router.get("/smart-albums", () => {
+		try {
+			return jsonResponse(smartAlbumsResponseSchema, {
+				albums: listSmartAlbums(dependencies.database, {
+					normalizeDateMonths: true,
+				}).map(serializeSmartAlbum),
+			});
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.post("/smart-albums", async (context) => {
+		const input = await parseJsonBody(
+			context.req.raw,
+			createSmartAlbumRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			const album = createSmartAlbum(dependencies.database, input, {
+				normalizeDateMonths: true,
+			});
+			return jsonResponse(smartAlbumSchema, serializeSmartAlbum(album), 201);
+		} catch (error) {
+			return smartAlbumError(error);
+		}
+	});
+
+	router.patch("/smart-albums/:id", async (context) => {
+		const id = smartAlbumIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		const input = await parseJsonBody(
+			context.req.raw,
+			updateSmartAlbumRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			return jsonResponse(
+				smartAlbumSchema,
+				serializeSmartAlbum(
+					updateSmartAlbum(dependencies.database, id.data, input, {
+						normalizeDateMonths: true,
+					}),
+				),
+			);
+		} catch (error) {
+			return smartAlbumError(error);
+		}
+	});
+
+	router.delete("/smart-albums/:id", (context) => {
+		const id = smartAlbumIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		try {
+			deleteSmartAlbum(dependencies.database, id.data);
+			return new Response(null, { status: 204 });
+		} catch (error) {
+			return smartAlbumError(error);
 		}
 	});
 

@@ -9,6 +9,8 @@ interface CollectionNameInputProps {
 	/** Rejecting keeps the field open and shows the error inline. */
 	onSubmit: (name: string) => Promise<unknown>;
 	onCancel?: () => void;
+	/** Maps a failed submit to its inline message; defaults to collection wording. */
+	errorMessage?: (error: unknown, name: string) => string;
 	className?: string;
 }
 
@@ -23,6 +25,7 @@ export function CollectionNameInput({
 	initialValue = "",
 	onSubmit,
 	onCancel,
+	errorMessage = collectionErrorMessage,
 	className,
 }: CollectionNameInputProps) {
 	const [value, setValue] = useState(initialValue);
@@ -41,7 +44,7 @@ export function CollectionNameInput({
 		try {
 			await onSubmit(name);
 		} catch (submitError) {
-			setError(collectionErrorMessage(submitError, name));
+			setError(errorMessage(submitError, name));
 		} finally {
 			setPending(false);
 		}

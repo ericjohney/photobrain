@@ -113,6 +113,7 @@ The tables are:
 - `photo_quality`: sharpness, brightness, the thumbnail key measured, and `quality_version`; cascades with the photo.
 - `collections`: manual albums; name unique case-insensitively (`COLLATE NOCASE` index).
 - `collection_photos`: collection membership with `added_at`; both foreign keys cascade, so deleting a collection never deletes photos.
+- `smart_albums`: saved filter sets (`filters` canonical JSON, `dateMonth` as `YYYY-MM`) plus an optional CLIP `query`, evaluated live; name unique case-insensitively among smart albums.
 - `scan_jobs`: durable scan/embedding phase, status, counts, errors, and timestamps.
 - `scan_manifests`: immutable per-job discovery boundary, roots, and processed/successful/unchanged/media/embedding counters.
 - `scan_items`: priority-ordered paths, work classification, frozen source/prior generation, current attempt key, and durable receipts; retained until final dispatch is checkpointed, then removed with the manifest.
@@ -239,6 +240,8 @@ The tRPC and `/api/v1` procedures are public; there is no authentication or auth
 | `collections` / `collectionsForPhoto` | query | All collections (name, count, most-recently-added cover) in one statement / collection IDs containing a photo |
 | `createCollection` / `renameCollection` / `deleteCollection` | mutation | Trimmed 1-100 char names, case-insensitive uniqueness (`CONFLICT`); delete leaves photos intact |
 | `addToCollection` / `removeFromCollection` | mutation | 1-500 photo IDs; duplicates and unknown IDs ignored; returns counts |
+| `smartAlbums` | query | Smart albums by name with live `photoCount` and cover for filter-only albums (null for query albums); `dateMonth` emitted as `YYYY:MM` |
+| `createSmartAlbum` / `updateSmartAlbum` / `deleteSmartAlbum` | mutation | Name, `filters` (photo filters without `collectionId`), optional `query` (≤ 200 chars); at least one filter or a query (`BAD_REQUEST`), case-insensitive name uniqueness (`CONFLICT`) |
 | `junkReview` | query | Review candidates (not dismissed, not picked/rejected, unrated) with `junkReasons` in order `screenshot`, `document` (tags ≥ 0.5), `blurry` (sharpness < 40), `dark` (brightness < 40); optional `reason`; id-desc keyset `cursor`, limit 1-500; library-wide `counts` |
 | `resolveJunk` | mutation | 1-500 IDs; `reject` sets `flag = 'reject'`, `keep` sets `junk_dismissed`; returns existing IDs |
 | `scan` | mutation | Defaults to incremental scanning; optional `{ force: true }` reprocesses all discovered files. Creates a durable job and returns `{ success, jobId? }` |
@@ -255,6 +258,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `GET /api/v1/photos/:id/similar`
 - `GET /api/v1/photos/:id/tags` (404 `PHOTO_NOT_FOUND`)
 - `GET|POST /api/v1/collections`, `PATCH|DELETE /api/v1/collections/:id`, `POST /api/v1/collections/:id/photos`, `POST /api/v1/collections/:id/photos/remove`, `GET /api/v1/photos/:id/collections` (409 `COLLECTION_NAME_TAKEN`, 404 `COLLECTION_NOT_FOUND`)
+- `GET|POST /api/v1/smart-albums`, `PATCH|DELETE /api/v1/smart-albums/:id` (`dateMonth` emitted as `YYYY-MM`; 409 `SMART_ALBUM_NAME_TAKEN`, 404 `SMART_ALBUM_NOT_FOUND`); clients open an album through `photos` or, with a query, `search` (limit 100)
 - `GET /api/v1/review/junk`, `POST /api/v1/review/junk/resolve` (same shapes as `junkReview`/`resolveJunk`; 400 `INVALID_REQUEST`)
 - `POST /api/v1/search`
 - `POST /api/v1/scans` (disabled by default through `V1_NATIVE_SCAN_MUTATIONS_ENABLED`)
@@ -288,6 +292,8 @@ Filter By has a Tags section (top 12 by count, then **Show all**; single-select,
 
 Catalog **Review** (badge = candidate count) replaces the grid with junk candidates, each badged with its first reason; a reason radiogroup with counts, **Reject all (N)** (confirmation above 50) and **Keep all (N)** act on the shown photos. In Review, `X` rejects and `K` keeps the active photo and advance; the metadata panel shows "Why it's here" with Reject/Keep. Resolutions remove photos optimistically and roll back on error. Choosing a folder, collection, tag, search, or Find similar leaves Review and restores the library filters.
 
+**Smart Albums** sit under Collections in the library panel (count badge, or a search icon for query albums) with rename/delete. **Save as Smart Album…** appears when a folder, filter, or search is active and saves them (never the collection). Opening an album replaces folder, filters, and search, leaves collection/similar/Review modes, and shows the album name in the grid header; any later change deselects it.
+
 The normal scan control is incremental. The separate **Reprocess all photos…** control requires confirmation before regenerating thumbnails and embeddings; originals remain untouched.
 
 Implemented keyboard shortcuts:
@@ -311,6 +317,8 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 Automatic tags on iOS: the shared filter sheet has a Tag picker with counts (summary `#tag`) feeding Library and Search, and the loupe info sheet shows the photo's tag chips; tapping a chip closes the loupe, switches to Library, and adds that tag to the existing Library filters.
 
 Junk review on iOS: the Library header's **Review** button (candidate count) pushes a review screen with a reason picker and counts, first-reason badges, select mode with Reject/Keep, confirmed **Reject All**/**Keep All** for loaded photos, and a review loupe whose Reject/Keep buttons advance. Resolutions remove photos optimistically, roll back on failure, and propagate confirmed rejects to Library and Search through `PhotoCurationCenter`.
+
+Smart albums on iOS: a Smart Albums section in the Collections tab (cards with count or a magnifier for query albums, rename/delete with rollback); **Save as Smart Album…** in the Library filter sheet and Search. Detail screens reuse the collection grid/loupe through `LibraryStore` scope `.smartAlbum(filters, query)`.
 
 ### Expo Android/web
 

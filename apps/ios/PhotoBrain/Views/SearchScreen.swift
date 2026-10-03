@@ -4,9 +4,11 @@ struct SearchScreen: View {
     @ObservedObject var store: SearchStore
     let api: any PhotoBrainAPI
     let collections: CollectionsStore
+    let smartAlbums: SmartAlbumsStore
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var filtersPresented = false
+    @State private var saveSmartAlbumPresented = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +28,15 @@ struct SearchScreen: View {
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        saveSmartAlbumPresented = true
+                    } label: {
+                        Image(systemName: "rectangle.stack.badge.plus")
+                    }
+                    .accessibilityLabel("Save as Smart Album")
+                    .disabled(savedQuery == nil)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         filtersPresented = true
@@ -44,7 +55,7 @@ struct SearchScreen: View {
         }
         .sheet(isPresented: $filtersPresented) {
             NavigationStack {
-                FilterView(store: store)
+                FilterView(store: store, smartAlbums: smartAlbums, smartAlbumQuery: savedQuery)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") { filtersPresented = false }
@@ -52,6 +63,11 @@ struct SearchScreen: View {
                     }
             }
             .task { await store.loadFilterOptionsIfNeeded() }
+        }
+        .sheet(isPresented: $saveSmartAlbumPresented) {
+            if let savedQuery {
+                SaveSmartAlbumSheet(store: smartAlbums, filters: store.filters, query: savedQuery)
+            }
         }
         .fullScreenCover(isPresented: loupePresented) {
             if let activeID = store.activePhotoID {
@@ -155,6 +171,12 @@ struct SearchScreen: View {
                 Rectangle().fill(.ultraThinMaterial)
             }
         }
+    }
+
+    /// The trimmed search text a smart album would save; `nil` while the field is blank.
+    private var savedQuery: String? {
+        let trimmed = store.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private var loupePresented: Binding<Bool> {

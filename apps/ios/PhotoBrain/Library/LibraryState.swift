@@ -117,6 +117,53 @@ struct LibraryFilters: Equatable, Sendable {
     }
 }
 
+/// What a `LibraryStore` lists.
+enum LibraryScope: Equatable, Sendable {
+    /// The whole library, narrowed by the user's filters.
+    case library
+    /// One collection's members, narrowed by the user's filters.
+    case collection(Int)
+    /// A smart album's saved criteria, evaluated live. The user's filters are not applied.
+    case smartAlbum(filters: SmartAlbumFilters, query: String?)
+}
+
+/// The request that produces a `LibraryStore`'s photos.
+enum PhotoListingSource: Equatable, Sendable {
+    case photos(PhotoQuery)
+    case search(query: String, limit: Int, filters: PhotoQuery)
+
+    /// Query albums open with the largest result page `POST /search` accepts.
+    static let smartAlbumSearchLimit = 100
+
+    /// Filter-only albums list `GET /photos` with their filters; query albums run a semantic
+    /// search with the query and the same filters.
+    init(scope: LibraryScope, filters: LibraryFilters) {
+        switch scope {
+        case .library:
+            self = .photos(filters.photoQuery)
+        case let .collection(id):
+            var query = filters.photoQuery
+            query.collectionId = id
+            self = .photos(query)
+        case let .smartAlbum(albumFilters, query):
+            if let query {
+                self = .search(query: query, limit: Self.smartAlbumSearchLimit, filters: albumFilters.photoQuery)
+            } else {
+                self = .photos(albumFilters.photoQuery)
+            }
+        }
+    }
+
+    func fetch(_ api: any PhotoBrainAPI) async throws -> [PhotoDTO] {
+        switch self {
+        case let .photos(query):
+            try await api.photos(query: query).photos
+        case let .search(query, limit, filters):
+            try await api.search(query: query, limit: limit, filters: filters).photos
+        }
+    }
+}
+
 /// A store whose results are narrowed by `LibraryFilters`; drives the shared filter UI.
 @MainActor
 protocol FilterEditingStore: ObservableObject {
@@ -162,8 +209,8 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
 
     let api: any PhotoBrainAPI
     let curation: PhotoCurationCenter
-    /// When set, every listing is scoped to this collection's members.
-    let collectionId: Int?
+    /// What every listing covers; only the whole library loads filter options.
+    let scope: LibraryScope
     private var loadTask: Task<Void, Never>?
     private var generation = 0
     private var recordsByID: [Int: PhotoRecord] = [:]
@@ -173,11 +220,17 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     /// so the loupe never pages away underneath the membership sheet.
     private var pendingRemovalIDs: Set<Int> = []
 
-    init(api: any PhotoBrainAPI, curation: PhotoCurationCenter? = nil, collectionId: Int? = nil) {
+    init(api: any PhotoBrainAPI, curation: PhotoCurationCenter? = nil, scope: LibraryScope = .library) {
         self.api = api
         self.curation = curation ?? PhotoCurationCenter(api: api)
-        self.collectionId = collectionId
+        self.scope = scope
         self.curation.register(self)
+    }
+
+    /// The scoped collection, if this store lists one collection's members.
+    var collectionId: Int? {
+        guard case let .collection(id) = scope else { return nil }
+        return id
     }
 
 
@@ -214,12 +267,11 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
             loadState = .loading
         }
         refreshError = nil
-        var query = filters.photoQuery
-        query.collectionId = collectionId
-        // Filter metadata is library-wide; a collection screen has no filter UI to feed.
-        let loadsFilterOptions = collectionId == nil
+        let source = PhotoListingSource(scope: scope, filters: filters)
+        // Filter metadata is library-wide; scoped screens have no filter UI to feed.
+        let loadsFilterOptions = scope == .library
         let task = Task { [api] in
-            let photosTask = Task { try await api.photos(query: query) }
+            let photosTask = Task { try await source.fetch(api) }
             let optionsTask = loadsFilterOptions ? Task { try await api.filterOptions(folder: nil) } : nil
             defer {
                 photosTask.cancel()
@@ -230,7 +282,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
                 let photos = try await photosTask.value
                 guard !Task.isCancelled, requestGeneration == generation else { return }
                 pendingRemovalIDs.removeAll()
-                records = curation.overlay(photos.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
+                records = curation.overlay(photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
                 recordsByID.removeAll(keepingCapacity: true)
                 for photo in records {
                     recordsByID[photo.id] = photo
@@ -277,7 +329,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
 
     /// Keeps a collection-scoped listing in sync with membership edits made anywhere in the app.
     func collectionMembershipChanged(collectionId: Int, photoIds: [Int], isMember: Bool) {
-        guard collectionId == self.collectionId else { return }
+        guard let scopedID = self.collectionId, collectionId == scopedID else { return }
         if isMember {
             pendingRemovalIDs.subtract(photoIds)
             if photoIds.contains(where: { recordsByID[$0] == nil }) {

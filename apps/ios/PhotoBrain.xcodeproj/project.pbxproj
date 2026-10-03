@@ -56,6 +56,9 @@
 		A1000000000000000000001B /* JunkReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001B /* JunkReview.swift */; };
 		A1000000000000000000001C /* ReviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001C /* ReviewScreen.swift */; };
 		A20000000000000000000013 /* JunkReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* JunkReviewTests.swift */; };
+		A1000000000000000000001D /* SmartAlbumsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* SmartAlbumsState.swift */; };
+		A1000000000000000000001E /* SmartAlbumViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001E /* SmartAlbumViews.swift */; };
+		A20000000000000000000014 /* SmartAlbumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000014 /* SmartAlbumsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -125,6 +128,9 @@
 		B1000000000000000000001B /* JunkReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JunkReview.swift; sourceTree = "<group>"; };
 		B1000000000000000000001C /* ReviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewScreen.swift; sourceTree = "<group>"; };
 		B20000000000000000000013 /* JunkReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JunkReviewTests.swift; sourceTree = "<group>"; };
+		B1000000000000000000001D /* SmartAlbumsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartAlbumsState.swift; sourceTree = "<group>"; };
+		B1000000000000000000001E /* SmartAlbumViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartAlbumViews.swift; sourceTree = "<group>"; };
+		B20000000000000000000014 /* SmartAlbumsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartAlbumsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -174,7 +180,7 @@
 		C00000000000000000000004 /* App */ = {isa = PBXGroup; children = (B10000000000000000000001 /* PhotoBrainApp.swift */, B1000000000000000000000D /* AppEnvironment.swift */, B10000000000000000000015 /* AppLinkRouting.swift */,); path = App; sourceTree = "<group>"; };
 		C00000000000000000000005 /* Fixtures */ = {isa = PBXGroup; children = (B10000000000000000000002 /* RedactedFixture.swift */,); path = Fixtures; sourceTree = "<group>"; };
 		C00000000000000000000006 /* Instrumentation */ = {isa = PBXGroup; children = (B10000000000000000000003 /* SpikeSignposts.swift */,); path = Instrumentation; sourceTree = "<group>"; };
-		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */,); path = Library; sourceTree = "<group>"; };
+		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */, B1000000000000000000001D /* SmartAlbumsState.swift */,); path = Library; sourceTree = "<group>"; };
 		C00000000000000000000008 /* Models */ = {isa = PBXGroup; children = (B10000000000000000000006 /* PhotoRecord.swift */, B1000000000000000000000B /* APIDTOs.swift */,); path = Models; sourceTree = "<group>"; };
 		C00000000000000000000009 /* Networking */ = {isa = PBXGroup; children = (B10000000000000000000007 /* RedirectAwareImageLoader.swift */, B1000000000000000000000C /* APIClient.swift */,); path = Networking; sourceTree = "<group>"; };
 		C0000000000000000000000A /* PhotoBrainTests */ = {
@@ -199,12 +205,13 @@
 				B20000000000000000000011 /* CollectionsTests.swift */,
 				B20000000000000000000012 /* PhotoTagsTests.swift */,
 				B20000000000000000000013 /* JunkReviewTests.swift */,
+				B20000000000000000000014 /* SmartAlbumsTests.swift */,
 			);
 			path = PhotoBrainTests;
 			sourceTree = "<group>";
 		};
 		C0000000000000000000000B /* Products */ = {isa = PBXGroup; children = (B00000000000000000000001 /* PhotoBrain.app */, B00000000000000000000002 /* PhotoBrainTests.xctest */,); name = Products; sourceTree = "<group>"; };
-		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */,); path = Views; sourceTree = "<group>"; };
+		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */, B1000000000000000000001E /* SmartAlbumViews.swift */,); path = Views; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -295,6 +302,8 @@
 				A1000000000000000000001A /* PhotoTags.swift in Sources */,
 				A1000000000000000000001B /* JunkReview.swift in Sources */,
 				A1000000000000000000001C /* ReviewScreen.swift in Sources */,
+				A1000000000000000000001D /* SmartAlbumsState.swift in Sources */,
+				A1000000000000000000001E /* SmartAlbumViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,6 +330,7 @@
 				A20000000000000000000011 /* CollectionsTests.swift in Sources */,
 				A20000000000000000000012 /* PhotoTagsTests.swift in Sources */,
 				A20000000000000000000013 /* JunkReviewTests.swift in Sources */,
+				A20000000000000000000014 /* SmartAlbumsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -267,6 +267,25 @@ export const photoQuality = sqliteTable("photo_quality", {
 	qualityVersion: integer("quality_version").notNull(),
 });
 
+// Saved live filter sets. `filters` is the API's canonical JSON; names are unique
+// case-insensitively (NOCASE unique index), independently of collection names.
+export const smartAlbums = sqliteTable(
+	"smart_albums",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		name: text("name").notNull(),
+		filters: text("filters").notNull(),
+		query: text("query"),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("smart_albums_name_nocase_unique").on(
+			sql`${table.name} COLLATE NOCASE`,
+		),
+	],
+);
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -305,3 +324,5 @@ export type PhotoTag = typeof photoTags.$inferSelect;
 export type NewPhotoTag = typeof photoTags.$inferInsert;
 export type PhotoQuality = typeof photoQuality.$inferSelect;
 export type NewPhotoQuality = typeof photoQuality.$inferInsert;
+export type SmartAlbum = typeof smartAlbums.$inferSelect;
+export type NewSmartAlbum = typeof smartAlbums.$inferInsert;

@@ -130,22 +130,30 @@ function uniquePhotoIds(
 	return ids;
 }
 
+/** True when `error` (or any error in its `cause` chain) is a SQLite UNIQUE violation. */
+export function isUniqueConstraintViolation(error: unknown): boolean {
+	for (
+		let current: unknown = error;
+		current instanceof Error;
+		current = current.cause
+	) {
+		if ("code" in current && current.code === "SQLITE_CONSTRAINT_UNIQUE") {
+			return true;
+		}
+	}
+	return false;
+}
+
 /** Runs a name write, translating the NOCASE unique index violation into NAME_TAKEN. */
 function withUniqueName<T>(write: () => T): T {
 	try {
 		return write();
 	} catch (error) {
-		for (
-			let current: unknown = error;
-			current instanceof Error;
-			current = current.cause
-		) {
-			if ("code" in current && current.code === "SQLITE_CONSTRAINT_UNIQUE") {
-				throw new CollectionError(
-					"NAME_TAKEN",
-					"A collection with that name already exists",
-				);
-			}
+		if (isUniqueConstraintViolation(error)) {
+			throw new CollectionError(
+				"NAME_TAKEN",
+				"A collection with that name already exists",
+			);
 		}
 		throw error;
 	}

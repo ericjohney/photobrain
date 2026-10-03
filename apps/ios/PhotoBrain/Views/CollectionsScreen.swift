@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Collections tab: a two-column grid of collection cards with create, rename, and delete.
+/// Collections tab: a two-column grid of collection cards followed by a Smart Albums section,
+/// with create, rename, and delete for collections and rename/delete for smart albums.
 struct CollectionsScreen: View {
     @ObservedObject var store: CollectionsStore
+    @ObservedObject var smartAlbums: SmartAlbumsStore
     let curation: PhotoCurationCenter
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
@@ -12,6 +14,9 @@ struct CollectionsScreen: View {
     @State private var renameTarget: CollectionDTO?
     @State private var renameText = ""
     @State private var deleteTarget: CollectionDTO?
+    @State private var albumRenameTarget: SmartAlbumDTO?
+    @State private var albumRenameText = ""
+    @State private var albumDeleteTarget: SmartAlbumDTO?
 
     private let columns = [
         GridItem(.flexible(), spacing: 14),
@@ -25,6 +30,8 @@ struct CollectionsScreen: View {
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if let message = store.errorMessage {
                         ErrorBanner(message: message, dismiss: { store.dismissError() })
+                    } else if let message = smartAlbums.errorMessage {
+                        ErrorBanner(message: message, dismiss: { smartAlbums.dismissError() })
                     }
                 }
                 .toolbar {
@@ -53,8 +60,18 @@ struct CollectionsScreen: View {
                         api: environment.api
                     )
                 }
+                .navigationDestination(for: SmartAlbumRoute.self) { route in
+                    SmartAlbumDetailScreen(
+                        album: route.album,
+                        smartAlbums: smartAlbums,
+                        collections: store,
+                        curation: curation,
+                        api: environment.api
+                    )
+                }
         }
         .task { await store.loadIfNeeded() }
+        .task { await smartAlbums.loadIfNeeded() }
         .alert("New Collection", isPresented: $newNamePresented) {
             TextField("Name", text: $newName)
             Button("Cancel", role: .cancel) {}
@@ -86,6 +103,27 @@ struct CollectionsScreen: View {
         } message: { _ in
             Text("The photos stay in your library.")
         }
+        .alert("Rename Smart Album", isPresented: albumRenamePresented, presenting: albumRenameTarget) { target in
+            TextField("Name", text: $albumRenameText)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                let name = albumRenameText
+                Task { await smartAlbums.rename(id: target.id, to: name) }
+            }
+        }
+        .confirmationDialog(
+            albumDeleteTarget.map { "Delete “\($0.name)”?" } ?? "Delete Smart Album?",
+            isPresented: albumDeletePresented,
+            titleVisibility: .visible,
+            presenting: albumDeleteTarget
+        ) { target in
+            Button("Delete Smart Album", role: .destructive) {
+                Task { await smartAlbums.delete(id: target.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Only the saved search is deleted. The photos stay in your library.")
+        }
     }
 
     @ViewBuilder
@@ -103,46 +141,100 @@ struct CollectionsScreen: View {
                 Button("Try Again") { Task { await store.load() } }
                     .buttonStyle(.borderedProminent)
             }
-        case .loaded where store.collections.isEmpty:
-            ScrollView {
-                ContentUnavailableView {
-                    Label("No Collections", systemImage: "rectangle.stack")
-                } description: {
-                    Text("Group photos into named collections. Deleting a collection never deletes its photos.")
-                } actions: {
-                    Button("New Collection") { presentNewCollection() }
-                        .buttonStyle(.borderedProminent)
-                }
-                .padding(.top, 60)
-            }
-            .refreshable { await store.load() }
         case .loaded:
             ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    if store.collections.isEmpty {
+                        ContentUnavailableView {
+                            Label("No Collections", systemImage: "rectangle.stack")
+                        } description: {
+                            Text("Group photos into named collections. Deleting a collection never deletes its photos.")
+                        } actions: {
+                            Button("New Collection") { presentNewCollection() }
+                                .buttonStyle(.borderedProminent)
+                        }
+                        .padding(.top, 60)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 18) {
+                            ForEach(store.collections) { collection in
+                                NavigationLink(value: CollectionRoute(collection: collection)) {
+                                    CollectionCard(collection: collection, apiBaseURL: environment.api.baseURL)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button {
+                                        renameText = collection.name
+                                        renameTarget = collection
+                                    } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        deleteTarget = collection
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    smartAlbumsSection
+                }
+                .padding(16)
+            }
+            .refreshable {
+                async let collections: Void = store.load()
+                async let albums: Void = smartAlbums.load()
+                _ = await (collections, albums)
+            }
+        }
+    }
+
+    /// Hidden until the list loads with at least one album, unless the first load failed.
+    @ViewBuilder
+    private var smartAlbumsSection: some View {
+        switch smartAlbums.loadState {
+        case .idle, .loading:
+            EmptyView()
+        case let .failed(message):
+            VStack(alignment: .leading, spacing: 8) {
+                sectionHeader("Smart Albums")
+                ErrorBanner(message: message, retry: { Task { await smartAlbums.load() } })
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        case .loaded where smartAlbums.albums.isEmpty:
+            EmptyView()
+        case .loaded:
+            VStack(alignment: .leading, spacing: 10) {
+                sectionHeader("Smart Albums")
                 LazyVGrid(columns: columns, spacing: 18) {
-                    ForEach(store.collections) { collection in
-                        NavigationLink(value: CollectionRoute(collection: collection)) {
-                            CollectionCard(collection: collection, apiBaseURL: environment.api.baseURL)
+                    ForEach(smartAlbums.albums) { album in
+                        NavigationLink(value: SmartAlbumRoute(album: album)) {
+                            SmartAlbumCard(album: album, apiBaseURL: environment.api.baseURL)
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button {
-                                renameText = collection.name
-                                renameTarget = collection
+                                albumRenameText = album.name
+                                albumRenameTarget = album
                             } label: {
                                 Label("Rename", systemImage: "pencil")
                             }
                             Button(role: .destructive) {
-                                deleteTarget = collection
+                                albumDeleteTarget = album
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
                     }
                 }
-                .padding(16)
             }
-            .refreshable { await store.load() }
         }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.title3.weight(.semibold))
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func presentNewCollection() {
@@ -156,6 +248,14 @@ struct CollectionsScreen: View {
 
     private var deletePresented: Binding<Bool> {
         Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } })
+    }
+
+    private var albumRenamePresented: Binding<Bool> {
+        Binding(get: { albumRenameTarget != nil }, set: { if !$0 { albumRenameTarget = nil } })
+    }
+
+    private var albumDeletePresented: Binding<Bool> {
+        Binding(get: { albumDeleteTarget != nil }, set: { if !$0 { albumDeleteTarget = nil } })
     }
 }
 
@@ -199,7 +299,7 @@ private struct CollectionCard: View {
     }
 }
 
-private struct CollectionCoverImage: View {
+struct CollectionCoverImage: View {
     let photoID: Int
     let url: URL
     @State private var image: UIImage?
@@ -248,13 +348,42 @@ struct CollectionDetailScreen: View {
         self.collections = collections
         self.api = api
         _store = StateObject(
-            wrappedValue: LibraryStore(api: api, curation: curation, collectionId: collection.id)
+            wrappedValue: LibraryStore(api: api, curation: curation, scope: .collection(collection.id))
         )
     }
 
     private var title: String {
         collections.collection(id: collection.id)?.name ?? collection.name
     }
+
+    var body: some View {
+        ScopedPhotoGrid(
+            store: store,
+            collections: collections,
+            api: api,
+            title: title,
+            noun: "Collection",
+            emptyTitle: "No Photos",
+            emptyDescription: "Add photos from the Library with Add to Collection.",
+            onRefresh: { await collections.load() }
+        )
+        .task { collections.register(store) }
+    }
+}
+
+/// Grid, refresh error, empty/failed states, and loupe for a scoped `LibraryStore`
+/// (a collection or a smart album). Loads the store the first time it appears.
+struct ScopedPhotoGrid: View {
+    @ObservedObject var store: LibraryStore
+    let collections: CollectionsStore
+    let api: any PhotoBrainAPI
+    let title: String
+    /// Used in loading/failure titles, e.g. "Collection".
+    let noun: String
+    let emptyTitle: String
+    let emptyDescription: String
+    /// Extra work after a pull-to-refresh reload, e.g. refreshing card counts.
+    let onRefresh: () async -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -266,7 +395,6 @@ struct CollectionDetailScreen: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            collections.register(store)
             if store.loadState == .idle { await store.load() }
         }
         .fullScreenCover(isPresented: loupePresented) {
@@ -290,11 +418,11 @@ struct CollectionDetailScreen: View {
     private var content: some View {
         switch store.loadState {
         case .idle, .loading:
-            ProgressView("Loading Collection…")
+            ProgressView("Loading \(noun)…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case let .failed(message):
             ContentUnavailableView {
-                Label("Collection Unavailable", systemImage: "wifi.exclamationmark")
+                Label("\(noun) Unavailable", systemImage: "wifi.exclamationmark")
             } description: {
                 Text(message)
             } actions: {
@@ -303,9 +431,9 @@ struct CollectionDetailScreen: View {
             }
         case .empty:
             ContentUnavailableView(
-                "No Photos",
+                emptyTitle,
                 systemImage: "rectangle.stack",
-                description: Text("Add photos from the Library with Add to Collection.")
+                description: Text(emptyDescription)
             )
         case .content:
             LibraryGrid(
@@ -319,7 +447,7 @@ struct CollectionDetailScreen: View {
                 onVisibleChange: store.observeVisible,
                 onRefresh: {
                     await store.load()
-                    await collections.load()
+                    await onRefresh()
                 }
             )
             .ignoresSafeArea(edges: .horizontal)

@@ -39,6 +39,16 @@ import { searchPhotoCatalog } from "../services/photo-search";
 import { getPhotoTags } from "../services/photo-tagging";
 import { getScan, startScan } from "../services/scan-jobs";
 import {
+	createSmartAlbum,
+	deleteSmartAlbum,
+	listSmartAlbums,
+	MAX_SMART_ALBUM_NAME_LENGTH,
+	MAX_SMART_ALBUM_QUERY_LENGTH,
+	SMART_ALBUM_DATE_MONTH_PATTERN,
+	SmartAlbumError,
+	updateSmartAlbum,
+} from "../services/smart-albums";
+import {
 	MAX_TAG_SLUG_LENGTH,
 	TAG_SLUG_PATTERN,
 } from "../services/tag-vocabulary";
@@ -77,6 +87,62 @@ function collectionMutation<T>(run: () => T): T {
 		if (error instanceof CollectionError) {
 			throw new TRPCError({
 				code: error.code === "NAME_TAKEN" ? "CONFLICT" : "NOT_FOUND",
+				message: error.message,
+				cause: error,
+			});
+		}
+		throw error;
+	}
+}
+
+const smartAlbumIdSchema = z.number().int().positive();
+const smartAlbumNameSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(MAX_SMART_ALBUM_NAME_LENGTH);
+const smartAlbumQuerySchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(MAX_SMART_ALBUM_QUERY_LENGTH)
+	.nullable();
+// Photo filters minus collectionId. Empty strings and filterRaw "all" mean "no filter";
+// dateMonth accepts `YYYY:MM` (what filterOptions emits) or `YYYY-MM`.
+const smartAlbumFiltersSchema = z
+	.object({
+		filterRaw: z.enum(["all", "raw", "standard"]).optional(),
+		folder: z.string().optional(),
+		camera: z.string().optional(),
+		lens: z.string().optional(),
+		iso: z.number().int().positive().optional(),
+		dateMonth: z
+			.union([z.literal(""), z.string().regex(SMART_ALBUM_DATE_MONTH_PATTERN)])
+			.optional(),
+		minRating: sharedFilterShape.minRating,
+		flag: sharedFilterShape.flag,
+		tag: z
+			.union([
+				z.literal(""),
+				z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN),
+			])
+			.optional(),
+	})
+	.strict();
+
+/** Maps smart album domain errors to tRPC codes; other errors propagate unchanged. */
+function smartAlbumMutation<T>(run: () => T): T {
+	try {
+		return run();
+	} catch (error) {
+		if (error instanceof SmartAlbumError) {
+			throw new TRPCError({
+				code:
+					error.code === "NAME_TAKEN"
+						? "CONFLICT"
+						: error.code === "NOT_FOUND"
+							? "NOT_FOUND"
+							: "BAD_REQUEST",
 				message: error.message,
 				cause: error,
 			});
@@ -289,6 +355,45 @@ export const appRouter = router({
 			collectionMutation(() =>
 				removePhotosFromCollection(ctx.db, input.collectionId, input.photoIds),
 			),
+		),
+
+	smartAlbums: publicProcedure.query(({ ctx }) => ({
+		albums: listSmartAlbums(ctx.db),
+	})),
+
+	createSmartAlbum: publicProcedure
+		.input(
+			z.object({
+				name: smartAlbumNameSchema,
+				filters: smartAlbumFiltersSchema,
+				query: smartAlbumQuerySchema.optional(),
+			}),
+		)
+		.mutation(({ ctx, input }) =>
+			smartAlbumMutation(() => createSmartAlbum(ctx.db, input)),
+		),
+
+	updateSmartAlbum: publicProcedure
+		.input(
+			z.object({
+				id: smartAlbumIdSchema,
+				name: smartAlbumNameSchema.optional(),
+				filters: smartAlbumFiltersSchema.optional(),
+				query: smartAlbumQuerySchema.optional(),
+			}),
+		)
+		.mutation(({ ctx, input }) => {
+			const { id, ...patch } = input;
+			return smartAlbumMutation(() => updateSmartAlbum(ctx.db, id, patch));
+		}),
+
+	deleteSmartAlbum: publicProcedure
+		.input(z.object({ id: smartAlbumIdSchema }))
+		.mutation(({ ctx, input }) =>
+			smartAlbumMutation(() => {
+				deleteSmartAlbum(ctx.db, input.id);
+				return { id: input.id };
+			}),
 		),
 
 	scan: publicProcedure

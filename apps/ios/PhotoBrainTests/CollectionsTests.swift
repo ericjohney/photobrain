@@ -714,7 +714,7 @@ final class CollectionDetailStoreTests: XCTestCase {
             members: [3: [5, 6]]
         )
         let collections = CollectionsStore(api: api)
-        let detail = LibraryStore(api: api, collectionId: 3)
+        let detail = LibraryStore(api: api, scope: .collection(3))
         collections.register(detail)
         await detail.load()
         let membership = CollectionMembershipStore(photoID: 5, collections: collections)
@@ -784,7 +784,7 @@ final class CollectionDetailStoreTests: XCTestCase {
         await api.setPhotos(PhotosResponseDTO(photos: [TestModels.photo(id: 5)], total: 1, rawCount: 0))
         await api.setCollections([TestModels.collection(id: 3, name: "Trips", photoCount: 1)], members: [3: [5]])
         let collections = CollectionsStore(api: api)
-        let detail = LibraryStore(api: api, collectionId: 3)
+        let detail = LibraryStore(api: api, scope: .collection(3))
         collections.register(detail)
         await detail.load()
 

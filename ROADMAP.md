@@ -33,7 +33,7 @@ PhotoBrain aims to be a fast, AI-powered self-hosted photo management solution t
 
 These are the next product and production-readiness priorities for the current checkout:
 
-1. **Smart albums & Expo collections** - manual collections ship on web and native iOS; saved-filter smart albums and the Expo Android collections screen remain.
+1. **Expo collections** - manual collections and saved-filter smart albums ship on web and native iOS; the Expo Android collections screen remains.
 2. **Duplicate detection** - add pHash similarity queries, grouped results, comparison, and safe deletion.
 3. **Photo map** - use the already extracted GPS coordinates to add a map and photo markers.
 4. **Mobile backup** - add camera-roll access, background upload, and offline thumbnail handling.
@@ -293,7 +293,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - [x] Manual collections on web and native iOS (create/rename/delete, membership, scoped grid and search)
   - [x] Star ratings and pick/reject flags with filters on web and native iOS
   - [ ] Collections screen in the Expo Android app
-  - [ ] Automatic smart albums (based on date, location, tags)
+  - [x] Smart albums (saved filters plus optional semantic query, evaluated live) on web and native iOS
   - [ ] Nested album support
 - [x] **Date-grouped browsing on mobile**
 - [ ] **Timeline and calendar views on web**

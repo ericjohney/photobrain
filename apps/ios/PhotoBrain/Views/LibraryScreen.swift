@@ -22,6 +22,7 @@ extension LibraryFilters {
 struct LibraryScreen: View {
     @ObservedObject var store: LibraryStore
     let collections: CollectionsStore
+    let smartAlbums: SmartAlbumsStore
     @ObservedObject var review: ReviewStore
     @ObservedObject var scans: ScanCoordinator
     let environment: AppEnvironment
@@ -72,6 +73,7 @@ struct LibraryScreen: View {
         .sheet(isPresented: $optionsPresented) {
             LibraryOptionsView(
                 store: store,
+                smartAlbums: smartAlbums,
                 scans: scans,
                 environment: environment,
                 theme: theme
@@ -333,6 +335,7 @@ struct LibraryScreen: View {
 
 private struct LibraryOptionsView: View {
     @ObservedObject var store: LibraryStore
+    let smartAlbums: SmartAlbumsStore
     @ObservedObject var scans: ScanCoordinator
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
@@ -360,7 +363,7 @@ private struct LibraryOptionsView: View {
 
                 Section {
                     NavigationLink {
-                        FilterView(store: store)
+                        FilterView(store: store, smartAlbums: smartAlbums)
                     } label: {
                         LabeledContent("Filter", value: store.filters.summary)
                     }
@@ -421,14 +424,30 @@ private struct LibraryOptionsView: View {
 }
 
 /// Filter editor shared by Library and Search; each store re-runs its own request on change.
+/// When `smartAlbums` is set, the current filters (plus `smartAlbumQuery`) can be saved as a
+/// smart album.
 struct FilterView<Store: FilterEditingStore>: View {
     @ObservedObject var store: Store
+    var smartAlbums: SmartAlbumsStore?
+    var smartAlbumQuery: String?
+    @State private var saveSmartAlbumPresented = false
 
     var body: some View {
         List {
             if store.filters.isActive {
                 Section {
                     Button("Clear All", role: .destructive) { store.applyFilters(LibraryFilters()) }
+                }
+            }
+
+            if smartAlbums != nil {
+                Section {
+                    Button {
+                        saveSmartAlbumPresented = true
+                    } label: {
+                        Label("Save as Smart Album…", systemImage: "rectangle.stack.badge.plus")
+                    }
+                    .disabled(!store.filters.isActive && smartAlbumQuery == nil)
                 }
             }
 
@@ -540,6 +559,11 @@ struct FilterView<Store: FilterEditingStore>: View {
             }
         }
         .navigationTitle("Filter")
+        .sheet(isPresented: $saveSmartAlbumPresented) {
+            if let smartAlbums {
+                SaveSmartAlbumSheet(store: smartAlbums, filters: store.filters, query: smartAlbumQuery)
+            }
+        }
     }
 
     private var mediaBinding: Binding<LibraryFilters.MediaKind?> {

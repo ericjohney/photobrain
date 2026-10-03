@@ -146,6 +146,7 @@ export function useJunkReview({
 						void utils.photos.invalidate();
 						void utils.searchPhotos.invalidate();
 						void utils.similarPhotos.invalidate();
+						void utils.smartAlbums.invalidate();
 					}
 				});
 		},

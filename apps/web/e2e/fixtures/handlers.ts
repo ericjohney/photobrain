@@ -83,6 +83,19 @@ type FixtureCollection = {
 	photoIds: number[];
 };
 
+type FixtureSmartAlbumFilters = Omit<FixturePhotoFilters, "filterRaw"> & {
+	filterRaw?: "raw" | "standard";
+};
+
+type FixtureSmartAlbum = {
+	id: number;
+	name: string;
+	filters: FixtureSmartAlbumFilters;
+	query: string | null;
+	createdAt: Date;
+	updatedAt: Date;
+};
+
 /**
  * Builds handlers over a private copy of the fixture library and an empty
  * collection store, so writes (`setPhotoCuration`, collection mutations) are
@@ -121,6 +134,69 @@ function createDefaultHandlers(): Record<string, Handler> {
 			throw new TrpcFixtureError("NOT_FOUND", "Collection not found");
 		}
 		return collection;
+	};
+	const smartAlbums = new Map<number, FixtureSmartAlbum>();
+	let nextSmartAlbumId = 1;
+	/** Live evaluation like the API: query albums have no count or cover. */
+	const smartAlbumDto = (album: FixtureSmartAlbum) => {
+		const matching =
+			album.query === null ? filterFixturePhotos(library, album.filters) : null;
+		const coverId = matching?.reduce<number | undefined>(
+			(max, p) => (max === undefined || p.id > max ? p.id : max),
+			undefined,
+		);
+		return {
+			id: album.id,
+			name: album.name,
+			filters: album.filters,
+			query: album.query,
+			photoCount: matching?.length ?? null,
+			cover:
+				coverId === undefined
+					? null
+					: { photoId: coverId, thumbnailUpdatedAt: null },
+			createdAt: album.createdAt,
+			updatedAt: album.updatedAt,
+		};
+	};
+	const findSmartAlbum = (id: number) => {
+		const album = smartAlbums.get(id);
+		if (!album) {
+			throw new TrpcFixtureError("NOT_FOUND", "Smart album not found");
+		}
+		return album;
+	};
+	const checkedSmartAlbumName = (name: string, exceptId?: number) => {
+		const trimmed = name.trim();
+		if (trimmed.length < 1 || trimmed.length > 100) {
+			throw new TrpcFixtureError("BAD_REQUEST", "Invalid smart album name");
+		}
+		for (const other of smartAlbums.values()) {
+			if (
+				other.id !== exceptId &&
+				other.name.toLowerCase() === trimmed.toLowerCase()
+			) {
+				throw new TrpcFixtureError(
+					"CONFLICT",
+					"A smart album with that name already exists",
+				);
+			}
+		}
+		return trimmed;
+	};
+	/** Trimmed query or null; an album needs a filter or a query (BAD_REQUEST). */
+	const checkedSmartAlbumContent = (
+		filters: FixtureSmartAlbumFilters,
+		query: string | null | undefined,
+	) => {
+		const trimmed = query?.trim() || null;
+		if (Object.keys(filters).length === 0 && trimmed === null) {
+			throw new TrpcFixtureError(
+				"BAD_REQUEST",
+				"A smart album needs at least one filter or a query",
+			);
+		}
+		return trimmed;
 	};
 	/** Trimmed name; NAME_TAKEN (case-insensitive) maps to CONFLICT like the API. */
 	const checkedName = (name: string, exceptId?: number) => {
@@ -293,6 +369,61 @@ function createDefaultHandlers(): Record<string, Handler> {
 				)
 				.map(collectionDto),
 		}),
+		smartAlbums: () => ({
+			albums: [...smartAlbums.values()]
+				.sort((a, b) =>
+					a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
+				)
+				.map(smartAlbumDto),
+		}),
+		createSmartAlbum: (input) => {
+			const { name, filters, query } = input as {
+				name: string;
+				filters: FixtureSmartAlbumFilters;
+				query?: string | null;
+			};
+			const createdAt = now();
+			const album: FixtureSmartAlbum = {
+				id: nextSmartAlbumId,
+				name: checkedSmartAlbumName(name),
+				filters,
+				query: checkedSmartAlbumContent(filters, query),
+				createdAt,
+				updatedAt: createdAt,
+			};
+			nextSmartAlbumId++;
+			smartAlbums.set(album.id, album);
+			return smartAlbumDto(album);
+		},
+		updateSmartAlbum: (input) => {
+			const { id, name, filters, query } = input as {
+				id: number;
+				name?: string;
+				filters?: FixtureSmartAlbumFilters;
+				query?: string | null;
+			};
+			const album = findSmartAlbum(id);
+			const nextName =
+				name === undefined ? album.name : checkedSmartAlbumName(name, id);
+			const nextFilters = filters ?? album.filters;
+			const nextQuery = checkedSmartAlbumContent(
+				nextFilters,
+				query === undefined ? album.query : query,
+			);
+			Object.assign(album, {
+				name: nextName,
+				filters: nextFilters,
+				query: nextQuery,
+				updatedAt: now(),
+			});
+			return smartAlbumDto(album);
+		},
+		deleteSmartAlbum: (input) => {
+			const { id } = input as { id: number };
+			findSmartAlbum(id);
+			smartAlbums.delete(id);
+			return { id };
+		},
 		photoTags: (input) => {
 			const { photoId } = input as { photoId: number };
 			if (!library.some((p) => p.id === photoId)) {

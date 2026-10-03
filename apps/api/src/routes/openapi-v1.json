@@ -975,6 +975,142 @@
 					}
 				}
 			}
+		},
+		"/api/v1/smart-albums": {
+			"get": {
+				"operationId": "listSmartAlbums",
+				"description": "All smart albums sorted case-insensitively by name. Filter-only albums carry a live photo count and cover (highest matching photo ID); query albums report null for both.",
+				"responses": {
+					"200": {
+						"description": "Smart albums",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SmartAlbumsResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"operationId": "createSmartAlbum",
+				"description": "Saves a named filter set plus an optional semantic search query. At least one filter or a non-empty query is required. The name is trimmed and must be unique case-insensitively among smart albums.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateSmartAlbumRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Created smart album",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SmartAlbum"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"409": {
+						"$ref": "#/components/responses/SmartAlbumNameTaken"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/smart-albums/{id}": {
+			"patch": {
+				"operationId": "updateSmartAlbum",
+				"description": "Updates the name, replaces the filters, and/or sets (`null` clears) the query. The result must still have a filter or a query. Changing only the letter case of its own name is allowed.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateSmartAlbumRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated smart album",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SmartAlbum"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/SmartAlbumNotFound"
+					},
+					"409": {
+						"$ref": "#/components/responses/SmartAlbumNameTaken"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteSmartAlbum",
+				"description": "Deletes the smart album. Photos are never deleted.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Smart album deleted"
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/SmartAlbumNotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -1690,6 +1826,252 @@
 					}
 				}
 			},
+			"SmartAlbumFilters": {
+				"type": "object",
+				"additionalProperties": false,
+				"description": "Canonical saved filters; absent keys apply no filter.",
+				"properties": {
+					"filterRaw": {
+						"type": "string",
+						"enum": ["raw", "standard"]
+					},
+					"folder": {
+						"type": "string",
+						"minLength": 1
+					},
+					"camera": {
+						"type": "string",
+						"minLength": 1
+					},
+					"lens": {
+						"type": "string",
+						"minLength": 1
+					},
+					"iso": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"dateMonth": {
+						"type": "string",
+						"pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+					},
+					"minRating": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 5
+					},
+					"flag": {
+						"type": "string",
+						"enum": ["pick", "reject", "unflagged"]
+					},
+					"tag": {
+						"type": "string",
+						"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+						"maxLength": 64
+					}
+				}
+			},
+			"SmartAlbumFiltersInput": {
+				"type": "object",
+				"additionalProperties": false,
+				"description": "Photo filters saved with the album (the `GET /photos` filters minus `collectionId`). Empty strings and `filterRaw: \"all\"` mean no filter.",
+				"properties": {
+					"filterRaw": {
+						"type": "string",
+						"enum": ["all", "raw", "standard"]
+					},
+					"folder": {
+						"type": "string",
+						"description": "Direct children of this folder"
+					},
+					"camera": {
+						"type": "string"
+					},
+					"lens": {
+						"type": "string"
+					},
+					"iso": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"dateMonth": {
+						"type": "string",
+						"description": "`YYYY-MM` or `YYYY:MM`; stored and returned as `YYYY-MM`",
+						"anyOf": [
+							{
+								"const": ""
+							},
+							{
+								"pattern": "^\\d{4}[-:](0[1-9]|1[0-2])$"
+							}
+						]
+					},
+					"minRating": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 5
+					},
+					"flag": {
+						"type": "string",
+						"enum": ["pick", "reject", "unflagged"]
+					},
+					"tag": {
+						"type": "string",
+						"description": "Automatic tag slug",
+						"anyOf": [
+							{
+								"const": ""
+							},
+							{
+								"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+								"maxLength": 64
+							}
+						]
+					}
+				}
+			},
+			"SmartAlbum": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"id",
+					"name",
+					"filters",
+					"query",
+					"photoCount",
+					"cover",
+					"createdAt",
+					"updatedAt"
+				],
+				"properties": {
+					"id": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"filters": {
+						"$ref": "#/components/schemas/SmartAlbumFilters"
+					},
+					"query": {
+						"oneOf": [
+							{
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"photoCount": {
+						"description": "Live count of matching photos; null when the album has a query",
+						"oneOf": [
+							{
+								"type": "integer",
+								"minimum": 0
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"cover": {
+						"description": "Highest-ID matching photo; null for query albums or when nothing matches",
+						"oneOf": [
+							{
+								"$ref": "#/components/schemas/CollectionCover"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"SmartAlbumsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["albums"],
+				"properties": {
+					"albums": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/SmartAlbum"
+						}
+					}
+				}
+			},
+			"CreateSmartAlbumRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["name", "filters"],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100,
+						"description": "Trimmed; unique case-insensitively among smart albums"
+					},
+					"filters": {
+						"$ref": "#/components/schemas/SmartAlbumFiltersInput"
+					},
+					"query": {
+						"oneOf": [
+							{
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200,
+								"description": "Trimmed CLIP text query"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"UpdateSmartAlbumRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"description": "Omitted fields are unchanged; `filters` replaces the saved set; `query: null` clears the query.",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100,
+						"description": "Trimmed; unique case-insensitively among smart albums"
+					},
+					"filters": {
+						"$ref": "#/components/schemas/SmartAlbumFiltersInput"
+					},
+					"query": {
+						"oneOf": [
+							{
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200,
+								"description": "Trimmed CLIP text query"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
 			"PhotoTagsResponse": {
 				"type": "object",
 				"additionalProperties": false,
@@ -2020,6 +2402,46 @@
 									"error": {
 										"code": "COLLECTION_NAME_TAKEN",
 										"message": "A collection with that name already exists"
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"SmartAlbumNotFound": {
+				"description": "Smart album not found",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"examples": {
+							"smartAlbumNotFound": {
+								"value": {
+									"error": {
+										"code": "SMART_ALBUM_NOT_FOUND",
+										"message": "Smart album not found"
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"SmartAlbumNameTaken": {
+				"description": "Smart album name already in use",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"examples": {
+							"smartAlbumNameTaken": {
+								"value": {
+									"error": {
+										"code": "SMART_ALBUM_NAME_TAKEN",
+										"message": "A smart album with that name already exists"
 									}
 								}
 							}

@@ -22,6 +22,7 @@ const PHOTO_LIST_KEYS = [
 	getQueryKey(trpc.junkReview),
 ];
 const CURATION_MUTATION_KEY = getMutationKey(trpc.setPhotoCuration);
+const SMART_ALBUMS_KEY = getQueryKey(trpc.smartAlbums);
 
 function matchesPatch(photo: CurationFields, patch: CurationPatch) {
 	return (
@@ -100,6 +101,10 @@ export function usePhotoCuration(onPatch: (patcher: PhotoPatcher) => void) {
 						for (const queryKey of PHOTO_LIST_KEYS) {
 							void queryClient.invalidateQueries({ queryKey });
 						}
+						// Rating/flag smart album counts and covers change too.
+						void queryClient.invalidateQueries({
+							queryKey: SMART_ALBUMS_KEY,
+						});
 					}
 				});
 		},

@@ -12,6 +12,12 @@ import {
 	MAX_JUNK_RESOLVE_IDS,
 } from "../services/junk-review";
 import {
+	MAX_SMART_ALBUM_NAME_LENGTH,
+	MAX_SMART_ALBUM_QUERY_LENGTH,
+	SMART_ALBUM_DATE_MONTH_PATTERN,
+	type SmartAlbum,
+} from "../services/smart-albums";
+import {
 	MAX_TAG_SLUG_LENGTH,
 	TAG_SLUG_PATTERN,
 } from "../services/tag-vocabulary";
@@ -299,6 +305,85 @@ export const photoCollectionsResponseSchema = z.object({
 	collectionIds: z.array(z.number().int().positive()),
 });
 
+export const smartAlbumIdSchema = z.coerce.number().int().positive();
+
+const smartAlbumNameSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(MAX_SMART_ALBUM_NAME_LENGTH);
+
+const smartAlbumQuerySchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(MAX_SMART_ALBUM_QUERY_LENGTH)
+	.nullable();
+
+/**
+ * Saved filters as accepted from clients: the photo filters minus `collectionId`.
+ * Empty strings and `filterRaw: "all"` mean "no filter"; `dateMonth` accepts
+ * `YYYY-MM` or the stored-EXIF `YYYY:MM`.
+ */
+export const smartAlbumFiltersRequestSchema = z
+	.object({
+		filterRaw: z.enum(["all", "raw", "standard"]).optional(),
+		folder: z.string().optional(),
+		camera: z.string().optional(),
+		lens: z.string().optional(),
+		iso: z.number().int().positive().optional(),
+		dateMonth: z
+			.union([z.literal(""), z.string().regex(SMART_ALBUM_DATE_MONTH_PATTERN)])
+			.optional(),
+		minRating: z.number().int().min(1).max(5).optional(),
+		flag: curationFlagFilterSchema,
+		tag: z.union([z.literal(""), tagFilterSchema.unwrap()]).optional(),
+	})
+	.strict();
+
+export const createSmartAlbumRequestSchema = z
+	.object({
+		name: smartAlbumNameSchema,
+		filters: smartAlbumFiltersRequestSchema,
+		query: smartAlbumQuerySchema.optional(),
+	})
+	.strict();
+
+export const updateSmartAlbumRequestSchema = z
+	.object({
+		name: smartAlbumNameSchema.optional(),
+		filters: smartAlbumFiltersRequestSchema.optional(),
+		query: smartAlbumQuerySchema.optional(),
+	})
+	.strict();
+
+export const smartAlbumSchema = z.object({
+	id: z.number().int().positive(),
+	name: z.string().min(1).max(MAX_SMART_ALBUM_NAME_LENGTH),
+	filters: z
+		.object({
+			filterRaw: z.enum(["raw", "standard"]).optional(),
+			folder: z.string().min(1).optional(),
+			camera: z.string().min(1).optional(),
+			lens: z.string().min(1).optional(),
+			iso: z.number().int().positive().optional(),
+			dateMonth: photoFiltersSchema.shape.dateMonth,
+			minRating: z.number().int().min(1).max(5).optional(),
+			flag: curationFlagFilterSchema,
+			tag: tagFilterSchema,
+		})
+		.strict(),
+	query: z.string().min(1).max(MAX_SMART_ALBUM_QUERY_LENGTH).nullable(),
+	photoCount: z.number().int().nonnegative().nullable(),
+	cover: collectionSchema.shape.cover,
+	createdAt: isoTimestampSchema,
+	updatedAt: isoTimestampSchema,
+});
+
+export const smartAlbumsResponseSchema = z.object({
+	albums: z.array(smartAlbumSchema),
+});
+
 export const startScanRequestSchema = z
 	.object({ force: z.boolean().default(false) })
 	.strict();
@@ -482,6 +567,20 @@ export function serializeJunkReviewResponse(value: {
 }
 
 export function serializeCollection(value: Collection) {
+	return {
+		...value,
+		cover: value.cover && {
+			photoId: value.cover.photoId,
+			thumbnailUpdatedAt: toNullableIsoTimestamp(
+				value.cover.thumbnailUpdatedAt,
+			),
+		},
+		createdAt: toIsoTimestamp(value.createdAt),
+		updatedAt: toIsoTimestamp(value.updatedAt),
+	};
+}
+
+export function serializeSmartAlbum(value: SmartAlbum) {
 	return {
 		...value,
 		cover: value.cover && {

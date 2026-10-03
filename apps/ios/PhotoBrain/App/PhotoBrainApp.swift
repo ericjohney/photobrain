@@ -19,6 +19,7 @@ final class AppBootstrap: ObservableObject {
     @Published private(set) var library: LibraryStore?
     @Published private(set) var search: SearchStore?
     @Published private(set) var collections: CollectionsStore?
+    @Published private(set) var smartAlbums: SmartAlbumsStore?
     @Published private(set) var review: ReviewStore?
     @Published private(set) var scans: ScanCoordinator?
     @Published private(set) var theme: ThemeController?
@@ -39,6 +40,7 @@ final class AppBootstrap: ObservableObject {
             let library = LibraryStore(api: environment.api, curation: curation)
             let search = SearchStore(api: environment.api, curation: curation)
             let collections = CollectionsStore(api: environment.api)
+            let smartAlbums = SmartAlbumsStore(api: environment.api)
             let review = ReviewStore(api: environment.api, curation: curation)
             let scans = ScanCoordinator(api: environment.api, migration: migration)
             scans.invalidateLibrary = { [weak library, weak review] in
@@ -56,6 +58,7 @@ final class AppBootstrap: ObservableObject {
             self.library = library
             self.search = search
             self.collections = collections
+            self.smartAlbums = smartAlbums
             self.review = review
             self.scans = scans
         } catch {
@@ -72,6 +75,7 @@ private struct BootstrapView: View {
            let library = bootstrap.library,
            let search = bootstrap.search,
            let collections = bootstrap.collections,
+           let smartAlbums = bootstrap.smartAlbums,
            let review = bootstrap.review,
            let scans = bootstrap.scans,
            let theme = bootstrap.theme {
@@ -80,6 +84,7 @@ private struct BootstrapView: View {
                 library: library,
                 search: search,
                 collections: collections,
+                smartAlbums: smartAlbums,
                 review: review,
                 scans: scans,
                 theme: theme,
@@ -102,6 +107,7 @@ private struct RootTabView: View {
     @ObservedObject var library: LibraryStore
     @ObservedObject var search: SearchStore
     let collections: CollectionsStore
+    let smartAlbums: SmartAlbumsStore
     let review: ReviewStore
     @ObservedObject var scans: ScanCoordinator
     @ObservedObject var theme: ThemeController
@@ -114,6 +120,7 @@ private struct RootTabView: View {
             LibraryScreen(
                 store: library,
                 collections: collections,
+                smartAlbums: smartAlbums,
                 review: review,
                 scans: scans,
                 environment: environment,
@@ -125,6 +132,7 @@ private struct RootTabView: View {
 
             CollectionsScreen(
                 store: collections,
+                smartAlbums: smartAlbums,
                 curation: library.curation,
                 environment: environment,
                 theme: theme
@@ -132,7 +140,7 @@ private struct RootTabView: View {
             .tabItem { Label("Collections", systemImage: "rectangle.stack") }
             .tag(AppTab.collections)
 
-            SearchScreen(store: search, api: environment.api, collections: collections)
+            SearchScreen(store: search, api: environment.api, collections: collections, smartAlbums: smartAlbums)
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
                 .tag(AppTab.search)
         }

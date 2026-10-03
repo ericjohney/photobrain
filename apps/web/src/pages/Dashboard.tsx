@@ -1,5 +1,14 @@
-import { Layers, Loader2, ScanEye, Search, Sparkles, X } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import {
+	Layers,
+	ListFilter,
+	Loader2,
+	ScanEye,
+	Search,
+	Sparkles,
+	X,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
 import { PhotoGrid } from "@/components/PhotoGrid";
@@ -26,9 +35,20 @@ import {
 	type CurationPatch,
 	usePhotoCuration,
 } from "@/hooks/use-photo-curation";
+import {
+	fromSmartAlbumFilters,
+	smartAlbumMatches,
+	toSmartAlbumFilters,
+	useSmartAlbums,
+} from "@/hooks/use-smart-albums";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
 import { trpc } from "@/lib/trpc";
-import type { JunkAction, JunkReason, PhotoMetadata } from "@/lib/types";
+import type {
+	JunkAction,
+	JunkReason,
+	PhotoMetadata,
+	SmartAlbum,
+} from "@/lib/types";
 import { formatMonthLabel } from "@/lib/utils";
 
 export function Dashboard() {
@@ -48,9 +68,47 @@ export function Dashboard() {
 	const [reviewActive, setReviewActive] = useState(false);
 	const [reviewReason, setReviewReason] = useState<JunkReason | null>(null);
 	const [filters, setFilters] = useState<LibraryFilters>(EMPTY_LIBRARY_FILTERS);
+	// The smart album last applied. Any later change to the folder, filters,
+	// search, or mode deselects it: the album is a starting point, not a lock.
+	const [appliedSmartAlbumId, setAppliedSmartAlbumId] = useState<number | null>(
+		null,
+	);
+	const [savingSmartAlbum, setSavingSmartAlbum] = useState(false);
 	// The API defaults filterRaw to "all"; omit it from requests in that case.
 	const filterRaw = filters.filterRaw === "all" ? undefined : filters.filterRaw;
 	const collectionId = selectedCollectionId ?? undefined;
+
+	const smartAlbumsApi = useSmartAlbums();
+	const currentSmartAlbumFilters = toSmartAlbumFilters(selectedFolder, filters);
+	const currentSmartAlbumQuery = searchQuery.trim() || null;
+	const appliedSmartAlbum =
+		appliedSmartAlbumId === null
+			? undefined
+			: smartAlbumsApi.albums?.find((a) => a.id === appliedSmartAlbumId);
+	const selectedSmartAlbum =
+		appliedSmartAlbum &&
+		selectedCollectionId === null &&
+		!reviewActive &&
+		similarSource === null &&
+		smartAlbumMatches(
+			appliedSmartAlbum,
+			currentSmartAlbumFilters,
+			currentSmartAlbumQuery,
+		)
+			? appliedSmartAlbum
+			: null;
+	// Deselect for good once anything diverges (re-entering the same filters
+	// does not reselect), or once the album is gone from a loaded list.
+	const albumsLoaded = smartAlbumsApi.albums !== undefined;
+	useEffect(() => {
+		if (appliedSmartAlbumId !== null && albumsLoaded && !selectedSmartAlbum) {
+			setAppliedSmartAlbumId(null);
+		}
+	}, [appliedSmartAlbumId, albumsLoaded, selectedSmartAlbum]);
+	// Collection scope is never saved, so it alone is not savable.
+	const canSaveSmartAlbum =
+		Object.keys(currentSmartAlbumFilters).length > 0 ||
+		currentSmartAlbumQuery !== null;
 
 	// tRPC queries
 	const foldersQuery = trpc.folders.useQuery();
@@ -81,7 +139,8 @@ export function Dashboard() {
 	const searchPhotosQuery = trpc.searchPhotos.useQuery(
 		{
 			query: searchQuery,
-			limit: 50,
+			// An opened query smart album uses the API's maximum, like other clients.
+			limit: selectedSmartAlbum ? 100 : 50,
 			folder: selectedFolder ?? undefined,
 			collectionId,
 			filterRaw,
@@ -296,8 +355,47 @@ export function Dashboard() {
 		[deleteCollection],
 	);
 
-	// Metadata tag chip: filter the library (or the active search) by that tag.
 	const { setViewMode } = library;
+
+	// Applying a smart album replaces the folder, filters, and search with its
+	// saved ones and leaves collection, Find similar, and Review modes.
+	const handleSmartAlbumSelect = useCallback(
+		(album: SmartAlbum) => {
+			setAppliedSmartAlbumId(album.id);
+			setFilters(fromSmartAlbumFilters(album.filters));
+			setSelectedFolder(album.filters.folder ?? null);
+			setSearchQuery(album.query ?? "");
+			setSelectedCollectionId(null);
+			setSimilarSource(null);
+			setReviewActive(false);
+			setViewMode("grid");
+		},
+		[setViewMode],
+	);
+
+	const { createSmartAlbum } = smartAlbumsApi;
+	const saveSmartAlbum = useCallback(
+		async (name: string) => {
+			const album = await createSmartAlbum(
+				name,
+				currentSmartAlbumFilters,
+				currentSmartAlbumQuery,
+			);
+			// The saved album now describes exactly what is shown.
+			setAppliedSmartAlbumId(album.id);
+		},
+		[createSmartAlbum, currentSmartAlbumFilters, currentSmartAlbumQuery],
+	);
+
+	// The header ✕ leaves the album for the unfiltered library.
+	const closeSmartAlbum = useCallback(() => {
+		setAppliedSmartAlbumId(null);
+		setFilters(EMPTY_LIBRARY_FILTERS);
+		setSelectedFolder(null);
+		setSearchQuery("");
+	}, []);
+
+	// Metadata tag chip: filter the library (or the active search) by that tag.
 	const handleTagSelect = useCallback(
 		(tag: string) => {
 			setFilters((current) => ({ ...current, tag }));
@@ -442,6 +540,14 @@ export function Dashboard() {
 		filters.flag !== null ? FLAG_FILTER_LABELS[filters.flag] : null,
 		filters.tag !== null ? `#${filters.tag}` : null,
 	].filter((part): part is string => part !== null);
+	// What "Save as Smart Album" stores (collection scope is never saved).
+	const smartAlbumSummary = [
+		currentSmartAlbumQuery !== null ? `“${currentSmartAlbumQuery}”` : null,
+		selectedFolder,
+		...searchScope,
+	]
+		.filter((part): part is string => part !== null)
+		.join(" · ");
 	const searchResultCount = searchPhotosQuery.data?.photos.length;
 	const searchHeader = searchQuery && (
 		<div
@@ -506,8 +612,41 @@ export function Dashboard() {
 			onExit={exitReview}
 		/>
 	);
+	const smartAlbumHeader = selectedSmartAlbum && (
+		<div
+			data-testid="smart-album-header"
+			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
+		>
+			<ListFilter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			<h2 className="min-w-0 truncate font-medium">
+				{selectedSmartAlbum.name}
+			</h2>
+			<span className="flex-1 text-xs text-muted-foreground">
+				{selectedSmartAlbum.photoCount === null
+					? "Smart album"
+					: `${selectedSmartAlbum.photoCount} ${selectedSmartAlbum.photoCount === 1 ? "photo" : "photos"}`}
+			</span>
+			<button
+				type="button"
+				aria-label="Close smart album"
+				onClick={closeSmartAlbum}
+				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+			>
+				<X className="h-3.5 w-3.5" />
+			</button>
+		</div>
+	);
+	// A query album names itself above the search results header.
 	const banner =
-		reviewHeader || similarChip || searchHeader || collectionHeader;
+		reviewHeader ||
+		similarChip ||
+		(smartAlbumHeader || searchHeader ? (
+			<>
+				{smartAlbumHeader}
+				{searchHeader}
+			</>
+		) : null) ||
+		collectionHeader;
 
 	return (
 		<PanelLayout
@@ -549,6 +688,14 @@ export function Dashboard() {
 							onCreateCollection={collectionsApi.createCollection}
 							onRenameCollection={collectionsApi.renameCollection}
 							onDeleteCollection={handleDeleteCollection}
+							smartAlbums={smartAlbumsApi.albums}
+							selectedSmartAlbumId={selectedSmartAlbum?.id ?? null}
+							onSmartAlbumSelect={handleSmartAlbumSelect}
+							onRenameSmartAlbum={smartAlbumsApi.renameSmartAlbum}
+							onDeleteSmartAlbum={smartAlbumsApi.deleteSmartAlbum}
+							onSaveSmartAlbum={
+								canSaveSmartAlbum ? () => setSavingSmartAlbum(true) : undefined
+							}
 							filterOptions={filterOptionsQuery.data}
 							activeFilters={filters}
 							onFilterChange={setFilters}
@@ -603,6 +750,12 @@ export function Dashboard() {
 			) : (
 				renderContent()
 			)}
+			<SaveSmartAlbumSheet
+				open={savingSmartAlbum}
+				onOpenChange={setSavingSmartAlbum}
+				summary={smartAlbumSummary}
+				onSave={saveSmartAlbum}
+			/>
 		</PanelLayout>
 	);
 }

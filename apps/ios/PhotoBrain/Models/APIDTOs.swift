@@ -530,6 +530,209 @@ enum CollectionNameError: Error, Equatable, LocalizedError, Sendable {
     }
 }
 
+/// Saved criteria of a smart album: the `PhotoQuery` filters without collection scope.
+/// Decoding is tolerant: unknown keys are ignored, `filterRaw` `"all"` (or an unknown value)
+/// means no media filter, unknown flag values are dropped, and `dateMonth` is normalized to
+/// `YYYY-MM` (the `/api/v1` representation used by filter options). Encoding omits nil keys.
+struct SmartAlbumFilters: Codable, Hashable, Sendable {
+    /// `.raw` or `.standard`; `nil` means every media kind.
+    var filterRaw: LibraryFilters.MediaKind?
+    var folder: String?
+    var camera: String?
+    var lens: String?
+    var iso: Int?
+    var dateMonth: String?
+    var minRating: Int?
+    var flag: PhotoFlagFilter?
+    var tag: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case filterRaw, folder, camera, lens, iso, dateMonth, minRating, flag, tag
+    }
+
+    init(
+        filterRaw: LibraryFilters.MediaKind? = nil,
+        folder: String? = nil,
+        camera: String? = nil,
+        lens: String? = nil,
+        iso: Int? = nil,
+        dateMonth: String? = nil,
+        minRating: Int? = nil,
+        flag: PhotoFlagFilter? = nil,
+        tag: String? = nil
+    ) {
+        self.filterRaw = filterRaw == .all ? nil : filterRaw
+        self.folder = folder
+        self.camera = camera
+        self.lens = lens
+        self.iso = iso
+        self.dateMonth = dateMonth.map(Self.normalizedMonth)
+        self.minRating = minRating
+        self.flag = flag
+        self.tag = tag
+    }
+
+    /// The Library/Search filter set as saved criteria (those screens have no folder filter).
+    init(_ filters: LibraryFilters) {
+        self.init(
+            filterRaw: filters.mediaKind,
+            camera: filters.camera,
+            lens: filters.lens,
+            iso: filters.iso,
+            dateMonth: filters.dateMonth,
+            minRating: filters.minRating,
+            flag: filters.flag,
+            tag: filters.tag
+        )
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            filterRaw: try container.decodeIfPresent(String.self, forKey: .filterRaw)
+                .flatMap(LibraryFilters.MediaKind.init(rawValue:)),
+            folder: try container.decodeIfPresent(String.self, forKey: .folder),
+            camera: try container.decodeIfPresent(String.self, forKey: .camera),
+            lens: try container.decodeIfPresent(String.self, forKey: .lens),
+            iso: try container.decodeIfPresent(Int.self, forKey: .iso),
+            dateMonth: try container.decodeIfPresent(String.self, forKey: .dateMonth),
+            minRating: try container.decodeIfPresent(Int.self, forKey: .minRating),
+            flag: try container.decodeIfPresent(String.self, forKey: .flag).flatMap(PhotoFlagFilter.init(rawValue:)),
+            tag: try container.decodeIfPresent(String.self, forKey: .tag)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(filterRaw?.rawValue, forKey: .filterRaw)
+        try container.encodeIfPresent(folder, forKey: .folder)
+        try container.encodeIfPresent(camera, forKey: .camera)
+        try container.encodeIfPresent(lens, forKey: .lens)
+        try container.encodeIfPresent(iso, forKey: .iso)
+        try container.encodeIfPresent(dateMonth, forKey: .dateMonth)
+        try container.encodeIfPresent(minRating, forKey: .minRating)
+        try container.encodeIfPresent(flag?.rawValue, forKey: .flag)
+        try container.encodeIfPresent(tag, forKey: .tag)
+    }
+
+    var isEmpty: Bool {
+        filterRaw == nil && folder == nil && camera == nil && lens == nil && iso == nil
+            && dateMonth == nil && minRating == nil && flag == nil && tag == nil
+    }
+
+    /// Wire filters for `GET /photos` and `POST /search`.
+    var photoQuery: PhotoQuery {
+        PhotoQuery(
+            filterRaw: filterRaw ?? .all,
+            folder: folder,
+            camera: camera,
+            lens: lens,
+            iso: iso,
+            dateMonth: dateMonth,
+            minRating: minRating,
+            flag: flag,
+            tag: tag
+        )
+    }
+
+    /// Accepts the stored-EXIF `YYYY:MM` form as well as `YYYY-MM`.
+    private static func normalizedMonth(_ value: String) -> String {
+        value.replacingOccurrences(of: ":", with: "-")
+    }
+}
+
+struct SmartAlbumDTO: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    /// Mutable so an optimistic rename can patch the list before the server confirms it.
+    var name: String
+    let filters: SmartAlbumFilters
+    /// Semantic search text; `nil` for filter-only albums.
+    let query: String?
+    /// Live match count; `nil` for query albums (vector search has no stable count).
+    let photoCount: Int?
+    /// Highest-id matching photo; `nil` for query albums and albums with no matches.
+    let cover: CollectionCoverDTO?
+    let createdAt: Date
+    let updatedAt: Date
+
+    /// Medium cover thumbnail, versioned by the cover photo's `thumbnailUpdatedAt`.
+    func coverURL(apiBaseURL: URL) -> URL? {
+        guard let cover else { return nil }
+        return PhotoRecord.thumbnailURL(
+            baseURL: apiBaseURL,
+            id: cover.photoId,
+            size: "medium",
+            updatedAt: cover.thumbnailUpdatedAt
+        )
+    }
+}
+
+struct SmartAlbumsResponseDTO: Codable, Equatable, Sendable {
+    let albums: [SmartAlbumDTO]
+}
+
+/// `POST /api/v1/smart-albums` body; `query` is omitted for filter-only albums.
+struct CreateSmartAlbumRequestDTO: Encodable, Equatable, Sendable {
+    let name: String
+    let filters: SmartAlbumFilters
+    let query: String?
+}
+
+/// `PATCH /api/v1/smart-albums/:id` body for a rename; filters and query are left unchanged.
+struct RenameSmartAlbumRequestDTO: Encodable, Equatable, Sendable {
+    let name: String
+}
+
+/// Client-side mirror of the server's smart album rules: names trimmed to 1-100 UTF-16 units,
+/// queries trimmed to at most 200 (blank means none), and at least one filter or a query.
+enum SmartAlbumDraft {
+    static let maximumNameLength = 100
+    static let maximumQueryLength = 200
+
+    static func validatedName(_ raw: String) throws -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw SmartAlbumValidationError.emptyName }
+        guard trimmed.utf16.count <= maximumNameLength else { throw SmartAlbumValidationError.nameTooLong }
+        return trimmed
+    }
+
+    /// Returns the trimmed query, or `nil` when it is absent or blank.
+    static func validatedQuery(_ raw: String?) throws -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        guard trimmed.utf16.count <= maximumQueryLength else { throw SmartAlbumValidationError.queryTooLong }
+        return trimmed
+    }
+
+    static func validated(
+        name: String,
+        filters: SmartAlbumFilters,
+        query: String?
+    ) throws -> CreateSmartAlbumRequestDTO {
+        let name = try validatedName(name)
+        let query = try validatedQuery(query)
+        guard query != nil || !filters.isEmpty else { throw SmartAlbumValidationError.noCriteria }
+        return CreateSmartAlbumRequestDTO(name: name, filters: filters, query: query)
+    }
+}
+
+enum SmartAlbumValidationError: Error, Equatable, LocalizedError, Sendable {
+    case emptyName
+    case nameTooLong
+    case queryTooLong
+    case noCriteria
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyName: "Enter a smart album name."
+        case .nameTooLong: "Smart album names can be at most \(SmartAlbumDraft.maximumNameLength) characters."
+        case .queryTooLong: "Searches can be at most \(SmartAlbumDraft.maximumQueryLength) characters."
+        case .noCriteria: "Choose at least one filter or enter a search."
+        }
+    }
+}
+
 struct APIErrorEnvelope: Codable, Equatable, Sendable {
     struct Detail: Codable, Equatable, Sendable {
         let code: String
@@ -557,6 +760,8 @@ enum PhotoBrainAPIError: Error, Equatable, LocalizedError, Sendable {
             switch code {
             case "COLLECTION_NAME_TAKEN": "A collection with that name already exists."
             case "COLLECTION_NOT_FOUND": "This collection no longer exists."
+            case "SMART_ALBUM_NAME_TAKEN": "A smart album with that name already exists."
+            case "SMART_ALBUM_NOT_FOUND": "This smart album no longer exists."
             default: message
             }
         case .decoding: "PhotoBrain could not read the server response."

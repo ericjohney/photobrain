@@ -38,6 +38,13 @@ protocol PhotoBrainAPI: Sendable {
     func addPhotos(toCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosAddedDTO
     func removePhotos(fromCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosRemovedDTO
     func collectionsForPhoto(id: Int) async throws -> PhotoCollectionsDTO
+    func smartAlbums() async throws -> SmartAlbumsResponseDTO
+    /// `POST /smart-albums`, expects `201`. Name, query, and criteria are validated client-side first.
+    func createSmartAlbum(name: String, filters: SmartAlbumFilters, query: String?) async throws -> SmartAlbumDTO
+    /// `PATCH /smart-albums/{id}` with only the name; filters and query are unchanged.
+    func renameSmartAlbum(id: Int, name: String) async throws -> SmartAlbumDTO
+    /// `DELETE /smart-albums/{id}`, expects `204`. Photos are untouched.
+    func deleteSmartAlbum(id: Int) async throws
     /// `GET /review/junk`. `reason` and `cursor` are sent only when set; `limit` is 1-500.
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO
     /// `POST /review/junk/resolve` for 1-500 positive photo ids.
@@ -195,6 +202,32 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
     func collectionsForPhoto(id: Int) async throws -> PhotoCollectionsDTO {
         guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
         return try await get(path: ["photos", String(id), "collections"])
+    }
+
+    func smartAlbums() async throws -> SmartAlbumsResponseDTO {
+        try await get(path: ["smart-albums"])
+    }
+
+    func createSmartAlbum(name: String, filters: SmartAlbumFilters, query: String?) async throws -> SmartAlbumDTO {
+        let body = try SmartAlbumDraft.validated(name: name, filters: filters, query: query)
+        return try await send(method: "POST", path: ["smart-albums"], body: body, expectedStatus: 201)
+    }
+
+    func renameSmartAlbum(id: Int, name: String) async throws -> SmartAlbumDTO {
+        let name = try SmartAlbumDraft.validatedName(name)
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await send(
+            method: "PATCH",
+            path: ["smart-albums", String(id)],
+            body: RenameSmartAlbumRequestDTO(name: name)
+        )
+    }
+
+    func deleteSmartAlbum(id: Int) async throws {
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        var request = try request(path: ["smart-albums", String(id)])
+        request.httpMethod = "DELETE"
+        _ = try await transfer(request, expectedStatus: 204)
     }
 
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO {

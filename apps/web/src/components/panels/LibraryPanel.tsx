@@ -13,9 +13,15 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Collection, FilterOptions, FlagFilter } from "@/lib/types";
+import type {
+	Collection,
+	FilterOptions,
+	FlagFilter,
+	SmartAlbum,
+} from "@/lib/types";
 import { cn, formatMonthLabel, formatTagName } from "@/lib/utils";
 import { CollectionList } from "./CollectionList";
+import { SmartAlbumList } from "./SmartAlbumList";
 
 interface FolderNode {
 	name: string;
@@ -137,6 +143,14 @@ interface LibraryPanelProps {
 	onCreateCollection: (name: string) => Promise<unknown>;
 	onRenameCollection: (collectionId: number, name: string) => Promise<unknown>;
 	onDeleteCollection: (collectionId: number) => Promise<unknown>;
+	smartAlbums: SmartAlbum[] | undefined;
+	/** The album last applied, until any filter/scope changes; null otherwise. */
+	selectedSmartAlbumId: number | null;
+	onSmartAlbumSelect: (album: SmartAlbum) => void;
+	onRenameSmartAlbum: (albumId: number, name: string) => Promise<unknown>;
+	onDeleteSmartAlbum: (albumId: number) => Promise<unknown>;
+	/** Opens "Save as Smart Album"; omitted when nothing savable is active. */
+	onSaveSmartAlbum?: () => void;
 	filterOptions?: FilterOptions;
 	activeFilters: LibraryFilters;
 	onFilterChange: (filters: LibraryFilters) => void;
@@ -376,6 +390,12 @@ export function LibraryPanel({
 	onCreateCollection,
 	onRenameCollection,
 	onDeleteCollection,
+	smartAlbums,
+	selectedSmartAlbumId,
+	onSmartAlbumSelect,
+	onRenameSmartAlbum,
+	onDeleteSmartAlbum,
+	onSaveSmartAlbum,
 	filterOptions,
 	activeFilters,
 	onFilterChange,
@@ -497,6 +517,17 @@ export function LibraryPanel({
 						onCreate={onCreateCollection}
 						onRename={onRenameCollection}
 						onDelete={onDeleteCollection}
+					/>
+				</Section>
+
+				{/* Smart Albums Section — saved filters + query, evaluated live */}
+				<Section title="Smart Albums">
+					<SmartAlbumList
+						albums={smartAlbums}
+						selectedAlbumId={reviewActive ? null : selectedSmartAlbumId}
+						onSelect={onSmartAlbumSelect}
+						onRename={onRenameSmartAlbum}
+						onDelete={onDeleteSmartAlbum}
 					/>
 				</Section>
 
@@ -643,6 +674,16 @@ export function LibraryPanel({
 					<div className="mt-4 rounded bg-secondary px-2 py-1.5 text-xs text-muted-foreground">
 						Showing: {selectedFolder}
 					</div>
+				)}
+
+				{!reviewActive && onSaveSmartAlbum && (
+					<button
+						type="button"
+						onClick={onSaveSmartAlbum}
+						className="mt-2 w-full rounded px-2 py-1.5 text-left text-xs text-primary hover:bg-primary/10"
+					>
+						Save as Smart Album…
+					</button>
 				)}
 			</div>
 		</ScrollArea>

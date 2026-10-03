@@ -25,6 +25,10 @@ export type FilterOptions = RouterOutputs["filterOptions"];
 // Collection types
 export type Collection = RouterOutputs["collections"]["collections"][number];
 
+// Smart album types
+export type SmartAlbum = RouterOutputs["smartAlbums"]["albums"][number];
+export type SmartAlbumFilters = RouterInputs["createSmartAlbum"]["filters"];
+
 // Junk review types
 export type JunkReviewResponse = RouterOutputs["junkReview"];
 export type ReviewPhoto = JunkReviewResponse["photos"][number];
