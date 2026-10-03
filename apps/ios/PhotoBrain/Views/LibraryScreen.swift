@@ -24,6 +24,7 @@ struct LibraryScreen: View {
     let collections: CollectionsStore
     let smartAlbums: SmartAlbumsStore
     @ObservedObject var review: ReviewStore
+    @ObservedObject var duplicates: DuplicatesStore
     @ObservedObject var scans: ScanCoordinator
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
@@ -33,6 +34,7 @@ struct LibraryScreen: View {
     @State private var optionsPresented = false
     @State private var addSelectionPresented = false
     @State private var reviewPresented = false
+    @State private var duplicatesPresented = false
     @Environment(\.showTagInLibrary) private var showTagInLibrary
 
     var body: some View {
@@ -65,6 +67,15 @@ struct LibraryScreen: View {
                     .environment(\.showTagInLibrary, showTagInLibrary.map { action in
                         ShowTagInLibraryAction { tag in
                             reviewPresented = false
+                            action(tag)
+                        }
+                    })
+            }
+            .navigationDestination(isPresented: $duplicatesPresented) {
+                DuplicatesScreen(store: duplicates, collections: collections)
+                    .environment(\.showTagInLibrary, showTagInLibrary.map { action in
+                        ShowTagInLibraryAction { tag in
+                            duplicatesPresented = false
                             action(tag)
                         }
                     })
@@ -114,6 +125,7 @@ struct LibraryScreen: View {
             if store.loadState == .idle { await store.load() }
         }
         .task { await review.refreshCounts() }
+        .task { await duplicates.refreshCounts() }
     }
 
     @ViewBuilder
@@ -151,6 +163,7 @@ struct LibraryScreen: View {
                     await scans.manualLibraryRefresh()
                     await store.load()
                     await review.refreshCounts()
+                    await duplicates.refreshCounts()
                 }
             )
             .ignoresSafeArea(edges: .horizontal)
@@ -216,6 +229,25 @@ struct LibraryScreen: View {
                     .frame(minHeight: 44)
                 }
                 .accessibilityLabel("Review, \(review.counts.all) photos")
+                if duplicates.counts.total > 0 {
+                    Button {
+                        duplicatesPresented = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Duplicates")
+                            Text(duplicates.counts.total.formatted())
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(Color.accentColor))
+                                .contentTransition(.numericText())
+                        }
+                        .fontWeight(.semibold)
+                        .frame(minHeight: 44)
+                    }
+                    .accessibilityLabel("Duplicates, \(duplicates.counts.total) groups")
+                }
                 Button("Select") {
                     store.beginSelection()
                 }

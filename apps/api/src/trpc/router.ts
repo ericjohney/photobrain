@@ -16,6 +16,17 @@ import {
 	renameCollection,
 } from "../services/collections";
 import {
+	DUPLICATE_ACTIONS,
+	DUPLICATE_CURSOR_PATTERN,
+	DUPLICATE_GROUPS_DEFAULT_LIMIT,
+	DUPLICATE_GROUPS_MAX_LIMIT,
+	DUPLICATE_KINDS,
+	DuplicateGroupError,
+	duplicateGroups,
+	MAX_DUPLICATE_KEY_LENGTH,
+	resolveDuplicateGroup,
+} from "../services/duplicates";
+import {
 	JUNK_ACTIONS,
 	JUNK_REASONS,
 	JUNK_REVIEW_DEFAULT_LIMIT,
@@ -288,6 +299,49 @@ export const appRouter = router({
 		.mutation(({ ctx, input }) =>
 			resolveJunk(ctx.db, input.photoIds, input.action),
 		),
+
+	duplicateGroups: publicProcedure
+		.input(
+			z
+				.object({
+					kind: z.enum(DUPLICATE_KINDS).optional(),
+					limit: z
+						.number()
+						.int()
+						.min(1)
+						.max(DUPLICATE_GROUPS_MAX_LIMIT)
+						.default(DUPLICATE_GROUPS_DEFAULT_LIMIT),
+					cursor: z.string().regex(DUPLICATE_CURSOR_PATTERN).optional(),
+				})
+				.optional(),
+		)
+		.query(({ ctx, input }) => duplicateGroups(ctx.db, input ?? {})),
+
+	resolveDuplicateGroup: publicProcedure
+		.input(
+			z.object({
+				key: z.string().min(1).max(MAX_DUPLICATE_KEY_LENGTH),
+				action: z.enum(DUPLICATE_ACTIONS),
+				keepIds: z
+					.array(z.number().int().positive())
+					.max(MAX_CURATION_IDS)
+					.optional(),
+			}),
+		)
+		.mutation(({ ctx, input }) => {
+			try {
+				return resolveDuplicateGroup(ctx.db, input);
+			} catch (error) {
+				if (error instanceof DuplicateGroupError) {
+					throw new TRPCError({
+						code: error.code === "GROUP_CHANGED" ? "CONFLICT" : "BAD_REQUEST",
+						message: error.message,
+						cause: error,
+					});
+				}
+				throw error;
+			}
+		}),
 
 	collections: publicProcedure.query(({ ctx }) => ({
 		collections: listCollections(ctx.db),

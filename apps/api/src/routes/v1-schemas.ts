@@ -5,12 +5,21 @@ import {
 	MAX_COLLECTION_PHOTO_IDS,
 } from "../services/collections";
 import {
+	DUPLICATE_ACTIONS,
+	DUPLICATE_CURSOR_PATTERN,
+	DUPLICATE_GROUPS_DEFAULT_LIMIT,
+	DUPLICATE_GROUPS_MAX_LIMIT,
+	DUPLICATE_KINDS,
+	MAX_DUPLICATE_KEY_LENGTH,
+} from "../services/duplicates";
+import {
 	JUNK_ACTIONS,
 	JUNK_REASONS,
 	JUNK_REVIEW_DEFAULT_LIMIT,
 	JUNK_REVIEW_MAX_LIMIT,
 	MAX_JUNK_RESOLVE_IDS,
 } from "../services/junk-review";
+import { MAX_CURATION_IDS } from "../services/photo-curation";
 import {
 	MAX_SMART_ALBUM_NAME_LENGTH,
 	MAX_SMART_ALBUM_QUERY_LENGTH,
@@ -244,6 +253,52 @@ export const resolveJunkRequestSchema = z
 export const resolveJunkResponseSchema = z.object({
 	updated: z.array(z.number().int().positive()),
 });
+
+export const duplicateKindSchema = z.enum(DUPLICATE_KINDS);
+
+export const duplicateGroupsQuerySchema = z.object({
+	kind: duplicateKindSchema.optional(),
+	limit: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(DUPLICATE_GROUPS_MAX_LIMIT)
+		.default(DUPLICATE_GROUPS_DEFAULT_LIMIT),
+	cursor: z.string().regex(DUPLICATE_CURSOR_PATTERN).optional(),
+});
+
+export const duplicateGroupsResponseSchema = z.object({
+	groups: z.array(
+		z.object({
+			key: z.string().min(1),
+			kind: duplicateKindSchema,
+			photos: z.array(photoSchema).min(2),
+			suggestedKeeperId: z.number().int().positive(),
+			maxDistance: z.number().int().nonnegative().nullable(),
+		}),
+	),
+	counts: z.object({
+		duplicate: z.number().int().nonnegative(),
+		burst: z.number().int().nonnegative(),
+	}),
+	nextCursor: z.string().regex(DUPLICATE_CURSOR_PATTERN).nullable(),
+});
+
+export const resolveDuplicateGroupRequestSchema = z
+	.object({
+		key: z.string().min(1).max(MAX_DUPLICATE_KEY_LENGTH),
+		action: z.enum(DUPLICATE_ACTIONS),
+		keepIds: z
+			.array(z.number().int().positive())
+			.max(MAX_CURATION_IDS)
+			.optional(),
+	})
+	.strict();
+
+export const resolveDuplicateGroupResponseSchema = z.union([
+	z.object({ rejected: z.array(z.number().int().positive()) }).strict(),
+	z.object({ dismissed: z.string().min(1) }).strict(),
+]);
 
 export const collectionIdSchema = z.coerce.number().int().positive();
 
@@ -563,6 +618,20 @@ export function serializeJunkReviewResponse(value: {
 	return {
 		...value,
 		photos: value.photos.map(serializePhoto),
+	};
+}
+
+export function serializeDuplicateGroupsResponse(value: {
+	groups: readonly { photos: readonly unknown[] }[];
+	counts: Record<string, number>;
+	nextCursor: string | null;
+}) {
+	return {
+		...value,
+		groups: value.groups.map((group) => ({
+			...group,
+			photos: group.photos.map(serializePhoto),
+		})),
 	};
 }
 

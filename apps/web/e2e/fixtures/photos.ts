@@ -241,6 +241,26 @@ export const FIXTURE_JUNK_REASONS: Record<number, FixtureJunkReason[]> = {
 	12: ["document", "blurry"],
 };
 
+export type FixtureDuplicateKind = "duplicate" | "burst";
+
+/**
+ * Candidate duplicate/burst groups before the API's exclusions. Rejected
+ * members (macro.cr2, 4) drop out, so the shown groups, in API order, are
+ * duplicate 2,5,9 (keeper portrait.arw: RAW), burst 6,7,8 (keeper forest:
+ * ★4), duplicate 10,12 (keeper dog: larger file) and duplicate 1,3 (keeper
+ * sunset: ★5).
+ */
+export const FIXTURE_DUPLICATE_GROUPS: {
+	kind: FixtureDuplicateKind;
+	photoIds: number[];
+	maxDistance: number | null;
+}[] = [
+	{ kind: "duplicate", photoIds: [2, 5, 9], maxDistance: 4 },
+	{ kind: "duplicate", photoIds: [10, 12], maxDistance: 2 },
+	{ kind: "burst", photoIds: [6, 7, 8], maxDistance: null },
+	{ kind: "duplicate", photoIds: [1, 3, 4], maxDistance: 1 },
+];
+
 export function searchPhotosByQuery(
 	query: string,
 	photos: FixturePhoto[] = FIXTURE_PHOTOS,

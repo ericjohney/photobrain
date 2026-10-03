@@ -114,6 +114,7 @@ The tables are:
 - `collections`: manual albums; name unique case-insensitively (`COLLATE NOCASE` index).
 - `collection_photos`: collection membership with `added_at`; both foreign keys cascade, so deleting a collection never deletes photos.
 - `smart_albums`: saved filter sets (`filters` canonical JSON, `dateMonth` as `YYYY-MM`) plus an optional CLIP `query`, evaluated live; name unique case-insensitively among smart albums.
+- `duplicate_dismissals`: duplicate/burst group keys (`kind:sortedIds`) marked "not duplicates"; a key stops matching once membership changes.
 - `scan_jobs`: durable scan/embedding phase, status, counts, errors, and timestamps.
 - `scan_manifests`: immutable per-job discovery boundary, roots, and processed/successful/unchanged/media/embedding counters.
 - `scan_items`: priority-ordered paths, work classification, frozen source/prior generation, current attempt key, and durable receipts; retained until final dispatch is checkpointed, then removed with the manifest.
@@ -244,6 +245,8 @@ The tRPC and `/api/v1` procedures are public; there is no authentication or auth
 | `createSmartAlbum` / `updateSmartAlbum` / `deleteSmartAlbum` | mutation | Name, `filters` (photo filters without `collectionId`), optional `query` (≤ 200 chars); at least one filter or a query (`BAD_REQUEST`), case-insensitive name uniqueness (`CONFLICT`) |
 | `junkReview` | query | Review candidates (not dismissed, not picked/rejected, unrated) with `junkReasons` in order `screenshot`, `document` (tags ≥ 0.5), `blurry` (sharpness < 40), `dark` (brightness < 40); optional `reason`; id-desc keyset `cursor`, limit 1-500; library-wide `counts` |
 | `resolveJunk` | mutation | 1-500 IDs; `reject` sets `flag = 'reject'`, `keep` sets `junk_dismissed`; returns existing IDs |
+| `duplicateGroups` | query | Near-duplicate groups (connected pHash components within 1 of 40 bits) and EXIF bursts (same camera, 3+ shots chained ≤ 2 s); undismissed, rejected photos excluded; suggested keeper; offset `cursor`, limit 1-200; `counts` per kind |
+| `resolveDuplicateGroup` | mutation | Key must still match current membership (`CONFLICT`). `keep` rejects every non-kept member and dismisses the kept set when 2+; `dismiss` records the key. Files are never touched |
 | `scan` | mutation | Defaults to incremental scanning; optional `{ force: true }` reprocesses all discovered files. Creates a durable job and returns `{ success, jobId? }` |
 | `scanStatus` | query | Returns durable progress for a scan UUID or `null` |
 | `realtimeToken` | query | Returns `{ token, baseUrl? }` for a job ID; optional client-reachable self-hosted origin |
@@ -317,6 +320,8 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 Automatic tags on iOS: the shared filter sheet has a Tag picker with counts (summary `#tag`) feeding Library and Search, and the loupe info sheet shows the photo's tag chips; tapping a chip closes the loupe, switches to Library, and adds that tag to the existing Library filters.
 
 Junk review on iOS: the Library header's **Review** button (candidate count) pushes a review screen with a reason picker and counts, first-reason badges, select mode with Reject/Keep, confirmed **Reject All**/**Keep All** for loaded photos, and a review loupe whose Reject/Keep buttons advance. Resolutions remove photos optimistically, roll back on failure, and propagate confirmed rejects to Library and Search through `PhotoCurationCenter`.
+
+Duplicates on iOS: the Library header's **Duplicates** button (combined count) pushes a screen with All/Duplicates/Bursts, group cards with the suggested keeper preselected, keep toggles (one photo always stays kept), a Compare loupe, **Keep N, reject M** and **Not duplicates**. Resolutions remove groups optimistically, roll back on failure, reload on a changed group, and propagate rejects through `PhotoCurationCenter`.
 
 Smart albums on iOS: a Smart Albums section in the Collections tab (cards with count or a magnifier for query albums, rename/delete with rollback); **Save as Smart Album…** in the Library filter sheet and Search. Detail screens reuse the collection grid/loupe through `LibraryStore` scope `.smartAlbum(filters, query)`.
 

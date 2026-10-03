@@ -597,6 +597,99 @@
 				}
 			}
 		},
+		"/api/v1/duplicates": {
+			"get": {
+				"operationId": "listDuplicateGroups",
+				"description": "Near-duplicate (perceptual-hash) and burst groups among photos that have a perceptual hash and are not rejected, excluding dismissed groups. Ordered by group size descending, then newest (highest member id) first, and offset-paginated with an opaque `cursor`. `counts` covers every undismissed group regardless of `kind` and `cursor`.",
+				"parameters": [
+					{
+						"name": "kind",
+						"in": "query",
+						"required": false,
+						"description": "Only groups of this kind",
+						"schema": {
+							"$ref": "#/components/schemas/DuplicateGroupKind"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 200,
+							"default": 50
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"required": false,
+						"description": "Opaque `nextCursor` from the previous page",
+						"schema": {
+							"type": "string",
+							"pattern": "^\\d{1,9}$"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "One page of groups with counts",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DuplicateGroupsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/duplicates/resolve": {
+			"post": {
+				"operationId": "resolveDuplicateGroup",
+				"description": "`keep` sets flag = reject on every member not listed in `keepIds` (1+ member IDs required); keeping 2+ members also dismisses the group they form. Files are never deleted or moved. `dismiss` hides the group until its membership changes. The group's current membership is recomputed and must still match `key`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ResolveDuplicateGroupRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Rejected member IDs or the dismissed key",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ResolveDuplicateGroupResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"409": {
+						"$ref": "#/components/responses/DuplicateGroupChanged"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
 		"/api/v1/search": {
 			"post": {
 				"operationId": "searchPhotos",
@@ -2307,6 +2400,135 @@
 					}
 				}
 			},
+			"DuplicateGroupKind": {
+				"type": "string",
+				"enum": ["duplicate", "burst"],
+				"description": "`duplicate`: connected perceptual-hash near-duplicates (2+ photos); `burst`: 3+ same-camera photos taken at most 2 seconds apart in sequence."
+			},
+			"DuplicateGroup": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"key",
+					"kind",
+					"photos",
+					"suggestedKeeperId",
+					"maxDistance"
+				],
+				"properties": {
+					"key": {
+						"type": "string",
+						"description": "Opaque group identity; changes whenever membership changes. Pass back to resolve."
+					},
+					"kind": {
+						"$ref": "#/components/schemas/DuplicateGroupKind"
+					},
+					"photos": {
+						"type": "array",
+						"minItems": 2,
+						"description": "Suggested keeper first, then ascending id",
+						"items": {
+							"$ref": "#/components/schemas/Photo"
+						}
+					},
+					"suggestedKeeperId": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "Highest rating, then pick flag, RAW, pixel count, sharpness, file size, lowest id"
+					},
+					"maxDistance": {
+						"type": ["integer", "null"],
+						"minimum": 0,
+						"description": "Largest pairwise perceptual-hash distance in bits; null for bursts"
+					}
+				}
+			},
+			"DuplicateGroupsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["groups", "counts", "nextCursor"],
+				"properties": {
+					"groups": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DuplicateGroup"
+						}
+					},
+					"counts": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["duplicate", "burst"],
+						"properties": {
+							"duplicate": {
+								"type": "integer",
+								"minimum": 0
+							},
+							"burst": {
+								"type": "integer",
+								"minimum": 0
+							}
+						}
+					},
+					"nextCursor": {
+						"type": ["string", "null"],
+						"pattern": "^\\d{1,9}$",
+						"description": "Pass as `cursor` for the next page; null on the last page"
+					}
+				}
+			},
+			"ResolveDuplicateGroupRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["key", "action"],
+				"properties": {
+					"key": {
+						"type": "string",
+						"minLength": 1
+					},
+					"action": {
+						"type": "string",
+						"enum": ["keep", "dismiss"]
+					},
+					"keepIds": {
+						"type": "array",
+						"maxItems": 500,
+						"description": "Required for `keep`: 1+ member IDs to keep; every other member is rejected",
+						"items": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				}
+			},
+			"ResolveDuplicateGroupResponse": {
+				"oneOf": [
+					{
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["rejected"],
+						"properties": {
+							"rejected": {
+								"type": "array",
+								"description": "Member IDs flagged reject, ascending",
+								"items": {
+									"type": "integer",
+									"minimum": 1
+								}
+							}
+						}
+					},
+					{
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["dismissed"],
+						"properties": {
+							"dismissed": {
+								"type": "string"
+							}
+						}
+					}
+				]
+			},
 			"ErrorResponse": {
 				"type": "object",
 				"additionalProperties": false,
@@ -2362,6 +2584,26 @@
 									"error": {
 										"code": "INTERNAL_ERROR",
 										"message": "The request could not be completed"
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"DuplicateGroupChanged": {
+				"description": "The group's membership changed since it was listed, or the key is unknown",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"examples": {
+							"duplicateGroupChanged": {
+								"value": {
+									"error": {
+										"code": "DUPLICATE_GROUP_CHANGED",
+										"message": "The group changed since it was listed"
 									}
 								}
 							}

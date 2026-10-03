@@ -1,4 +1,5 @@
 import {
+	Copy,
 	Layers,
 	ListFilter,
 	Loader2,
@@ -8,7 +9,8 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
+import { DuplicateGroupList } from "@/components/DuplicateGroupList";
+import { DuplicatesHeader } from "@/components/DuplicatesHeader";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
 import { PhotoGrid } from "@/components/PhotoGrid";
@@ -23,9 +25,11 @@ import {
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { PanelLayout } from "@/components/panels/PanelLayout";
 import { ReviewHeader } from "@/components/ReviewHeader";
+import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { useCollections } from "@/hooks/use-collections";
+import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { useJunkReview } from "@/hooks/use-junk-review";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -44,6 +48,7 @@ import {
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
 import { trpc } from "@/lib/trpc";
 import type {
+	DuplicateKind,
 	JunkAction,
 	JunkReason,
 	PhotoMetadata,
@@ -63,10 +68,17 @@ export function Dashboard() {
 		number | null
 	>(null);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
-	// Review replaces the library view; folder, collection, and filters are kept
-	// (but ignored) so leaving Review restores the previous library.
-	const [reviewActive, setReviewActive] = useState(false);
+	// Review and Duplicates replace the library view; folder, collection, and
+	// filters are kept (but ignored) so leaving them restores the library.
+	const [catalogView, setCatalogView] = useState<
+		"review" | "duplicates" | null
+	>(null);
+	const reviewActive = catalogView === "review";
+	const duplicatesActive = catalogView === "duplicates";
 	const [reviewReason, setReviewReason] = useState<JunkReason | null>(null);
+	const [duplicateKind, setDuplicateKind] = useState<DuplicateKind | null>(
+		null,
+	);
 	const [filters, setFilters] = useState<LibraryFilters>(EMPTY_LIBRARY_FILTERS);
 	// The smart album last applied. Any later change to the folder, filters,
 	// search, or mode deselects it: the album is a starting point, not a lock.
@@ -88,7 +100,7 @@ export function Dashboard() {
 	const selectedSmartAlbum =
 		appliedSmartAlbum &&
 		selectedCollectionId === null &&
-		!reviewActive &&
+		catalogView === null &&
 		similarSource === null &&
 		smartAlbumMatches(
 			appliedSmartAlbum,
@@ -131,7 +143,7 @@ export function Dashboard() {
 			tag: filters.tag ?? undefined,
 		},
 		{
-			enabled: !searchQuery && !reviewActive,
+			enabled: !searchQuery && catalogView === null,
 		},
 	);
 
@@ -152,7 +164,7 @@ export function Dashboard() {
 			flag: filters.flag ?? undefined,
 			tag: filters.tag ?? undefined,
 		},
-		{ enabled: !!searchQuery && !reviewActive },
+		{ enabled: !!searchQuery && catalogView === null },
 	);
 
 	const similarPhotosQuery = trpc.similarPhotos.useQuery(
@@ -161,6 +173,17 @@ export function Dashboard() {
 	);
 
 	const review = useJunkReview({ active: reviewActive, reason: reviewReason });
+	const duplicates = useDuplicateGroups({
+		active: duplicatesActive,
+		kind: duplicateKind,
+	});
+	// Loupe/filmstrip navigation in Duplicates walks every shown member once.
+	const duplicatePhotos = useMemo(() => {
+		const seen = new Set<number>();
+		return duplicates.groups
+			.flatMap((group) => group.photos)
+			.filter((photo) => !seen.has(photo.id) && seen.add(photo.id));
+	}, [duplicates.groups]);
 	const collectionsApi = useCollections();
 	const selectedCollection =
 		selectedCollectionId === null
@@ -193,9 +216,15 @@ export function Dashboard() {
 			: searchQuery
 				? searchPhotosQuery
 				: photosQuery;
-	const photos: PhotoMetadata[] = activeQuery.data?.photos ?? [];
-	const loading = activeQuery.isLoading;
-	const error = activeQuery.error;
+	const photos: PhotoMetadata[] = duplicatesActive
+		? duplicatePhotos
+		: (activeQuery.data?.photos ?? []);
+	const loading = duplicatesActive
+		? duplicates.listQuery.isLoading
+		: activeQuery.isLoading;
+	const error = duplicatesActive
+		? duplicates.listQuery.error
+		: activeQuery.error;
 	const similarNotIndexed =
 		similarSource !== null && similarPhotosQuery.data?.indexed === false;
 
@@ -207,7 +236,7 @@ export function Dashboard() {
 		const source = library.activePhoto;
 		if (!source) return;
 		setSearchQuery("");
-		setReviewActive(false);
+		setCatalogView(null);
 		setSimilarSource(source);
 		library.setViewMode("grid");
 	}, [library.activePhoto, library.setViewMode]);
@@ -302,7 +331,7 @@ export function Dashboard() {
 		setSearchQuery(query);
 		if (query) {
 			setSimilarSource(null);
-			setReviewActive(false);
+			setCatalogView(null);
 		}
 	}, []);
 
@@ -323,7 +352,7 @@ export function Dashboard() {
 		setSelectedFolder(folder);
 		setSelectedCollectionId(null);
 		setSimilarSource(null);
-		setReviewActive(false);
+		setCatalogView(null);
 	}, []);
 
 	const handleCollectionSelect = useCallback((id: number | null) => {
@@ -331,17 +360,23 @@ export function Dashboard() {
 		setSelectedCollectionId(id);
 		setSelectedFolder(null);
 		setSimilarSource(null);
-		setReviewActive(false);
+		setCatalogView(null);
 	}, []);
 
 	const handleReviewSelect = useCallback(() => {
-		setReviewActive(true);
+		setCatalogView("review");
 		setSimilarSource(null);
 		setActivePhoto(null);
 	}, [setActivePhoto]);
 
-	const exitReview = useCallback(() => {
-		setReviewActive(false);
+	const handleDuplicatesSelect = useCallback(() => {
+		setCatalogView("duplicates");
+		setSimilarSource(null);
+		setActivePhoto(null);
+	}, [setActivePhoto]);
+
+	const exitCatalogView = useCallback(() => {
+		setCatalogView(null);
 		setActivePhoto(null);
 	}, [setActivePhoto]);
 
@@ -367,7 +402,7 @@ export function Dashboard() {
 			setSearchQuery(album.query ?? "");
 			setSelectedCollectionId(null);
 			setSimilarSource(null);
-			setReviewActive(false);
+			setCatalogView(null);
 			setViewMode("grid");
 		},
 		[setViewMode],
@@ -400,7 +435,7 @@ export function Dashboard() {
 		(tag: string) => {
 			setFilters((current) => ({ ...current, tag }));
 			setSimilarSource(null);
-			setReviewActive(false);
+			setCatalogView(null);
 			setViewMode("grid");
 		},
 		[setViewMode],
@@ -466,6 +501,33 @@ export function Dashboard() {
 						similar-photo search.
 					</p>
 				</div>
+			);
+		}
+
+		if (duplicatesActive) {
+			if (duplicates.groups.length === 0) {
+				return (
+					<div
+						data-testid="duplicates-empty"
+						className="flex h-full flex-col items-center justify-center text-muted-foreground"
+					>
+						<Copy className="mb-4 h-16 w-16 opacity-20" />
+						<p className="text-sm font-medium">No duplicates or bursts</p>
+					</div>
+				);
+			}
+			return (
+				<DuplicateGroupList
+					groups={duplicates.groups}
+					activePhotoId={library.activePhoto?.id}
+					onPhotoActivate={handlePhotoClick}
+					onPhotoOpen={handlePhotoDoubleClick}
+					onKeep={duplicates.resolve}
+					onDismiss={(group) => duplicates.resolve(group, null)}
+					hasMore={duplicates.listQuery.hasNextPage}
+					loadingMore={duplicates.listQuery.isFetchingNextPage}
+					onLoadMore={() => void duplicates.listQuery.fetchNextPage()}
+				/>
 			);
 		}
 
@@ -609,7 +671,20 @@ export function Dashboard() {
 			onKeepAll={() => resolveShownReviewPhotos("keep")}
 			error={review.error}
 			onDismissError={review.clearError}
-			onExit={exitReview}
+			onExit={exitCatalogView}
+		/>
+	);
+	const duplicatesHeader = duplicatesActive && (
+		<DuplicatesHeader
+			kind={duplicateKind}
+			onKindChange={(kind) => {
+				setDuplicateKind(kind);
+				setActivePhoto(null);
+			}}
+			counts={duplicates.counts}
+			error={duplicates.error}
+			onDismissError={duplicates.clearError}
+			onExit={exitCatalogView}
 		/>
 	);
 	const smartAlbumHeader = selectedSmartAlbum && (
@@ -639,6 +714,7 @@ export function Dashboard() {
 	// A query album names itself above the search results header.
 	const banner =
 		reviewHeader ||
+		duplicatesHeader ||
 		similarChip ||
 		(smartAlbumHeader || searchHeader ? (
 			<>
@@ -702,6 +778,12 @@ export function Dashboard() {
 							reviewCount={review.counts?.all}
 							reviewActive={reviewActive}
 							onReviewSelect={handleReviewSelect}
+							duplicateCount={
+								duplicates.counts &&
+								duplicates.counts.duplicate + duplicates.counts.burst
+							}
+							duplicatesActive={duplicatesActive}
+							onDuplicatesSelect={handleDuplicatesSelect}
 						/>
 					</div>
 					<ActivityPanel

@@ -50,6 +50,19 @@ actor TestAPI: PhotoBrainAPI {
     var resolveFailure: PhotoBrainAPIError?
     /// Server-side decisions by photo id.
     var resolvedJunk: [Int: JunkAction] = [:]
+    /// Server-side duplicate/burst groups in listing order; `duplicateGroups` filters and pages
+    /// over them with an offset cursor.
+    var duplicateGroupList: [DuplicateGroupDTO] = []
+    /// Scripted responses returned (in order) before falling back to `duplicateGroupList`.
+    var duplicateScript: [DuplicateGroupsResponseDTO] = []
+    var duplicateGroupRequests: [DuplicateGroupsRequest] = []
+    var duplicateGroupsFailure: PhotoBrainAPIError?
+    var duplicateResolveRequests: [DuplicateResolveRequest] = []
+    var duplicateResolveDelay: Duration = .zero
+    var duplicateResolveFailure: PhotoBrainAPIError?
+    /// Server-side reject flags set by duplicate resolution.
+    var duplicateRejected: Set<Int> = []
+    var dismissedDuplicateKeys: Set<String> = []
     /// Server-side smart albums, kept sorted by name like the real list route.
     var smartAlbumList: [SmartAlbumDTO] = []
     var smartAlbumFailures: [SmartAlbumRoute: PhotoBrainAPIError] = [:]
@@ -98,6 +111,50 @@ actor TestAPI: PhotoBrainAPI {
     struct ResolveRequest: Equatable, Sendable {
         let ids: [Int]
         let action: JunkAction
+    }
+
+    struct DuplicateGroupsRequest: Equatable, Sendable {
+        let kind: DuplicateKind?
+        let limit: Int
+        let cursor: String?
+    }
+
+    struct DuplicateResolveRequest: Equatable, Sendable {
+        let key: String
+        let resolution: DuplicateResolution
+    }
+
+    func setDuplicateGroups(_ groups: [DuplicateGroupDTO]) {
+        duplicateGroupList = groups
+    }
+
+    func scriptDuplicateResponses(_ responses: [DuplicateGroupsResponseDTO]) {
+        duplicateScript = responses
+    }
+
+    func setDuplicateGroupsFailure(_ failure: PhotoBrainAPIError?) {
+        duplicateGroupsFailure = failure
+    }
+
+    func setDuplicateResolve(delay: Duration = .zero, failure: PhotoBrainAPIError? = nil) {
+        duplicateResolveDelay = delay
+        duplicateResolveFailure = failure
+    }
+
+    func recordedDuplicateGroupRequests() -> [DuplicateGroupsRequest] {
+        duplicateGroupRequests
+    }
+
+    func recordedDuplicateResolveRequests() -> [DuplicateResolveRequest] {
+        duplicateResolveRequests
+    }
+
+    func serverDuplicateRejected() -> Set<Int> {
+        duplicateRejected
+    }
+
+    func serverDismissedDuplicateKeys() -> Set<String> {
+        dismissedDuplicateKeys
     }
 
     func setJunkCandidates(_ photos: [PhotoDTO]) {
@@ -490,6 +547,54 @@ actor TestAPI: PhotoBrainAPI {
         return ResolveJunkResponseDTO(updated: updated)
     }
 
+    func duplicateGroups(kind: DuplicateKind?, limit: Int, cursor: String?) async throws -> DuplicateGroupsResponseDTO {
+        duplicateGroupRequests.append(DuplicateGroupsRequest(kind: kind, limit: limit, cursor: cursor))
+        if let failure = duplicateGroupsFailure { throw failure }
+        if !duplicateScript.isEmpty { return duplicateScript.removeFirst() }
+        let matching = duplicateGroupList.filter { group in kind.map { group.kind == $0 } ?? true }
+        let start = min(cursor.flatMap(Int.init) ?? 0, matching.count)
+        let page = Array(matching[start...].prefix(limit))
+        let end = start + page.count
+        return DuplicateGroupsResponseDTO(
+            groups: page,
+            counts: Self.duplicateCounts(duplicateGroupList),
+            nextCursor: end < matching.count ? String(end) : nil
+        )
+    }
+
+    func resolveDuplicateGroup(key: String, resolution: DuplicateResolution) async throws -> ResolveDuplicateGroupResponseDTO {
+        duplicateResolveRequests.append(DuplicateResolveRequest(key: key, resolution: resolution))
+        // Outcome is decided when the request arrives, like a real server.
+        let failure = duplicateResolveFailure
+        if duplicateResolveDelay > .zero { try await Task.sleep(for: duplicateResolveDelay) }
+        if let failure { throw failure }
+        guard let group = duplicateGroupList.first(where: { $0.key == key }) else {
+            throw PhotoBrainAPIError.duplicateGroupChanged
+        }
+        switch resolution {
+        case let .keep(keepIds):
+            let members = group.photos.map(\.id)
+            guard !keepIds.isEmpty, Set(keepIds).isSubset(of: members) else {
+                throw PhotoBrainAPIError.server(status: 400, code: "INVALID_REQUEST", message: "Invalid keepIds")
+            }
+            let rejected = members.filter { !keepIds.contains($0) }
+            duplicateRejected.formUnion(rejected)
+            // Rejected photos leave grouping: every group containing one changes membership.
+            duplicateGroupList.removeAll { $0.key == key || $0.photos.contains { rejected.contains($0.id) } }
+            return ResolveDuplicateGroupResponseDTO(rejected: rejected, dismissed: nil)
+        case .dismiss:
+            dismissedDuplicateKeys.insert(key)
+            duplicateGroupList.removeAll { $0.key == key }
+            return ResolveDuplicateGroupResponseDTO(rejected: nil, dismissed: key)
+        }
+    }
+
+    static func duplicateCounts(_ groups: [DuplicateGroupDTO]) -> DuplicateCountsDTO {
+        var counts = DuplicateCountsDTO.zero
+        for group in groups { counts.adjust(group.kind, by: 1) }
+        return counts
+    }
+
     static func junkCounts(_ photos: [PhotoDTO]) -> JunkCountsDTO {
         var counts = JunkCountsDTO.zero
         for photo in photos { counts.adjust(reasons: photo.junkReasons, by: 1) }
@@ -663,6 +768,24 @@ enum TestModels {
             cover: cover,
             createdAt: Date(timeIntervalSince1970: 1_700_000_000),
             updatedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(id))
+        )
+    }
+
+    /// A group keyed like the server (`kind:sorted ids`); photos are listed keeper first.
+    static func duplicateGroup(
+        _ kind: DuplicateKind = .duplicate,
+        ids: [Int],
+        keeper: Int? = nil,
+        maxDistance: Int? = nil
+    ) -> DuplicateGroupDTO {
+        let keeperID = keeper ?? ids.min() ?? 0
+        let ordered = [keeperID] + ids.filter { $0 != keeperID }.sorted()
+        return DuplicateGroupDTO(
+            key: "\(kind.rawValue):\(ids.sorted().map(String.init).joined(separator: ","))",
+            kind: kind,
+            photos: ordered.map { photo(id: $0) },
+            suggestedKeeperId: keeperID,
+            maxDistance: kind == .burst ? nil : (maxDistance ?? 3)
         )
     }
 }

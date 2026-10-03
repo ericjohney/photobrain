@@ -2,10 +2,12 @@ import type { Page, Route } from "@playwright/test";
 import superjson, { type SuperJSONResult } from "superjson";
 import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
 import {
+	FIXTURE_DUPLICATE_GROUPS,
 	FIXTURE_FOLDERS,
 	FIXTURE_JUNK_REASONS,
 	FIXTURE_PHOTO_TAGS,
 	FIXTURE_PHOTOS,
+	type FixtureDuplicateKind,
 	type FixtureJunkReason,
 	type FixturePhoto,
 	type FixturePhotoFilters,
@@ -107,6 +109,8 @@ function createDefaultHandlers(): Record<string, Handler> {
 	let nextCollectionId = 1;
 	// Photos kept from junk review (the API's photos.junk_dismissed).
 	const junkDismissed = new Set<number>();
+	// Group keys marked "Not duplicates" (the API's duplicate_dismissals).
+	const duplicateDismissals = new Set<string>();
 	// Strictly increasing so same-millisecond writes still order deterministically.
 	let clock = Date.parse("2024-09-01T00:00:00Z");
 	const now = () => {
@@ -237,6 +241,43 @@ function createDefaultHandlers(): Record<string, Handler> {
 		const members = collections.get(collectionId)?.photoIds ?? [];
 		return library.filter((p) => members.includes(p.id));
 	};
+	/** Suggested keeper order like the API (no sharpness in the fixtures). */
+	const keeperOrder = (a: FixturePhoto, b: FixturePhoto) =>
+		b.rating - a.rating ||
+		Number(b.flag === "pick") - Number(a.flag === "pick") ||
+		Number(b.isRaw) - Number(a.isRaw) ||
+		b.width * b.height - a.width * a.height ||
+		b.size - a.size ||
+		a.id - b.id;
+	/**
+	 * Current groups like the API: rejected members drop out, groups need 2+
+	 * (bursts 3+) members, keys encode membership, dismissed keys are hidden.
+	 * Larger groups first, then newest; keeper first, then id ascending.
+	 */
+	const duplicateGroups = () =>
+		FIXTURE_DUPLICATE_GROUPS.flatMap(({ kind, photoIds, maxDistance }) => {
+			const members = library.filter(
+				(p) => photoIds.includes(p.id) && p.flag !== "reject",
+			);
+			if (members.length < (kind === "burst" ? 3 : 2)) return [];
+			const key = `${kind}:${members.map((p) => p.id).join(",")}`;
+			if (duplicateDismissals.has(key)) return [];
+			const keeper = [...members].sort(keeperOrder)[0];
+			return [
+				{
+					key,
+					kind,
+					photos: [keeper, ...members.filter((p) => p !== keeper)],
+					suggestedKeeperId: keeper.id,
+					maxDistance,
+				},
+			];
+		}).sort(
+			(a, b) =>
+				b.photos.length - a.photos.length ||
+				Math.max(...b.photos.map((p) => p.id)) -
+					Math.max(...a.photos.map((p) => p.id)),
+		);
 	return {
 		folders: () => FIXTURE_FOLDERS,
 		photos: (input) => {
@@ -361,6 +402,62 @@ function createDefaultHandlers(): Record<string, Handler> {
 					return p.id;
 				});
 			return { updated };
+		},
+		duplicateGroups: (input) => {
+			const {
+				kind,
+				limit = 50,
+				cursor,
+			} = (input ?? {}) as {
+				kind?: FixtureDuplicateKind;
+				limit?: number;
+				cursor?: string;
+			};
+			if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+				throw new TrpcFixtureError("BAD_REQUEST", "Invalid limit");
+			}
+			const all = duplicateGroups();
+			const matching = all.filter((g) => kind === undefined || g.kind === kind);
+			const offset = cursor === undefined ? 0 : Number(cursor);
+			const end = offset + limit;
+			return {
+				groups: matching.slice(offset, end),
+				counts: {
+					duplicate: all.filter((g) => g.kind === "duplicate").length,
+					burst: all.filter((g) => g.kind === "burst").length,
+				},
+				nextCursor: matching.length > end ? String(end) : null,
+			};
+		},
+		resolveDuplicateGroup: (input) => {
+			const { key, action, keepIds } = input as {
+				key: string;
+				action: "keep" | "dismiss";
+				keepIds?: number[];
+			};
+			const group = duplicateGroups().find((g) => g.key === key);
+			if (!group) {
+				throw new TrpcFixtureError("CONFLICT", "GROUP_CHANGED");
+			}
+			if (action === "dismiss") {
+				duplicateDismissals.add(key);
+				return { dismissed: key };
+			}
+			const memberIds = group.photos.map((p) => p.id);
+			if (
+				!keepIds ||
+				keepIds.length === 0 ||
+				keepIds.some((id) => !memberIds.includes(id))
+			) {
+				throw new TrpcFixtureError("BAD_REQUEST", "Invalid keepIds");
+			}
+			const rejected = group.photos.filter((p) => !keepIds.includes(p.id));
+			for (const photo of rejected) photo.flag = "reject";
+			if (keepIds.length > 1) {
+				const kept = [...keepIds].sort((a, b) => a - b).join(",");
+				duplicateDismissals.add(`${group.kind}:${kept}`);
+			}
+			return { rejected: rejected.map((p) => p.id) };
 		},
 		collections: () => ({
 			collections: [...collections.values()]

@@ -23,6 +23,8 @@ const PHOTO_LIST_KEYS = [
 ];
 const CURATION_MUTATION_KEY = getMutationKey(trpc.setPhotoCuration);
 const SMART_ALBUMS_KEY = getQueryKey(trpc.smartAlbums);
+// Ratings and picks change suggested keepers; rejects leave groups.
+const DUPLICATE_GROUPS_KEY = getQueryKey(trpc.duplicateGroups);
 
 function matchesPatch(photo: CurationFields, patch: CurationPatch) {
 	return (
@@ -104,6 +106,9 @@ export function usePhotoCuration(onPatch: (patcher: PhotoPatcher) => void) {
 						// Rating/flag smart album counts and covers change too.
 						void queryClient.invalidateQueries({
 							queryKey: SMART_ALBUMS_KEY,
+						});
+						void queryClient.invalidateQueries({
+							queryKey: DUPLICATE_GROUPS_KEY,
 						});
 					}
 				});

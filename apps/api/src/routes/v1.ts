@@ -10,6 +10,11 @@ import {
 	removePhotosFromCollection,
 	renameCollection,
 } from "../services/collections";
+import {
+	DuplicateGroupError,
+	duplicateGroups,
+	resolveDuplicateGroup,
+} from "../services/duplicates";
 import { junkReview, resolveJunk } from "../services/junk-review";
 import type { ApiDatabase } from "../services/photo-catalog";
 import {
@@ -41,6 +46,8 @@ import {
 	collectionsResponseSchema,
 	createCollectionRequestSchema,
 	createSmartAlbumRequestSchema,
+	duplicateGroupsQuerySchema,
+	duplicateGroupsResponseSchema,
 	errorResponseSchema,
 	filterOptionsQuerySchema,
 	filterOptionsResponseSchema,
@@ -57,6 +64,8 @@ import {
 	photoTagsResponseSchema,
 	removeCollectionPhotosResponseSchema,
 	renameCollectionRequestSchema,
+	resolveDuplicateGroupRequestSchema,
+	resolveDuplicateGroupResponseSchema,
 	resolveJunkRequestSchema,
 	resolveJunkResponseSchema,
 	scanIdSchema,
@@ -64,6 +73,7 @@ import {
 	searchRequestSchema,
 	searchResponseSchema,
 	serializeCollection,
+	serializeDuplicateGroupsResponse,
 	serializeJunkReviewResponse,
 	serializePhoto,
 	serializePhotosResponse,
@@ -164,6 +174,20 @@ function smartAlbumError(error: unknown): Response {
 			case "EMPTY":
 				return invalidRequest();
 		}
+	}
+	return internalError(error);
+}
+
+/** Maps duplicate-group domain errors to stable envelopes; anything else is a 500. */
+function duplicateGroupError(error: unknown): Response {
+	if (error instanceof DuplicateGroupError) {
+		return error.code === "GROUP_CHANGED"
+			? errorResponse(
+					"DUPLICATE_GROUP_CHANGED",
+					"The group changed since it was listed",
+					409,
+				)
+			: invalidRequest();
 	}
 	return internalError(error);
 }
@@ -322,6 +346,37 @@ export function createV1Router(dependencies: V1Dependencies) {
 			);
 		} catch (error) {
 			return internalError(error);
+		}
+	});
+
+	router.get("/duplicates", async (context) => {
+		const input = duplicateGroupsQuerySchema.safeParse(context.req.query());
+		if (!input.success) return invalidRequest();
+		try {
+			return jsonResponse(
+				duplicateGroupsResponseSchema,
+				serializeDuplicateGroupsResponse(
+					await duplicateGroups(dependencies.database, input.data),
+				),
+			);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.post("/duplicates/resolve", async (context) => {
+		const input = await parseJsonBody(
+			context.req.raw,
+			resolveDuplicateGroupRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			return jsonResponse(
+				resolveDuplicateGroupResponseSchema,
+				resolveDuplicateGroup(dependencies.database, input),
+			);
+		} catch (error) {
+			return duplicateGroupError(error);
 		}
 	});
 

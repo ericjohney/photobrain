@@ -21,6 +21,7 @@ final class AppBootstrap: ObservableObject {
     @Published private(set) var collections: CollectionsStore?
     @Published private(set) var smartAlbums: SmartAlbumsStore?
     @Published private(set) var review: ReviewStore?
+    @Published private(set) var duplicates: DuplicatesStore?
     @Published private(set) var scans: ScanCoordinator?
     @Published private(set) var theme: ThemeController?
     @Published private(set) var configurationError: String?
@@ -42,10 +43,12 @@ final class AppBootstrap: ObservableObject {
             let collections = CollectionsStore(api: environment.api)
             let smartAlbums = SmartAlbumsStore(api: environment.api)
             let review = ReviewStore(api: environment.api, curation: curation)
+            let duplicates = DuplicatesStore(api: environment.api, curation: curation)
             let scans = ScanCoordinator(api: environment.api, migration: migration)
-            scans.invalidateLibrary = { [weak library, weak review] in
+            scans.invalidateLibrary = { [weak library, weak review, weak duplicates] in
                 await library?.load()
                 await review?.refreshCounts()
+                await duplicates?.refreshCounts()
             }
             scans.invalidateSearch = { [weak search] in
                 guard let search,
@@ -60,6 +63,7 @@ final class AppBootstrap: ObservableObject {
             self.collections = collections
             self.smartAlbums = smartAlbums
             self.review = review
+            self.duplicates = duplicates
             self.scans = scans
         } catch {
             configurationError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -77,6 +81,7 @@ private struct BootstrapView: View {
            let collections = bootstrap.collections,
            let smartAlbums = bootstrap.smartAlbums,
            let review = bootstrap.review,
+           let duplicates = bootstrap.duplicates,
            let scans = bootstrap.scans,
            let theme = bootstrap.theme {
             RootTabView(
@@ -86,6 +91,7 @@ private struct BootstrapView: View {
                 collections: collections,
                 smartAlbums: smartAlbums,
                 review: review,
+                duplicates: duplicates,
                 scans: scans,
                 theme: theme,
                 links: bootstrap.links
@@ -109,6 +115,7 @@ private struct RootTabView: View {
     let collections: CollectionsStore
     let smartAlbums: SmartAlbumsStore
     let review: ReviewStore
+    let duplicates: DuplicatesStore
     @ObservedObject var scans: ScanCoordinator
     @ObservedObject var theme: ThemeController
     @ObservedObject var links: AppLinkRouter
@@ -122,6 +129,7 @@ private struct RootTabView: View {
                 collections: collections,
                 smartAlbums: smartAlbums,
                 review: review,
+                duplicates: duplicates,
                 scans: scans,
                 environment: environment,
                 theme: theme,

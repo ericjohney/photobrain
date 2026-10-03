@@ -18,6 +18,7 @@ module.exports.generateThumbnailsFromFile = notAvailable(
 	"generateThumbnailsFromFile",
 );
 module.exports.getSupportedExtensions = notAvailable("getSupportedExtensions");
+module.exports.groupNearDuplicates = notAvailable("groupNearDuplicates");
 module.exports.isSupportedImage = notAvailable("isSupportedImage");
 module.exports.perceptualHash = notAvailable("perceptualHash");
 module.exports.processPhoto = notAvailable("processPhoto");

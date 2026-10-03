@@ -35,3 +35,9 @@ export type ReviewPhoto = JunkReviewResponse["photos"][number];
 export type JunkReason = ReviewPhoto["junkReasons"][number];
 export type JunkCounts = JunkReviewResponse["counts"];
 export type JunkAction = RouterInputs["resolveJunk"]["action"];
+
+// Duplicate and burst types
+export type DuplicateGroupsResponse = RouterOutputs["duplicateGroups"];
+export type DuplicateGroup = DuplicateGroupsResponse["groups"][number];
+export type DuplicateKind = DuplicateGroup["kind"];
+export type DuplicateCounts = DuplicateGroupsResponse["counts"];

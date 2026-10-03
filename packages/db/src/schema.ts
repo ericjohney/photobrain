@@ -286,6 +286,13 @@ export const smartAlbums = sqliteTable(
 	],
 );
 
+// Duplicate/burst groups the user marked "not duplicates", keyed by the API's
+// `${kind}:${sorted member ids}` group key. A changed membership is a new key.
+export const duplicateDismissals = sqliteTable("duplicate_dismissals", {
+	groupKey: text("group_key").primaryKey(),
+	dismissedAt: integer("dismissed_at", { mode: "timestamp" }).notNull(),
+});
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -326,3 +333,5 @@ export type PhotoQuality = typeof photoQuality.$inferSelect;
 export type NewPhotoQuality = typeof photoQuality.$inferInsert;
 export type SmartAlbum = typeof smartAlbums.$inferSelect;
 export type NewSmartAlbum = typeof smartAlbums.$inferInsert;
+export type DuplicateDismissal = typeof duplicateDismissals.$inferSelect;
+export type NewDuplicateDismissal = typeof duplicateDismissals.$inferInsert;

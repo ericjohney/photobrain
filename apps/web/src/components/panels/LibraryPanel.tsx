@@ -3,6 +3,7 @@ import {
 	Camera,
 	ChevronRight,
 	Clock,
+	Copy,
 	Folder,
 	FolderOpen,
 	Images,
@@ -159,6 +160,11 @@ interface LibraryPanelProps {
 	/** Review is shown instead of the library (folder/collection/filters ignored). */
 	reviewActive: boolean;
 	onReviewSelect: () => void;
+	/** Duplicate plus burst groups; undefined until loaded. */
+	duplicateCount: number | undefined;
+	/** Duplicates are shown instead of the library, like Review. */
+	duplicatesActive: boolean;
+	onDuplicatesSelect: () => void;
 }
 
 interface NavItemProps {
@@ -402,7 +408,12 @@ export function LibraryPanel({
 	reviewCount,
 	reviewActive,
 	onReviewSelect,
+	duplicateCount,
+	duplicatesActive,
+	onDuplicatesSelect,
 }: LibraryPanelProps) {
+	// Review and Duplicates replace the library; its selection is not shown.
+	const catalogViewActive = reviewActive || duplicatesActive;
 	const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
 		new Set(),
 	);
@@ -423,7 +434,7 @@ export function LibraryPanel({
 
 	const handleFolderSelect = (path: string) => {
 		// Toggle selection - clicking same folder again shows all photos
-		onFolderSelect(!reviewActive && selectedFolder === path ? null : path);
+		onFolderSelect(!catalogViewActive && selectedFolder === path ? null : path);
 	};
 
 	return (
@@ -436,7 +447,7 @@ export function LibraryPanel({
 						label="All Photos"
 						count={photoCount}
 						active={
-							!reviewActive &&
+							!catalogViewActive &&
 							selectedFolder === null &&
 							selectedCollectionId === null
 						}
@@ -460,6 +471,14 @@ export function LibraryPanel({
 						toggle
 						onClick={onReviewSelect}
 					/>
+					<NavItem
+						icon={<Copy className="h-4 w-4" />}
+						label="Duplicates"
+						count={duplicateCount}
+						active={duplicatesActive}
+						toggle
+						onClick={onDuplicatesSelect}
+					/>
 				</Section>
 
 				{/* Folders Section */}
@@ -474,7 +493,7 @@ export function LibraryPanel({
 								key={folder.path}
 								folder={folder}
 								depth={0}
-								selectedFolder={reviewActive ? null : selectedFolder}
+								selectedFolder={catalogViewActive ? null : selectedFolder}
 								expandedFolders={expandedFolders}
 								onToggleExpand={handleToggleExpand}
 								onSelect={handleFolderSelect}
@@ -505,11 +524,13 @@ export function LibraryPanel({
 				>
 					<CollectionList
 						collections={collections}
-						selectedCollectionId={reviewActive ? null : selectedCollectionId}
+						selectedCollectionId={
+							catalogViewActive ? null : selectedCollectionId
+						}
 						onSelect={(id) =>
 							// Re-selecting the active collection returns to All Photos.
 							onCollectionSelect(
-								!reviewActive && selectedCollectionId === id ? null : id,
+								!catalogViewActive && selectedCollectionId === id ? null : id,
 							)
 						}
 						creating={creatingCollection}
@@ -524,15 +545,15 @@ export function LibraryPanel({
 				<Section title="Smart Albums">
 					<SmartAlbumList
 						albums={smartAlbums}
-						selectedAlbumId={reviewActive ? null : selectedSmartAlbumId}
+						selectedAlbumId={catalogViewActive ? null : selectedSmartAlbumId}
 						onSelect={onSmartAlbumSelect}
 						onRename={onRenameSmartAlbum}
 						onDelete={onDeleteSmartAlbum}
 					/>
 				</Section>
 
-				{/* Filter By Section — also scopes an active search; hidden in Review */}
-				{!reviewActive && (
+				{/* Filter By Section — also scopes an active search; hidden in Review/Duplicates */}
+				{!catalogViewActive && (
 					<Section title="Filter By" defaultOpen={false}>
 						<Section title="Type">
 							<SegmentedFilter

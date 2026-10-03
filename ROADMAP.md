@@ -12,7 +12,7 @@ PhotoBrain aims to be a fast, AI-powered self-hosted photo management solution t
 - ✅ Monorepo architecture with Turbo + Bun
 - ✅ Rust-based image processing (NAPI module)
 - ✅ CLIP embeddings for semantic search (deferred batch generation)
-- ✅ Perceptual hash storage for future duplicate detection
+- ✅ Perceptual-hash duplicate and burst review (web and native iOS)
 - ✅ Lightroom-inspired UI with three-panel layout, filmstrip, and loupe view
 - ✅ RESTful + tRPC hybrid API with Hono.js
 - ✅ SQLite database with Drizzle ORM
@@ -34,7 +34,7 @@ PhotoBrain aims to be a fast, AI-powered self-hosted photo management solution t
 These are the next product and production-readiness priorities for the current checkout:
 
 1. **Expo collections** - manual collections and saved-filter smart albums ship on web and native iOS; the Expo Android collections screen remains.
-2. **Duplicate detection** - add pHash similarity queries, grouped results, comparison, and safe deletion.
+2. **Duplicate follow-ups** - a larger pHash for a looser threshold, side-by-side comparison, and the Expo Android duplicates screen. Groups, suggested keeper, and reject-based resolution ship on web and native iOS.
 3. **Photo map** - use the already extracted GPS coordinates to add a map and photo markers.
 4. **Mobile backup** - add camera-roll access, background upload, and offline thumbnail handling.
 5. **Production hardening** - add authentication, database/file backups, deleted-file reconciliation, rate limiting, and REST/Inngest coverage.
@@ -319,10 +319,10 @@ Lens corrections compensate for optical imperfections in camera lenses:
 
 ### 2.3 Duplicate Detection 🟡 **PARTIALLY COMPLETED**
 - [x] Generate and store a pHash during scanning
-- [ ] Create a pHash similarity search query
-- [ ] Build duplicate finder UI
+- [x] Group near-duplicates by pHash distance (`groupNearDuplicates`) and EXIF bursts
+- [x] Build duplicate finder UI (web and native iOS)
 - [ ] Show similar photos side-by-side
-- [ ] Batch deletion of duplicates
+- [x] Resolve groups by rejecting non-kept photos (files are never deleted)
 - [ ] Configurable similarity threshold
 
 ---

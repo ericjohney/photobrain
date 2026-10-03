@@ -100,3 +100,18 @@ export interface ImageQuality {
 export function analyzeImageQuality(
 	paths: string[],
 ): Array<ImageQuality | null>;
+export interface NearDuplicateGroup {
+	/** Member IDs, ascending. */
+	ids: number[];
+	/** Largest pairwise Hamming distance between members (grouping is transitive). */
+	maxDistance: number;
+}
+/**
+ * Connected components (size >= 2) of index-aligned base64 pHashes within
+ * `maxDistance` bits. Undecodable hashes are skipped.
+ */
+export function groupNearDuplicates(
+	ids: number[],
+	hashes: string[],
+	maxDistance: number,
+): NearDuplicateGroup[];

@@ -3,6 +3,7 @@
 mod batch;
 mod clip;
 mod discovery;
+mod duplicates;
 mod exif;
 mod heif;
 mod orientation;
@@ -19,7 +20,7 @@ pub use batch::{
 };
 pub use clip::{batch_generate_clip_embeddings, clip_text_embedding};
 pub use discovery::{DiscoveryResult, discover_photos};
-pub use exif::{ExifData, extract_exif};
+pub use duplicates::{NearDuplicateGroup, group_near_duplicates};
 pub use phash::generate_phash;
 pub use quality::{ImageQuality, analyze_image_quality};
 pub use stream::{PhotoProcessingStream, PhotoStreamResult, start_photo_processing};

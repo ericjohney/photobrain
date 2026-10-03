@@ -49,6 +49,10 @@ protocol PhotoBrainAPI: Sendable {
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO
     /// `POST /review/junk/resolve` for 1-500 positive photo ids.
     func resolveJunk(ids: [Int], action: JunkAction) async throws -> ResolveJunkResponseDTO
+    /// `GET /duplicates`. `kind` and `cursor` are sent only when set; `limit` is 1-200.
+    func duplicateGroups(kind: DuplicateKind?, limit: Int, cursor: String?) async throws -> DuplicateGroupsResponseDTO
+    /// `POST /duplicates/resolve`. A stale key throws `PhotoBrainAPIError.duplicateGroupChanged`.
+    func resolveDuplicateGroup(key: String, resolution: DuplicateResolution) async throws -> ResolveDuplicateGroupResponseDTO
     func startScan(force: Bool) async throws -> StartScanResponseDTO
     func scan(id: String) async throws -> ScanDTO?
     func activeScans() async throws -> ActiveScansResponseDTO
@@ -246,6 +250,29 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
             path: ["review", "junk", "resolve"],
             body: ResolveJunkRequestDTO(photoIds: ids, action: action)
         )
+    }
+
+    func duplicateGroups(kind: DuplicateKind?, limit: Int, cursor: String?) async throws -> DuplicateGroupsResponseDTO {
+        guard (1...DuplicateGroupsResponseDTO.maximumLimit).contains(limit) else { throw PhotoBrainAPIError.invalidRequest }
+        if let cursor, cursor.isEmpty { throw PhotoBrainAPIError.invalidRequest }
+        var items: [URLQueryItem] = []
+        if let kind { items.append(URLQueryItem(name: "kind", value: kind.rawValue)) }
+        items.append(URLQueryItem(name: "limit", value: String(limit)))
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await get(path: ["duplicates"], queryItems: items)
+    }
+
+    func resolveDuplicateGroup(key: String, resolution: DuplicateResolution) async throws -> ResolveDuplicateGroupResponseDTO {
+        guard !key.isEmpty else { throw PhotoBrainAPIError.invalidRequest }
+        if case let .keep(ids) = resolution { try Self.validatePhotoBatch(ids, allowEmpty: false) }
+        do {
+            return try await post(
+                path: ["duplicates", "resolve"],
+                body: ResolveDuplicateGroupRequestDTO(key: key, resolution: resolution)
+            )
+        } catch PhotoBrainAPIError.server(status: 409, code: "DUPLICATE_GROUP_CHANGED", _) {
+            throw PhotoBrainAPIError.duplicateGroupChanged
+        }
     }
 
     private static func validatePhotoBatch(_ ids: [Int], allowEmpty: Bool) throws {

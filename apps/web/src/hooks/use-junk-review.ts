@@ -147,6 +147,8 @@ export function useJunkReview({
 						void utils.searchPhotos.invalidate();
 						void utils.similarPhotos.invalidate();
 						void utils.smartAlbums.invalidate();
+						// Rejected photos leave duplicate and burst groups.
+						void utils.duplicateGroups.invalidate();
 					}
 				});
 		},

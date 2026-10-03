@@ -61,6 +61,8 @@ The compound `(job_id, ordinal)` key makes completion ACKs idempotent; a `(job_i
 
 `smart_albums` stores saved live filter sets: `name` (trimmed, 1-100 characters, enforced by the API service), `filters` (NOT NULL text holding the API's canonical JSON: known filter keys only, no empty values, `dateMonth` as `YYYY-MM`), nullable `query` (the optional CLIP text query), `created_at`, and `updated_at`. The unique index `smart_albums_name_nocase_unique` on `name COLLATE NOCASE` makes names case-insensitively unique among smart albums (independent of `collections`); the API maps its violation to `NAME_TAKEN`. There is no membership table; counts and covers are evaluated live by `apps/api/src/services/smart-albums.ts`, which ignores unknown JSON keys on read.
 
+`duplicate_dismissals` records duplicate/burst groups the user marked "not duplicates": `group_key` (text primary key, the API's `${kind}:${ascending member ids}`) and `dismissed_at` (timestamp, NOT NULL). It has no foreign keys, because a key names a membership rather than a photo. Changed membership produces a new key, so the group reappears; rows for groups that no longer exist are inert and are not cleaned up. Only `apps/api/src/services/duplicates.ts` writes it.
+
 Status strings, hash format, embedding dimensions, and RAW status values are conventions rather than database check constraints.
 
 ## Migrations
@@ -79,6 +81,7 @@ Current migrations:
 10. `0009_photo_tags.sql`: pure `CREATE TABLE`/`CREATE INDEX` for `photo_tags` plus `ALTER TABLE photo_embedding ADD tags_version integer`; no table is rebuilt, so existing rows and vectors are untouched and become eligible for the `tag-photos-v1` backfill. `bun run db:generate` reports no drift afterward.
 11. `0010_junk_review.sql`: pure `CREATE TABLE photo_quality`, `ALTER TABLE photos ADD junk_dismissed integer DEFAULT false NOT NULL`, and `CREATE INDEX idx_photos_junk_review`; no table is rebuilt, so existing photos, EXIF, tags, collections, and vectors are untouched and every completed thumbnail becomes eligible for the quality backfill. `bun run db:generate` reports no drift afterward.
 12. `0011_smart_albums.sql`: pure `CREATE TABLE smart_albums` and `CREATE UNIQUE INDEX smart_albums_name_nocase_unique`; no table is rebuilt or altered. `bun run db:generate` reports no drift afterward.
+13. `0012_duplicate_dismissals.sql`: pure `CREATE TABLE duplicate_dismissals`; no table is rebuilt or altered. `bun run db:generate` reports no drift afterward.
 
 Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006` after preceding migrations. New function IDs do not protect against old code still publishing unfenced writes.
 

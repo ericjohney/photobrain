@@ -381,6 +381,140 @@ struct ResolveJunkResponseDTO: Codable, Equatable, Sendable {
     let updated: [Int]
 }
 
+/// Why photos are grouped on the Duplicates screen.
+enum DuplicateKind: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
+    /// Near-identical perceptual hashes.
+    case duplicate
+    /// Same camera, shots at most two seconds apart.
+    case burst
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .duplicate: "Duplicates"
+        case .burst: "Bursts"
+        }
+    }
+}
+
+/// Group totals per kind after dismissals, independent of the kind filter and cursor.
+struct DuplicateCountsDTO: Codable, Equatable, Sendable {
+    var duplicate: Int
+    var burst: Int
+
+    static let zero = DuplicateCountsDTO(duplicate: 0, burst: 0)
+
+    /// Every group across both kinds; the Library entry badge.
+    var total: Int { max(0, duplicate) + max(0, burst) }
+
+    /// `nil` is the unfiltered ("All") total.
+    func count(for kind: DuplicateKind?) -> Int {
+        switch kind {
+        case nil: total
+        case .duplicate: max(0, duplicate)
+        case .burst: max(0, burst)
+        }
+    }
+
+    mutating func adjust(_ kind: DuplicateKind, by delta: Int) {
+        switch kind {
+        case .duplicate: duplicate += delta
+        case .burst: burst += delta
+        }
+    }
+}
+
+/// One duplicate or burst group. `key` identifies its exact membership; photos are keeper first.
+struct DuplicateGroupDTO: Codable, Equatable, Sendable {
+    let key: String
+    let kind: DuplicateKind
+    let photos: [PhotoDTO]
+    let suggestedKeeperId: Int
+    /// Largest pairwise hash distance in a duplicate group; `null` for bursts.
+    let maxDistance: Int?
+}
+
+/// `GET /api/v1/duplicates`: largest groups first. `nextCursor` is opaque.
+///
+/// Groups of a kind this client does not know are dropped instead of failing the page.
+struct DuplicateGroupsResponseDTO: Decodable, Equatable, Sendable {
+    /// Largest `limit` the route accepts.
+    static let maximumLimit = 200
+
+    let groups: [DuplicateGroupDTO]
+    let counts: DuplicateCountsDTO
+    let nextCursor: String?
+
+    init(groups: [DuplicateGroupDTO], counts: DuplicateCountsDTO, nextCursor: String?) {
+        self.groups = groups
+        self.counts = counts
+        self.nextCursor = nextCursor
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case groups
+        case counts
+        case nextCursor
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        groups = try container.decode([KnownKindGroup].self, forKey: .groups).compactMap(\.group)
+        counts = try container.decode(DuplicateCountsDTO.self, forKey: .counts)
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+    }
+
+    /// Decodes a group only when its kind is known; other fields of unknown kinds are not read.
+    private struct KnownKindGroup: Decodable {
+        let group: DuplicateGroupDTO?
+
+        private enum KindKey: String, CodingKey {
+            case kind
+        }
+
+        init(from decoder: Decoder) throws {
+            let kind = try decoder.container(keyedBy: KindKey.self).decode(String.self, forKey: .kind)
+            group = try DuplicateKind(rawValue: kind).map { _ in try DuplicateGroupDTO(from: decoder) }
+        }
+    }
+}
+
+/// Group decision: keep the listed members and reject the rest, or mark it "not duplicates".
+enum DuplicateResolution: Equatable, Sendable {
+    case keep([Int])
+    case dismiss
+}
+
+/// `POST /api/v1/duplicates/resolve` body; `keepIds` is omitted for `dismiss`.
+struct ResolveDuplicateGroupRequestDTO: Encodable, Equatable, Sendable {
+    enum Action: String, Encodable, Sendable {
+        case keep
+        case dismiss
+    }
+
+    let key: String
+    let action: Action
+    let keepIds: [Int]?
+
+    init(key: String, resolution: DuplicateResolution) {
+        self.key = key
+        switch resolution {
+        case let .keep(ids):
+            action = .keep
+            keepIds = ids
+        case .dismiss:
+            action = .dismiss
+            keepIds = nil
+        }
+    }
+}
+
+/// `keep` returns the rejected member ids; `dismiss` echoes the dismissed key.
+struct ResolveDuplicateGroupResponseDTO: Codable, Equatable, Sendable {
+    var rejected: [Int]?
+    var dismissed: String?
+}
+
 enum ScanPhase: String, Codable, CaseIterable, Hashable, Sendable {
     case queued
     case discovering
@@ -749,6 +883,8 @@ enum PhotoBrainAPIError: Error, Equatable, LocalizedError, Sendable {
     case transport(String)
     case server(status: Int, code: String, message: String)
     case decoding(String)
+    /// `409 DUPLICATE_GROUP_CHANGED`: the group's membership changed since it was listed.
+    case duplicateGroupChanged
 
     var errorDescription: String? {
         switch self {
@@ -765,6 +901,7 @@ enum PhotoBrainAPIError: Error, Equatable, LocalizedError, Sendable {
             default: message
             }
         case .decoding: "PhotoBrain could not read the server response."
+        case .duplicateGroupChanged: "This group changed since it was loaded. Duplicates were refreshed."
         }
     }
 
