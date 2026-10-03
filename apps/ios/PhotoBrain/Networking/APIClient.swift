@@ -12,6 +12,8 @@ struct PhotoQuery: Hashable, Sendable {
     var flag: PhotoFlagFilter?
     /// Scopes results to one collection's members.
     var collectionId: Int?
+    /// Auto tag slug, e.g. `night-sky`.
+    var tag: String?
 }
 
 protocol PhotoBrainAPI: Sendable {
@@ -22,6 +24,8 @@ protocol PhotoBrainAPI: Sendable {
     func photo(id: Int) async throws -> PhotoDTO
     func search(query: String, limit: Int, filters: PhotoQuery) async throws -> SearchResponseDTO
     func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO
+    /// `GET /photos/{id}/tags`: the photo's auto tags, highest score first.
+    func photoTags(id: Int) async throws -> PhotoTagsResponseDTO
     /// `PATCH /photos/{id}`. `rating: nil` and `flag: nil` leave a field unchanged;
     /// `flag: .some(nil)` clears the flag. At least one field must be provided.
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO
@@ -91,6 +95,7 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         if let collectionId = query.collectionId {
             items.append(URLQueryItem(name: "collectionId", value: String(collectionId)))
         }
+        if let tag = query.tag { items.append(URLQueryItem(name: "tag", value: tag)) }
         return try await get(path: ["photos"], queryItems: items)
     }
 
@@ -116,6 +121,11 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
             path: ["photos", String(id), "similar"],
             queryItems: [URLQueryItem(name: "limit", value: String(limit))]
         )
+    }
+
+    func photoTags(id: Int) async throws -> PhotoTagsResponseDTO {
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await get(path: ["photos", String(id), "tags"])
     }
 
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {

@@ -50,6 +50,45 @@ struct FilterOptionsDTO: Codable, Equatable, Sendable {
     let lenses: [String]
     let isos: [Int]
     let dates: [String]
+    /// Auto tags present in scope, sorted by count descending then tag. Servers that predate
+    /// auto tagging omit the key, which decodes as no tags.
+    let tags: [TagCountDTO]
+
+    init(cameras: [String], lenses: [String], isos: [Int], dates: [String], tags: [TagCountDTO] = []) {
+        self.cameras = cameras
+        self.lenses = lenses
+        self.isos = isos
+        self.dates = dates
+        self.tags = tags
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cameras = try container.decode([String].self, forKey: .cameras)
+        lenses = try container.decode([String].self, forKey: .lenses)
+        isos = try container.decode([Int].self, forKey: .isos)
+        dates = try container.decode([String].self, forKey: .dates)
+        tags = try container.decodeIfPresent([TagCountDTO].self, forKey: .tags) ?? []
+    }
+}
+
+/// One auto tag slug (e.g. `night-sky`) and how many photos in scope carry it.
+struct TagCountDTO: Codable, Hashable, Identifiable, Sendable {
+    var id: String { tag }
+    let tag: String
+    let count: Int
+}
+
+/// One auto tag on a photo; `score` is the label's zero-shot probability (0-1).
+struct PhotoTagDTO: Codable, Hashable, Identifiable, Sendable {
+    var id: String { tag }
+    let tag: String
+    let score: Double
+}
+
+/// `GET /api/v1/photos/:id/tags`, highest score first.
+struct PhotoTagsResponseDTO: Codable, Equatable, Sendable {
+    let tags: [PhotoTagDTO]
 }
 
 struct PhotoEXIFDTO: Codable, Hashable, Sendable {
@@ -207,6 +246,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let minRating: Int?
     let flag: String?
     let collectionId: Int?
+    let tag: String?
 
     init(query: String, limit: Int, filters: PhotoQuery) {
         self.query = query
@@ -220,6 +260,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
         minRating = filters.minRating
         flag = filters.flag?.rawValue
         collectionId = filters.collectionId
+        tag = filters.tag
     }
 }
 

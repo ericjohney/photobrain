@@ -8,11 +8,12 @@ import {
 	Images,
 	Plus,
 	Star,
+	Tag,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Collection, FlagFilter } from "@/lib/types";
-import { cn, formatMonthLabel } from "@/lib/utils";
+import type { Collection, FilterOptions, FlagFilter } from "@/lib/types";
+import { cn, formatMonthLabel, formatTagName } from "@/lib/utils";
 import { CollectionList } from "./CollectionList";
 
 interface FolderNode {
@@ -33,6 +34,8 @@ export interface LibraryFilters {
 	/** Minimum star rating (1-5); null matches any rating. */
 	minRating: number | null;
 	flag: FlagFilter | null;
+	/** Tag slug; null matches any tag. */
+	tag: string | null;
 }
 
 export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
@@ -43,7 +46,11 @@ export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
 	dateMonth: null,
 	minRating: null,
 	flag: null,
+	tag: null,
 };
+
+/** Tags listed before "Show all" expands the full list. */
+const TAG_PREVIEW_LIMIT = 12;
 
 const RAW_FILTER_OPTIONS: { value: RawFilter; label: string }[] = [
 	{ value: "all", label: "All" },
@@ -129,12 +136,7 @@ interface LibraryPanelProps {
 	onCreateCollection: (name: string) => Promise<unknown>;
 	onRenameCollection: (collectionId: number, name: string) => Promise<unknown>;
 	onDeleteCollection: (collectionId: number) => Promise<unknown>;
-	filterOptions?: {
-		cameras: string[];
-		lenses: string[];
-		isos: number[];
-		dates: string[];
-	};
+	filterOptions?: FilterOptions;
 	activeFilters: LibraryFilters;
 	onFilterChange: (filters: LibraryFilters) => void;
 }
@@ -144,6 +146,8 @@ interface NavItemProps {
 	label: string;
 	count?: number;
 	active?: boolean;
+	/** Exposes `active` as a toggle state (aria-pressed) for toggle-style items. */
+	toggle?: boolean;
 	onClick?: () => void;
 	indent?: number;
 }
@@ -153,6 +157,7 @@ function NavItem({
 	label,
 	count,
 	active,
+	toggle,
 	onClick,
 	indent = 0,
 }: NavItemProps) {
@@ -160,6 +165,7 @@ function NavItem({
 		<button
 			type="button"
 			onClick={onClick}
+			aria-pressed={toggle ? Boolean(active) : undefined}
 			className={cn(
 				"flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors",
 				"hover:bg-secondary/50",
@@ -215,6 +221,56 @@ function Section({
 				{actions}
 			</div>
 			{open && <div className="mt-0.5">{children}</div>}
+		</div>
+	);
+}
+
+/**
+ * Single-select tag list (sorted by count by the API): the first
+ * TAG_PREVIEW_LIMIT tags plus the selected one, or every tag after "Show all".
+ */
+function TagFilterList({
+	tags,
+	selectedTag,
+	onSelect,
+}: {
+	tags: FilterOptions["tags"];
+	selectedTag: string | null;
+	onSelect: (tag: string | null) => void;
+}) {
+	const [showAll, setShowAll] = useState(false);
+	const preview = showAll ? tags : tags.slice(0, TAG_PREVIEW_LIMIT);
+	// Keep the selection reachable when it is collapsed away or out of scope.
+	const visible: { tag: string; count?: number }[] =
+		selectedTag !== null && !preview.some((t) => t.tag === selectedTag)
+			? [
+					...preview,
+					tags.find((t) => t.tag === selectedTag) ?? { tag: selectedTag },
+				]
+			: preview;
+
+	return (
+		<div data-testid="tag-filter-list">
+			{visible.map(({ tag, count }) => (
+				<NavItem
+					key={tag}
+					icon={<Tag className="h-4 w-4" />}
+					label={formatTagName(tag)}
+					count={count}
+					active={selectedTag === tag}
+					toggle
+					onClick={() => onSelect(selectedTag === tag ? null : tag)}
+				/>
+			))}
+			{tags.length > TAG_PREVIEW_LIMIT && (
+				<button
+					type="button"
+					onClick={() => setShowAll((current) => !current)}
+					className="w-full rounded px-2 py-1 text-left text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+				>
+					{showAll ? "Show fewer" : `Show all (${tags.length})`}
+				</button>
+			)}
 		</div>
 	);
 }
@@ -451,6 +507,16 @@ export function LibraryPanel({
 							onChange={(flag) => onFilterChange({ ...activeFilters, flag })}
 						/>
 					</Section>
+					{((filterOptions?.tags && filterOptions.tags.length > 0) ||
+						activeFilters.tag !== null) && (
+						<Section title="Tags">
+							<TagFilterList
+								tags={filterOptions?.tags ?? []}
+								selectedTag={activeFilters.tag}
+								onSelect={(tag) => onFilterChange({ ...activeFilters, tag })}
+							/>
+						</Section>
+					)}
 					{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
 						<Section title="Camera" defaultOpen={false}>
 							{filterOptions.cameras.map((cam) => (
@@ -532,7 +598,8 @@ export function LibraryPanel({
 					activeFilters.iso ||
 					activeFilters.dateMonth ||
 					activeFilters.minRating !== null ||
-					activeFilters.flag !== null) && (
+					activeFilters.flag !== null ||
+					activeFilters.tag !== null) && (
 					<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary flex items-center justify-between">
 						<span>Filters active</span>
 						<button

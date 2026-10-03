@@ -27,6 +27,8 @@ export type PhotoFilters = {
 	flag?: "pick" | "reject" | "unflagged";
 	/** Only members of this collection. */
 	collectionId?: number;
+	/** Only photos carrying this automatic tag slug. */
+	tag?: string;
 };
 
 export type PhotoCatalogRepresentation = {
@@ -128,12 +130,21 @@ export async function listFilterOptions(
 		WHERE ${photoExif.dateTaken} IS NOT NULL${folderCondition}
 		ORDER BY month
 	`);
+	const tagsResult = await database.all<{ tag: string; count: number }>(sql`
+		SELECT t.tag as tag, count(*) as count
+		FROM photo_tags t
+		INNER JOIN ${photosTable} ON ${photosTable.id} = t.photo_id
+		WHERE 1 = 1${folderCondition}
+		GROUP BY t.tag
+		ORDER BY count DESC, tag ASC
+	`);
 
 	return {
 		cameras: camerasResult.map(({ camera }) => camera),
 		lenses: lensesResult.map(({ lens }) => lens),
 		isos: isosResult.map(({ iso }) => iso),
 		dates: datesResult.map(({ month }) => month),
+		tags: tagsResult,
 	};
 }
 
@@ -197,6 +208,12 @@ export function photoFilterConditions(
 		// Resolved through the (collection_id, photo_id) primary key.
 		conditions.push(
 			sql`${photosTable.id} IN (SELECT photo_id FROM collection_photos WHERE collection_id = ${input.collectionId})`,
+		);
+	}
+	if (input.tag !== undefined) {
+		// Resolved through the (tag, photo_id) index.
+		conditions.push(
+			sql`${photosTable.id} IN (SELECT photo_id FROM photo_tags WHERE tag = ${input.tag})`,
 		);
 	}
 	return conditions;

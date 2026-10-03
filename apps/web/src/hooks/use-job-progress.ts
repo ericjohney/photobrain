@@ -229,6 +229,8 @@ export function useJobProgress(jobId: string | null) {
 			refresh.terminal = true;
 			flush();
 			void utils.searchPhotos.invalidate();
+			// Tags are written alongside embeddings, so they settle at the end.
+			void utils.photoTags.invalidate();
 			return;
 		}
 		if (
@@ -251,7 +253,7 @@ export function useJobProgress(jobId: string | null) {
 		else if (refresh.timer === undefined) {
 			refresh.timer = window.setTimeout(flush, remaining);
 		}
-	}, [jobId, latest, refreshLibrary, utils.searchPhotos]);
+	}, [jobId, latest, refreshLibrary, utils.searchPhotos, utils.photoTags]);
 
 	return {
 		progress,

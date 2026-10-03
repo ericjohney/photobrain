@@ -13,3 +13,9 @@ export function formatMonthLabel(dateMonth: string) {
 		{ year: "numeric", month: "long" },
 	);
 }
+
+/** Display name for a tag slug: "night-sky" -> "Night sky". */
+export function formatTagName(tag: string) {
+	const words = tag.replace(/-/g, " ");
+	return words.charAt(0).toUpperCase() + words.slice(1);
+}

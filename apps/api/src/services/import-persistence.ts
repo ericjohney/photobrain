@@ -2,7 +2,14 @@ import type { PhotoProcessingResult } from "@photobrain/image-processing";
 import { eq, sql } from "drizzle-orm";
 import type { db } from "../db";
 import { photoEmbedding, photoExif, photoPhash, photos } from "../db/schema";
+import {
+	replacePhotoTags,
+	type ScoredTag,
+	scoreTags,
+	type TagLabelMatrix,
+} from "./photo-tagging";
 import { EMBEDDING_MODEL_VERSION } from "./processing-versions";
+import { TAG_VOCABULARY_VERSION } from "./tag-vocabulary";
 
 export type ProcessedMediaState = {
 	sourceRoot: string;
@@ -111,11 +118,23 @@ export function saveScanBatch(
 	});
 }
 
+/**
+ * Saves CLIP vectors and statuses for current-generation targets. With
+ * `labels`, each saved vector's tags are scored before the transaction and
+ * replaced inside it with `tags_version` set; without labels the photo's old
+ * tags are cleared and `tags_version` is null so the tag backfill retags it.
+ * Stale and failed results leave vectors and tags untouched.
+ */
 export function saveEmbeddingBatch(
 	database: typeof db,
 	targets: readonly EmbeddingTarget[],
 	embeddings: readonly (number[] | null | undefined)[],
+	labels?: TagLabelMatrix | null,
 ): { processed: number; successful: number } {
+	// Scoring is pure JS and stays outside the synchronous transaction.
+	const scored: (ScoredTag[] | null)[] = embeddings.map((embedding) =>
+		embedding && labels ? scoreTags(embedding, labels) : null,
+	);
 	return database.transaction((tx) => {
 		let successful = 0;
 		const now = new Date();
@@ -131,16 +150,19 @@ export function saveEmbeddingBatch(
 			if (!current || current.thumbnailKey !== thumbnailKey) continue;
 			const embedding = embeddings[index];
 			if (embedding) {
+				const tags = scored[index];
 				const values = {
 					embedding: Buffer.from(new Float32Array(embedding).buffer),
 					modelVersion: EMBEDDING_MODEL_VERSION,
 					thumbnailKey,
+					tagsVersion: tags ? TAG_VOCABULARY_VERSION : null,
 					createdAt: now,
 				};
 				tx.insert(photoEmbedding)
 					.values({ photoId, ...values })
 					.onConflictDoUpdate({ target: photoEmbedding.photoId, set: values })
 					.run();
+				replacePhotoTags(tx, photoId, tags ?? []);
 				successful++;
 			}
 			tx.update(photos)

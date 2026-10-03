@@ -33,6 +33,10 @@ type EmbeddingEvent = {
 	name: string;
 	data: { photoIds: number[]; thumbnailsDir: string; jobId: string };
 };
+const TAGS_REQUESTED = {
+	name: "photos/tags.requested",
+	data: {},
+} as unknown as EmbeddingEvent;
 type Steps = {
 	run<T>(id: string, work: () => T | Promise<T>): Promise<T>;
 	sendEvent(id: string, event: EmbeddingEvent): Promise<void>;
@@ -390,7 +394,8 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		const unchanged = harness();
 		expect(await unchanged.execute()).toEqual({ processed: 1, successful: 1 });
 		expect(loads).toHaveLength(1);
-		expect(unchanged.dispatched).toEqual([]);
+		// Fully indexed scans skip embeddings but still request tag backfill.
+		expect(unchanged.dispatched).toEqual([TAGS_REQUESTED]);
 		expect(job()?.status).toBe("completed");
 		expect(db.select().from(photos).get()).toEqual(completed);
 		expect(statSync(artifact, { bigint: true })).toEqual(before);
@@ -693,7 +698,7 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		expect(discoveries).toBe(1);
 		expect(loads).toEqual([]);
 		expect(job()).toMatchObject({ status: "completed", current: 0, total: 0 });
-		expect(run.dispatched).toEqual([]);
+		expect(run.dispatched).toEqual([TAGS_REQUESTED]);
 		expect(db.select().from(scanManifests).all()).toEqual([]);
 	});
 
@@ -704,7 +709,7 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		expect(job()).toMatchObject({ status: "completed", current: 0, total: 0 });
 		expect(await run.execute()).toEqual({ processed: 0, successful: 0 });
 		expect(run.published.at(-1)?.phase).toBe("completed");
-		expect(run.dispatched).toEqual([]);
+		expect(run.dispatched).toEqual([TAGS_REQUESTED]);
 		expect(db.select().from(scanManifests).all()).toEqual([]);
 	});
 

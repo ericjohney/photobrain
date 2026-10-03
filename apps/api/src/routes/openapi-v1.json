@@ -141,6 +141,17 @@
 							"type": "integer",
 							"minimum": 1
 						}
+					},
+					{
+						"name": "tag",
+						"in": "query",
+						"required": false,
+						"description": "Only photos carrying this automatic tag slug",
+						"schema": {
+							"type": "string",
+							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"maxLength": 64
+						}
 					}
 				],
 				"responses": {
@@ -333,6 +344,17 @@
 							"type": "integer",
 							"minimum": 1
 						}
+					},
+					{
+						"name": "tag",
+						"in": "query",
+						"required": false,
+						"description": "Only photos carrying this automatic tag slug",
+						"schema": {
+							"type": "string",
+							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"maxLength": 64
+						}
 					}
 				],
 				"responses": {
@@ -397,6 +419,61 @@
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/PhotoCollectionsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"description": "Photo not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"photoNotFound": {
+										"value": {
+											"error": {
+												"code": "PHOTO_NOT_FOUND",
+												"message": "Photo not found"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/photos/{id}/tags": {
+			"get": {
+				"operationId": "listPhotoTags",
+				"description": "Automatic CLIP zero-shot tags (at most three) for the photo, highest score first with ties by tag. Empty until the photo's vector has been tagged.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Photo tags",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PhotoTagsResponse"
 								}
 							}
 						}
@@ -855,7 +932,7 @@
 			"FilterOptionsResponse": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["cameras", "lenses", "isos", "dates"],
+				"required": ["cameras", "lenses", "isos", "dates", "tags"],
 				"properties": {
 					"cameras": {
 						"type": "array",
@@ -880,6 +957,24 @@
 						"items": {
 							"type": "string",
 							"pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+						}
+					},
+					"tags": {
+						"type": "array",
+						"description": "Tags with photo counts in scope, count descending then tag ascending",
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["tag", "count"],
+							"properties": {
+								"tag": {
+									"type": "string"
+								},
+								"count": {
+									"type": "integer",
+									"minimum": 1
+								}
+							}
 						}
 					}
 				}
@@ -1156,6 +1251,12 @@
 						"type": "integer",
 						"minimum": 1,
 						"description": "Only photos that are members of this collection"
+					},
+					"tag": {
+						"type": "string",
+						"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+						"maxLength": 64,
+						"description": "Only photos carrying this automatic tag slug"
 					}
 				}
 			},
@@ -1495,6 +1596,33 @@
 						"items": {
 							"type": "integer",
 							"minimum": 1
+						}
+					}
+				}
+			},
+			"PhotoTagsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["tags"],
+				"properties": {
+					"tags": {
+						"type": "array",
+						"maxItems": 3,
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["tag", "score"],
+							"properties": {
+								"tag": {
+									"type": "string"
+								},
+								"score": {
+									"type": "number",
+									"minimum": 0,
+									"maximum": 1,
+									"description": "Softmax probability over the vocabulary, 4 decimal places"
+								}
+							}
 						}
 					}
 				}

@@ -3,10 +3,12 @@ import superjson, { type SuperJSONResult } from "superjson";
 import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
 import {
 	FIXTURE_FOLDERS,
+	FIXTURE_PHOTO_TAGS,
 	FIXTURE_PHOTOS,
 	type FixturePhoto,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
+	fixtureTagCounts,
 	searchPhotosByQuery,
 } from "./photos";
 
@@ -187,13 +189,17 @@ function createDefaultHandlers(): Record<string, Handler> {
 			return { photos, total: photos.length, query };
 		},
 		similarPhotos: (input) => {
-			const { photoId, collectionId } = (input ?? {}) as CollectionScope & {
+			const { photoId, collectionId, tag } = (input ??
+				{}) as CollectionScope & {
 				photoId?: number;
+				tag?: string;
 			};
 			if (!library.some((p) => p.id === photoId)) {
 				throw new Error(`Photo ${photoId} not found`);
 			}
-			const photos = scopeToCollection({ collectionId })
+			const photos = filterFixturePhotos(scopeToCollection({ collectionId }), {
+				tag,
+			})
 				.filter((p) => p.id !== photoId)
 				.reverse();
 			return {
@@ -221,6 +227,13 @@ function createDefaultHandlers(): Record<string, Handler> {
 				)
 				.map(collectionDto),
 		}),
+		photoTags: (input) => {
+			const { photoId } = input as { photoId: number };
+			if (!library.some((p) => p.id === photoId)) {
+				throw new TrpcFixtureError("NOT_FOUND", "Photo not found");
+			}
+			return { tags: FIXTURE_PHOTO_TAGS[photoId] ?? [] };
+		},
 		collectionsForPhoto: (input) => {
 			const { photoId } = input as { photoId: number };
 			if (!library.some((p) => p.id === photoId)) {
@@ -287,7 +300,7 @@ function createDefaultHandlers(): Record<string, Handler> {
 				photoCount: collection.photoIds.length,
 			};
 		},
-		filterOptions: () => ({
+		filterOptions: (input) => ({
 			cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
 			lenses: [
 				"FE 24-70mm f/2.8 GM",
@@ -296,6 +309,12 @@ function createDefaultHandlers(): Record<string, Handler> {
 			],
 			isos: [100, 200, 400, 800, 3200],
 			dates: ["2024-06", "2024-07", "2024-08"],
+			// Folder-scoped like the API's tag counts.
+			tags: fixtureTagCounts(
+				filterFixturePhotos(library, {
+					folder: (input as { folder?: string } | undefined)?.folder,
+				}),
+			),
 		}),
 		scan: () => ({ success: true, jobId: FIXTURE_JOB_ID }),
 		scanStatus: (input) => ({

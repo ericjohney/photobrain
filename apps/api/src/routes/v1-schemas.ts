@@ -4,6 +4,10 @@ import {
 	MAX_COLLECTION_NAME_LENGTH,
 	MAX_COLLECTION_PHOTO_IDS,
 } from "../services/collections";
+import {
+	MAX_TAG_SLUG_LENGTH,
+	TAG_SLUG_PATTERN,
+} from "../services/tag-vocabulary";
 
 export type FolderDto = {
 	name: string;
@@ -35,6 +39,12 @@ export const filterOptionsResponseSchema = z.object({
 	lenses: z.array(z.string()),
 	isos: z.array(z.number().int()),
 	dates: z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)),
+	tags: z.array(
+		z.object({
+			tag: z.string(),
+			count: z.number().int().positive(),
+		}),
+	),
 });
 
 export const minRatingFilterSchema = z.coerce
@@ -51,6 +61,11 @@ export const collectionIdFilterSchema = z.coerce
 	.int()
 	.positive()
 	.optional();
+export const tagFilterSchema = z
+	.string()
+	.max(MAX_TAG_SLUG_LENGTH)
+	.regex(TAG_SLUG_PATTERN)
+	.optional();
 
 export const photoFiltersSchema = z.object({
 	filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
@@ -65,6 +80,7 @@ export const photoFiltersSchema = z.object({
 	minRating: minRatingFilterSchema,
 	flag: curationFlagFilterSchema,
 	collectionId: collectionIdFilterSchema,
+	tag: tagFilterSchema,
 });
 
 export const photoIdSchema = z.coerce.number().int().positive();
@@ -141,6 +157,7 @@ export const searchRequestSchema = z
 		minRating: z.number().int().min(1).max(5).optional(),
 		flag: curationFlagFilterSchema,
 		collectionId: z.number().int().positive().optional(),
+		tag: tagFilterSchema,
 	})
 	.strict();
 
@@ -155,6 +172,16 @@ export const similarPhotosQuerySchema = z.object({
 	minRating: minRatingFilterSchema,
 	flag: curationFlagFilterSchema,
 	collectionId: collectionIdFilterSchema,
+	tag: tagFilterSchema,
+});
+
+export const photoTagsResponseSchema = z.object({
+	tags: z.array(
+		z.object({
+			tag: z.string(),
+			score: z.number().min(0).max(1),
+		}),
+	),
 });
 
 export const similarPhotosResponseSchema = z.object({

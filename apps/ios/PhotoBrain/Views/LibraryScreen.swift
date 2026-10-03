@@ -425,6 +425,24 @@ struct FilterView<Store: FilterEditingStore>: View {
                 }
             }
 
+            if let options = store.filterOptions {
+                Section("Tags") {
+                    if options.tags.isEmpty, store.filters.tag == nil {
+                        Text("No tags yet")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        NavigationLink {
+                            TagFilterCategoryView(
+                                options: tagOptions(options.tags),
+                                selection: tagBinding
+                            )
+                        } label: {
+                            LabeledContent("Tag", value: store.filters.tag.map(PhotoTagName.displayName) ?? "Any")
+                        }
+                    }
+                }
+            }
+
             Section("Metadata") {
                 if let options = store.filterOptions {
                     NavigationLink {
@@ -545,6 +563,24 @@ struct FilterView<Store: FilterEditingStore>: View {
         )
     }
 
+    private var tagBinding: Binding<String?> {
+        Binding(
+            get: { store.filters.tag },
+            set: { value in
+                var filters = store.filters
+                filters.tag = value
+                store.applyFilters(filters)
+            }
+        )
+    }
+
+    /// Server order (count desc); an active tag absent from the options stays selectable.
+    private func tagOptions(_ tags: [TagCountDTO]) -> [TagFilterCategoryView.Option] {
+        let options = tags.map { TagFilterCategoryView.Option(tag: $0.tag, count: $0.count) }
+        guard let active = store.filters.tag, !tags.contains(where: { $0.tag == active }) else { return options }
+        return [TagFilterCategoryView.Option(tag: active, count: nil)] + options
+    }
+
     private func including<T: Hashable>(_ active: T?, in options: [T]) -> [T] {
         guard let active, !options.contains(active) else { return options }
         return [active] + options
@@ -658,6 +694,77 @@ private struct ISOFilterCategoryView: View {
             Spacer()
             if selected { Image(systemName: "checkmark") }
         }
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+private struct TagFilterCategoryView: View {
+    struct Option: Identifiable, Equatable {
+        let tag: String
+        /// Photos carrying the tag in scope; nil for an active tag the server no longer lists.
+        let count: Int?
+        var id: String { tag }
+    }
+
+    let options: [Option]
+    @Binding var selection: String?
+    @State private var search = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private var normalizedSearch: String {
+        search.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filtered: [Option] {
+        guard !normalizedSearch.isEmpty else { return options }
+        return options.filter {
+            PhotoTagName.displayName($0.tag).localizedCaseInsensitiveContains(normalizedSearch)
+                || $0.tag.localizedCaseInsensitiveContains(normalizedSearch)
+        }
+    }
+
+    var body: some View {
+        List {
+            Button {
+                selection = nil
+                dismiss()
+            } label: {
+                row("Any", count: nil, selected: selection == nil)
+            }
+            ForEach(filtered) { option in
+                Button {
+                    selection = option.tag
+                    dismiss()
+                } label: {
+                    row(PhotoTagName.displayName(option.tag), count: option.count, selected: selection == option.tag)
+                }
+            }
+            if options.isEmpty {
+                Text("No tags yet")
+                    .foregroundStyle(.secondary)
+            } else if filtered.isEmpty {
+                Text("No matching tags")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .foregroundStyle(.primary)
+        .navigationTitle("Tag")
+        .searchable(text: $search, prompt: "Search Tags")
+    }
+
+    private func row(_ text: String, count: Int?, selected: Bool) -> some View {
+        HStack {
+            Text(text)
+            Spacer()
+            if let count {
+                Text(count.formatted())
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            if selected { Image(systemName: "checkmark") }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(count.map { "\(text), \($0) photos" } ?? text)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

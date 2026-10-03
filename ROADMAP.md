@@ -303,10 +303,8 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [ ] **Aperture and shutter-speed filtering**
 - [ ] **Dimension, orientation, and MIME-type filtering**
 
-### 2.2 Tagging & Classification ⏳ **NOT STARTED**
-- [ ] **Automatic tagging with CLIP**
-  - Generate tags from image content
-  - Confidence scores for suggested tags
+### 2.2 Tagging & Classification 🟡 **PARTIALLY COMPLETED**
+- [x] **Automatic tagging with CLIP** (80-label zero-shot vocabulary scored from stored vectors, ≤3 tags with confidence; tag filter and chips on web and native iOS)
 - [ ] **Manual tagging**
   - Add/remove custom tags
   - Tag autocomplete

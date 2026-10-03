@@ -11,7 +11,11 @@ Scope: `apps/api`.
 - `src/routes/photos.ts`: binary file and thumbnail routes plus one-off maintenance routes.
 - `src/inngest/client.ts`: typed event definitions and Realtime middleware.
 - `src/inngest/functions/scan.ts`: durable incremental planning, continuous Rust processing, and completed-result checkpoints.
-- `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches.
+- `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches; tags each saved vector in the same transaction and finally requests the tag backfill.
+- `src/inngest/functions/tags.ts`: `tag-photos-v1` backfill of vectors lacking current-vocabulary tags.
+- `src/services/tag-vocabulary.ts`: `TAG_VOCABULARY_VERSION`, the 80-label `{ tag, prompt }` vocabulary, and the tag slug pattern.
+- `src/services/photo-tagging.ts`: pure zero-shot scoring (`scoreTags`), tag persistence, backfill batches, and `getPhotoTags`; imports no native code.
+- `src/services/tag-labels.ts`: lazy, per-process memoized label vectors from `clipTextEmbedding` (`loadTagLabelMatrix`).
 - `src/services/vector-search.ts`: sqlite-vec text search and photo-to-photo similarity (`findSimilarToPhoto`), shared by both transports; every query takes an injectable `ApiDatabase`.
 - `src/services/photo-catalog.ts`: shared folder/filter/photo reads used by tRPC and `/api/v1`.
 - `src/services/photo-curation.ts`: shared single-statement star rating/flag updates used by tRPC `setPhotoCuration` and `PATCH /api/v1/photos/:id`.
@@ -77,6 +81,8 @@ There are no unversioned REST `GET /api/photos`, `GET /api/photos/:id`, `POST /a
 
 Collections: `GET /collections` returns `{ collections }` sorted case-insensitively by name; `POST /collections` (`{ name, photoIds? }`) returns 201 with a Collection; `PATCH /collections/:id` (`{ name }`) returns 200; `DELETE /collections/:id` returns 204 with no body; `POST /collections/:id/photos` and `POST /collections/:id/photos/remove` (`{ photoIds }`, 1-500 positive integers) return `{ added, photoCount }` / `{ removed, photoCount }`; `GET /photos/:id/collections` returns `{ collectionIds }` or 404 `PHOTO_NOT_FOUND`. A Collection is `{ id, name, photoCount, cover: { photoId, thumbnailUpdatedAt } | null, createdAt, updatedAt }` with ISO timestamps. Bodies are strict; names are trimmed and must be 1-100 characters. Errors are 400 `INVALID_REQUEST`, 404 `COLLECTION_NOT_FOUND`, and 409 `COLLECTION_NAME_TAKEN`. `GET /photos`, `POST /search`, and `GET /photos/:id/similar` accept `collectionId` (positive integer).
 
+Tags: `GET /photos/:id/tags` returns `{ tags: [{ tag, score }] }` (score descending, ties by tag) or 404 `PHOTO_NOT_FOUND`. `GET /filter-options` includes `tags: [{ tag, count }]`. `tag` (slug matching `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 64 characters) is accepted on `GET /photos`, `POST /search`, and `GET /photos/:id/similar`; an invalid slug is 400 `INVALID_REQUEST`.
+
 Every photo emitted by list, detail, search, or similarity must pass through the public projection and explicit serializer. Never expose `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, or `thumbnailFingerprint`; those fields reveal private source/artifact identity. `/api/v1` is unauthenticated like the existing tRPC and media routes, so the projection is a privacy boundary, not an authorization substitute.
 
 ## tRPC Procedures
@@ -93,6 +99,7 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `collections`: returns `{ collections }` (Collection DTOs with `Date` timestamps) sorted by name `COLLATE NOCASE`, in one SQL statement; counts and the cover (most recently added existing member, ties by insertion order) are correlated primary-key lookups, so there is no N+1.
 - `collectionsForPhoto({ photoId })`: returns `{ collectionIds }` sorted by ID, or `NOT_FOUND` for an unknown photo.
 - `createCollection({ name, photoIds? })`, `renameCollection({ id, name })`, `deleteCollection({ id })` (returns `{ id }`), `addToCollection({ collectionId, photoIds })` (returns `{ added, photoCount }`), `removeFromCollection({ collectionId, photoIds })` (returns `{ removed, photoCount }`): names are trimmed and 1-100 characters, unique case-insensitively (renaming to a case variant of the collection's own name is allowed). `NAME_TAKEN` maps to `CONFLICT`, an unknown collection to `NOT_FOUND`, invalid input to `BAD_REQUEST`. Adds/removes take 1-500 IDs, ignore duplicates and unknown photos, run one existence SELECT plus one multi-row INSERT/DELETE in a transaction, and bump `updatedAt` only when membership changes. Deleting a collection never touches photos.
+- `photoTags({ photoId })`: returns `{ tags: [{ tag, score }] }`, score descending then tag ascending, in one `LEFT JOIN` statement; `NOT_FOUND` for an unknown photo. `photos`, `searchPhotos`, and `similarPhotos` accept an optional `tag` slug, applied by `photoFilterConditions` as `photos.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)` (served by `idx_photo_tags_tag_photo_id`). `filterOptions` also returns `tags: [{ tag, count }]` under the same folder scope, count descending then tag ascending, only counts above zero.
 - `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar and Expo Library Options expose a confirmed **Reprocess all photos** action for force mode; native iOS reaches the same shared scan service through gated `POST /api/v1/scans`.
 - `scanStatus({ jobId })`: returns the durable scan row or `null` when the UUID is unknown.
 - `realtimeToken({ jobId })`: returns `{ token, baseUrl? }` for channel `job:{jobId}`, topic `progress`. `baseUrl` is the client-reachable `INNGEST_REALTIME_BASE_URL`; it must not be inferred from an internal service hostname.
@@ -109,6 +116,9 @@ photos/scan.requested
 
 photos/embeddings.requested
   { photoIds, thumbnailsDir, jobId }
+
+photos/tags.requested
+  {}
 ```
 
 Scan function details:
@@ -143,6 +153,42 @@ Embedding function details:
 - Converts the Rust number array to a `Float32Array` buffer before storage.
 - Marks current-generation photos `completed` or `failed` and publishes progress. Search excludes noncompleted, wrong-model, and wrong-generation vectors.
 - Marks the scan job failed if no requested embedding can be generated; partial success still completes the job.
+- After its final progress publication it appends one `trigger-photo-tags-v1` `step.sendEvent` for `photos/tags.requested`; existing step IDs are unchanged for replay safety. `scan-photos-v5` likewise appends the same send only when a scan finishes without dispatching embeddings (for example after a vocabulary bump), after its existing cleanup step.
+
+## Automatic Tags
+
+Every indexed photo receives up to three zero-shot CLIP tags computed from its existing stored vector; no extra image inference runs.
+
+- Scoring (`scoreTags`): cosine similarity to each L2-normalized label vector (FastEmbed vectors are unit length, so a dot product), probabilities `softmax(100 * s)`, keep labels with `p >= TAG_MIN_PROBABILITY`, highest first with ties by slug, at most three, scores rounded to 4 decimal places. A vector of another dimension or zero length yields no tags.
+- Label vectors are computed lazily once per process by `loadTagLabelMatrix()` (never at import, never inside a SQLite transaction) and only on tagging paths: `generate-embeddings-v3` before its save transaction and `tag-photos-v1`. List, search, filter-option, and tag-read endpoints never need them. A failed load is not memoized.
+- `saveEmbeddingBatch` replaces a photo's `photo_tags` and sets `photo_embedding.tags_version = TAG_VOCABULARY_VERSION` in the same transaction as each current-generation vector save. Stale and failed results leave tags untouched; re-embedding replaces old tags.
+- `tag-photos-v1` (concurrency 1) selects vectors that are completed, current-model, keyed to the photo's committed thumbnail key, and whose `tags_version` is null or another version. Each `tag-photos-batch-v1-N` step reads at most 1,000 BLOBs past a photo-ID keyset cursor, scores them in JS, and writes them in one transaction that re-checks every row's generation/status/version, so a vector replaced between read and write is skipped. Repeated events are no-ops once every row is current.
+- Bump `TAG_VOCABULARY_VERSION` whenever labels, prompts, or `TAG_MIN_PROBABILITY` change; the next `photos/tags.requested` retags every vector.
+
+### Calibration (`TAG_MIN_PROBABILITY = 0.15`)
+
+Measured on Apple M4 Pro/macOS 26.5.1 with the darwin-arm64 addon and `FASTEMBED_CACHE_DIR=apps/api/.fastembed_cache`: text model load plus first embedding 221 ms; warm `clipTextEmbedding` 4.15 ms per label, 332 ms for all 80 labels (well under 3 s; still lazy). `batchGenerateClipEmbeddings` over 16 Wikimedia Commons photos plus one rendered screenshot took 571 ms including vision model load. Top probabilities:
+
+|Image|Top 3 (p)|Tags at 0.15|
+|---|---|---|
+|beach|beach .917, landscape .035, sky .017|beach|
+|dog|dog .515, pet .458, rain .008|dog, pet|
+|kitten|cat .794, pet .136, baby .024|cat|
+|food plate|food .406, drink .081, fish .052|food|
+|city at night|city-night .845, city .099, park .021|city-night|
+|mountain snow|mountain .586, landscape .195, river .059|mountain, landscape|
+|forest trail|hiking .678, forest .277, snow .016|hiking, forest|
+|document page|document .987, receipt .007|document|
+|receipt|document .775, receipt .214|document, receipt|
+|rendered screenshot|screenshot .972, document .018|screenshot|
+|sunset|sunset .852, city .070, landscape .015|sunset|
+|street cyclists|cycling .608, street .157, bicycle .073|cycling, street|
+|flower close-up|macro .355, flowers .190, insect .166|macro, flowers, insect|
+|B/W vintage car fender|car .585, motorcycle .259, black-and-white .085|car, motorcycle|
+|cat nursing kitten|baby .357, pet .209, dog .112|baby, pet|
+|watercolor seascape|ocean .249, art .244, beach .182|ocean, art, beach|
+
+At 0.10 clearly wrong labels appear (dog .112 on the cats); at 0.20 correct secondary subjects are lost (street .157, flowers .190, insect .166). Wrong tags at 0.15 (motorcycle, baby) are top-2 confusions that no threshold removes without dropping correct primary tags. Diffuse vectors with more than six comparable labels tag nothing.
 
 ## Configuration
 
@@ -201,6 +247,8 @@ The two POST maintenance routes are operational leftovers. HEIC reprocessing for
 `src/__tests__/curation.test.ts` covers `updatePhotoCuration`: one captured `UPDATE` statement touches only listed IDs and returns only existing ones, partial patches, `null` flag clearing, and bounds (0/5 accepted; -1, 6, 1.5, empty patches, bad flags, 0 and 501 IDs rejected without writes) at the service, tRPC, and `PATCH /api/v1/photos/:id` layers (200 public DTO, 404, 400 for unknown keys). It also covers `minRating`/`flag` on tRPC and v1 photos, applies migration `0007` to a database that already holds rows (rating 0, flag NULL, sidecars intact, CHECK enforced), checks that `minRating`/`flag` use their indexes via `EXPLAIN QUERY PLAN`, and requires a 500-ID update and a `minRating` listing over 8,000 photos to finish under 50 ms. Search and similarity curation filters are tested in the sqlite-vec harnesses, and rescan preservation of rating/flag in `import-persistence.test.ts`.
 
 `src/__tests__/collections.test.ts` covers the collections service, tRPC, and `/api/v1` layers: name trimming/bounds and case-insensitive uniqueness (409/`CONFLICT`), own-name case renames, add/remove counts with duplicate and unknown IDs, cover selection and fallback after removal, single-statement `listCollections` with NOCASE ordering, delete cascades that leave photos/EXIF intact, photo deletion cascading out of collections, the `collectionId` photo filter, every v1 route's status codes (201/204/400/404/409), and migration `0008` applied to a `0007` database with rows. Perf tests over 8,000 photos bound `listCollections` (200 collections, 40,000 memberships) and a 500-ID add to 50 ms and assert the `collectionId` listing plan uses the membership primary key. `similar.test.ts` and `search-filters.test.ts` cover `collectionId` against real sqlite-vec KNN.
+
+`src/__tests__/tags.test.ts` runs in an isolated child process with injected label vectors (mocked `clipTextEmbedding`, real sqlite-vec). It covers the vocabulary minimum, `scoreTags` label selection, max three, the inclusive threshold, deterministic tie order, and degenerate vectors; atomic tag/`tags_version` writes in `saveEmbeddingBatch`, untouched tags for stale/failed results, and replacement on re-embedding; backfill eligibility (wrong model, mismatched key, current version), idempotency, more than 1,000 rows across steps, and stale generations between read and write; the `tag` filter on photos/search/similar, folder-scoped `filterOptions` tags, `photoTags`/v1 404s and invalid slugs; migration `0009` over a database at `0008`; and perf over 8,000 photos (scoring 8,000 x 80 x 512 in about 0.4 s, tag-filtered `listPhotos` using `idx_photo_tags_tag_photo_id` per `EXPLAIN QUERY PLAN`, full backfill about 0.4 s).
 
 `src/__tests__/scan.test.ts` exercises real SQLite manifests/receipts with controlled native/Inngest dependencies: new-first dispatch with free completion order, early visibility, partial ACK restart, lost checkpoints, atomic rollback, publication failure, final dispatch/fast-child ordering, empty and terminal jobs, cleanup, and the 7,961-input checkpoint budget. These are not actual Inngest delivery or native integration tests.
 

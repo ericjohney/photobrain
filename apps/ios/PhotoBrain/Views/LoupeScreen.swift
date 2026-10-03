@@ -14,9 +14,23 @@ struct LoupeScreen: View {
     @State private var showingInfo = false
     @State private var similarSource: PhotoRecord?
     @State private var collectionSheetPhotoID: CollectionSheetTarget?
+    @Environment(\.showTagInLibrary) private var showTagInLibrary
 
     private var activeRecord: PhotoRecord? {
         records.first { $0.id == activeID }
+    }
+
+    /// Tag-chip action for this loupe: closes its sheets and the loupe itself, then forwards to
+    /// the presenter's action so any enclosing loupe closes too before the Library is filtered.
+    private var tagSelection: ShowTagInLibraryAction? {
+        guard let showTagInLibrary else { return nil }
+        return ShowTagInLibraryAction { tag in
+            showingInfo = false
+            similarSource = nil
+            collectionSheetPhotoID = nil
+            dismiss()
+            showTagInLibrary(tag)
+        }
     }
 
     var body: some View {
@@ -53,13 +67,15 @@ struct LoupeScreen: View {
         .statusBarHidden(!chromeVisible)
         .sheet(isPresented: $showingInfo) {
             if let activeRecord {
-                PhotoMetadataView(photo: activeRecord)
+                PhotoMetadataView(photo: activeRecord, api: api, onSelectTag: tagSelection)
+                    .id(activeRecord.id)
             }
         }
         .sheet(item: $similarSource) { source in
             SimilarPhotosScreen(source: source, api: api, curation: curation, collections: collections) {
                 similarSource = nil
             }
+            .environment(\.showTagInLibrary, tagSelection)
         }
         .sheet(item: $collectionSheetPhotoID) { target in
             AddToCollectionSheet(photoID: target.id, collections: collections)
@@ -256,7 +272,16 @@ private struct CollectionSheetTarget: Identifiable {
 
 private struct PhotoMetadataView: View {
     let photo: PhotoRecord
+    /// Nil when no Library is reachable; chips then render without an action.
+    let onSelectTag: ShowTagInLibraryAction?
+    @StateObject private var tags: PhotoTagsStore
     @Environment(\.dismiss) private var dismiss
+
+    init(photo: PhotoRecord, api: any PhotoBrainAPI, onSelectTag: ShowTagInLibraryAction?) {
+        self.photo = photo
+        self.onSelectTag = onSelectTag
+        _tags = StateObject(wrappedValue: PhotoTagsStore(photoID: photo.id, api: api))
+    }
 
     var body: some View {
         NavigationStack {
@@ -278,6 +303,9 @@ private struct PhotoMetadataView: View {
                         .accessibilityLabel("Thumbnail for \(photo.filename)")
                         Spacer()
                     }
+                }
+                Section("Tags") {
+                    tagContent
                 }
                 Section("File") {
                     row("Name", photo.filename)
@@ -325,6 +353,7 @@ private struct PhotoMetadataView: View {
                     }
                 }
             }
+            .task { await tags.load() }
             .navigationTitle("Photo Info")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -334,6 +363,57 @@ private struct PhotoMetadataView: View {
             }
         }
         .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private var tagContent: some View {
+        switch tags.state {
+        case .loading:
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Loading tags…").foregroundStyle(.secondary)
+            }
+        case let .failed(message):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Tags are unavailable.")
+                Text(message).font(.caption).foregroundStyle(.secondary)
+                Button("Try Again") { Task { await tags.load() } }
+            }
+        case let .loaded(loaded) where loaded.isEmpty:
+            Text("No tags yet").foregroundStyle(.secondary)
+        case let .loaded(loaded):
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(loaded) { tag in
+                        tagChip(tag)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tagChip(_ tag: PhotoTagDTO) -> some View {
+        let name = PhotoTagName.displayName(tag.tag)
+        let label = Text(name)
+            .font(.subheadline)
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+        if let onSelectTag {
+            Button {
+                onSelectTag(tag.tag)
+            } label: {
+                label
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Tag \(name)")
+            .accessibilityHint("Shows Library photos tagged \(name)")
+        } else {
+            label.accessibilityLabel("Tag \(name)")
+        }
     }
 
     private var rawStatus: String? {

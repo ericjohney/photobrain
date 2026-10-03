@@ -27,7 +27,12 @@ import {
 	updatePhotoCuration,
 } from "../services/photo-curation";
 import { searchPhotoCatalog } from "../services/photo-search";
+import { getPhotoTags } from "../services/photo-tagging";
 import { getScan, startScan } from "../services/scan-jobs";
+import {
+	MAX_TAG_SLUG_LENGTH,
+	TAG_SLUG_PATTERN,
+} from "../services/tag-vocabulary";
 import {
 	findSimilarToPhoto,
 	searchPhotosByText,
@@ -41,6 +46,7 @@ const sharedFilterShape = {
 	minRating: z.number().int().min(1).max(5).optional(),
 	flag: z.enum(["pick", "reject", "unflagged"]).optional(),
 	collectionId: z.number().int().positive().optional(),
+	tag: z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN).optional(),
 };
 
 const collectionIdSchema = z.number().int().positive();
@@ -105,6 +111,16 @@ export const appRouter = router({
 			const photo = await getPhoto(ctx.db, input.id);
 			if (!photo) throw new Error("Photo not found");
 			return photo;
+		}),
+
+	photoTags: publicProcedure
+		.input(z.object({ photoId: z.number().int().positive() }))
+		.query(({ ctx, input }) => {
+			const result = getPhotoTags(ctx.db, input.photoId);
+			if (!result) {
+				throw new TRPCError({ code: "NOT_FOUND", message: "Photo not found" });
+			}
+			return result;
 		}),
 
 	searchPhotos: publicProcedure

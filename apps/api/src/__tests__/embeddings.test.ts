@@ -17,7 +17,10 @@ import { createTestDb } from "./setup";
 type Progress = { phase: string; current: number; total: number };
 type Context = {
 	event: { data: { photoIds: number[]; thumbnailsDir: string; jobId: string } };
-	step: { run<T>(id: string, work: () => T | Promise<T>): Promise<T> };
+	step: {
+		run<T>(id: string, work: () => T | Promise<T>): Promise<T>;
+		sendEvent(id: string, event: { name: string; data: object }): Promise<void>;
+	};
 	publish(message: { data: Progress }): Promise<void>;
 };
 type EmbeddingFunction = {
@@ -126,6 +129,7 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 		const published: Progress[] = [];
 		let depth = 0;
 		let publicationCheckpoints = 0;
+		const sent: { id: string; name: string }[] = [];
 		const controls = { loseBatchCheckpoint: false, failPublication: false };
 		const context: Context = {
 			event: { data: { photoIds, thumbnailsDir, jobId } },
@@ -146,6 +150,11 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 						depth--;
 					}
 				},
+				async sendEvent(id, event) {
+					if (checkpoints.has(id)) return;
+					checkpoints.set(id, null);
+					sent.push({ id, name: event.name });
+				},
 			},
 			async publish({ data }) {
 				// Inngest publications outside a running step consume a checkpoint.
@@ -157,6 +166,7 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 		return {
 			controls,
 			published,
+			sent,
 			run: () => embedding.handler(context),
 			checkpointCount: () => checkpoints.size + publicationCheckpoints,
 		};
@@ -201,6 +211,9 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 			current: 2,
 			total: 2,
 		});
+		expect(run.sent).toEqual([
+			{ id: "trigger-photo-tags-v1", name: "photos/tags.requested" },
+		]);
 	});
 
 	test("an old event uses the newer generation's committed root instead of failing its current vector", async () => {

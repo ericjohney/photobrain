@@ -145,6 +145,10 @@ private struct RootTabView: View {
                 }
             }
         }
+        .environment(\.showTagInLibrary, ShowTagInLibraryAction { tag in
+            navigation.selectedTab = .library
+            library.showTag(tag)
+        })
         .preferredColorScheme(theme.preference.colorScheme)
         .onAppear { applyPendingLink() }
         .onChange(of: links.pendingRoute) { _, route in

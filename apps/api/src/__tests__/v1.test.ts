@@ -7,13 +7,19 @@ import { photoExif, photos, scanJobs } from "../db/schema";
 import { createV1Router } from "../routes/v1";
 import {
 	curationFlagFilterSchema,
+	filterOptionsResponseSchema,
 	photoCurationPatchSchema,
 	photoFlagSchema,
+	photoTagsResponseSchema,
 	scanPhaseSchema,
 	scanStatusSchema,
 } from "../routes/v1-schemas";
 import type { ApiDatabase } from "../services/photo-catalog";
 import type { ScanRequestedEvent } from "../services/scan-jobs";
+import {
+	MAX_TAG_SLUG_LENGTH,
+	TAG_SLUG_PATTERN,
+} from "../services/tag-vocabulary";
 import { createTestDb, seedTestData } from "./setup";
 
 const legacyDispatch = mock(async (_event: unknown) => undefined);
@@ -559,6 +565,7 @@ describe("API v1 contract", () => {
 			"/api/v1/photos/{id}",
 			"/api/v1/photos/{id}/collections",
 			"/api/v1/photos/{id}/similar",
+			"/api/v1/photos/{id}/tags",
 			"/api/v1/scans",
 			"/api/v1/scans/active",
 			"/api/v1/scans/{jobId}",
@@ -654,6 +661,40 @@ describe("API v1 contract", () => {
 			expect(filters.flag?.enum).toEqual(
 				curationFlagFilterSchema.unwrap().options,
 			);
+			expect(filters.tag).toMatchObject({
+				type: "string",
+				pattern: TAG_SLUG_PATTERN.source,
+				maxLength: MAX_TAG_SLUG_LENGTH,
+			});
 		}
+		const schemas = document.components.schemas as unknown as Record<
+			string,
+			{
+				required: string[];
+				properties: Record<
+					string,
+					{ items?: { required?: string[]; properties?: object } }
+				>;
+			}
+		>;
+		expect(schemas.FilterOptionsResponse.required.sort()).toEqual(
+			Object.keys(filterOptionsResponseSchema.shape).sort(),
+		);
+		expect(
+			schemas.FilterOptionsResponse.properties.tags.items?.required,
+		).toEqual(["tag", "count"]);
+		expect(schemas.PhotoTagsResponse.required).toEqual(
+			Object.keys(photoTagsResponseSchema.shape),
+		);
+		expect(
+			Object.keys(
+				schemas.PhotoTagsResponse.properties.tags.items?.properties ?? {},
+			),
+		).toEqual(Object.keys(photoTagsResponseSchema.shape.tags.element.shape));
+		expect(
+			Object.keys(
+				document.paths["/api/v1/photos/{id}/tags"].get?.responses ?? {},
+			).sort(),
+		).toEqual(["200", "400", "404", "500"]);
 	});
 });

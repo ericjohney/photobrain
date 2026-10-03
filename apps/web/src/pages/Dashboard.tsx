@@ -63,6 +63,7 @@ export function Dashboard() {
 			dateMonth: filters.dateMonth ?? undefined,
 			minRating: filters.minRating ?? undefined,
 			flag: filters.flag ?? undefined,
+			tag: filters.tag ?? undefined,
 		},
 		{
 			enabled: !searchQuery,
@@ -83,6 +84,7 @@ export function Dashboard() {
 			dateMonth: filters.dateMonth ?? undefined,
 			minRating: filters.minRating ?? undefined,
 			flag: filters.flag ?? undefined,
+			tag: filters.tag ?? undefined,
 		},
 		{ enabled: !!searchQuery },
 	);
@@ -241,6 +243,17 @@ export function Dashboard() {
 		[deleteCollection],
 	);
 
+	// Metadata tag chip: filter the library (or the active search) by that tag.
+	const { setViewMode } = library;
+	const handleTagSelect = useCallback(
+		(tag: string) => {
+			setFilters((current) => ({ ...current, tag }));
+			setSimilarSource(null);
+			setViewMode("grid");
+		},
+		[setViewMode],
+	);
+
 	// Navigation helpers for loupe - memoized to avoid recalculation on every render
 	const { hasPrev, hasNext } = useMemo(() => {
 		const currentIndex = library.activePhoto
@@ -347,6 +360,7 @@ export function Dashboard() {
 		filters.dateMonth !== null ? formatMonthLabel(filters.dateMonth) : null,
 		filters.minRating !== null ? minRatingLabel(filters.minRating) : null,
 		filters.flag !== null ? FLAG_FILTER_LABELS[filters.flag] : null,
+		filters.tag !== null ? `#${filters.tag}` : null,
 	].filter((part): part is string => part !== null);
 	const searchResultCount = searchPhotosQuery.data?.photos.length;
 	const searchHeader = searchQuery && (
@@ -455,6 +469,7 @@ export function Dashboard() {
 					photo={library.activePhoto}
 					onFindSimilar={handleFindSimilar}
 					onCurate={curateActivePhoto}
+					onTagSelect={handleTagSelect}
 					collections={{
 						collections: collectionsApi.collections,
 						onSetMembership: collectionsApi.setMembership,

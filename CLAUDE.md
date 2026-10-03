@@ -57,7 +57,7 @@ The API entrypoint is `apps/api/src/index.ts`:
 2. tRPC handles `/api/trpc/*` using the router in `apps/api/src/trpc/router.ts`.
 3. The compatibility JSON API is mounted at `/api/v1` for the native Swift client.
 4. REST routes under `/api/photos/*` stream original files and generated thumbnails.
-5. Inngest serves `GET`, `PUT`, and `POST /api/inngest` and registers the scan and embedding functions.
+5. Inngest serves `GET`, `PUT`, and `POST /api/inngest` and registers the scan, embedding, and tag-backfill functions.
 
 The tRPC and `/api/v1` metadata, search, and scan contracts share the catalog/search/scan-job service layer rather than maintaining separate domain implementations. `/api/v1` explicitly serializes public DTOs and strips `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, and `thumbnailFingerprint`. Its scan-start mutation is disabled by default and returns `503 NATIVE_SCAN_DISABLED` unless `V1_NATIVE_SCAN_MUTATIONS_ENABLED=true` (or `1`); read-only catalog, search, and scan-status routes remain available.
 
@@ -69,7 +69,8 @@ The scan flow is:
 4. Each completion checks the frozen source fingerprint, current attempt, and previous committed generation before atomically saving photo/EXIF/pHash data, artifact identity, receipt, counters, and progress. The API acknowledges persistence before pulling the next result. Inngest checkpoints every 20 completions; retries load only pending receipts. Native processing and network publication stay outside SQLite transactions.
 5. Only current-generation photos requiring embeddings enter the final `photos/embeddings.requested` event: regenerated media and otherwise unchanged photos with missing, failed, outdated, or malformed vectors. Fully indexed unchanged scans complete without that event. The parent performs no progress writes after dispatch.
 6. `generate-embeddings-v3` reads committed `large` thumbnail roots/keys in batches of 16. Inference, generation-checked vector/status saves, and progress publication share one checkpoint per batch; stale results cannot overwrite a newer photo generation.
-7. Both functions persist progress to `scan_jobs` and publish it to the Inngest Realtime channel `job:{jobId}`. Exhausted failures become terminal failed rows.
+7. Automatic tags: `saveEmbeddingBatch` scores each saved current-generation vector against the lazily embedded, memoized vocabulary in `tag-vocabulary.ts` (softmax over 100×cosine, ≥ `TAG_MIN_PROBABILITY` 0.15, at most 3) and replaces its `photo_tags` in the same transaction. A final appended step of `generate-embeddings-v3`, or of `scan-photos-v5` when no embeddings are dispatched, sends `photos/tags.requested`; `tag-photos-v1` (concurrency 1) backfills vectors whose `tags_version` is null or outdated, 1,000 per generation-checked step. Bump `TAG_VOCABULARY_VERSION` when labels or scoring change.
+8. The scan and embedding functions persist progress to `scan_jobs` and publish it to the Inngest Realtime channel `job:{jobId}`. Exhausted failures become terminal failed rows.
 
 Incremental identity uses the canonical source root, byte size, nanosecond mtime/ctime, `MEDIA_VERSION`, and stat fingerprints of all four thumbnail files. Legacy rows receive one-time conservative adoption: matching size/whole-second mtime, completed media metadata, unambiguous stems, source ctime older than every thumbnail, full WebP/dimension validation, and post-validation stat checks. Valid artifacts are not re-encoded. These checks are metadata-based, not content hashes or proof of historical source provenance. `MEDIA_VERSION` and `EMBEDDING_MODEL_VERSION` in `processing-versions.ts` must change when their respective output contracts change.
 
@@ -105,8 +106,9 @@ The tables are:
 
 - `photos`: file identity, dimensions, timestamps, RAW metadata, processing statuses, user curation (`rating` 0-5, `flag` `pick`/`reject`/null; scans never write these), and private committed source/artifact roots, fingerprints, version, and thumbnail key.
 - `photo_exif`: one-to-one camera, lens, exposure, date, and GPS metadata.
-- `photo_embedding`: one CLIP embedding blob per photo, with model version and thumbnail generation.
+- `photo_embedding`: one CLIP embedding blob per photo, with model version, thumbnail generation, and `tags_version` (vocabulary version used to tag that vector; null = untagged).
 - `photo_phash`: one perceptual hash per photo.
+- `photo_tags`: automatic CLIP zero-shot tags (`tag` slug, softmax `score`), at most 3 per photo; `(tag, photo_id)` index; cascades with the photo.
 - `collections`: manual albums; name unique case-insensitively (`COLLATE NOCASE` index).
 - `collection_photos`: collection membership with `added_at`; both foreign keys cascade, so deleting a collection never deletes photos.
 - `scan_jobs`: durable scan/embedding phase, status, counts, errors, and timestamps.
@@ -225,8 +227,9 @@ The tRPC and `/api/v1` procedures are public; there is no authentication or auth
 | Procedure | Type | Purpose |
 |---|---|---|
 | `folders` | query | Builds a sorted folder tree and counts direct-child photos |
-| `filterOptions` | query | Distinct camera, lens, ISO, and stored date-month prefixes, optionally folder-scoped |
-| `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, month, `minRating`, `flag` (`pick`/`reject`/`unflagged`), and `collectionId` filters |
+| `filterOptions` | query | Distinct camera, lens, ISO, stored date-month prefixes, and tag counts (count desc, then tag), optionally folder-scoped |
+| `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, month, `minRating`, `flag` (`pick`/`reject`/`unflagged`), `collectionId`, and `tag` filters |
+| `photoTags` | query | A photo's automatic tags, score descending; `NOT_FOUND` for unknown IDs |
 | `photo` | query | Returns one photo with EXIF by numeric ID |
 | `searchPhotos` | query | CLIP text search, limit 1-100, optionally scoped by the same filters as `photos` (applied inside the KNN query) |
 | `similarPhotos` | query | Nearest CLIP neighbours of a photo's committed vector, limit 1-100, optionally filtered like `photos`; `{ photos, total, sourcePhotoId, indexed }`, `NOT_FOUND` for unknown IDs |
@@ -246,6 +249,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `GET /api/v1/photos/:id`
 - `PATCH /api/v1/photos/:id` (`{ rating?, flag? }`; returns the Photo DTO; not gated by the scan flag)
 - `GET /api/v1/photos/:id/similar`
+- `GET /api/v1/photos/:id/tags` (404 `PHOTO_NOT_FOUND`)
 - `GET|POST /api/v1/collections`, `PATCH|DELETE /api/v1/collections/:id`, `POST /api/v1/collections/:id/photos`, `POST /api/v1/collections/:id/photos/remove`, `GET /api/v1/photos/:id/collections` (409 `COLLECTION_NAME_TAKEN`, 404 `COLLECTION_NOT_FOUND`)
 - `POST /api/v1/search`
 - `POST /api/v1/scans` (disabled by default through `V1_NATIVE_SCAN_MUTATIONS_ENABLED`)
@@ -275,6 +279,8 @@ The active route tree is in `apps/web/src/App.tsx`:
 
 The dashboard combines folder and collection navigation, EXIF filters, semantic search, similar-photo search, grid/loupe views, metadata, curation, scan progress, and a loupe filmstrip. The web uses single active-photo state, not multi-selection. Type, Rating, Flag, folder, and EXIF filters stay visible during search and scope it; a results header names the query and scope. Selecting a collection in the left panel scopes the grid and search (exclusive with folder selection); the panel creates, renames, and deletes collections, and the metadata panel's **Add to collection** popover toggles membership for the active photo. **Find similar** in the metadata panel (or `S`) replaces the grid with the active photo's nearest neighbours until dismissed, searched, or navigated away. The metadata panel's Rating stars and Pick/Reject toggles update every cached result optimistically and roll back on failure; grid cells show a ★/flag badge and rejected photos are dimmed in grid and filmstrip.
 
+Filter By has a Tags section (top 12 by count, then **Show all**; single-select, click again to clear) that scopes the grid and search (`#tag` in the search header). The metadata panel lists the active photo's tags as chips in score order ("No tags yet" when untagged); clicking a chip applies that tag filter and returns to the grid.
+
 The normal scan control is incremental. The separate **Reprocess all photos…** control requires confirmation before regenerating thumbnails and embeddings; originals remain untouched.
 
 Implemented keyboard shortcuts:
@@ -294,6 +300,8 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 ### Native iOS
 
 `apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering (media type, EXIF, minimum rating, flag), semantic search scoped by the shared Library filter sheet, loupe **Find Similar** results, loupe star/Pick/Reject curation (`PhotoCurationCenter` coalesces in-flight PATCHes per photo and rolls back on failure across Library, Search, and Similar), collections (cover-card grid with create/rename/delete, collection-scoped grid/loupe detail, loupe **Add to Collection** sheet), theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
+
+Automatic tags on iOS: the shared filter sheet has a Tag picker with counts (summary `#tag`) feeding Library and Search, and the loupe info sheet shows the photo's tag chips; tapping a chip closes the loupe, switches to Library, and adds that tag to the existing Library filters.
 
 ### Expo Android/web
 

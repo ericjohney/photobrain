@@ -17,6 +17,9 @@ type PhotoEvents = {
 			jobId: string;
 		};
 	};
+	"photos/tags.requested": {
+		data: Record<string, never>;
+	};
 };
 
 export const inngest = new Inngest({

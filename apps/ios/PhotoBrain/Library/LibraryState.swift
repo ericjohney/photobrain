@@ -25,6 +25,8 @@ struct LibraryFilters: Equatable, Sendable {
     /// Minimum star rating, 1-5; `nil` means any rating.
     var minRating: Int?
     var flag: PhotoFlagFilter?
+    /// Auto tag slug; `nil` means any tag.
+    var tag: String?
 
     enum Field: Hashable, Sendable {
         case mediaKind
@@ -34,11 +36,12 @@ struct LibraryFilters: Equatable, Sendable {
         case dateMonth
         case minRating
         case flag
+        case tag
     }
 
     var isActive: Bool {
         mediaKind != .all || camera != nil || lens != nil || iso != nil || dateMonth != nil
-            || minRating != nil || flag != nil
+            || minRating != nil || flag != nil || tag != nil
     }
 
     struct ActiveFilter: Identifiable, Equatable, Sendable {
@@ -57,6 +60,7 @@ struct LibraryFilters: Equatable, Sendable {
         if let dateMonth { fields.append(ActiveFilter(field: .dateMonth, title: Self.formatMonth(dateMonth))) }
         if let minRating { fields.append(ActiveFilter(field: .minRating, title: Self.formatMinRating(minRating))) }
         if let flag { fields.append(ActiveFilter(field: .flag, title: flag.title)) }
+        if let tag { fields.append(ActiveFilter(field: .tag, title: PhotoTagName.hashtag(tag))) }
         return fields
     }
 
@@ -75,7 +79,8 @@ struct LibraryFilters: Equatable, Sendable {
             iso: iso,
             dateMonth: dateMonth,
             minRating: minRating,
-            flag: flag
+            flag: flag,
+            tag: tag
         )
     }
 
@@ -89,6 +94,7 @@ struct LibraryFilters: Equatable, Sendable {
         case .dateMonth: updated.dateMonth = nil
         case .minRating: updated.minRating = nil
         case .flag: updated.flag = nil
+        case .tag: updated.tag = nil
         }
         return updated
     }
@@ -381,6 +387,15 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
 
     func clearFilters() {
         applyFilters(LibraryFilters())
+    }
+
+    /// Loupe tag-chip action: closes this store's loupe and narrows the library to `tag`,
+    /// keeping the other active filters, then reloads.
+    func showTag(_ tag: String) {
+        activePhotoID = nil
+        var updated = filters
+        updated.tag = tag
+        applyFilters(updated)
     }
 
     func observeVisible(firstID: Int?, distanceFromNewest: CGFloat) {

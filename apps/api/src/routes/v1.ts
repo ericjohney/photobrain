@@ -20,6 +20,7 @@ import {
 import { updatePhotoCuration } from "../services/photo-curation";
 import type { PhotoSearchProvider } from "../services/photo-search";
 import { searchPhotoCatalog } from "../services/photo-search";
+import { getPhotoTags } from "../services/photo-tagging";
 import type { ScanEventDispatcher } from "../services/scan-jobs";
 import { getScan, listActiveScans, startScan } from "../services/scan-jobs";
 import { findSimilarToPhoto } from "../services/vector-search";
@@ -42,6 +43,7 @@ import {
 	photoIdSchema,
 	photoSchema,
 	photosResponseSchema,
+	photoTagsResponseSchema,
 	removeCollectionPhotosResponseSchema,
 	renameCollectionRequestSchema,
 	scanIdSchema,
@@ -231,6 +233,20 @@ export function createV1Router(dependencies: V1Dependencies) {
 				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
 			}
 			return jsonResponse(photoCollectionsResponseSchema, result);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/photos/:id/tags", (context) => {
+		const id = photoIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		try {
+			const result = getPhotoTags(dependencies.database, id.data);
+			if (!result) {
+				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+			}
+			return jsonResponse(photoTagsResponseSchema, result);
 		} catch (error) {
 			return internalError(error);
 		}

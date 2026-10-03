@@ -489,6 +489,7 @@ describe("saveEmbeddingBatch", () => {
 					embedding: Buffer.from(new Float32Array(values[index]).buffer),
 					modelVersion: "clip-vit-b32",
 					thumbnailKey: null,
+					tagsVersion: null,
 					createdAt: expect.any(Date),
 				});
 			}

@@ -34,6 +34,9 @@ actor TestAPI: PhotoBrainAPI {
     var collectionFailures: [CollectionRoute: PhotoBrainAPIError] = [:]
     var collectionDelay: Duration = .zero
     var collectionRequests: [CollectionRequest] = []
+    /// Server-side auto tags by photo id; photos without an entry are unknown (404).
+    var photoTagResults: [Int: Result<PhotoTagsResponseDTO, PhotoBrainAPIError>] = [:]
+    var photoTagRequests: [Int] = []
     private var nextCollectionID = 1
 
     enum CollectionRoute: Hashable, Sendable {
@@ -63,6 +66,18 @@ actor TestAPI: PhotoBrainAPI {
 
     func setPhotoFailure(_ failing: Bool) {
         shouldFailPhotos = failing
+    }
+
+    func setFilterOptions(_ options: FilterOptionsDTO) {
+        filterResponse = options
+    }
+
+    func setPhotoTags(id: Int, _ result: Result<PhotoTagsResponseDTO, PhotoBrainAPIError>) {
+        photoTagResults[id] = result
+    }
+
+    func recordedPhotoTagRequests() -> [Int] {
+        photoTagRequests
     }
 
     struct SearchKey: Hashable, Sendable {
@@ -197,6 +212,14 @@ actor TestAPI: PhotoBrainAPI {
         similarRequests.append((id, limit))
         if let delay = similarDelays[id], delay > .zero { try await Task.sleep(for: delay) }
         guard let result = similarResponses[id] else {
+            throw PhotoBrainAPIError.server(status: 404, code: "PHOTO_NOT_FOUND", message: "Photo not found")
+        }
+        return try result.get()
+    }
+
+    func photoTags(id: Int) async throws -> PhotoTagsResponseDTO {
+        photoTagRequests.append(id)
+        guard let result = photoTagResults[id] else {
             throw PhotoBrainAPIError.server(status: 404, code: "PHOTO_NOT_FOUND", message: "Photo not found")
         }
         return try result.get()

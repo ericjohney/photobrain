@@ -19,5 +19,8 @@ export type FlagFilter = NonNullable<
 	Extract<RouterInputs["photos"], object>["flag"]
 >;
 
+// Filter option types
+export type FilterOptions = RouterOutputs["filterOptions"];
+
 // Collection types
 export type Collection = RouterOutputs["collections"]["collections"][number];

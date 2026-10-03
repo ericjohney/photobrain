@@ -5,6 +5,8 @@ import { db } from "../../db";
 import { photos } from "../../db/schema";
 import { saveEmbeddingBatch } from "../../services/import-persistence";
 import { nativeExecutor } from "../../services/native-executor";
+import type { TagLabelMatrix } from "../../services/photo-tagging";
+import { loadTagLabelMatrix } from "../../services/tag-labels";
 import { inngest } from "../client";
 import { failJob, updateJobProgress } from "../progress";
 
@@ -113,7 +115,16 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 						thumbnailPaths,
 					);
 					const inferenceFinished = performance.now();
-					const result = saveEmbeddingBatch(db, batch, embeddings);
+					// Label vectors load once per process, outside the transaction. A
+					// text-model failure must not discard image vectors: they save
+					// untagged and the tag backfill retries labelling.
+					let labels: TagLabelMatrix | null = null;
+					try {
+						labels = loadTagLabelMatrix();
+					} catch (error) {
+						console.error("Failed to load tag label vectors:", error);
+					}
+					const result = saveEmbeddingBatch(db, batch, embeddings, labels);
 					console.log(
 						`Embedding batch ${batchIndex}: native queue + image load/model/inference ${Math.round(inferenceFinished - started)}ms, database save ${Math.round(performance.now() - inferenceFinished)}ms for ${batch.length} photos`,
 					);
@@ -163,6 +174,13 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 					total: processedCount,
 				});
 			}
+		});
+
+		// Appended after existing steps for replay safety: retag anything this run
+		// left untagged (or tagged with an older vocabulary).
+		await step.sendEvent("trigger-photo-tags-v1", {
+			name: "photos/tags.requested",
+			data: {},
 		});
 
 		return { processed: processedCount, successful: successCount };

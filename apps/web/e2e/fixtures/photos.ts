@@ -151,6 +151,78 @@ export const FIXTURE_FOLDERS = {
 	totalPhotos: FIXTURE_PHOTOS.length,
 };
 
+export type FixturePhotoTag = { tag: string; score: number };
+
+/**
+ * Auto tags per photo ID, highest score first like the API. 20 distinct tags
+ * (more than the 12 the Tags filter shows before "Show all"); cat.jpg (11)
+ * is untagged.
+ */
+export const FIXTURE_PHOTO_TAGS: Record<number, FixturePhotoTag[]> = {
+	1: [
+		{ tag: "sunset", score: 0.62 },
+		{ tag: "sky", score: 0.21 },
+		{ tag: "beach", score: 0.11 },
+	],
+	2: [
+		{ tag: "portrait", score: 0.71 },
+		{ tag: "person", score: 0.18 },
+	],
+	3: [
+		{ tag: "landscape", score: 0.55 },
+		{ tag: "mountain", score: 0.3 },
+		{ tag: "sky", score: 0.1 },
+	],
+	4: [
+		{ tag: "macro", score: 0.8 },
+		{ tag: "flowers", score: 0.12 },
+	],
+	5: [
+		{ tag: "street", score: 0.5 },
+		{ tag: "city", score: 0.35 },
+	],
+	6: [
+		{ tag: "beach", score: 0.66 },
+		{ tag: "ocean", score: 0.24 },
+		{ tag: "sky", score: 0.1 },
+	],
+	7: [
+		{ tag: "night-sky", score: 0.48 },
+		{ tag: "mountain", score: 0.4 },
+		{ tag: "snow", score: 0.12 },
+	],
+	8: [
+		{ tag: "forest", score: 0.7 },
+		{ tag: "tree", score: 0.2 },
+	],
+	9: [
+		{ tag: "city", score: 0.6 },
+		{ tag: "architecture", score: 0.25 },
+		{ tag: "night-sky", score: 0.1 },
+	],
+	10: [
+		{ tag: "flowers", score: 0.75 },
+		{ tag: "garden", score: 0.15 },
+	],
+	12: [
+		{ tag: "dog", score: 0.8 },
+		{ tag: "pet", score: 0.15 },
+	],
+};
+
+/** Tag counts over `photos`, sorted like the API: count desc, then tag asc. */
+export function fixtureTagCounts(photos: FixturePhoto[]) {
+	const counts = new Map<string, number>();
+	for (const photo of photos) {
+		for (const { tag } of FIXTURE_PHOTO_TAGS[photo.id] ?? []) {
+			counts.set(tag, (counts.get(tag) ?? 0) + 1);
+		}
+	}
+	return [...counts]
+		.map(([tag, count]) => ({ tag, count }))
+		.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+}
+
 export function searchPhotosByQuery(
 	query: string,
 	photos: FixturePhoto[] = FIXTURE_PHOTOS,
@@ -170,6 +242,7 @@ export type FixturePhotoFilters = {
 	dateMonth?: string;
 	minRating?: number;
 	flag?: "pick" | "reject" | "unflagged";
+	tag?: string;
 };
 
 /** Camera label as the API composes it: model alone when it already starts with the make. */
@@ -214,6 +287,12 @@ export function filterFixturePhotos(
 		if (filters.flag === "unflagged") {
 			if (p.flag !== null) return false;
 		} else if (filters.flag !== undefined && p.flag !== filters.flag) {
+			return false;
+		}
+		if (
+			filters.tag !== undefined &&
+			!FIXTURE_PHOTO_TAGS[p.id]?.some(({ tag }) => tag === filters.tag)
+		) {
 			return false;
 		}
 		return true;

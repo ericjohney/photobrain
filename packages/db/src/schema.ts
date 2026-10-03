@@ -5,6 +5,7 @@ import {
 	index,
 	integer,
 	primaryKey,
+	real,
 	sqliteTable,
 	text,
 	uniqueIndex,
@@ -120,6 +121,8 @@ export const photoEmbedding = sqliteTable("photo_embedding", {
 	embedding: blob("embedding").notNull(),
 	modelVersion: text("model_version").default("clip-vit-b32"),
 	thumbnailKey: text("thumbnail_key"),
+	// TAG_VOCABULARY_VERSION used to tag this vector; null means untagged.
+	tagsVersion: integer("tags_version"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -223,6 +226,22 @@ export const collectionPhotos = sqliteTable(
 	],
 );
 
+// Zero-shot CLIP tags (up to three per photo) derived from the stored vector.
+export const photoTags = sqliteTable(
+	"photo_tags",
+	{
+		photoId: integer("photo_id")
+			.notNull()
+			.references(() => photos.id, { onDelete: "cascade" }),
+		tag: text("tag").notNull(),
+		score: real("score").notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.photoId, table.tag] }),
+		index("idx_photo_tags_tag_photo_id").on(table.tag, table.photoId),
+	],
+);
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -257,3 +276,5 @@ export type Collection = typeof collections.$inferSelect;
 export type NewCollection = typeof collections.$inferInsert;
 export type CollectionPhoto = typeof collectionPhotos.$inferSelect;
 export type NewCollectionPhoto = typeof collectionPhotos.$inferInsert;
+export type PhotoTag = typeof photoTags.$inferSelect;
+export type NewPhotoTag = typeof photoTags.$inferInsert;

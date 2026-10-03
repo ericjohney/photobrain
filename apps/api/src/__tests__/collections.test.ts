@@ -966,7 +966,15 @@ describe("migration 0008", () => {
 			});
 			const before = snapshot();
 
-			migrate(legacyDb, { migrationsFolder: MIGRATIONS_FOLDER });
+			// Stop at 0008 so later migrations' additive columns stay out of scope.
+			writeFileSync(
+				journalPath,
+				JSON.stringify({
+					...journal,
+					entries: journal.entries.slice(0, collectionsIndex + 1),
+				}),
+			);
+			migrate(legacyDb, { migrationsFolder: partial });
 
 			expect(snapshot()).toEqual(before);
 			expect(tables()).toEqual(

@@ -27,11 +27,14 @@ import {
 	PhotoCollections,
 	type PhotoCollectionsProps,
 } from "./PhotoCollections";
+import { PhotoTags } from "./PhotoTags";
 
 interface MetadataPanelProps {
 	photo: PhotoMetadata | null;
 	onFindSimilar?: () => void;
 	onCurate?: (patch: CurationPatch) => void;
+	/** Applies a tag chip as the library tag filter. */
+	onTagSelect?: (tag: string) => void;
 	/** Collection membership controls for the active photo. */
 	collections?: Omit<PhotoCollectionsProps, "photoId">;
 	className?: string;
@@ -169,6 +172,7 @@ export function MetadataPanel({
 	photo,
 	onFindSimilar,
 	onCurate,
+	onTagSelect,
 	collections,
 	className,
 }: MetadataPanelProps) {
@@ -209,6 +213,7 @@ export function MetadataPanel({
 				{collections && (
 					<PhotoCollections photoId={photo.id} {...collections} />
 				)}
+				{onTagSelect && <PhotoTags photoId={photo.id} onSelect={onTagSelect} />}
 				{/* File Info */}
 				<MetadataSection title="File" icon={FileImage}>
 					<div className="space-y-0.5 pt-1">
