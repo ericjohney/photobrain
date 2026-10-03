@@ -16,6 +16,7 @@ protocol PhotoBrainAPI: Sendable {
     func photos(query: PhotoQuery) async throws -> PhotosResponseDTO
     func photo(id: Int) async throws -> PhotoDTO
     func search(query: String, limit: Int) async throws -> SearchResponseDTO
+    func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO
     func startScan(force: Bool) async throws -> StartScanResponseDTO
     func scan(id: String) async throws -> ScanDTO?
     func activeScans() async throws -> ActiveScansResponseDTO
@@ -84,6 +85,14 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
             let limit: Int
         }
         return try await post(path: ["search"], body: SearchRequest(query: trimmed, limit: limit))
+    }
+
+    func similarPhotos(id: Int, limit: Int = 30) async throws -> SimilarPhotosResponseDTO {
+        guard id > 0, (1...100).contains(limit) else { throw PhotoBrainAPIError.invalidRequest }
+        return try await get(
+            path: ["photos", String(id), "similar"],
+            queryItems: [URLQueryItem(name: "limit", value: String(limit))]
+        )
     }
 
     func startScan(force: Bool) async throws -> StartScanResponseDTO {

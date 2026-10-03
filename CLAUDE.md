@@ -227,6 +227,7 @@ The tRPC and `/api/v1` procedures are public; there is no authentication or auth
 | `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, and month filters |
 | `photo` | query | Returns one photo with EXIF by numeric ID |
 | `searchPhotos` | query | CLIP text search, limit 1-100 |
+| `similarPhotos` | query | Nearest CLIP neighbours of a photo's committed vector, limit 1-100; `{ photos, total, sourcePhotoId, indexed }`, `NOT_FOUND` for unknown IDs |
 | `scan` | mutation | Defaults to incremental scanning; optional `{ force: true }` reprocesses all discovered files. Creates a durable job and returns `{ success, jobId? }` |
 | `scanStatus` | query | Returns durable progress for a scan UUID or `null` |
 | `realtimeToken` | query | Returns `{ token, baseUrl? }` for a job ID; optional client-reachable self-hosted origin |
@@ -237,6 +238,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `GET /api/v1/filter-options`
 - `GET /api/v1/photos`
 - `GET /api/v1/photos/:id`
+- `GET /api/v1/photos/:id/similar`
 - `POST /api/v1/search`
 - `POST /api/v1/scans` (disabled by default through `V1_NATIVE_SCAN_MUTATIONS_ENABLED`)
 - `GET /api/v1/scans/active`
@@ -264,7 +266,7 @@ The active route tree is in `apps/web/src/App.tsx`:
 - `/preferences` -> placeholder page
 - `/about` -> informational page
 
-The dashboard combines folder navigation, EXIF filters, semantic search, grid/loupe views, metadata, scan progress, and a loupe filmstrip. The web uses single active-photo state, not multi-selection.
+The dashboard combines folder navigation, EXIF filters, semantic search, similar-photo search, grid/loupe views, metadata, scan progress, and a loupe filmstrip. The web uses single active-photo state, not multi-selection. **Find similar** in the metadata panel (or `S`) replaces the grid with the active photo's nearest neighbours until dismissed, searched, or navigated away.
 
 The normal scan control is incremental. The separate **Reprocess all photos…** control requires confirmation before regenerating thumbnails and embeddings; originals remain untouched.
 
@@ -275,13 +277,14 @@ Implemented keyboard shortcuts:
 - `Tab`: toggle all panels
 - `Shift+Space`: toggle filmstrip
 - Left/right arrows: navigate in loupe or with an active photo
-- `Escape`: return from loupe to grid
+- `S`: find photos similar to the active photo
+- `Escape`: return from loupe to grid; in grid, exit similar-photo mode
 
 Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width/height values are persisted by `usePanelState`, but `PanelLayout` currently renders fixed dimensions.
 
 ### Native iOS
 
-`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering, semantic search, theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
+`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering, semantic search, loupe **Find Similar** results, theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
 
 ### Expo Android/web
 

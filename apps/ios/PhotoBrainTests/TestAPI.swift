@@ -17,6 +17,9 @@ actor TestAPI: PhotoBrainAPI {
     var activeCallCount = 0
     var shouldFailStart = false
     var startForces: [Bool] = []
+    var similarResponses: [Int: Result<SimilarPhotosResponseDTO, PhotoBrainAPIError>] = [:]
+    var similarDelays: [Int: Duration] = [:]
+    var similarRequests: [(id: Int, limit: Int)] = []
 
 
     func setPhotos(_ response: PhotosResponseDTO, failing: Bool = false) {
@@ -31,6 +34,19 @@ actor TestAPI: PhotoBrainAPI {
     func setSearch(query: String, delay: Duration, response: SearchResponseDTO) {
         searchDelays[query] = delay
         searchResponses[query] = response
+    }
+
+    func setSimilar(
+        id: Int,
+        delay: Duration = .zero,
+        result: Result<SimilarPhotosResponseDTO, PhotoBrainAPIError>
+    ) {
+        similarDelays[id] = delay
+        similarResponses[id] = result
+    }
+
+    func recordedSimilarRequests() -> [(id: Int, limit: Int)] {
+        similarRequests
     }
 
     func setActive(_ jobs: [ScanDTO]) {
@@ -81,6 +97,15 @@ actor TestAPI: PhotoBrainAPI {
     func search(query: String, limit: Int) async throws -> SearchResponseDTO {
         if let delay = searchDelays[query] { try await Task.sleep(for: delay) }
         return searchResponses[query] ?? SearchResponseDTO(photos: [], total: 0, query: query)
+    }
+
+    func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO {
+        similarRequests.append((id, limit))
+        if let delay = similarDelays[id], delay > .zero { try await Task.sleep(for: delay) }
+        guard let result = similarResponses[id] else {
+            throw PhotoBrainAPIError.server(status: 404, code: "PHOTO_NOT_FOUND", message: "Photo not found")
+        }
+        return try result.get()
     }
 
     func startScan(force: Bool) async throws -> StartScanResponseDTO {

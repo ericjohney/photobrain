@@ -226,7 +226,7 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 			embeddingStatus: "completed",
 		});
 		expect(
-			(await findSimilarPhotos([0, 1])).map((result) => result.id),
+			(await findSimilarPhotos(db, [0, 1])).map((result) => result.id),
 		).toEqual([photo.id]);
 		expect(run.published.at(-1)).toEqual({
 			phase: "completed",
@@ -275,7 +275,7 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 		expect(db.select().from(photoEmbedding).get()?.embedding).toEqual(
 			Buffer.from(new Float32Array([1, 0]).buffer),
 		);
-		expect(await findSimilarPhotos([1, 0])).toEqual([]);
+		expect(await findSimilarPhotos(db, [1, 0])).toEqual([]);
 	});
 
 	test("terminal jobs do not start inference or change state", async () => {
@@ -387,7 +387,7 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 			.where(eq(photos.id, missing.id))
 			.run();
 		expect(
-			(await findSimilarPhotos([1, 0], 2)).map((photo) => photo.id),
+			(await findSimilarPhotos(db, [1, 0], 2)).map((photo) => photo.id),
 		).toEqual([current.id, legacy.id]);
 	});
 }

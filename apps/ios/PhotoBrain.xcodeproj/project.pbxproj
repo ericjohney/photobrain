@@ -44,6 +44,8 @@
 		A10000000000000000000015 /* AppLinkRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* AppLinkRouting.swift */; };
 		A2000000000000000000000D /* AppLinkRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000D /* AppLinkRoutingTests.swift */; };
 		A2000000000000000000000E /* InstrumentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000E /* InstrumentationTests.swift */; };
+		A10000000000000000000016 /* SimilarPhotosScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* SimilarPhotosScreen.swift */; };
+		A2000000000000000000000F /* SimilarPhotosTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000F /* SimilarPhotosTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -101,6 +103,8 @@
 		B10000000000000000000015 /* AppLinkRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLinkRouting.swift; sourceTree = "<group>"; };
 		B2000000000000000000000D /* AppLinkRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLinkRoutingTests.swift; sourceTree = "<group>"; };
 		B2000000000000000000000E /* InstrumentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstrumentationTests.swift; sourceTree = "<group>"; };
+		B10000000000000000000016 /* SimilarPhotosScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimilarPhotosScreen.swift; sourceTree = "<group>"; };
+		B2000000000000000000000F /* SimilarPhotosTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimilarPhotosTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -170,12 +174,13 @@
 				B2000000000000000000000C /* ScanCoordinatorTests.swift */,
 				B2000000000000000000000D /* AppLinkRoutingTests.swift */,
 				B2000000000000000000000E /* InstrumentationTests.swift */,
+				B2000000000000000000000F /* SimilarPhotosTests.swift */,
 			);
 			path = PhotoBrainTests;
 			sourceTree = "<group>";
 		};
 		C0000000000000000000000B /* Products */ = {isa = PBXGroup; children = (B00000000000000000000001 /* PhotoBrain.app */, B00000000000000000000002 /* PhotoBrainTests.xctest */,); name = Products; sourceTree = "<group>"; };
-		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */,); path = Views; sourceTree = "<group>"; };
+		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */,); path = Views; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -259,6 +264,7 @@
 				A10000000000000000000013 /* LibraryScreen.swift in Sources */,
 				A10000000000000000000014 /* SearchScreen.swift in Sources */,
 				A10000000000000000000015 /* AppLinkRouting.swift in Sources */,
+				A10000000000000000000016 /* SimilarPhotosScreen.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,6 +286,7 @@
 				A2000000000000000000000C /* ScanCoordinatorTests.swift in Sources */,
 				A2000000000000000000000D /* AppLinkRoutingTests.swift in Sources */,
 				A2000000000000000000000E /* InstrumentationTests.swift in Sources */,
+				A2000000000000000000000F /* SimilarPhotosTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

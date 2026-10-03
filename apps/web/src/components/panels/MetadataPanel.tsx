@@ -8,7 +8,9 @@ import {
 	Gauge,
 	ImageIcon,
 	MapPin,
+	Sparkles,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -20,6 +22,7 @@ import { cn } from "@/lib/utils";
 
 interface MetadataPanelProps {
 	photo: PhotoMetadata | null;
+	onFindSimilar?: () => void;
 	className?: string;
 }
 
@@ -66,7 +69,11 @@ function MetadataRow({
 	);
 }
 
-export function MetadataPanel({ photo, className }: MetadataPanelProps) {
+export function MetadataPanel({
+	photo,
+	onFindSimilar,
+	className,
+}: MetadataPanelProps) {
 	if (!photo) {
 		return (
 			<div
@@ -86,6 +93,20 @@ export function MetadataPanel({ photo, className }: MetadataPanelProps) {
 	return (
 		<ScrollArea className={cn("h-full", className)}>
 			<div className="pb-4">
+				{onFindSimilar && (
+					<div className="border-b border-border px-3 py-2">
+						<Button
+							variant="outline"
+							size="sm"
+							className="w-full"
+							onClick={onFindSimilar}
+							title="Find similar photos (S)"
+						>
+							<Sparkles className="h-4 w-4" />
+							Find similar
+						</Button>
+					</div>
+				)}
 				{/* File Info */}
 				<MetadataSection title="File" icon={FileImage}>
 					<div className="space-y-0.5 pt-1">

@@ -463,3 +463,92 @@ final class SearchStore: ObservableObject {
         }
     }
 }
+
+@MainActor
+final class SimilarPhotosStore: ObservableObject {
+    enum State: Equatable {
+        case idle
+        case loading
+        case loaded
+        case empty
+        case notIndexed
+        case failed(String)
+    }
+
+    static let resultLimit = 30
+
+    @Published private(set) var state: State = .idle
+    @Published private(set) var records: [PhotoRecord] = []
+    @Published private(set) var sourcePhotoID: Int?
+    @Published var activePhotoID: Int?
+
+    private let api: any PhotoBrainAPI
+    private var task: Task<Void, Never>?
+    private var generation = 0
+
+    init(api: any PhotoBrainAPI) {
+        self.api = api
+    }
+
+    /// Starts loading neighbours for `sourceID` unless that source already has a settled result.
+    /// A different source supersedes any in-flight request; its late response is discarded.
+    @discardableResult
+    func load(sourceID: Int) -> Task<Void, Never>? {
+        if sourceID == sourcePhotoID {
+            switch state {
+            case .loading: return task
+            case .loaded, .empty, .notIndexed: return nil
+            case .idle, .failed: break
+            }
+        }
+        return fetch(sourceID: sourceID)
+    }
+
+    @discardableResult
+    func retry() -> Task<Void, Never>? {
+        guard let sourcePhotoID else { return nil }
+        return fetch(sourceID: sourcePhotoID)
+    }
+
+    /// Cancels the in-flight request (e.g. when the screen disappears). An interrupted load returns
+    /// to `.idle` so the next `load(sourceID:)` refetches; settled results are retained.
+    func cancel() {
+        generation += 1
+        task?.cancel()
+        task = nil
+        if state == .loading { state = .idle }
+    }
+
+    private func fetch(sourceID: Int) -> Task<Void, Never> {
+        generation += 1
+        let currentGeneration = generation
+        task?.cancel()
+        if sourceID != sourcePhotoID {
+            sourcePhotoID = sourceID
+            records = []
+            activePhotoID = nil
+        }
+        state = .loading
+        let task = Task { [api] in
+            do {
+                let response = try await api.similarPhotos(id: sourceID, limit: Self.resultLimit)
+                guard !Task.isCancelled, currentGeneration == generation else { return }
+                guard response.indexed else {
+                    records = []
+                    state = .notIndexed
+                    return
+                }
+                records = response.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) }
+                state = records.isEmpty ? .empty : .loaded
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, currentGeneration == generation else { return }
+                records = []
+                state = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+            }
+        }
+        self.task = task
+        return task
+    }
+}

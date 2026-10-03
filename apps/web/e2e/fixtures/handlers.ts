@@ -45,6 +45,22 @@ export const DEFAULT_HANDLERS: Record<string, Handler> = {
 		const photos = searchPhotosByQuery(q);
 		return { photos, total: photos.length, query: q };
 	},
+	similarPhotos: (input) => {
+		const photoId =
+			input && typeof input === "object" && "photoId" in input
+				? input.photoId
+				: undefined;
+		if (!FIXTURE_PHOTOS.some((p) => p.id === photoId)) {
+			throw new Error(`Photo ${photoId} not found`);
+		}
+		const photos = FIXTURE_PHOTOS.filter((p) => p.id !== photoId).reverse();
+		return {
+			photos,
+			total: photos.length,
+			sourcePhotoId: photoId,
+			indexed: true,
+		};
+	},
 	filterOptions: () => ({
 		cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
 		lenses: [

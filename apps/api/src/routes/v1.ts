@@ -11,6 +11,7 @@ import type { PhotoSearchProvider } from "../services/photo-search";
 import { searchPhotoCatalog } from "../services/photo-search";
 import type { ScanEventDispatcher } from "../services/scan-jobs";
 import { getScan, listActiveScans, startScan } from "../services/scan-jobs";
+import { findSimilarToPhoto } from "../services/vector-search";
 import {
 	activeScansResponseSchema,
 	errorResponseSchema,
@@ -30,6 +31,9 @@ import {
 	serializePhotosResponse,
 	serializeScan,
 	serializeSearchResponse,
+	serializeSimilarPhotosResponse,
+	similarPhotosQuerySchema,
+	similarPhotosResponseSchema,
 	startScanRequestSchema,
 	startScanResponseSchema,
 } from "./v1-schemas";
@@ -123,6 +127,28 @@ export function createV1Router(dependencies: V1Dependencies) {
 			return jsonResponse(
 				photosResponseSchema,
 				serializePhotosResponse(result),
+			);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/photos/:id/similar", async (context) => {
+		const id = photoIdSchema.safeParse(context.req.param("id"));
+		const query = similarPhotosQuerySchema.safeParse(context.req.query());
+		if (!id.success || !query.success) return invalidRequest();
+		try {
+			const result = await findSimilarToPhoto(
+				dependencies.database,
+				id.data,
+				query.data.limit,
+			);
+			if (!result) {
+				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+			}
+			return jsonResponse(
+				similarPhotosResponseSchema,
+				serializeSimilarPhotosResponse(result),
 			);
 		} catch (error) {
 			return internalError(error);

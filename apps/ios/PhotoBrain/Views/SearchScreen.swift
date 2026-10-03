@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SearchScreen: View {
     @ObservedObject var store: SearchStore
+    let api: any PhotoBrainAPI
 
     var body: some View {
         NavigationStack {
@@ -26,6 +27,7 @@ struct SearchScreen: View {
                         get: { store.activePhotoID ?? activeID },
                         set: { store.activePhotoID = $0 }
                     ),
+                    api: api,
                     dismiss: { store.activePhotoID = nil }
                 )
             }
@@ -69,27 +71,48 @@ struct SearchScreen: View {
                     .buttonStyle(.borderedProminent)
             }
         case .results:
-            resultGrid(width: width)
+            PhotoResultsGrid(records: store.records, width: width) { store.activePhotoID = $0 }
+                .scrollDismissesKeyboard(.interactively)
         }
     }
 
-    private func resultGrid(width: CGFloat) -> some View {
-        let columns = columnCount(width: width)
-        return ScrollView {
+    private func example(_ query: String) -> some View {
+        Button(query) { store.query = query }
+            .buttonStyle(.bordered)
+    }
+
+    private var loupePresented: Binding<Bool> {
+        Binding(
+            get: { store.activePhotoID != nil },
+            set: { if !$0 { store.activePhotoID = nil } }
+        )
+    }
+}
+
+/// Lazily loaded square thumbnail grid shared by search and similar-photo results.
+struct PhotoResultsGrid: View {
+    let records: [PhotoRecord]
+    let width: CGFloat
+    let onSelect: (Int) -> Void
+
+    var body: some View {
+        let columns = Self.columnCount(width: width)
+        let side = width / CGFloat(columns)
+        ScrollView {
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: columns),
                 spacing: 1
             ) {
-                ForEach(store.records) { photo in
+                ForEach(records) { photo in
                     Button {
-                        store.activePhotoID = photo.id
+                        onSelect(photo.id)
                     } label: {
                         RemotePhotoImage(
                             photo: photo,
                             url: photo.thumbnailURL,
                             contentMode: .fill,
                             showsRetry: false,
-                            targetSize: CGSize(width: width / CGFloat(columns), height: width / CGFloat(columns))
+                            targetSize: CGSize(width: side, height: side)
                         ) {
                             Color(uiColor: SyntheticThumbnail.color(id: photo.id))
                         }
@@ -101,27 +124,14 @@ struct SearchScreen: View {
                 }
             }
         }
-        .scrollDismissesKeyboard(.interactively)
     }
 
-    private func example(_ query: String) -> some View {
-        Button(query) { store.query = query }
-            .buttonStyle(.bordered)
-    }
-
-    private func columnCount(width: CGFloat) -> Int {
+    static func columnCount(width: CGFloat) -> Int {
         switch width {
         case ..<560: 4
         case ..<768: 5
         case ..<1_024: 7
         default: 8
         }
-    }
-
-    private var loupePresented: Binding<Bool> {
-        Binding(
-            get: { store.activePhotoID != nil },
-            set: { if !$0 { store.activePhotoID = nil } }
-        )
     }
 }

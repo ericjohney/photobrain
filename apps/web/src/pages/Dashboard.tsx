@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
@@ -18,6 +18,10 @@ import type { PhotoMetadata } from "@/lib/types";
 
 export function Dashboard() {
 	const [searchQuery, setSearchQuery] = useState("");
+	// Source photo of "More like this" mode; null when browsing the library/search.
+	const [similarSource, setSimilarSource] = useState<PhotoMetadata | null>(
+		null,
+	);
 	const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
 	const [filters, setFilters] = useState<{
@@ -53,6 +57,11 @@ export function Dashboard() {
 		{ enabled: !!searchQuery },
 	);
 
+	const similarPhotosQuery = trpc.similarPhotos.useQuery(
+		{ photoId: similarSource?.id ?? 0, limit: 60 },
+		{ enabled: similarSource !== null },
+	);
+
 	// Inngest-based async scan
 	const scanMutation = trpc.scan.useMutation({
 		onSuccess: (data) => {
@@ -70,16 +79,30 @@ export function Dashboard() {
 	const scanDisabled = scanMutation.isPending || jobProgress.isActive;
 
 	// Determine which data to use
-	const photosData = searchQuery ? searchPhotosQuery.data : photosQuery.data;
-	const photos = photosData?.photos ?? [];
-	const loading = searchQuery
-		? searchPhotosQuery.isLoading
-		: photosQuery.isLoading;
-	const error = searchQuery ? searchPhotosQuery.error : photosQuery.error;
+	const activeQuery = similarSource
+		? similarPhotosQuery
+		: searchQuery
+			? searchPhotosQuery
+			: photosQuery;
+	const photos = activeQuery.data?.photos ?? [];
+	const loading = activeQuery.isLoading;
+	const error = activeQuery.error;
+	const similarNotIndexed =
+		similarSource !== null && similarPhotosQuery.data?.indexed === false;
 
 	// State management hooks
 	const library = useLibraryState(photos);
 	const panels = usePanelState();
+
+	const handleFindSimilar = useCallback(() => {
+		const source = library.activePhoto;
+		if (!source) return;
+		setSearchQuery("");
+		setSimilarSource(source);
+		library.setViewMode("grid");
+	}, [library.activePhoto, library.setViewMode]);
+
+	const exitSimilar = useCallback(() => setSimilarSource(null), []);
 
 	// Keyboard shortcuts
 	useKeyboardShortcuts({
@@ -89,6 +112,8 @@ export function Dashboard() {
 		toggleFilmstrip: panels.toggleFilmstrip,
 		navigatePhoto: library.navigatePhoto,
 		hasActivePhoto: library.activePhoto !== null,
+		findSimilar: handleFindSimilar,
+		exitSimilar: similarSource ? exitSimilar : null,
 	});
 
 	const handlePhotoClick = useCallback(
@@ -116,10 +141,16 @@ export function Dashboard() {
 		// Query is reactive, nothing needed here
 	}, []);
 
+	const handleSearchChange = useCallback((query: string) => {
+		setSearchQuery(query);
+		if (query) setSimilarSource(null);
+	}, []);
+
 	const handleScan = useCallback(
 		(force = false) => {
 			if (scanDisabled) return;
 			setSearchQuery("");
+			setSimilarSource(null);
 			setSelectedFolder(null);
 			scanMutation.mutate(force ? { force: true } : undefined);
 		},
@@ -129,6 +160,7 @@ export function Dashboard() {
 	const handleFolderSelect = useCallback((folder: string | null) => {
 		setSelectedFolder(folder);
 		setSearchQuery(""); // Clear search when selecting folder
+		setSimilarSource(null);
 	}, []);
 
 	// Navigation helpers for loupe - memoized to avoid recalculation on every render
@@ -183,6 +215,16 @@ export function Dashboard() {
 				/>
 			);
 		}
+		if (similarNotIndexed) {
+			return (
+				<div className="flex h-full items-center justify-center px-6">
+					<p className="text-sm text-muted-foreground">
+						This photo hasn't been indexed yet. Run a scan to enable
+						similar-photo search.
+					</p>
+				</div>
+			);
+		}
 
 		return (
 			<PhotoGrid
@@ -194,6 +236,26 @@ export function Dashboard() {
 			/>
 		);
 	};
+
+	const similarChip = similarSource && (
+		<div
+			data-testid="similar-chip"
+			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
+		>
+			<span className="flex min-w-0 items-center gap-1.5 rounded-full bg-primary/15 py-0.5 pl-2.5 pr-1 text-primary">
+				<Sparkles className="h-3.5 w-3.5 shrink-0" />
+				<span className="truncate">Similar to {similarSource.name}</span>
+				<button
+					type="button"
+					aria-label="Exit similar photos"
+					onClick={exitSimilar}
+					className="rounded-full p-0.5 hover:bg-primary/20"
+				>
+					<X className="h-3.5 w-3.5" />
+				</button>
+			</span>
+		</div>
+	);
 
 	return (
 		<PanelLayout
@@ -208,7 +270,7 @@ export function Dashboard() {
 					onToggleLeftPanel={panels.toggleLeftPanel}
 					onToggleRightPanel={panels.toggleRightPanel}
 					searchQuery={searchQuery}
-					onSearchChange={setSearchQuery}
+					onSearchChange={handleSearchChange}
 					onSearch={handleSearch}
 					onRefresh={() => handleScan()}
 					onReprocess={() => handleScan(true)}
@@ -242,7 +304,12 @@ export function Dashboard() {
 					/>
 				</div>
 			}
-			rightPanel={<MetadataPanel photo={library.activePhoto} />}
+			rightPanel={
+				<MetadataPanel
+					photo={library.activePhoto}
+					onFindSimilar={handleFindSimilar}
+				/>
+			}
 			filmstrip={
 				<Filmstrip
 					photos={photos}
@@ -254,7 +321,14 @@ export function Dashboard() {
 			rightPanelVisible={panels.rightPanelVisible}
 			filmstripVisible={panels.filmstripVisible && library.viewMode === "loupe"}
 		>
-			{renderContent()}
+			{similarChip ? (
+				<div className="flex h-full flex-col">
+					{similarChip}
+					<div className="min-h-0 flex-1">{renderContent()}</div>
+				</div>
+			) : (
+				renderContent()
+			)}
 		</PanelLayout>
 	);
 }

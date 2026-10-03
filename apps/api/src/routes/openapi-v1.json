@@ -188,6 +188,72 @@
 				}
 			}
 		},
+		"/api/v1/photos/{id}/similar": {
+			"get": {
+				"operationId": "listSimilarPhotos",
+				"description": "Photos nearest to the source photo by CLIP vector distance (L2), nearest first with ties ordered by ascending id. The source photo is excluded. Only completed vectors for the current model and committed thumbnail generation participate. When the source photo has no usable vector, `indexed` is false and `photos` is empty.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 30
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Ranked visually similar photos",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SimilarPhotosResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"description": "Photo not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"photoNotFound": {
+										"value": {
+											"error": {
+												"code": "PHOTO_NOT_FOUND",
+												"message": "Photo not found"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
 		"/api/v1/search": {
 			"post": {
 				"operationId": "searchPhotos",
@@ -634,6 +700,30 @@
 					},
 					"query": {
 						"type": "string"
+					}
+				}
+			},
+			"SimilarPhotosResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["photos", "total", "sourcePhotoId", "indexed"],
+				"properties": {
+					"photos": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Photo"
+						}
+					},
+					"total": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"sourcePhotoId": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"indexed": {
+						"type": "boolean"
 					}
 				}
 			},

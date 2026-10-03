@@ -8,6 +8,10 @@ interface KeyboardShortcutsOptions {
 	toggleFilmstrip: () => void;
 	navigatePhoto: (direction: "prev" | "next") => void;
 	hasActivePhoto: boolean;
+	/** Enter similar-photos mode for the active photo (`S`). */
+	findSimilar: () => void;
+	/** Exit similar-photos mode from the grid (`Escape`); null when inactive. */
+	exitSimilar: (() => void) | null;
 	enabled?: boolean;
 }
 
@@ -18,6 +22,8 @@ export function useKeyboardShortcuts({
 	toggleFilmstrip,
 	navigatePhoto,
 	hasActivePhoto,
+	findSimilar,
+	exitSimilar,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
 	useEffect(() => {
@@ -48,6 +54,13 @@ export function useKeyboardShortcuts({
 					if (!isCtrlOrCmd && hasActivePhoto) {
 						e.preventDefault();
 						setViewMode("loupe");
+					}
+					break;
+
+				case "s":
+					if (!isCtrlOrCmd && hasActivePhoto) {
+						e.preventDefault();
+						findSimilar();
 					}
 					break;
 
@@ -83,6 +96,9 @@ export function useKeyboardShortcuts({
 					if (viewMode === "loupe") {
 						e.preventDefault();
 						setViewMode("grid");
+					} else if (exitSimilar) {
+						e.preventDefault();
+						exitSimilar();
 					}
 					break;
 			}
@@ -98,5 +114,7 @@ export function useKeyboardShortcuts({
 		toggleFilmstrip,
 		navigatePhoto,
 		hasActivePhoto,
+		findSimilar,
+		exitSimilar,
 	]);
 }

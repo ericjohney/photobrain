@@ -14,6 +14,7 @@ const legacyDispatch = mock(async (_event: unknown) => undefined);
 mock.module("../services/vector-search", () => ({
 	searchPhotosByText: async () => [],
 	findSimilarPhotos: async () => [],
+	findSimilarToPhoto: async () => null,
 }));
 mock.module("../inngest/client", () => ({
 	inngest: { send: legacyDispatch },
@@ -499,7 +500,13 @@ describe("API v1 contract", () => {
 		const document = (await Bun.file(
 			new URL("../routes/openapi-v1.json", import.meta.url),
 		).json()) as {
-			paths: Record<string, { post?: { responses: Record<string, unknown> } }>;
+			paths: Record<
+				string,
+				{
+					get?: { responses: Record<string, unknown> };
+					post?: { responses: Record<string, unknown> };
+				}
+			>;
 			components: {
 				schemas: {
 					Photo: { properties: Record<string, unknown> };
@@ -520,6 +527,7 @@ describe("API v1 contract", () => {
 			"/api/v1/folders",
 			"/api/v1/photos",
 			"/api/v1/photos/{id}",
+			"/api/v1/photos/{id}/similar",
 			"/api/v1/scans",
 			"/api/v1/scans/active",
 			"/api/v1/scans/{jobId}",
@@ -528,6 +536,11 @@ describe("API v1 contract", () => {
 		expect(
 			Object.keys(document.paths["/api/v1/scans"].post?.responses ?? {}).sort(),
 		).toEqual(["200", "400", "500", "503"]);
+		expect(
+			Object.keys(
+				document.paths["/api/v1/photos/{id}/similar"].get?.responses ?? {},
+			).sort(),
+		).toEqual(["200", "400", "404", "500"]);
 		expect(
 			document.components.schemas.StartScanFailure.properties.error.const,
 		).toBe("The scan could not be started");

@@ -10,6 +10,7 @@ const sendScanEvent = mock(async (_event: unknown) => undefined);
 mock.module("../services/vector-search", () => ({
 	searchPhotosByText: async () => [],
 	findSimilarPhotos: async () => [],
+	findSimilarToPhoto: async () => null,
 }));
 
 // Mock the inngest client to avoid external service dependency

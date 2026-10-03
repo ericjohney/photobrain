@@ -24,7 +24,7 @@ app.route(
 	"/api/v1",
 	createV1Router({
 		database: db,
-		searchPhotos: searchPhotosByText,
+		searchPhotos: (query, limit) => searchPhotosByText(db, query, limit),
 		dispatchScan: (event) => inngest.send(event),
 		photoDirectory: config.PHOTO_DIRECTORY,
 		thumbnailsDirectory: config.THUMBNAILS_DIRECTORY,

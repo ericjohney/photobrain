@@ -106,6 +106,17 @@ export const searchResponseSchema = z.object({
 	query: z.string(),
 });
 
+export const similarPhotosQuerySchema = z.object({
+	limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
+export const similarPhotosResponseSchema = z.object({
+	photos: z.array(photoSchema),
+	total: z.number().int().nonnegative(),
+	sourcePhotoId: z.number().int().positive(),
+	indexed: z.boolean(),
+});
+
 export const startScanRequestSchema = z
 	.object({ force: z.boolean().default(false) })
 	.strict();
@@ -258,6 +269,18 @@ export function serializeSearchResponse(value: {
 	photos: readonly unknown[];
 	total: number;
 	query: string;
+}) {
+	return {
+		...value,
+		photos: value.photos.map(serializePhoto),
+	};
+}
+
+export function serializeSimilarPhotosResponse(value: {
+	photos: readonly unknown[];
+	total: number;
+	sourcePhotoId: number;
+	indexed: boolean;
 }) {
 	return {
 		...value,

@@ -1,4 +1,5 @@
 import { getSubscriptionToken } from "@inngest/realtime";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { config } from "../config";
 import { inngest } from "../inngest/client";
@@ -10,7 +11,10 @@ import {
 } from "../services/photo-catalog";
 import { searchPhotoCatalog } from "../services/photo-search";
 import { getScan, startScan } from "../services/scan-jobs";
-import { searchPhotosByText } from "../services/vector-search";
+import {
+	findSimilarToPhoto,
+	searchPhotosByText,
+} from "../services/vector-search";
 import { publicProcedure, router } from "./trpc";
 
 export type { FolderNode } from "../services/photo-catalog";
@@ -58,7 +62,31 @@ export const appRouter = router({
 				limit: z.number().min(1).max(100).default(20),
 			}),
 		)
-		.query(({ input }) => searchPhotoCatalog(searchPhotosByText, input)),
+		.query(({ ctx, input }) =>
+			searchPhotoCatalog(
+				(query, limit) => searchPhotosByText(ctx.db, query, limit),
+				input,
+			),
+		),
+
+	similarPhotos: publicProcedure
+		.input(
+			z.object({
+				photoId: z.number().int().positive(),
+				limit: z.number().int().min(1).max(100).default(30),
+			}),
+		)
+		.query(async ({ ctx, input }) => {
+			const result = await findSimilarToPhoto(
+				ctx.db,
+				input.photoId,
+				input.limit,
+			);
+			if (!result) {
+				throw new TRPCError({ code: "NOT_FOUND", message: "Photo not found" });
+			}
+			return result;
+		}),
 
 	scan: publicProcedure
 		.input(z.object({ force: z.boolean().default(false) }).optional())

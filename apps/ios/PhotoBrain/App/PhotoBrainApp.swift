@@ -128,7 +128,7 @@ private struct RootTabView: View {
             .tabItem { Label("Collections", systemImage: "rectangle.stack") }
             .tag(AppTab.collections)
 
-            SearchScreen(store: search)
+            SearchScreen(store: search, api: environment.api)
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
                 .tag(AppTab.search)
         }

@@ -67,7 +67,8 @@ The tRPC client uses `httpBatchLink` for queries/mutations and `unstable_httpSub
 - Loupe supports fit, fill, 100% zoom modes, keyboard navigation, and metadata display.
 - The filmstrip is rendered when loupe mode is active and its visibility is enabled.
 - Folders and camera/lens/ISO/date filters combine as query filters. Search hides the filter options and folder browsing content.
-- Implemented shortcuts are `G`, `E`, `Tab`, `Shift+Space`, left/right arrows, and `Escape`.
+- **Find similar** (metadata panel button or `S` with an active photo, ignored while typing) queries `similarPhotos({ photoId, limit: 60 })` and shows a dismissible "Similar to …" grid. ✕, `Escape` in grid view, a non-empty search, folder selection, or starting a scan exits it; `indexed: false` shows a run-a-scan message.
+- Implemented shortcuts are `G`, `E`, `S`, `Tab`, `Shift+Space`, left/right arrows, and `Escape`.
 - Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Do not document or test them as supported behavior.
 - `src/components/Lightbox.tsx` and `src/components/SearchBar.tsx` are legacy/unreferenced by the active dashboard. Check imports before extending them.
 

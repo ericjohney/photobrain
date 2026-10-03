@@ -141,6 +141,13 @@ struct SearchResponseDTO: Codable, Equatable, Sendable {
     let query: String
 }
 
+struct SimilarPhotosResponseDTO: Codable, Equatable, Sendable {
+    let photos: [PhotoDTO]
+    let total: Int
+    let sourcePhotoId: Int
+    let indexed: Bool
+}
+
 enum ScanPhase: String, Codable, CaseIterable, Hashable, Sendable {
     case queued
     case discovering

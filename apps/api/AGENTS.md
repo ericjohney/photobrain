@@ -12,7 +12,7 @@ Scope: `apps/api`.
 - `src/inngest/client.ts`: typed event definitions and Realtime middleware.
 - `src/inngest/functions/scan.ts`: durable incremental planning, continuous Rust processing, and completed-result checkpoints.
 - `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches.
-- `src/services/vector-search.ts`: sqlite-vec text search.
+- `src/services/vector-search.ts`: sqlite-vec text search and photo-to-photo similarity (`findSimilarToPhoto`), shared by both transports; every query takes an injectable `ApiDatabase`.
 - `src/services/photo-catalog.ts`: shared folder/filter/photo reads used by tRPC and `/api/v1`.
 - `src/services/photo-search.ts`: shared search response orchestration used by both transports.
 - `src/services/scan-jobs.ts`: shared durable scan creation/status/recovery operations used by both transports.
@@ -48,6 +48,7 @@ The Hono server registers:
 - `GET /api/v1/filter-options`
 - `GET /api/v1/photos`
 - `GET /api/v1/photos/:id`
+- `GET /api/v1/photos/:id/similar`
 - `POST /api/v1/search`
 - `POST /api/v1/scans`
 - `GET /api/v1/scans/active`
@@ -62,11 +63,11 @@ There are no unversioned REST `GET /api/photos`, `GET /api/photos/:id`, `POST /a
 
 ## `/api/v1` Compatibility API
 
-`/api/v1` is the explicit JSON contract for `apps/ios`. It shares `photo-catalog`, `photo-search`, and `scan-jobs` domain services with tRPC; do not fork query, search, scan creation, or scan-status behavior into a second implementation. Transport-specific Zod schemas validate requests, serialize dates as ISO strings, bound search limits to 1-100, and return stable error envelopes. The shared catalog's representation option normalizes Rust EXIF `YYYY:MM` month prefixes to `YYYY-MM` only for `/api/v1`, preserving the existing tRPC wire representation. Keep `src/routes/openapi-v1.json` synchronized with these routes and schemas.
+`/api/v1` is the explicit JSON contract for `apps/ios`. It shares `photo-catalog`, `photo-search`, `vector-search`, and `scan-jobs` domain services with tRPC; do not fork query, search, similarity, scan creation, or scan-status behavior into a second implementation. Transport-specific Zod schemas validate requests, serialize dates as ISO strings, bound search and similarity limits to 1-100, and return stable error envelopes. The shared catalog's representation option normalizes Rust EXIF `YYYY:MM` month prefixes to `YYYY-MM` only for `/api/v1`, preserving the existing tRPC wire representation. Keep `src/routes/openapi-v1.json` synchronized with these routes and schemas.
 
-`GET /folders`, `GET /filter-options`, `GET /photos`, `GET /photos/:id`, `POST /search`, `GET /scans/active`, and `GET /scans/:jobId` are readable regardless of the mutation flag. `POST /scans` accepts optional `{ force }`, but defaults to `503` with `NATIVE_SCAN_DISABLED` until `V1_NATIVE_SCAN_MUTATIONS_ENABLED=true` or `1`. The default is deliberately contained while native rollout gates remain external.
+`GET /folders`, `GET /filter-options`, `GET /photos`, `GET /photos/:id`, `GET /photos/:id/similar`, `POST /search`, `GET /scans/active`, and `GET /scans/:jobId` are readable regardless of the mutation flag. `GET /photos/:id/similar?limit=` (1-100, default 30) returns `{ photos, total, sourcePhotoId, indexed }`, `400 INVALID_REQUEST` for a bad id/limit, and `404 PHOTO_NOT_FOUND`. `POST /scans` accepts optional `{ force }`, but defaults to `503` with `NATIVE_SCAN_DISABLED` until `V1_NATIVE_SCAN_MUTATIONS_ENABLED=true` or `1`. The default is deliberately contained while native rollout gates remain external.
 
-Every photo emitted by list, detail, or search must pass through the public projection and explicit serializer. Never expose `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, or `thumbnailFingerprint`; those fields reveal private source/artifact identity. `/api/v1` is unauthenticated like the existing tRPC and media routes, so the projection is a privacy boundary, not an authorization substitute.
+Every photo emitted by list, detail, search, or similarity must pass through the public projection and explicit serializer. Never expose `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, or `thumbnailFingerprint`; those fields reveal private source/artifact identity. `/api/v1` is unauthenticated like the existing tRPC and media routes, so the projection is a privacy boundary, not an authorization substitute.
 
 ## tRPC Procedures
 
@@ -77,6 +78,7 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `photos({ filterRaw?, folder?, camera?, lens?, iso?, dateMonth? })`: returns `{ photos, total, rawCount }` with EXIF relations. A folder query initially matches descendants, then JavaScript removes nested descendants so only direct files are returned.
 - `photo({ id })`: returns one photo with EXIF or throws `Photo not found`.
 - `searchPhotos({ query, limit? })`: generates a CLIP text embedding and returns nearest photo rows. `limit` is 1-100 and defaults to 20.
+- `similarPhotos({ photoId, limit? })`: returns `{ photos, total, sourcePhotoId, indexed }` ranked by `vec_distance_L2` to the photo's committed vector, nearest first with ties by ascending ID, excluding the source. One SQL statement resolves the source vector and ranks candidates under the same validity filters as text search (completed status, current model, matching thumbnail key, equal vector length); results are hydrated in one batched query. A source without a usable vector yields `indexed: false, photos: []`; an unknown ID throws `NOT_FOUND`. `limit` is 1-100 and defaults to 30.
 - `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar and Expo Library Options expose a confirmed **Reprocess all photos** action for force mode; native iOS reaches the same shared scan service through gated `POST /api/v1/scans`.
 - `scanStatus({ jobId })`: returns the durable scan row or `null` when the UUID is unknown.
 - `realtimeToken({ jobId })`: returns `{ token, baseUrl? }` for channel `job:{jobId}`, topic `progress`. `baseUrl` is the client-reachable `INNGEST_REALTIME_BASE_URL`; it must not be inferred from an internal service hostname.
@@ -177,6 +179,8 @@ The two POST maintenance routes are operational leftovers. HEIC reprocessing for
 `src/__tests__/filters.test.ts` uses `createTestDb()` from `src/__tests__/setup.ts`, an in-memory SQLite database with shared migrations and seeded EXIF data. It covers folder-scoped filter options, raw/camera/lens/ISO/date filters, durable scan creation/status, dispatch failures, and missing job IDs.
 
 `src/__tests__/v1.test.ts` differentially checks `/api/v1` against tRPC/shared services, validates ISO DTOs and stable errors, proves the native scan mutation defaults off, verifies active-scan recovery ordering, and asserts that private source/artifact identities are absent from list/detail/search responses. OpenAPI parity tests keep the checked-in route contract synchronized.
+
+`src/__tests__/similar.test.ts` runs in an isolated child with real sqlite-vec vectors: nearest-first ordering, source exclusion, ID tie-breaking, limits, stale source/candidate exclusion, unknown IDs across service/tRPC/v1, v1 validation and privacy, and an 8,000 x 512-dimension KNN latency bound (< 250 ms) cross-checked against a brute-force ranking.
 
 `src/__tests__/scan.test.ts` exercises real SQLite manifests/receipts with controlled native/Inngest dependencies: new-first dispatch with free completion order, early visibility, partial ACK restart, lost checkpoints, atomic rollback, publication failure, final dispatch/fast-child ordering, empty and terminal jobs, cleanup, and the 7,961-input checkpoint budget. These are not actual Inngest delivery or native integration tests.
 

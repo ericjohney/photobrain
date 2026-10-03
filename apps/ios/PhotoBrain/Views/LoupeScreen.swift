@@ -3,12 +3,14 @@ import SwiftUI
 struct LoupeScreen: View {
     let records: [PhotoRecord]
     @Binding var activeID: Int
+    let api: any PhotoBrainAPI
     let dismiss: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var chromeVisible = true
     @State private var showingInfo = false
+    @State private var similarSource: PhotoRecord?
 
     private var activeRecord: PhotoRecord? {
         records.first { $0.id == activeID }
@@ -49,6 +51,9 @@ struct LoupeScreen: View {
                 PhotoMetadataView(photo: activeRecord)
             }
         }
+        .sheet(item: $similarSource) { source in
+            SimilarPhotosScreen(source: source, api: api) { similarSource = nil }
+        }
         .accessibilityAction(named: chromeVisible ? "Hide controls" : "Show controls") {
             chromeVisible.toggle()
         }
@@ -77,6 +82,15 @@ struct LoupeScreen: View {
             Text("\((records.firstIndex { $0.id == activeID } ?? 0) + 1) of \(records.count)")
                 .font(.caption.monospacedDigit())
                 .accessibilityLabel("Photo \((records.firstIndex { $0.id == activeID } ?? 0) + 1) of \(records.count)")
+            Button {
+                similarSource = activeRecord
+            } label: {
+                Image(systemName: "sparkle.magnifyingglass")
+                    .font(.title3)
+                    .frame(width: 36, height: 36)
+            }
+            .disabled(activeRecord == nil)
+            .accessibilityLabel("Find Similar")
             Button {
                 showingInfo = true
             } label: {

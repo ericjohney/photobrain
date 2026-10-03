@@ -71,6 +71,7 @@ struct LibraryScreen: View {
                         get: { store.activePhotoID ?? activeID },
                         set: { store.activePhotoID = $0 }
                     ),
+                    api: environment.api,
                     dismiss: { store.activePhotoID = nil }
                 )
             }
