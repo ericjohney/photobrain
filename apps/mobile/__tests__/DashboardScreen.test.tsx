@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	act,
 	fireEvent,
@@ -6,13 +5,67 @@ import {
 	waitFor,
 } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
-import { Alert, FlatList, StyleSheet } from "react-native";
+import { Alert, AppState, FlatList, StyleSheet } from "react-native";
 import * as jobProgress from "@/hooks/use-job-progress";
+import * as migrationBridge from "@/lib/migration-bridge";
+
+// The screen and hook share the production stall threshold. The global hook
+// mock only supplies hook behavior, so preserve this exported runtime contract.
+Object.defineProperty(jobProgress, "SCAN_STALL_THRESHOLD_MS", {
+	value: 5 * 60_000,
+});
+
+jest.mock("@/lib/migration-bridge", () => ({
+	getActiveScanId: jest.fn(),
+	setActiveScanId: jest.fn(),
+	getThemePreference: jest.fn(),
+	setThemePreference: jest.fn(),
+}));
+
+const mockGetActiveScanId = jest.mocked(migrationBridge.getActiveScanId);
+const mockSetActiveScanId = jest.mocked(migrationBridge.setActiveScanId);
+const mockGetThemePreference = jest.mocked(migrationBridge.getThemePreference);
+const mockSetThemePreference = jest.mocked(migrationBridge.setThemePreference);
+
+const mockFetch = jest.fn();
+global.fetch = mockFetch as unknown as typeof fetch;
+
+interface ScanFixture {
+	id: string;
+	phase: string;
+	current: number;
+	total: number;
+	status: string;
+	error: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+let mockActiveScans: ScanFixture[] = [];
+
+function scanFixture(
+	id: string,
+	overrides: Partial<ScanFixture> = {},
+): ScanFixture {
+	const now = new Date().toISOString();
+	return {
+		id,
+		phase: "processing",
+		current: 1,
+		total: 4,
+		status: "running",
+		error: null,
+		createdAt: now,
+		updatedAt: now,
+		...overrides,
+	};
+}
 
 const mockPhotosRefetch = jest.fn();
 const mockFilterOptionsRefetch = jest.fn();
 const mockScanMutate = jest.fn();
 let mockScanPending = false;
+let mockScanTransportError: Error | null = null;
 let mockPhotosError = false;
 let mockPhotosHaveData = true;
 let mockFilteredPhotosError = false;
@@ -72,10 +125,15 @@ jest.mock("@/lib/trpc", () => ({
 		scan: {
 			useMutation: (options?: {
 				onSuccess?: (result: typeof mockScanResult) => void;
+				onError?: (error: Error) => void;
 			}) => ({
 				mutate: (...args: unknown[]) => {
 					mockScanMutate(...args);
-					options?.onSuccess?.(mockScanResult);
+					if (mockScanTransportError) {
+						options?.onError?.(mockScanTransportError);
+					} else {
+						options?.onSuccess?.(mockScanResult);
+					}
 				},
 				isPending: mockScanPending,
 			}),
@@ -126,11 +184,29 @@ describe("DashboardScreen", () => {
 	beforeEach(() => {
 		jest.useFakeTimers();
 		jest.clearAllMocks();
+		mockGetActiveScanId.mockReset();
+		mockSetActiveScanId.mockReset();
+		mockGetThemePreference.mockReset();
+		mockSetThemePreference.mockReset();
 		mockPhotosError = false;
 		mockPhotosHaveData = true;
 		mockFilteredPhotosError = false;
 		mockScanPending = false;
 		mockScanResult = { success: true, jobId: "test-job-123" };
+		mockScanTransportError = null;
+		mockActiveScans = [];
+		mockGetActiveScanId.mockResolvedValue(null);
+		mockSetActiveScanId.mockResolvedValue(undefined);
+		mockGetThemePreference.mockResolvedValue(null);
+		mockSetThemePreference.mockResolvedValue(undefined);
+		mockFetch.mockImplementation(async (input: string | URL | Request) => {
+			const url = String(input);
+			return {
+				ok: true,
+				json: async () =>
+					url.endsWith("/scans/active") ? { jobs: mockActiveScans } : null,
+			};
+		});
 	});
 	afterEach(() => {
 		jest.useRealTimers();
@@ -395,9 +471,15 @@ describe("DashboardScreen", () => {
 		await waitFor(() => expect(queryByTestId("loupe-view")).toBeNull());
 	});
 
-	it("refreshes photos and filter options", async () => {
+	it("refreshes photos, filter options, and active scans", async () => {
 		const { UNSAFE_root, getByText } = renderWithProviders(<DashboardScreen />);
 		await waitFor(() => expect(getByText("Library")).toBeTruthy());
+		await waitFor(() =>
+			expect(mockFetch).toHaveBeenCalledWith(
+				"http://test-api:3000/api/v1/scans/active",
+			),
+		);
+		mockFetch.mockClear();
 
 		const flatList = UNSAFE_root.findAllByType(
 			require("react-native").FlatList,
@@ -406,6 +488,47 @@ describe("DashboardScreen", () => {
 
 		expect(mockPhotosRefetch).toHaveBeenCalledTimes(1);
 		expect(mockFilterOptionsRefetch).toHaveBeenCalledTimes(1);
+		await waitFor(() =>
+			expect(mockFetch).toHaveBeenCalledWith(
+				"http://test-api:3000/api/v1/scans/active",
+			),
+		);
+	});
+
+	it("serializes active snapshot responses and applies only the latest", async () => {
+		const firstId = "11111111-1111-4111-8111-111111111111";
+		const secondId = "22222222-2222-4222-8222-222222222222";
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+		mockFetch.mockClear();
+		mockSetActiveScanId.mockClear();
+		const first = Promise.withResolvers<unknown>();
+		const second = Promise.withResolvers<unknown>();
+		mockFetch
+			.mockImplementationOnce(() => first.promise)
+			.mockImplementationOnce(() => second.promise);
+		const grid = ui.UNSAFE_root.findAllByType(FlatList)[0];
+		grid.props.refreshControl.props.onRefresh();
+		grid.props.refreshControl.props.onRefresh();
+		await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+
+		await act(async () => {
+			first.resolve({
+				ok: true,
+				json: async () => ({ jobs: [scanFixture(firstId)] }),
+			});
+		});
+		await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+		expect(mockSetActiveScanId).not.toHaveBeenCalledWith(firstId);
+		await act(async () => {
+			second.resolve({
+				ok: true,
+				json: async () => ({ jobs: [scanFixture(secondId)] }),
+			});
+		});
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(secondId),
+		);
 	});
 
 	it("shows a retry action when the library query fails", async () => {
@@ -574,7 +697,7 @@ describe("DashboardScreen", () => {
 		expect(view.getByRole("radio", { name: "Date Captured" })).toBeChecked();
 	});
 
-	it("persists only successfully created scan jobs", async () => {
+	it("persists only successfully created scan jobs through the migration bridge", async () => {
 		const successful = renderWithProviders(<DashboardScreen />);
 		await waitFor(() =>
 			expect(successful.getByLabelText("Library options")).toBeTruthy(),
@@ -583,19 +706,27 @@ describe("DashboardScreen", () => {
 		await waitFor(() =>
 			expect(successful.getByLabelText("Scan library")).toBeEnabled(),
 		);
+		mockActiveScans = [scanFixture("test-job-123")];
+		mockSetActiveScanId.mockClear();
 		fireEvent.press(successful.getByLabelText("Scan library"));
 		expect(mockScanMutate).toHaveBeenCalledWith();
 		expect(successful.queryByText("Library Options")).toBeNull();
 		await waitFor(() =>
-			expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-				"@photobrain/active-scan",
-				"test-job-123",
+			expect(mockSetActiveScanId).toHaveBeenCalledWith("test-job-123"),
+		);
+		await waitFor(() =>
+			expect(mockFetch).toHaveBeenCalledWith(
+				"http://test-api:3000/api/v1/scans/active",
 			),
 		);
 		successful.unmount();
 
-		jest.mocked(AsyncStorage.setItem).mockClear();
-		mockScanResult = { success: false, error: "Database unavailable" };
+		mockSetActiveScanId.mockClear();
+		mockScanResult = {
+			success: false,
+			error: "Database unavailable",
+			jobId: "failed-job",
+		};
 		const failed = renderWithProviders(<DashboardScreen />);
 		await waitFor(() =>
 			expect(failed.getByLabelText("Library options")).toBeTruthy(),
@@ -604,9 +735,187 @@ describe("DashboardScreen", () => {
 		await waitFor(() =>
 			expect(failed.getByLabelText("Scan library")).toBeEnabled(),
 		);
+		mockSetActiveScanId.mockClear();
+		mockFetch.mockClear();
 		fireEvent.press(failed.getByLabelText("Scan library"));
-		expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+		expect(mockSetActiveScanId).not.toHaveBeenCalled();
 		expect(failed.getByText("Database unavailable")).toBeTruthy();
+		await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+		expect(mockFetch).toHaveBeenCalledWith(
+			"http://test-api:3000/api/v1/scans/failed-job",
+		);
+	});
+	it("treats only a lost submission response as ambiguous", async () => {
+		const recoveredJobId = "11111111-1111-4111-8111-111111111111";
+		mockScanTransportError = new Error("The network response was lost");
+		const ui = renderWithProviders(<DashboardScreen />);
+		fireEvent.press(await ui.findByLabelText("Library options"));
+		await waitFor(() =>
+			expect(ui.getByLabelText("Scan library")).toBeEnabled(),
+		);
+		mockActiveScans = [scanFixture(recoveredJobId)];
+		mockFetch.mockClear();
+		mockSetActiveScanId.mockClear();
+		fireEvent.press(ui.getByLabelText("Scan library"));
+
+		expect(ui.getByText("The network response was lost")).toBeTruthy();
+		await waitFor(() =>
+			expect(mockFetch).toHaveBeenCalledWith(
+				"http://test-api:3000/api/v1/scans/active",
+			),
+		);
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(recoveredJobId),
+		);
+		expect(mockScanMutate).toHaveBeenCalledTimes(1);
+	});
+
+	it("blocks an ambiguous lost response until reconciliation, then confirms retry risk", async () => {
+		mockScanTransportError = new Error("The network response was lost");
+		const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(mockSetActiveScanId).toHaveBeenCalledWith(null));
+		fireEvent.press(ui.getByLabelText("Library options"));
+		expect(ui.getByLabelText("Scan library")).toBeEnabled();
+		const recovery = Promise.withResolvers<unknown>();
+		mockFetch.mockImplementationOnce(() => recovery.promise);
+		fireEvent.press(ui.getByLabelText("Scan library"));
+
+		fireEvent.press(ui.getByLabelText("Library options"));
+		expect(ui.getByLabelText("Scan library")).toBeDisabled();
+		await act(async () => {
+			recovery.resolve({
+				ok: true,
+				json: async () => ({ jobs: [] }),
+			});
+		});
+		await waitFor(() =>
+			expect(ui.getByLabelText("Scan library")).toBeEnabled(),
+		);
+		fireEvent.press(ui.getByLabelText("Scan library"));
+		expect(mockScanMutate).toHaveBeenCalledTimes(1);
+		expect(alert).toHaveBeenCalledWith(
+			"Start another scan?",
+			expect.stringContaining("may have reached the server"),
+			expect.any(Array),
+		);
+		const confirm = alert.mock.calls[0][2]?.find(
+			(button) => button.text === "Start another scan",
+		);
+		act(() => confirm?.onPress?.());
+		expect(mockScanMutate).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps lost-submission ambiguity when discovery only returns an older stalled job", async () => {
+		const stalledId = "11111111-1111-4111-8111-111111111111";
+		const baseProgress = jobProgress.useJobProgress(null);
+		jest.spyOn(jobProgress, "useJobProgress").mockReturnValue({
+			...baseProgress,
+			progress: {
+				phase: "queued",
+				current: 0,
+				total: 0,
+				percentage: 0,
+			},
+			isActive: true,
+			isStalled: true,
+		});
+		mockActiveScans = [
+			scanFixture(stalledId, {
+				phase: "queued",
+				status: "queued",
+				updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+			}),
+		];
+		mockScanTransportError = new Error("The network response was lost");
+		const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(stalledId),
+		);
+
+		fireEvent.press(ui.getByLabelText("Library options"));
+		fireEvent.press(ui.getByLabelText("Scan library"));
+		const confirmStalled = alert.mock.calls[0][2]?.find(
+			(button) => button.text === "Start another scan",
+		);
+		act(() => confirmStalled?.onPress?.());
+		expect(mockScanMutate).toHaveBeenCalledTimes(1);
+		await waitFor(() => {
+			const activeRequests = mockFetch.mock.calls.filter(([input]) =>
+				String(input).endsWith("/scans/active"),
+			);
+			expect(activeRequests).toHaveLength(2);
+		});
+
+		fireEvent.press(ui.getByLabelText("Library options"));
+		expect(ui.getByLabelText("Scan library")).toBeEnabled();
+		fireEvent.press(ui.getByLabelText("Scan library"));
+		expect(mockScanMutate).toHaveBeenCalledTimes(1);
+		expect(alert).toHaveBeenLastCalledWith(
+			"Start another scan?",
+			expect.stringContaining("may have reached the server"),
+			expect.any(Array),
+		);
+	});
+
+	it("keeps lost-submission ambiguity after an unseen global job terminals", async () => {
+		const unrelatedId = "22222222-2222-4222-8222-222222222222";
+		const baseProgress = jobProgress.useJobProgress(null);
+		let terminal = false;
+		jest
+			.spyOn(jobProgress, "useJobProgress")
+			.mockImplementation((selectedId) => ({
+				...baseProgress,
+				progress: selectedId
+					? {
+							phase: terminal ? "completed" : "queued",
+							current: terminal ? 1 : 0,
+							total: 1,
+							percentage: terminal ? 100 : 0,
+						}
+					: null,
+				isActive: Boolean(selectedId) && !terminal,
+				isCompleted: Boolean(selectedId) && terminal,
+				isStalled: Boolean(selectedId) && !terminal,
+			}));
+		mockScanTransportError = new Error("The network response was lost");
+		const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(mockSetActiveScanId).toHaveBeenCalledWith(null));
+
+		mockActiveScans = [
+			scanFixture(unrelatedId, {
+				phase: "queued",
+				current: 0,
+				total: 1,
+				status: "queued",
+				updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+			}),
+		];
+		fireEvent.press(ui.getByLabelText("Library options"));
+		fireEvent.press(ui.getByLabelText("Scan library"));
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(unrelatedId),
+		);
+
+		terminal = true;
+		mockActiveScans = [];
+		mockFetch.mockClear();
+		mockSetActiveScanId.mockClear();
+		ui.rerender(<DashboardScreen />);
+		await waitFor(() => expect(mockSetActiveScanId).toHaveBeenCalledWith(null));
+		await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+
+		fireEvent.press(ui.getByLabelText("Library options"));
+		expect(ui.getByLabelText("Scan library")).toBeEnabled();
+		fireEvent.press(ui.getByLabelText("Scan library"));
+		expect(mockScanMutate).toHaveBeenCalledTimes(1);
+		expect(alert).toHaveBeenLastCalledWith(
+			"Start another scan?",
+			expect.stringContaining("may have reached the server"),
+			expect.any(Array),
+		);
 	});
 
 	it("starts full reprocessing only after confirmation, not cancellation", async () => {
@@ -657,34 +966,394 @@ describe("DashboardScreen", () => {
 		expect(alert).not.toHaveBeenCalled();
 	});
 
-	it("blocks both scan modes until saved scan recovery finishes", async () => {
+	it("blocks both scan modes until bridge and active recovery finish", async () => {
 		let restoreScan!: (jobId: string | null) => void;
 		const savedScan = new Promise<string | null>((resolve) => {
 			restoreScan = resolve;
 		});
-		const getItem = jest.mocked(AsyncStorage.getItem);
-		const originalGetItem = getItem.getMockImplementation();
-		if (!originalGetItem) throw new Error("AsyncStorage mock is missing");
-		getItem.mockImplementation((key) =>
-			key === "@photobrain/active-scan" ? savedScan : originalGetItem(key),
-		);
-		try {
-			const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
-			const ui = renderWithProviders(<DashboardScreen />);
-			fireEvent.press(await ui.findByLabelText("Library options"));
-			for (const label of ["Scan library", "Reprocess all photos"]) {
-				const action = ui.getByLabelText(label);
-				expect(action).toBeDisabled();
-				fireEvent.press(action);
-			}
-			expect(mockScanMutate).not.toHaveBeenCalled();
-			expect(alert).not.toHaveBeenCalled();
-			await act(async () => restoreScan(null));
-			expect(ui.getByLabelText("Scan library")).toBeEnabled();
-			expect(ui.getByLabelText("Reprocess all photos")).toBeEnabled();
-		} finally {
-			getItem.mockImplementation(originalGetItem);
+		mockGetActiveScanId.mockReturnValue(savedScan);
+		const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+		const ui = renderWithProviders(<DashboardScreen />);
+		fireEvent.press(await ui.findByLabelText("Library options"));
+		for (const label of ["Scan library", "Reprocess all photos"]) {
+			const action = ui.getByLabelText(label);
+			expect(action).toBeDisabled();
+			fireEvent.press(action);
 		}
+		expect(mockScanMutate).not.toHaveBeenCalled();
+		expect(alert).not.toHaveBeenCalled();
+		await act(async () => restoreScan(null));
+		expect(ui.getByLabelText("Scan library")).toBeEnabled();
+		expect(ui.getByLabelText("Reprocess all photos")).toBeEnabled();
+	});
+
+	it("serializes active snapshots and keeps restoration locked through the latest request", async () => {
+		let appStateListener: ((state: string) => void) | undefined;
+		jest
+			.spyOn(AppState, "addEventListener")
+			.mockImplementation((_event, listener) => {
+				appStateListener = listener as (state: string) => void;
+				return { remove: jest.fn() };
+			});
+		const first = Promise.withResolvers<{
+			ok: boolean;
+			json: () => Promise<{ jobs: ScanFixture[] }>;
+		}>();
+		const second = Promise.withResolvers<{
+			ok: boolean;
+			json: () => Promise<{ jobs: ScanFixture[] }>;
+		}>();
+		mockFetch
+			.mockImplementationOnce(() => first.promise)
+			.mockImplementationOnce(() => second.promise);
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+		fireEvent.press(ui.getByLabelText("Library options"));
+		expect(ui.getByLabelText("Scan library")).toBeDisabled();
+
+		act(() => {
+			appStateListener?.("background");
+			appStateListener?.("active");
+		});
+		expect(mockFetch).toHaveBeenCalledTimes(1);
+		await act(async () => {
+			first.resolve({
+				ok: true,
+				json: async () => ({ jobs: [] }),
+			});
+		});
+		await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+		expect(ui.getByLabelText("Scan library")).toBeDisabled();
+
+		await act(async () => {
+			second.resolve({
+				ok: true,
+				json: async () => ({ jobs: [] }),
+			});
+		});
+		await waitFor(() =>
+			expect(ui.getByLabelText("Scan library")).toBeEnabled(),
+		);
+	});
+
+	it.each([
+		"terminal",
+		"unknown",
+	] as const)("clears a %s saved scan even when active discovery fails", async (resolution) => {
+		const jobId = "11111111-1111-4111-8111-111111111111";
+		const baseProgress = jobProgress.useJobProgress(null);
+		jest
+			.spyOn(jobProgress, "useJobProgress")
+			.mockImplementation((selectedId) => ({
+				...baseProgress,
+				progress: selectedId
+					? {
+							phase: resolution === "terminal" ? "completed" : "failed",
+							current: resolution === "terminal" ? 4 : 0,
+							total: resolution === "terminal" ? 4 : 0,
+							percentage: resolution === "terminal" ? 100 : 0,
+						}
+					: null,
+				isActive: false,
+				isCompleted: Boolean(selectedId) && resolution === "terminal",
+				isFailed: Boolean(selectedId) && resolution === "unknown",
+				isMissingJob: Boolean(selectedId) && resolution === "unknown",
+			}));
+		mockGetActiveScanId.mockResolvedValue(jobId);
+		mockFetch.mockRejectedValue(new Error("Discovery unavailable"));
+		renderWithProviders(<DashboardScreen />);
+
+		await waitFor(() => expect(mockSetActiveScanId).toHaveBeenCalledWith(null));
+	});
+
+	it("preserves a preferred progressing scan and otherwise selects progressing work", async () => {
+		const preferredId = "11111111-1111-4111-8111-111111111111";
+		const progressingId = "22222222-2222-4222-8222-222222222222";
+		const stalledId = "33333333-3333-4333-8333-333333333333";
+		mockGetActiveScanId.mockResolvedValue(preferredId);
+		mockActiveScans = [
+			scanFixture(progressingId, {
+				updatedAt: new Date(Date.now() - 1_000).toISOString(),
+			}),
+			scanFixture(preferredId, {
+				updatedAt: new Date(Date.now() - 2_000).toISOString(),
+			}),
+		];
+		const hook = jest.spyOn(jobProgress, "useJobProgress");
+		const preferred = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(hook).toHaveBeenCalledWith(preferredId));
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(preferredId),
+		);
+		preferred.unmount();
+
+		jest.clearAllMocks();
+		mockGetActiveScanId.mockResolvedValue(stalledId);
+		mockSetActiveScanId.mockResolvedValue(undefined);
+		mockActiveScans = [
+			scanFixture(stalledId, {
+				phase: "queued",
+				status: "queued",
+				updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+			}),
+			scanFixture(progressingId),
+		];
+		mockFetch.mockImplementation(async () => ({
+			ok: true,
+			json: async () => ({ jobs: mockActiveScans }),
+		}));
+		renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(hook).toHaveBeenCalledWith(progressingId));
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(progressingId),
+		);
+	});
+
+	it("reconciles active scans on foreground and selected terminal status", async () => {
+		const jobId = "11111111-1111-4111-8111-111111111111";
+		let appStateListener: ((state: string) => void) | undefined;
+		jest
+			.spyOn(AppState, "addEventListener")
+			.mockImplementation((_event, listener) => {
+				appStateListener = listener as (state: string) => void;
+				return { remove: jest.fn() };
+			});
+		const baseProgress = jobProgress.useJobProgress(null);
+		let completed = false;
+		jest.spyOn(jobProgress, "useJobProgress").mockImplementation(() => ({
+			...baseProgress,
+			progress: {
+				phase: completed ? "completed" : "processing",
+				current: completed ? 4 : 1,
+				total: 4,
+				percentage: completed ? 100 : 25,
+			},
+			isActive: !completed,
+			isCompleted: completed,
+		}));
+		mockGetActiveScanId.mockResolvedValue(jobId);
+		mockActiveScans = [scanFixture(jobId)];
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+		mockFetch.mockClear();
+
+		act(() => {
+			appStateListener?.("background");
+			appStateListener?.("active");
+		});
+		await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+		mockFetch.mockClear();
+
+		completed = true;
+		mockActiveScans = [];
+		ui.rerender(<DashboardScreen />);
+		await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(mockSetActiveScanId).toHaveBeenCalledWith(null));
+	});
+
+	it("reconciles a selected job whose durable status is unknown", async () => {
+		const jobId = "11111111-1111-4111-8111-111111111111";
+		const baseProgress = jobProgress.useJobProgress(null);
+		jest.spyOn(jobProgress, "useJobProgress").mockReturnValue({
+			...baseProgress,
+			progress: {
+				phase: "failed",
+				current: 0,
+				total: 0,
+				percentage: 0,
+			},
+			isActive: false,
+			isFailed: true,
+			isMissingJob: true,
+		});
+		mockGetActiveScanId.mockResolvedValue(jobId);
+		mockActiveScans = [scanFixture(jobId)];
+		renderWithProviders(<DashboardScreen />);
+
+		await waitFor(() => {
+			const activeRequests = mockFetch.mock.calls.filter(([input]) =>
+				String(input).endsWith("/scans/active"),
+			);
+			expect(activeRequests.length).toBeGreaterThanOrEqual(2);
+		});
+	});
+
+	it("reconciles when a selected queued row crosses five minutes", async () => {
+		const jobId = "11111111-1111-4111-8111-111111111111";
+		const baseProgress = jobProgress.useJobProgress(null);
+		const staleAt = Date.now() + 1_000;
+		jest.spyOn(jobProgress, "useJobProgress").mockReturnValue({
+			...baseProgress,
+			progress: {
+				phase: "queued",
+				current: 0,
+				total: 0,
+				percentage: 0,
+			},
+			isActive: true,
+			queuedStaleAt: staleAt,
+		});
+		mockGetActiveScanId.mockResolvedValue(jobId);
+		mockActiveScans = [
+			scanFixture(jobId, { phase: "queued", status: "queued" }),
+		];
+		renderWithProviders(<DashboardScreen />);
+		await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+		mockFetch.mockClear();
+
+		act(() => jest.advanceTimersByTime(1_000));
+		await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+	});
+
+	it("immediately reconciles an already-stale queued row only once", async () => {
+		const jobId = "11111111-1111-4111-8111-111111111111";
+		const baseProgress = jobProgress.useJobProgress(null);
+		jest.spyOn(jobProgress, "useJobProgress").mockReturnValue({
+			...baseProgress,
+			progress: {
+				phase: "queued",
+				current: 0,
+				total: 0,
+				percentage: 0,
+			},
+			isActive: true,
+			isStalled: true,
+			queuedStaleAt: Date.now() - 1,
+		});
+		mockGetActiveScanId.mockResolvedValue(jobId);
+		mockActiveScans = [
+			scanFixture(jobId, {
+				phase: "queued",
+				status: "queued",
+				updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+			}),
+		];
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() => {
+			const requests = mockFetch.mock.calls.filter(([input]) =>
+				String(input).endsWith("/scans/active"),
+			);
+			expect(requests).toHaveLength(2);
+		});
+		ui.rerender(<DashboardScreen />);
+		await act(async () => Promise.resolve());
+		const requests = mockFetch.mock.calls.filter(([input]) =>
+			String(input).endsWith("/scans/active"),
+		);
+		expect(requests).toHaveLength(2);
+	});
+
+	it("disables scan actions when selected stalled work resumes progressing", async () => {
+		const jobId = "11111111-1111-4111-8111-111111111111";
+		const baseProgress = jobProgress.useJobProgress(null);
+		let resumed = false;
+		jest.spyOn(jobProgress, "useJobProgress").mockImplementation(() => ({
+			...baseProgress,
+			progress: {
+				phase: resumed ? "processing" : "queued",
+				current: resumed ? 1 : 0,
+				total: resumed ? 4 : 0,
+				percentage: resumed ? 25 : 0,
+			},
+			isActive: true,
+			isStalled: !resumed,
+		}));
+		mockActiveScans = [
+			scanFixture(jobId, {
+				phase: "queued",
+				status: "queued",
+				updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+			}),
+		];
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(jobId),
+		);
+		fireEvent.press(ui.getByLabelText("Library options"));
+		expect(ui.getByLabelText("Scan library")).toBeEnabled();
+
+		resumed = true;
+		ui.rerender(<DashboardScreen />);
+		expect(ui.getByLabelText("Scan library")).toBeDisabled();
+		expect(ui.getByLabelText("Reprocess all photos")).toBeDisabled();
+	});
+
+	it("requires duplicate-risk confirmation when only stalled work remains", async () => {
+		const jobId = "11111111-1111-4111-8111-111111111111";
+		const baseProgress = jobProgress.useJobProgress(null);
+		jest.spyOn(jobProgress, "useJobProgress").mockReturnValue({
+			...baseProgress,
+			progress: {
+				phase: "queued",
+				current: 0,
+				total: 0,
+				percentage: 0,
+			},
+			isActive: true,
+			isStalled: true,
+		});
+		mockActiveScans = [
+			scanFixture(jobId, {
+				phase: "queued",
+				status: "queued",
+				updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+			}),
+		];
+		const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(jobId),
+		);
+		fireEvent.press(ui.getByLabelText("Library options"));
+		expect(ui.getByLabelText("Scan library")).toBeEnabled();
+		fireEvent.press(ui.getByLabelText("Scan library"));
+		expect(mockScanMutate).not.toHaveBeenCalled();
+		expect(alert).toHaveBeenCalledWith(
+			"Start another scan?",
+			expect.stringContaining("may duplicate work"),
+			expect.any(Array),
+		);
+		const confirm = alert.mock.calls[0][2]?.find(
+			(button) => button.text === "Start another scan",
+		);
+		act(() => confirm?.onPress?.());
+		expect(mockScanMutate).toHaveBeenCalledWith();
+	});
+
+	it("uses stalled snapshot evidence when durable status is unavailable", async () => {
+		const jobId = "11111111-1111-4111-8111-111111111111";
+		const baseProgress = jobProgress.useJobProgress(null);
+		jest.spyOn(jobProgress, "useJobProgress").mockReturnValue({
+			...baseProgress,
+			progress: null,
+			isActive: true,
+			isStalled: false,
+			error: "Unable to check scan status. Retrying automatically.",
+		});
+		mockActiveScans = [
+			scanFixture(jobId, {
+				phase: "queued",
+				current: 0,
+				total: 0,
+				status: "queued",
+				updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+			}),
+		];
+		const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+		const ui = renderWithProviders(<DashboardScreen />);
+		await waitFor(() =>
+			expect(mockSetActiveScanId).toHaveBeenCalledWith(jobId),
+		);
+
+		fireEvent.press(ui.getByLabelText("Library options"));
+		expect(ui.getByLabelText("Scan library")).toBeEnabled();
+		fireEvent.press(ui.getByLabelText("Scan library"));
+		expect(mockScanMutate).not.toHaveBeenCalled();
+		expect(alert).toHaveBeenCalledWith(
+			"Start another scan?",
+			expect.stringContaining("at least five minutes"),
+			expect.any(Array),
+		);
 	});
 
 	it("opens settings from library options", async () => {

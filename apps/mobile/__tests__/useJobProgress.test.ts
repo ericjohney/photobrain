@@ -36,7 +36,7 @@ interface StatusQueryResult {
 				total: number;
 				status: string;
 				error: string | null;
-				updatedAt?: Date;
+				updatedAt?: Date | string;
 		  }
 		| null
 		| undefined;
@@ -199,6 +199,53 @@ describe("useJobProgress", () => {
 		expect(result.current.progress.phase).toBe("processing");
 		expect(result.current.error).toBeNull();
 		expect(result.current.isActive).toBe(true);
+	});
+
+	it("polls progressing jobs every 1,500 ms and stalled jobs every 15 seconds", () => {
+		const updatedAt = new Date(Date.now() - 6 * 60_000);
+		mockStatusQueryResult.data = {
+			phase: "queued",
+			current: 0,
+			total: 0,
+			status: "queued",
+			error: null,
+			updatedAt,
+		};
+		const { result } = renderHook(() => useJobProgress(JOB_ID));
+		const queryOptions = mockScanStatusUseQuery.mock.calls.at(-1)?.[1];
+
+		expect(
+			queryOptions.refetchInterval({
+				state: {
+					status: "success",
+					data: { ...mockStatusQueryResult.data, updatedAt: new Date() },
+				},
+			}),
+		).toBe(1_500);
+		expect(
+			queryOptions.refetchInterval({
+				state: {
+					status: "success",
+					data: {
+						...mockStatusQueryResult.data,
+						phase: "processing",
+						status: "running",
+					},
+				},
+			}),
+		).toBe(1_500);
+		expect(
+			queryOptions.refetchInterval({
+				state: { status: "success", data: mockStatusQueryResult.data },
+			}),
+		).toBe(15_000);
+		expect(result.current).toMatchObject({
+			isActive: true,
+			isCompleted: false,
+			isFailed: false,
+			isStalled: true,
+			queuedStaleAt: updatedAt.getTime() + 5 * 60_000,
+		});
 	});
 
 	it("uses Realtime progress when durable recovery fails", () => {

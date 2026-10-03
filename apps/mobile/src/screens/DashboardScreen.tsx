@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { AppRouter } from "@photobrain/api";
 import { parseDate } from "@photobrain/utils";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { keepPreviousData } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Image } from "expo-image";
@@ -12,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
+	AppState,
 	FlatList,
 	type LayoutChangeEvent,
 	Modal,
@@ -30,6 +30,7 @@ import {
 	SafeAreaProvider,
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { z } from "zod";
 import ActivityBar from "@/components/ActivityBar";
 import FilterSheet, {
 	EMPTY_FILTERS,
@@ -42,9 +43,13 @@ import LibraryHeader from "@/components/LibraryHeader";
 import LibraryTimeScope from "@/components/LibraryTimeScope";
 import LoupeView from "@/components/LoupeView";
 import MetadataPanel from "@/components/MetadataPanel";
-import { thumbnailUrl } from "@/config";
-import { useJobProgress } from "@/hooks/use-job-progress";
+import { API_URL, API_V1_URL, thumbnailUrl } from "@/config";
+import {
+	SCAN_STALL_THRESHOLD_MS,
+	useJobProgress,
+} from "@/hooks/use-job-progress";
 import { useLibraryState } from "@/hooks/use-library-state";
+import { getActiveScanId, setActiveScanId } from "@/lib/migration-bridge";
 import { trpc } from "@/lib/trpc";
 import { useTabBarVisibility } from "@/navigation/tab-bar-visibility";
 import { useTheme } from "@/theme";
@@ -62,9 +67,55 @@ type SectionItem =
 	| { type: "photo-row"; photos: PhotoMetadata[]; key: string };
 
 const GRID_SPACING = 1;
-const ACTIVE_SCAN_KEY = "@photobrain/active-scan";
+const V1_API_BASE_URL = API_V1_URL ?? `${API_URL.replace(/\/+$/, "")}/api/v1`;
 const BROWSING_HISTORY_THRESHOLD = 24;
 const SECTION_HEADER_HEIGHT = 57;
+
+const ActiveScanSchema = z.object({
+	id: z.string(),
+	phase: z.string(),
+	current: z.number(),
+	total: z.number(),
+	status: z.string(),
+	error: z.string().nullable(),
+	createdAt: z.iso.datetime(),
+	updatedAt: z.iso.datetime(),
+});
+const ActiveScansSchema = z.object({ jobs: z.array(ActiveScanSchema) });
+type ActiveScan = z.infer<typeof ActiveScanSchema>;
+
+async function fetchActiveScans(): Promise<ActiveScan[]> {
+	const response = await fetch(`${V1_API_BASE_URL}/scans/active`);
+	if (!response.ok) throw new Error("Could not check active scans.");
+	const jobs = ActiveScansSchema.parse(await response.json()).jobs;
+	return jobs.sort((left, right) => {
+		const updatedDifference =
+			new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+		if (updatedDifference !== 0) return updatedDifference;
+		const createdDifference =
+			new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+		if (createdDifference !== 0) return createdDifference;
+		if (right.id === left.id) return 0;
+		return right.id > left.id ? 1 : -1;
+	});
+}
+
+function scanIsStalled(scan: ActiveScan, now = Date.now()) {
+	return (
+		scan.phase === "queued" &&
+		scan.status === "queued" &&
+		now - new Date(scan.updatedAt).getTime() >= SCAN_STALL_THRESHOLD_MS
+	);
+}
+
+function chooseActiveScan(
+	jobs: ActiveScan[],
+	preferredId: string | null,
+): ActiveScan | null {
+	const progressing = jobs.filter((job) => !scanIsStalled(job));
+	const preferred = progressing.find((job) => job.id === preferredId);
+	return preferred ?? progressing[0] ?? jobs[0] ?? null;
+}
 
 function photoDate(photo: PhotoMetadata) {
 	return parseDate(
@@ -145,8 +196,21 @@ export default function DashboardScreen() {
 		() => new Set(),
 	);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
-	const activeJobSelected = useRef(false);
+	const activeJobIdRef = useRef<string | null>(null);
+	const [selectedSnapshot, setSelectedSnapshot] = useState<ActiveScan | null>(
+		null,
+	);
+	const activeSnapshotQueue = useRef<Promise<void>>(Promise.resolve());
+	const latestSnapshotRequest = useRef(0);
+	const restorationSourceReady = useRef(false);
+	const snapshotLifecycle = useRef({ mounted: true });
+	const migrationWriteQueue = useRef(Promise.resolve());
+	const terminalReconciliation = useRef<string | null>(null);
+	const queuedThresholdReconciliation = useRef<string | null>(null);
 	const [isRestoringScan, setIsRestoringScan] = useState(true);
+	const [submissionRecovery, setSubmissionRecovery] = useState<
+		"settled" | "reconciling" | "ambiguous"
+	>("settled");
 	const [scanError, setScanError] = useState<string | null>(null);
 	const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
 	const [filterVisible, setFilterVisible] = useState(false);
@@ -182,51 +246,191 @@ export default function DashboardScreen() {
 		{ placeholderData: keepPreviousData },
 	);
 	const filterOptionsQuery = trpc.filterOptions.useQuery({});
-	const scanMutation = trpc.scan.useMutation({
-		onSuccess: (data) => {
-			if (data.success && data.jobId) {
-				activeJobSelected.current = true;
-				setScanError(null);
-				setActiveJobId(data.jobId);
-				void AsyncStorage.setItem(ACTIVE_SCAN_KEY, data.jobId).catch(() => {
+	const selectActiveJob = useCallback(
+		(jobId: string | null, persist = true) => {
+			activeJobIdRef.current = jobId;
+			setActiveJobId(jobId);
+			if (!persist) return;
+			migrationWriteQueue.current = migrationWriteQueue.current
+				.catch(() => undefined)
+				.then(() => setActiveScanId(jobId))
+				.catch(() => {
 					setScanError(
-						"Scan started, but progress recovery could not be saved.",
+						jobId
+							? "Scan started, but progress recovery could not be saved."
+							: "Could not clear the saved scan state.",
 					);
 				});
-			} else if (!data.success) {
+		},
+		[],
+	);
+	const reconcileActiveScans = useCallback(
+		(preferredId = activeJobIdRef.current) => {
+			const request = ++latestSnapshotRequest.current;
+			const previous = activeSnapshotQueue.current;
+			const reconciliation = previous
+				.catch(() => undefined)
+				.then(async () => {
+					try {
+						const jobs = await fetchActiveScans();
+						if (
+							!snapshotLifecycle.current.mounted ||
+							request !== latestSnapshotRequest.current
+						) {
+							return;
+						}
+
+						setSubmissionRecovery((current) =>
+							current === "reconciling" ? "ambiguous" : current,
+						);
+						const selected = chooseActiveScan(jobs, preferredId);
+						setSelectedSnapshot(selected);
+						selectActiveJob(selected?.id ?? null);
+					} catch {
+						if (
+							snapshotLifecycle.current.mounted &&
+							request === latestSnapshotRequest.current
+						) {
+							setSubmissionRecovery((current) =>
+								current === "reconciling" ? "ambiguous" : current,
+							);
+							setScanError("Could not check active scans.");
+						}
+					} finally {
+						if (
+							snapshotLifecycle.current.mounted &&
+							restorationSourceReady.current &&
+							request === latestSnapshotRequest.current
+						) {
+							setIsRestoringScan(false);
+						}
+					}
+				});
+			activeSnapshotQueue.current = reconciliation;
+			return reconciliation;
+		},
+		[selectActiveJob],
+	);
+	const scanMutation = trpc.scan.useMutation({
+		retry: false,
+		onSuccess: (data) => {
+			if (data.success && data.jobId) {
+				setScanError(null);
+				setSubmissionRecovery("settled");
+				setSelectedSnapshot(null);
+				selectActiveJob(data.jobId);
+				void reconcileActiveScans(data.jobId);
+				return;
+			}
+			if (!data.success) {
+				setSubmissionRecovery("settled");
 				setScanError(data.error ?? "The scan could not be started.");
+				if (data.jobId) {
+					void fetch(
+						`${V1_API_BASE_URL}/scans/${encodeURIComponent(data.jobId)}`,
+					).catch(() => undefined);
+				}
 			}
 		},
-		onError: (error) => setScanError(error.message),
+		onError: (error) => {
+			setScanError(error.message);
+			setSubmissionRecovery("reconciling");
+			void reconcileActiveScans();
+		},
 	});
 	const jobProgress = useJobProgress(activeJobId);
 
 	useEffect(() => {
 		let cancelled = false;
-		void AsyncStorage.getItem(ACTIVE_SCAN_KEY)
-			.then((jobId) => {
-				if (!cancelled && jobId && !activeJobSelected.current) {
-					setActiveJobId(jobId);
-				}
-			})
-			.catch(() => {
-				if (!cancelled) setScanError("Could not restore the active scan.");
-			})
-			.finally(() => {
-				if (!cancelled) setIsRestoringScan(false);
-			});
+		snapshotLifecycle.current.mounted = true;
+		void (async () => {
+			let preferredId: string | null = null;
+			try {
+				preferredId = await getActiveScanId();
+			} catch {
+				if (cancelled) return;
+				setScanError("Could not restore the active scan.");
+			}
+			if (cancelled) return;
+			if (preferredId) selectActiveJob(preferredId, false);
+			restorationSourceReady.current = true;
+			await reconcileActiveScans(preferredId);
+		})();
 		return () => {
 			cancelled = true;
+			snapshotLifecycle.current.mounted = false;
+			latestSnapshotRequest.current++;
 		};
-	}, []);
+	}, [reconcileActiveScans, selectActiveJob]);
 
 	useEffect(() => {
-		if (jobProgress.isCompleted || jobProgress.isFailed) {
-			void AsyncStorage.removeItem(ACTIVE_SCAN_KEY).catch(() => {
-				setScanError("Could not clear the saved scan state.");
-			});
+		let previousState = AppState.currentState;
+		const subscription = AppState.addEventListener("change", (nextState) => {
+			if (
+				(previousState === "background" || previousState === "inactive") &&
+				nextState === "active"
+			) {
+				void reconcileActiveScans();
+			}
+			previousState = nextState;
+		});
+		return () => subscription.remove();
+	}, [reconcileActiveScans]);
+
+	useEffect(() => {
+		if (
+			!activeJobId ||
+			(!jobProgress.isCompleted &&
+				!jobProgress.isFailed &&
+				!jobProgress.isMissingJob)
+		) {
+			return;
 		}
-	}, [jobProgress.isCompleted, jobProgress.isFailed]);
+		const reconciliationKey = `${activeJobId}:${jobProgress.progress?.phase}`;
+		if (terminalReconciliation.current === reconciliationKey) return;
+		terminalReconciliation.current = reconciliationKey;
+		setSelectedSnapshot(null);
+		selectActiveJob(null);
+		void reconcileActiveScans(null);
+	}, [
+		activeJobId,
+		jobProgress.isCompleted,
+		jobProgress.isFailed,
+		jobProgress.isMissingJob,
+		jobProgress.progress?.phase,
+		reconcileActiveScans,
+		selectActiveJob,
+	]);
+
+	useEffect(() => {
+		if (
+			!activeJobId ||
+			jobProgress.progress?.phase !== "queued" ||
+			jobProgress.queuedStaleAt === null ||
+			jobProgress.queuedStaleAt === undefined
+		) {
+			queuedThresholdReconciliation.current = null;
+			return;
+		}
+		const reconciliationKey = `${activeJobId}:${jobProgress.queuedStaleAt}`;
+		const reconcileOnce = () => {
+			if (queuedThresholdReconciliation.current === reconciliationKey) return;
+			queuedThresholdReconciliation.current = reconciliationKey;
+			void reconcileActiveScans();
+		};
+		const remaining = jobProgress.queuedStaleAt - Date.now();
+		if (remaining <= 0) {
+			reconcileOnce();
+			return;
+		}
+		const timeout = setTimeout(reconcileOnce, remaining);
+		return () => clearTimeout(timeout);
+	}, [
+		activeJobId,
+		jobProgress.progress?.phase,
+		jobProgress.queuedStaleAt,
+		reconcileActiveScans,
+	]);
 
 	const photos = useMemo(
 		() =>
@@ -282,8 +486,20 @@ export default function DashboardScreen() {
 		filters.iso !== null ? `ISO ${filters.iso}` : null,
 		filters.dateMonth ? formatDateMonth(filters.dateMonth) : null,
 	].filter((value): value is string => value !== null);
+	const selectedSnapshotIsStalled =
+		selectedSnapshot?.id === activeJobId && scanIsStalled(selectedSnapshot);
+	const stalledWorkRequiresConfirmation =
+		selectedSnapshotIsStalled &&
+		(jobProgress.isStalled ||
+			Boolean(jobProgress.error) ||
+			jobProgress.progress?.phase === null ||
+			jobProgress.progress?.phase === undefined);
+	const ambiguousSubmission = submissionRecovery === "ambiguous";
 	const scanDisabled =
-		isRestoringScan || scanMutation.isPending || jobProgress.isActive;
+		isRestoringScan ||
+		scanMutation.isPending ||
+		submissionRecovery === "reconciling" ||
+		(jobProgress.isActive && !stalledWorkRequiresConfirmation);
 	const filteredQueryFailed =
 		photosQuery.isError && !photosQuery.data && hasActiveFilters;
 	const itemCount = photosQuery.data?.total ?? photos.length;
@@ -491,13 +707,41 @@ export default function DashboardScreen() {
 	}, [isSelecting, photos]);
 
 	const handleRefresh = useCallback(() => {
-		void Promise.all([photosQuery.refetch(), filterOptionsQuery.refetch()]);
-	}, [filterOptionsQuery, photosQuery]);
+		void Promise.all([
+			photosQuery.refetch(),
+			filterOptionsQuery.refetch(),
+			reconcileActiveScans(),
+		]);
+	}, [filterOptionsQuery, photosQuery, reconcileActiveScans]);
+	const submitScan = useCallback(
+		(input?: { force: true }) => {
+			const submit = () => {
+				setScanError(null);
+				setSubmissionRecovery("settled");
+				if (input) scanMutation.mutate(input);
+				else scanMutation.mutate();
+			};
+			if (!stalledWorkRequiresConfirmation && !ambiguousSubmission) {
+				submit();
+				return;
+			}
+			Alert.alert(
+				"Start another scan?",
+				ambiguousSubmission
+					? "The previous scan request may have reached the server, but its status could not be confirmed. Starting another scan may duplicate work. Continue only if you know the earlier request will not resume."
+					: "The existing scan has not made progress for at least five minutes. Starting another scan may duplicate work. Continue only if you know the earlier scan will not resume.",
+				[
+					{ text: "Cancel", style: "cancel" },
+					{ text: "Start another scan", onPress: submit },
+				],
+			);
+		},
+		[ambiguousSubmission, scanMutation, stalledWorkRequiresConfirmation],
+	);
 	const handleScan = useCallback(() => {
 		if (scanDisabled) return;
-		setScanError(null);
-		scanMutation.mutate();
-	}, [scanDisabled, scanMutation]);
+		submitScan();
+	}, [scanDisabled, submitScan]);
 	const handleReprocess = () => {
 		if (scanDisabled) return;
 		Alert.alert(
@@ -509,8 +753,7 @@ export default function DashboardScreen() {
 					text: "Reprocess all photos",
 					onPress: () => {
 						setFilterVisible(false);
-						setScanError(null);
-						scanMutation.mutate({ force: true });
+						submitScan({ force: true });
 					},
 				},
 			],
@@ -1007,7 +1250,11 @@ export default function DashboardScreen() {
 				}}
 				onReprocess={handleReprocess}
 				scanDisabled={scanDisabled}
-				isScanning={scanMutation.isPending || jobProgress.isActive}
+				isScanning={
+					scanMutation.isPending ||
+					submissionRecovery === "reconciling" ||
+					(jobProgress.isActive && !stalledWorkRequiresConfirmation)
+				}
 				onOpenSettings={() => {
 					setFilterVisible(false);
 					setIsSelecting(false);

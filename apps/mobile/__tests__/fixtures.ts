@@ -213,3 +213,43 @@ export const MOCK_PHOTOS: MockPhoto[] = [
 ];
 
 export const SEARCH_RESULTS_PHOTOS = [MOCK_PHOTOS[0], MOCK_PHOTOS[2]];
+
+// Shared contract for the generated native-migration baseline. These are
+// synthetic coverage targets, not measurements of a production library.
+export const NATIVE_MIGRATION_BASELINE_CONTRACT = {
+	version: 1,
+	photoCount: 7_961,
+	libraryFormatCounts: {
+		ARW: 4_796,
+		RAF: 1_232,
+		DNG: 1_181,
+		HEIC: 454,
+		JPG: 277,
+		JPEG: 13,
+		PNG: 8,
+	},
+	manifestFormatCounts: {
+		ARW: 12,
+		RAF: 12,
+		DNG: 12,
+		HEIC: 12,
+		JPG: 12,
+		JPEG: 12,
+		PNG: 8,
+	},
+	manifestDngFailures: 3,
+	syntheticDistributions: {
+		exif: { present: 6_766, null: 1_195 },
+		raw: { present: 7_209, null: 752 },
+		rawStatus: { completed: 7_115, failed: 3, null: 91 },
+		thumbnailStatus: { completed: 7_876, failed: 3, null: 82 },
+		embeddingStatus: { completed: 7_872, null: 89 },
+		phashStatus: { completed: 7_866, null: 95 },
+		dateFallback: {
+			dateTaken: 5_572,
+			modifiedAt: 1_194,
+			createdAt: 797,
+			null: 398,
+		},
+	},
+} as const;

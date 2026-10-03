@@ -1,31 +1,67 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, waitFor } from "@testing-library/react-native";
 import {
 	isGlassEffectAPIAvailable,
 	isLiquidGlassAvailable,
 } from "expo-glass-effect";
-import { AccessibilityInfo, Platform, Text } from "react-native";
+import {
+	AccessibilityInfo,
+	Appearance,
+	type EmitterSubscription,
+	Platform,
+	Text,
+} from "react-native";
 import GlassSurface from "@/components/GlassSurface";
+import * as migrationBridge from "@/lib/migration-bridge";
 import { renderWithProviders } from "./test-utils";
+
+jest.mock("@/lib/migration-bridge", () => ({
+	getThemePreference: jest.fn(),
+	setThemePreference: jest.fn(),
+	getActiveScanId: jest.fn(),
+	setActiveScanId: jest.fn(),
+}));
+
+const mockGetThemePreference = jest.mocked(migrationBridge.getThemePreference);
+const mockSetThemePreference = jest.mocked(migrationBridge.setThemePreference);
+const mockGetActiveScanId = jest.mocked(migrationBridge.getActiveScanId);
+const mockSetActiveScanId = jest.mocked(migrationBridge.setActiveScanId);
 
 const mockGlassApiAvailable = jest.mocked(isGlassEffectAPIAvailable);
 const mockLiquidGlassAvailable = jest.mocked(isLiquidGlassAvailable);
+const originalPlatform = Platform.OS;
 
 describe("GlassSurface", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
+		mockGetThemePreference.mockReset();
+		mockSetThemePreference.mockReset();
+		mockGetActiveScanId.mockReset();
+		mockSetActiveScanId.mockReset();
+		Object.defineProperty(Platform, "OS", {
+			configurable: true,
+			value: "ios",
+		});
+		mockGetThemePreference.mockResolvedValue(null);
+		mockSetThemePreference.mockResolvedValue(undefined);
+		mockGetActiveScanId.mockResolvedValue(null);
+		mockSetActiveScanId.mockResolvedValue(undefined);
 		mockGlassApiAvailable.mockReturnValue(true);
 		mockLiquidGlassAvailable.mockReturnValue(true);
+		jest.spyOn(Appearance, "setColorScheme").mockImplementation(() => {});
 		jest
 			.spyOn(AccessibilityInfo, "isReduceTransparencyEnabled")
 			.mockResolvedValue(false);
 		jest.spyOn(AccessibilityInfo, "addEventListener").mockReturnValue({
 			remove: jest.fn(),
-		} as ReturnType<typeof AccessibilityInfo.addEventListener>);
+		} as EmitterSubscription);
 	});
 
 	afterEach(() => {
 		jest.restoreAllMocks();
+		Object.defineProperty(Platform, "OS", {
+			configurable: true,
+			value: originalPlatform,
+		});
 	});
 
 	it("uses native Liquid Glass when the platform APIs are available", async () => {
@@ -74,7 +110,7 @@ describe("GlassSurface", () => {
 		["light", "#f2f2f7"],
 		["dark", "#2c2c2e"],
 	])("uses a solid %s fallback while the preference is unknown", async (theme, color) => {
-		jest.mocked(AsyncStorage.getItem).mockResolvedValueOnce(theme);
+		mockGetThemePreference.mockResolvedValueOnce(theme as "light" | "dark");
 		let resolvePreference: ((enabled: boolean) => void) | undefined;
 		jest.mocked(AccessibilityInfo.isReduceTransparencyEnabled).mockReturnValue(
 			new Promise((resolve) => {

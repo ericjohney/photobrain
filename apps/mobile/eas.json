@@ -41,6 +41,15 @@
 				"resourceClass": "m-medium"
 			}
 		},
+		"android-preview": {
+			"channel": "preview",
+			"environment": "preview",
+			"developmentClient": false,
+			"distribution": "internal",
+			"env": {
+				"EXPO_PUBLIC_API_URL": "https://photobrain-api.ericj5.com"
+			}
+		},
 		"production": {
 			"channel": "production",
 			"environment": "production",
@@ -50,6 +59,14 @@
 			},
 			"ios": {
 				"resourceClass": "m-medium"
+			}
+		},
+		"android-production": {
+			"channel": "production",
+			"environment": "production",
+			"autoIncrement": true,
+			"env": {
+				"EXPO_PUBLIC_API_URL": "https://photobrain-api.ericj5.com"
 			}
 		}
 	},

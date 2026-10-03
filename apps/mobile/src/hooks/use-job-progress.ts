@@ -30,6 +30,15 @@ const PHASE_ORDER = new Map(
 	PROGRESS_PHASES.map((phase, index) => [phase, index]),
 );
 
+export const PROGRESSING_POLL_INTERVAL_MS = 1_500;
+export const STALLED_POLL_INTERVAL_MS = 15_000;
+export const SCAN_STALL_THRESHOLD_MS = 5 * 60_000;
+
+function isStalledAt(updatedAt: unknown, now = Date.now()) {
+	const timestamp = getTimestamp(updatedAt);
+	return timestamp !== null && now - timestamp >= SCAN_STALL_THRESHOLD_MS;
+}
+
 export interface ProgressData {
 	phase: (typeof PROGRESS_PHASES)[number];
 	current: number;
@@ -116,7 +125,14 @@ export function useJobProgress(jobId: string | null) {
 					return false;
 				}
 				const status = query.state.data?.status;
-				return status === "completed" || status === "failed" ? false : 1500;
+				if (status === "completed" || status === "failed") return false;
+				const stalledQueuedRow =
+					query.state.data?.phase === "queued" &&
+					status === "queued" &&
+					isStalledAt(query.state.data?.updatedAt);
+				return stalledQueuedRow
+					? STALLED_POLL_INTERVAL_MS
+					: PROGRESSING_POLL_INTERVAL_MS;
 			},
 		},
 	);
@@ -129,6 +145,20 @@ export function useJobProgress(jobId: string | null) {
 	const isDurableTerminal =
 		durableProgress?.phase === "completed" ||
 		durableProgress?.phase === "failed";
+	const statusUpdatedAt = getTimestamp(statusQuery.data?.updatedAt);
+	const isStalled =
+		Boolean(jobId) &&
+		!isDurableTerminal &&
+		!isMissingJob &&
+		durableProgress?.phase === "queued" &&
+		statusQuery.data?.status === "queued" &&
+		isStalledAt(statusQuery.data?.updatedAt);
+	const queuedStaleAt =
+		durableProgress?.phase === "queued" &&
+		statusQuery.data?.status === "queued" &&
+		statusUpdatedAt !== null
+			? statusUpdatedAt + SCAN_STALL_THRESHOLD_MS
+			: null;
 	const tokenQuery = trpc.realtimeToken.useQuery(
 		{ jobId: jobId ?? EMPTY_JOB_ID },
 		{
@@ -347,6 +377,9 @@ export function useJobProgress(jobId: string | null) {
 		isActive,
 		isCompleted,
 		isFailed,
+		isMissingJob,
+		isStalled,
+		queuedStaleAt,
 		isConnected: state === "active",
 		error:
 			isActive && !latest && statusQuery.error

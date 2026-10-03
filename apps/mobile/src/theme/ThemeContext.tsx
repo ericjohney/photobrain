@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import type React from "react";
 import {
 	createContext,
@@ -8,11 +7,14 @@ import {
 	useState,
 } from "react";
 import { Appearance, Platform, useColorScheme } from "react-native";
+import {
+	getThemePreference,
+	type MigrationTheme,
+	setThemePreference as persistThemePreference,
+} from "@/lib/migration-bridge";
 import { type ColorTheme, colors, type ThemeColors } from "./colors";
 
-const THEME_STORAGE_KEY = "@photobrain/theme";
-
-export type ThemePreference = "light" | "dark" | "system";
+export type ThemePreference = MigrationTheme;
 
 interface ThemeContextValue {
 	theme: ColorTheme;
@@ -48,7 +50,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
 	// Load saved preference on mount
 	useEffect(() => {
-		AsyncStorage.getItem(THEME_STORAGE_KEY)
+		getThemePreference()
 			.then((value) => {
 				if (value === "light" || value === "dark" || value === "system") {
 					setThemePreferenceState(value);
@@ -77,7 +79,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
 	const setThemePreference = useCallback((preference: ThemePreference) => {
 		setThemePreferenceState(preference);
-		AsyncStorage.setItem(THEME_STORAGE_KEY, preference).catch(() => {
+		persistThemePreference(preference).catch(() => {
 			// Ignore save errors
 		});
 	}, []);
