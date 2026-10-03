@@ -5,6 +5,13 @@ import {
 	MAX_COLLECTION_PHOTO_IDS,
 } from "../services/collections";
 import {
+	JUNK_ACTIONS,
+	JUNK_REASONS,
+	JUNK_REVIEW_DEFAULT_LIMIT,
+	JUNK_REVIEW_MAX_LIMIT,
+	MAX_JUNK_RESOLVE_IDS,
+} from "../services/junk-review";
+import {
 	MAX_TAG_SLUG_LENGTH,
 	TAG_SLUG_PATTERN,
 } from "../services/tag-vocabulary";
@@ -189,6 +196,47 @@ export const similarPhotosResponseSchema = z.object({
 	total: z.number().int().nonnegative(),
 	sourcePhotoId: z.number().int().positive(),
 	indexed: z.boolean(),
+});
+
+export const junkReasonSchema = z.enum(JUNK_REASONS);
+
+export const junkReviewQuerySchema = z.object({
+	reason: junkReasonSchema.optional(),
+	limit: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(JUNK_REVIEW_MAX_LIMIT)
+		.default(JUNK_REVIEW_DEFAULT_LIMIT),
+	cursor: z.coerce.number().int().positive().optional(),
+});
+
+export const junkReviewResponseSchema = z.object({
+	photos: z.array(
+		photoSchema.extend({ junkReasons: z.array(junkReasonSchema) }),
+	),
+	nextCursor: z.number().int().positive().nullable(),
+	counts: z.object({
+		all: z.number().int().nonnegative(),
+		screenshot: z.number().int().nonnegative(),
+		document: z.number().int().nonnegative(),
+		blurry: z.number().int().nonnegative(),
+		dark: z.number().int().nonnegative(),
+	}),
+});
+
+export const resolveJunkRequestSchema = z
+	.object({
+		photoIds: z
+			.array(z.number().int().positive())
+			.min(1)
+			.max(MAX_JUNK_RESOLVE_IDS),
+		action: z.enum(JUNK_ACTIONS),
+	})
+	.strict();
+
+export const resolveJunkResponseSchema = z.object({
+	updated: z.array(z.number().int().positive()),
 });
 
 export const collectionIdSchema = z.coerce.number().int().positive();
@@ -415,6 +463,17 @@ export function serializeSimilarPhotosResponse(value: {
 	total: number;
 	sourcePhotoId: number;
 	indexed: boolean;
+}) {
+	return {
+		...value,
+		photos: value.photos.map(serializePhoto),
+	};
+}
+
+export function serializeJunkReviewResponse(value: {
+	photos: readonly unknown[];
+	nextCursor: number | null;
+	counts: Record<string, number>;
 }) {
 	return {
 		...value,

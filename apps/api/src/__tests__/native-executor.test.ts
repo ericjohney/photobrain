@@ -35,6 +35,14 @@ describe("off-thread native execution", () => {
 		expect(
 			await executor.run("batchGenerateClipEmbeddings", ["a", "missing", "b"]),
 		).toEqual([[0.25, -0.5], null, [2.25, -0.5]]);
+		// Quality measurement keeps per-path nulls aligned with its inputs.
+		expect(
+			await executor.run("analyzeImageQuality", ["a", "missing", "b"]),
+		).toEqual([
+			{ sharpness: 0, brightness: 128 },
+			null,
+			{ sharpness: 20, brightness: 128 },
+		]);
 	});
 
 	test("API timers run during a blocking operation, not just during worker startup", async () => {

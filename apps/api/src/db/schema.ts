@@ -3,7 +3,8 @@ import type { Photo, PhotoExif } from "@photobrain/db/schema";
 // Re-export schema from shared package
 export * from "@photobrain/db/schema";
 
-// Keep private import identity out of public photo payloads.
+// Keep private import identity and internal review state out of public photo
+// payloads. `junkDismissed` is only meaningful to the junk-review query.
 export const publicPhotoColumns = {
 	sourceRoot: false,
 	sourceFingerprint: false,
@@ -11,6 +12,7 @@ export const publicPhotoColumns = {
 	thumbnailKey: false,
 	thumbnailRoot: false,
 	thumbnailFingerprint: false,
+	junkDismissed: false,
 } as const;
 
 /**

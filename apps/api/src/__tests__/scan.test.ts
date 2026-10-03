@@ -37,9 +37,18 @@ const TAGS_REQUESTED = {
 	name: "photos/tags.requested",
 	data: {},
 } as unknown as EmbeddingEvent;
+const QUALITY_REQUESTED = {
+	name: "photos/quality.requested",
+	data: {},
+} as unknown as EmbeddingEvent;
+// The appended trigger step (ID unchanged since F6) sends both backfills.
+const BACKFILLS_REQUESTED = [TAGS_REQUESTED, QUALITY_REQUESTED];
 type Steps = {
 	run<T>(id: string, work: () => T | Promise<T>): Promise<T>;
-	sendEvent(id: string, event: EmbeddingEvent): Promise<void>;
+	sendEvent(
+		id: string,
+		event: EmbeddingEvent | EmbeddingEvent[],
+	): Promise<void>;
 };
 type Context = {
 	event: {
@@ -291,8 +300,10 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 					// Model idempotent step event delivery even if its response is lost.
 					if (!eventIds.has(id)) {
 						eventIds.add(id);
-						dispatched.push(event);
-						await controls.onDispatch(event);
+						for (const single of [event].flat()) {
+							dispatched.push(single);
+							await controls.onDispatch(single);
+						}
 					}
 				});
 			},
@@ -394,8 +405,8 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		const unchanged = harness();
 		expect(await unchanged.execute()).toEqual({ processed: 1, successful: 1 });
 		expect(loads).toHaveLength(1);
-		// Fully indexed scans skip embeddings but still request tag backfill.
-		expect(unchanged.dispatched).toEqual([TAGS_REQUESTED]);
+		// Fully indexed scans skip embeddings but still request tag/quality backfill.
+		expect(unchanged.dispatched).toEqual(BACKFILLS_REQUESTED);
 		expect(job()?.status).toBe("completed");
 		expect(db.select().from(photos).get()).toEqual(completed);
 		expect(statSync(artifact, { bigint: true })).toEqual(before);
@@ -698,7 +709,7 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		expect(discoveries).toBe(1);
 		expect(loads).toEqual([]);
 		expect(job()).toMatchObject({ status: "completed", current: 0, total: 0 });
-		expect(run.dispatched).toEqual([TAGS_REQUESTED]);
+		expect(run.dispatched).toEqual(BACKFILLS_REQUESTED);
 		expect(db.select().from(scanManifests).all()).toEqual([]);
 	});
 
@@ -709,7 +720,7 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		expect(job()).toMatchObject({ status: "completed", current: 0, total: 0 });
 		expect(await run.execute()).toEqual({ processed: 0, successful: 0 });
 		expect(run.published.at(-1)?.phase).toBe("completed");
-		expect(run.dispatched).toEqual([TAGS_REQUESTED]);
+		expect(run.dispatched).toEqual(BACKFILLS_REQUESTED);
 		expect(db.select().from(scanManifests).all()).toEqual([]);
 	});
 

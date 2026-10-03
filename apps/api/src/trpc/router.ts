@@ -16,6 +16,15 @@ import {
 	renameCollection,
 } from "../services/collections";
 import {
+	JUNK_ACTIONS,
+	JUNK_REASONS,
+	JUNK_REVIEW_DEFAULT_LIMIT,
+	JUNK_REVIEW_MAX_LIMIT,
+	junkReview,
+	MAX_JUNK_RESOLVE_IDS,
+	resolveJunk,
+} from "../services/junk-review";
+import {
 	getPhoto,
 	listFilterOptions,
 	listFolders,
@@ -182,6 +191,37 @@ export const appRouter = router({
 			const { photoIds, ...patch } = input;
 			return updatePhotoCuration(ctx.db, photoIds, patch);
 		}),
+
+	junkReview: publicProcedure
+		.input(
+			z
+				.object({
+					reason: z.enum(JUNK_REASONS).optional(),
+					limit: z
+						.number()
+						.int()
+						.min(1)
+						.max(JUNK_REVIEW_MAX_LIMIT)
+						.default(JUNK_REVIEW_DEFAULT_LIMIT),
+					cursor: z.number().int().positive().optional(),
+				})
+				.optional(),
+		)
+		.query(({ ctx, input }) => junkReview(ctx.db, input ?? {})),
+
+	resolveJunk: publicProcedure
+		.input(
+			z.object({
+				photoIds: z
+					.array(z.number().int().positive())
+					.min(1)
+					.max(MAX_JUNK_RESOLVE_IDS),
+				action: z.enum(JUNK_ACTIONS),
+			}),
+		)
+		.mutation(({ ctx, input }) =>
+			resolveJunk(ctx.db, input.photoIds, input.action),
+		),
 
 	collections: publicProcedure.query(({ ctx }) => ({
 		collections: listCollections(ctx.db),

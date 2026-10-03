@@ -9,6 +9,7 @@ type NativeOperations = Pick<
 	| "processPhotosBatch"
 	| "batchGenerateClipEmbeddings"
 	| "validateThumbnails"
+	| "analyzeImageQuality"
 >;
 type Operation = keyof NativeOperations;
 

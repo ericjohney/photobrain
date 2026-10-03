@@ -7,6 +7,8 @@ struct LoupeScreen: View {
     @ObservedObject var curation: PhotoCurationCenter
     let collections: CollectionsStore
     let dismiss: () -> Void
+    /// Set when presented from Review: shows Reject/Keep instead of rating and flag controls.
+    var review: LoupeReviewActions?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -55,9 +57,19 @@ struct LoupeScreen: View {
             if chromeVisible {
                 VStack(spacing: 0) {
                     topChrome
-                    if let message = curation.errorMessage { curationError(message) }
+                    if let message = review?.errorMessage {
+                        reviewError(message)
+                    } else if let message = curation.errorMessage {
+                        curationError(message)
+                    }
                     Spacer()
-                    if let activeRecord { curationBar(activeRecord) }
+                    if let activeRecord {
+                        if let review {
+                            reviewBar(activeRecord, review: review)
+                        } else {
+                            curationBar(activeRecord)
+                        }
+                    }
                     filmstrip
                 }
                 .transition(.opacity)
@@ -184,6 +196,60 @@ struct LoupeScreen: View {
         .background(chromeBackground)
     }
 
+    private func reviewBar(_ photo: PhotoRecord, review: LoupeReviewActions) -> some View {
+        VStack(spacing: 6) {
+            if !photo.junkReasons.isEmpty {
+                Text(photo.junkReasons.map(\.title).joined(separator: " · "))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Why it's here: \(photo.junkReasons.map(\.title).joined(separator: ", "))")
+            }
+            HStack(spacing: 12) {
+                Button(role: .destructive) {
+                    review.resolve(.reject)
+                } label: {
+                    Label("Reject", systemImage: "xmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .tint(.red)
+                Button {
+                    review.resolve(.keep)
+                } label: {
+                    Label("Keep", systemImage: "checkmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .tint(.white)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(chromeBackground)
+    }
+
+    private func reviewError(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text("Couldn’t save review. \(message)")
+                .lineLimit(2)
+            Spacer(minLength: 4)
+            Button {
+                review?.dismissError()
+            } label: {
+                Image(systemName: "xmark")
+                    .frame(width: 32, height: 32)
+            }
+            .accessibilityLabel("Dismiss error")
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.85))
+        .accessibilityElement(children: .combine)
+    }
+
     private func curationError(_ message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -268,6 +334,13 @@ struct LoupeScreen: View {
 
 private struct CollectionSheetTarget: Identifiable {
     let id: Int
+}
+
+/// Review-mode hooks for the loupe. `resolve` decides the open photo and advances.
+struct LoupeReviewActions {
+    let errorMessage: String?
+    let resolve: @MainActor (JunkAction) -> Void
+    let dismissError: @MainActor () -> Void
 }
 
 private struct PhotoMetadataView: View {

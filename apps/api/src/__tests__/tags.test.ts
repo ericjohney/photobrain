@@ -1025,7 +1025,15 @@ if (process.env.PHOTOBRAIN_TAGS_TEST_CHILD !== "1") {
 					.query<Record<string, unknown>, []>("SELECT * FROM photo_embedding")
 					.all();
 
-				migrate(legacyDb, { migrationsFolder: MIGRATIONS_FOLDER });
+				// Stop at 0009 so later migrations' additive columns stay out of this check.
+				writeFileSync(
+					journalPath,
+					JSON.stringify({
+						...journal,
+						entries: journal.entries.slice(0, tagsIndex + 1),
+					}),
+				);
+				migrate(legacyDb, { migrationsFolder: partial });
 
 				expect(snapshot()).toEqual(before);
 				expect(legacy.query("SELECT * FROM photo_embedding").all()).toEqual(

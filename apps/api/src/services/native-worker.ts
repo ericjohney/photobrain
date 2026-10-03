@@ -1,6 +1,7 @@
 import { parentPort } from "node:worker_threads";
 import type { PhotoProcessingStream } from "@photobrain/image-processing";
 import {
+	analyzeImageQuality,
 	batchGenerateClipEmbeddings,
 	discoverPhotos,
 	processPhotosBatch,
@@ -133,6 +134,12 @@ async function execute(
 					response = {
 						id: request.id,
 						result: validateThumbnails(...request.args),
+					};
+					break;
+				case "analyzeImageQuality":
+					response = {
+						id: request.id,
+						result: analyzeImageQuality(...request.args),
 					};
 					break;
 			}

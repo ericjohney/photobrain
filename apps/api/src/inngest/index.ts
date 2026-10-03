@@ -1,5 +1,6 @@
 import { inngest } from "./client";
 import { generateEmbeddingsFunction } from "./functions/embeddings";
+import { analyzeQualityFunction } from "./functions/quality";
 import { scanPhotosFunction } from "./functions/scan";
 import { tagPhotosFunction } from "./functions/tags";
 
@@ -9,4 +10,5 @@ export const functions = [
 	scanPhotosFunction,
 	generateEmbeddingsFunction,
 	tagPhotosFunction,
+	analyzeQualityFunction,
 ];

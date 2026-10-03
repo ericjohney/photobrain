@@ -18,6 +18,8 @@ const PHOTO_LIST_KEYS = [
 	getQueryKey(trpc.photos),
 	getQueryKey(trpc.searchPhotos),
 	getQueryKey(trpc.similarPhotos),
+	// Rated or picked photos stop being review candidates once refetched.
+	getQueryKey(trpc.junkReview),
 ];
 const CURATION_MUTATION_KEY = getMutationKey(trpc.setPhotoCuration);
 

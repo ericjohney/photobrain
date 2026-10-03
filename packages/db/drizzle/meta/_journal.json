@@ -71,6 +71,13 @@
       "when": 1791053829378,
       "tag": "0009_photo_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791056809324,
+      "tag": "0010_junk_review",
+      "breakpoints": true
     }
   ]
 }

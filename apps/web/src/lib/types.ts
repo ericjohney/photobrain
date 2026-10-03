@@ -24,3 +24,10 @@ export type FilterOptions = RouterOutputs["filterOptions"];
 
 // Collection types
 export type Collection = RouterOutputs["collections"]["collections"][number];
+
+// Junk review types
+export type JunkReviewResponse = RouterOutputs["junkReview"];
+export type ReviewPhoto = JunkReviewResponse["photos"][number];
+export type JunkReason = ReviewPhoto["junkReasons"][number];
+export type JunkCounts = JunkReviewResponse["counts"];
+export type JunkAction = RouterInputs["resolveJunk"]["action"];

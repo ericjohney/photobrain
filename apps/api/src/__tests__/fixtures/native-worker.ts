@@ -69,6 +69,13 @@ mock.module("@photobrain/image-processing", () => ({
 			path === "missing" ? null : [index + 0.25, -0.5],
 		);
 	},
+	analyzeImageQuality(paths: string[]) {
+		if (streamsActive)
+			throw new Error("Native operation overlapped active stream writers");
+		return paths.map((path, index) =>
+			path === "missing" ? null : { sharpness: index * 10, brightness: 128 },
+		);
+	},
 	validateThumbnails() {
 		throw new Error(
 			"Unexpected thumbnail validation in the worker transport fixture",

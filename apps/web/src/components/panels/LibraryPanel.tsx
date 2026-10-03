@@ -7,6 +7,7 @@ import {
 	FolderOpen,
 	Images,
 	Plus,
+	ScanEye,
 	Star,
 	Tag,
 } from "lucide-react";
@@ -139,6 +140,11 @@ interface LibraryPanelProps {
 	filterOptions?: FilterOptions;
 	activeFilters: LibraryFilters;
 	onFilterChange: (filters: LibraryFilters) => void;
+	/** Junk review candidates; undefined until loaded. */
+	reviewCount: number | undefined;
+	/** Review is shown instead of the library (folder/collection/filters ignored). */
+	reviewActive: boolean;
+	onReviewSelect: () => void;
 }
 
 interface NavItemProps {
@@ -373,6 +379,9 @@ export function LibraryPanel({
 	filterOptions,
 	activeFilters,
 	onFilterChange,
+	reviewCount,
+	reviewActive,
+	onReviewSelect,
 }: LibraryPanelProps) {
 	const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
 		new Set(),
@@ -394,7 +403,7 @@ export function LibraryPanel({
 
 	const handleFolderSelect = (path: string) => {
 		// Toggle selection - clicking same folder again shows all photos
-		onFolderSelect(selectedFolder === path ? null : path);
+		onFolderSelect(!reviewActive && selectedFolder === path ? null : path);
 	};
 
 	return (
@@ -406,7 +415,11 @@ export function LibraryPanel({
 						icon={<Images className="h-4 w-4" />}
 						label="All Photos"
 						count={photoCount}
-						active={selectedFolder === null && selectedCollectionId === null}
+						active={
+							!reviewActive &&
+							selectedFolder === null &&
+							selectedCollectionId === null
+						}
 						onClick={() => onFolderSelect(null)}
 					/>
 					<NavItem
@@ -418,6 +431,14 @@ export function LibraryPanel({
 						icon={<Star className="h-4 w-4" />}
 						label="Quick Collection"
 						count={0}
+					/>
+					<NavItem
+						icon={<ScanEye className="h-4 w-4" />}
+						label="Review"
+						count={reviewCount}
+						active={reviewActive}
+						toggle
+						onClick={onReviewSelect}
 					/>
 				</Section>
 
@@ -433,7 +454,7 @@ export function LibraryPanel({
 								key={folder.path}
 								folder={folder}
 								depth={0}
-								selectedFolder={selectedFolder}
+								selectedFolder={reviewActive ? null : selectedFolder}
 								expandedFolders={expandedFolders}
 								onToggleExpand={handleToggleExpand}
 								onSelect={handleFolderSelect}
@@ -464,10 +485,12 @@ export function LibraryPanel({
 				>
 					<CollectionList
 						collections={collections}
-						selectedCollectionId={selectedCollectionId}
+						selectedCollectionId={reviewActive ? null : selectedCollectionId}
 						onSelect={(id) =>
 							// Re-selecting the active collection returns to All Photos.
-							onCollectionSelect(selectedCollectionId === id ? null : id)
+							onCollectionSelect(
+								!reviewActive && selectedCollectionId === id ? null : id,
+							)
 						}
 						creating={creatingCollection}
 						onCreatingChange={setCreatingCollection}
@@ -477,143 +500,146 @@ export function LibraryPanel({
 					/>
 				</Section>
 
-				{/* Filter By Section — also scopes an active search */}
-				<Section title="Filter By" defaultOpen={false}>
-					<Section title="Type">
-						<SegmentedFilter
-							label="Photo type"
-							options={RAW_FILTER_OPTIONS}
-							value={activeFilters.filterRaw}
-							onChange={(filterRaw) =>
-								onFilterChange({ ...activeFilters, filterRaw })
-							}
-						/>
-					</Section>
-					<Section title="Rating">
-						<SegmentedFilter
-							label="Minimum rating"
-							options={RATING_FILTER_OPTIONS}
-							value={activeFilters.minRating}
-							onChange={(minRating) =>
-								onFilterChange({ ...activeFilters, minRating })
-							}
-						/>
-					</Section>
-					<Section title="Flag">
-						<SegmentedFilter
-							label="Flag"
-							options={FLAG_FILTER_OPTIONS}
-							value={activeFilters.flag}
-							onChange={(flag) => onFilterChange({ ...activeFilters, flag })}
-						/>
-					</Section>
-					{((filterOptions?.tags && filterOptions.tags.length > 0) ||
-						activeFilters.tag !== null) && (
-						<Section title="Tags">
-							<TagFilterList
-								tags={filterOptions?.tags ?? []}
-								selectedTag={activeFilters.tag}
-								onSelect={(tag) => onFilterChange({ ...activeFilters, tag })}
+				{/* Filter By Section — also scopes an active search; hidden in Review */}
+				{!reviewActive && (
+					<Section title="Filter By" defaultOpen={false}>
+						<Section title="Type">
+							<SegmentedFilter
+								label="Photo type"
+								options={RAW_FILTER_OPTIONS}
+								value={activeFilters.filterRaw}
+								onChange={(filterRaw) =>
+									onFilterChange({ ...activeFilters, filterRaw })
+								}
 							/>
 						</Section>
-					)}
-					{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
-						<Section title="Camera" defaultOpen={false}>
-							{filterOptions.cameras.map((cam) => (
-								<NavItem
-									key={cam}
-									icon={<Camera className="h-4 w-4" />}
-									label={cam}
-									active={activeFilters.camera === cam}
-									onClick={() =>
-										onFilterChange({
-											...activeFilters,
-											camera: activeFilters.camera === cam ? null : cam,
-										})
-									}
-								/>
-							))}
+						<Section title="Rating">
+							<SegmentedFilter
+								label="Minimum rating"
+								options={RATING_FILTER_OPTIONS}
+								value={activeFilters.minRating}
+								onChange={(minRating) =>
+									onFilterChange({ ...activeFilters, minRating })
+								}
+							/>
 						</Section>
-					)}
-					{filterOptions?.lenses && filterOptions.lenses.length > 0 && (
-						<Section title="Lens" defaultOpen={false}>
-							{filterOptions.lenses.map((lens) => (
-								<NavItem
-									key={lens}
-									icon={<ChevronRight className="h-4 w-4" />}
-									label={lens}
-									active={activeFilters.lens === lens}
-									onClick={() =>
-										onFilterChange({
-											...activeFilters,
-											lens: activeFilters.lens === lens ? null : lens,
-										})
-									}
-								/>
-							))}
+						<Section title="Flag">
+							<SegmentedFilter
+								label="Flag"
+								options={FLAG_FILTER_OPTIONS}
+								value={activeFilters.flag}
+								onChange={(flag) => onFilterChange({ ...activeFilters, flag })}
+							/>
 						</Section>
-					)}
-					{filterOptions?.isos && filterOptions.isos.length > 0 && (
-						<Section title="ISO" defaultOpen={false}>
-							{filterOptions.isos.map((iso) => (
-								<NavItem
-									key={iso}
-									icon={<ChevronRight className="h-4 w-4" />}
-									label={`ISO ${iso}`}
-									active={activeFilters.iso === iso}
-									onClick={() =>
-										onFilterChange({
-											...activeFilters,
-											iso: activeFilters.iso === iso ? null : iso,
-										})
-									}
+						{((filterOptions?.tags && filterOptions.tags.length > 0) ||
+							activeFilters.tag !== null) && (
+							<Section title="Tags">
+								<TagFilterList
+									tags={filterOptions?.tags ?? []}
+									selectedTag={activeFilters.tag}
+									onSelect={(tag) => onFilterChange({ ...activeFilters, tag })}
 								/>
-							))}
-						</Section>
-					)}
-					{filterOptions?.dates && filterOptions.dates.length > 0 && (
-						<Section title="Date" defaultOpen={false}>
-							{filterOptions.dates.map((d) => (
-								<NavItem
-									key={d}
-									icon={<Calendar className="h-4 w-4" />}
-									label={formatMonthLabel(d)}
-									active={activeFilters.dateMonth === d}
-									onClick={() =>
-										onFilterChange({
-											...activeFilters,
-											dateMonth: activeFilters.dateMonth === d ? null : d,
-										})
-									}
-								/>
-							))}
-						</Section>
-					)}
-				</Section>
-
-				{/* Active filters indicator */}
-				{(activeFilters.filterRaw !== "all" ||
-					activeFilters.camera ||
-					activeFilters.lens ||
-					activeFilters.iso ||
-					activeFilters.dateMonth ||
-					activeFilters.minRating !== null ||
-					activeFilters.flag !== null ||
-					activeFilters.tag !== null) && (
-					<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary flex items-center justify-between">
-						<span>Filters active</span>
-						<button
-							type="button"
-							className="underline cursor-pointer"
-							onClick={() => onFilterChange(EMPTY_LIBRARY_FILTERS)}
-						>
-							Clear all
-						</button>
-					</div>
+							</Section>
+						)}
+						{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
+							<Section title="Camera" defaultOpen={false}>
+								{filterOptions.cameras.map((cam) => (
+									<NavItem
+										key={cam}
+										icon={<Camera className="h-4 w-4" />}
+										label={cam}
+										active={activeFilters.camera === cam}
+										onClick={() =>
+											onFilterChange({
+												...activeFilters,
+												camera: activeFilters.camera === cam ? null : cam,
+											})
+										}
+									/>
+								))}
+							</Section>
+						)}
+						{filterOptions?.lenses && filterOptions.lenses.length > 0 && (
+							<Section title="Lens" defaultOpen={false}>
+								{filterOptions.lenses.map((lens) => (
+									<NavItem
+										key={lens}
+										icon={<ChevronRight className="h-4 w-4" />}
+										label={lens}
+										active={activeFilters.lens === lens}
+										onClick={() =>
+											onFilterChange({
+												...activeFilters,
+												lens: activeFilters.lens === lens ? null : lens,
+											})
+										}
+									/>
+								))}
+							</Section>
+						)}
+						{filterOptions?.isos && filterOptions.isos.length > 0 && (
+							<Section title="ISO" defaultOpen={false}>
+								{filterOptions.isos.map((iso) => (
+									<NavItem
+										key={iso}
+										icon={<ChevronRight className="h-4 w-4" />}
+										label={`ISO ${iso}`}
+										active={activeFilters.iso === iso}
+										onClick={() =>
+											onFilterChange({
+												...activeFilters,
+												iso: activeFilters.iso === iso ? null : iso,
+											})
+										}
+									/>
+								))}
+							</Section>
+						)}
+						{filterOptions?.dates && filterOptions.dates.length > 0 && (
+							<Section title="Date" defaultOpen={false}>
+								{filterOptions.dates.map((d) => (
+									<NavItem
+										key={d}
+										icon={<Calendar className="h-4 w-4" />}
+										label={formatMonthLabel(d)}
+										active={activeFilters.dateMonth === d}
+										onClick={() =>
+											onFilterChange({
+												...activeFilters,
+												dateMonth: activeFilters.dateMonth === d ? null : d,
+											})
+										}
+									/>
+								))}
+							</Section>
+						)}
+					</Section>
 				)}
 
+				{/* Active filters indicator */}
+				{!reviewActive &&
+					(activeFilters.filterRaw !== "all" ||
+						activeFilters.camera ||
+						activeFilters.lens ||
+						activeFilters.iso ||
+						activeFilters.dateMonth ||
+						activeFilters.minRating !== null ||
+						activeFilters.flag !== null ||
+						activeFilters.tag !== null) && (
+						<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary flex items-center justify-between">
+							<span>Filters active</span>
+							<button
+								type="button"
+								className="underline cursor-pointer"
+								onClick={() => onFilterChange(EMPTY_LIBRARY_FILTERS)}
+							>
+								Clear all
+							</button>
+						</div>
+					)}
+
 				{/* Selected folder indicator */}
-				{selectedFolder && (
+				{selectedFolder && !reviewActive && (
 					<div className="mt-4 rounded bg-secondary px-2 py-1.5 text-xs text-muted-foreground">
 						Showing: {selectedFolder}
 					</div>

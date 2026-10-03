@@ -90,3 +90,13 @@ export function clipTextEmbedding(text: string): number[];
 export function batchGenerateClipEmbeddings(
 	paths: string[],
 ): Array<number[] | null>;
+export interface ImageQuality {
+	/** Variance of the 4-neighbour 3x3 Laplacian over luma (long edge <= 512). */
+	sharpness: number;
+	/** Mean luma, 0-255. */
+	brightness: number;
+}
+/** Per-path quality measurement; `null` for paths that fail to decode. */
+export function analyzeImageQuality(
+	paths: string[],
+): Array<ImageQuality | null>;

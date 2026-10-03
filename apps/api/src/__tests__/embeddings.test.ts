@@ -19,7 +19,10 @@ type Context = {
 	event: { data: { photoIds: number[]; thumbnailsDir: string; jobId: string } };
 	step: {
 		run<T>(id: string, work: () => T | Promise<T>): Promise<T>;
-		sendEvent(id: string, event: { name: string; data: object }): Promise<void>;
+		sendEvent(
+			id: string,
+			event: { name: string; data: object } | { name: string; data: object }[],
+		): Promise<void>;
 	};
 	publish(message: { data: Progress }): Promise<void>;
 };
@@ -153,7 +156,7 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 				async sendEvent(id, event) {
 					if (checkpoints.has(id)) return;
 					checkpoints.set(id, null);
-					sent.push({ id, name: event.name });
+					for (const { name } of [event].flat()) sent.push({ id, name });
 				},
 			},
 			async publish({ data }) {
@@ -211,8 +214,10 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 			current: 2,
 			total: 2,
 		});
+		// One appended step (ID unchanged since F6) requests both backfills.
 		expect(run.sent).toEqual([
 			{ id: "trigger-photo-tags-v1", name: "photos/tags.requested" },
+			{ id: "trigger-photo-tags-v1", name: "photos/quality.requested" },
 		]);
 	});
 

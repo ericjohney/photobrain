@@ -136,6 +136,19 @@ final class PhotoCurationCenter: ObservableObject {
         }
     }
 
+    /// Publishes a flag the server already committed through another route (junk review's
+    /// reject), keeping any outstanding PATCH intent layered on top.
+    func adoptConfirmed(flag: PhotoFlag?, for records: [PhotoRecord]) {
+        for record in records {
+            if states[record.id] != nil {
+                states[record.id]?.confirmed.flag = flag
+                if let state = states[record.id] { publish(id: record.id, curation: state.displayed) }
+            } else {
+                publish(id: record.id, curation: PhotoCuration(rating: record.rating, flag: flag))
+            }
+        }
+    }
+
     private func drain(id: Int) async {
         while var state = states[id], let patch = state.pending {
             state.pending = nil

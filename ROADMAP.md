@@ -384,7 +384,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - Extract text from images
   - Search photos by text content (signs, documents, screenshots)
 
-### 4.2 AI Enhancements ⏳ **NOT STARTED**
+### 4.2 AI Enhancements **PARTIALLY COMPLETED**
 - [ ] **Auto-captioning**
   - Generate natural language descriptions
   - Use vision-language models (BLIP, LLaVA)
@@ -395,9 +395,10 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - Indoor/outdoor detection
   - Landscape, portrait, food, architecture categories
 - [ ] **Quality scoring**
-  - Blur detection
-  - Aesthetic quality scoring
-  - Auto-hide low-quality photos option
+  - [x] Blur and darkness detection (Laplacian sharpness and mean luma on the `medium` thumbnail)
+  - [x] Junk review: screenshots, documents, blurry, and dark photos collected for Reject/Keep on web and native iOS
+  - [ ] Aesthetic quality scoring
+  - [ ] Auto-hide low-quality photos option
 
 ---
 

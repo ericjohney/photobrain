@@ -38,6 +38,10 @@ protocol PhotoBrainAPI: Sendable {
     func addPhotos(toCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosAddedDTO
     func removePhotos(fromCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosRemovedDTO
     func collectionsForPhoto(id: Int) async throws -> PhotoCollectionsDTO
+    /// `GET /review/junk`. `reason` and `cursor` are sent only when set; `limit` is 1-500.
+    func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO
+    /// `POST /review/junk/resolve` for 1-500 positive photo ids.
+    func resolveJunk(ids: [Int], action: JunkAction) async throws -> ResolveJunkResponseDTO
     func startScan(force: Bool) async throws -> StartScanResponseDTO
     func scan(id: String) async throws -> ScanDTO?
     func activeScans() async throws -> ActiveScansResponseDTO
@@ -191,6 +195,24 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
     func collectionsForPhoto(id: Int) async throws -> PhotoCollectionsDTO {
         guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
         return try await get(path: ["photos", String(id), "collections"])
+    }
+
+    func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO {
+        guard (1...JunkReviewResponseDTO.maximumLimit).contains(limit) else { throw PhotoBrainAPIError.invalidRequest }
+        if let cursor, cursor <= 0 { throw PhotoBrainAPIError.invalidRequest }
+        var items: [URLQueryItem] = []
+        if let reason { items.append(URLQueryItem(name: "reason", value: reason.rawValue)) }
+        items.append(URLQueryItem(name: "limit", value: String(limit)))
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: String(cursor))) }
+        return try await get(path: ["review", "junk"], queryItems: items)
+    }
+
+    func resolveJunk(ids: [Int], action: JunkAction) async throws -> ResolveJunkResponseDTO {
+        try Self.validatePhotoBatch(ids, allowEmpty: false)
+        return try await post(
+            path: ["review", "junk", "resolve"],
+            body: ResolveJunkRequestDTO(photoIds: ids, action: action)
+        )
     }
 
     private static func validatePhotoBatch(_ ids: [Int], allowEmpty: Bool) throws {

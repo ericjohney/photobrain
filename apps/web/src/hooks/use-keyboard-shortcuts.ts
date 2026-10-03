@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { JunkAction } from "@/lib/types";
 import type { ViewMode } from "./use-library-state";
 import type { CurationPatch } from "./use-photo-curation";
 
@@ -17,6 +18,8 @@ interface KeyboardShortcutsOptions {
 	curateActivePhoto: (patch: CurationPatch) => void;
 	/** Toggle the active photo in the last-used collection (`B`); null when none. */
 	toggleLastUsedCollection: (() => void) | null;
+	/** In Review: resolve the active photo (`X` reject, `K` keep); null outside Review. */
+	resolveReviewPhoto: ((action: JunkAction) => void) | null;
 	enabled?: boolean;
 }
 
@@ -31,6 +34,7 @@ export function useKeyboardShortcuts({
 	exitSimilar,
 	curateActivePhoto,
 	toggleLastUsedCollection,
+	resolveReviewPhoto,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
 	useEffect(() => {
@@ -50,16 +54,22 @@ export function useKeyboardShortcuts({
 
 			// Lightroom culling: 0-5 rate, P pick, X reject, U unflag.
 			if (hasActivePhoto && !isCtrlOrCmd && !e.altKey) {
+				const key = e.key.toLowerCase();
+				// Review: X/K resolve the candidate instead of plain flagging.
+				if (resolveReviewPhoto && (key === "x" || key === "k")) {
+					e.preventDefault();
+					resolveReviewPhoto(key === "x" ? "reject" : "keep");
+					return;
+				}
 				if (/^[0-5]$/.test(e.key)) {
 					e.preventDefault();
 					curateActivePhoto({ rating: Number(e.key) });
 					return;
 				}
-				const flagKey = e.key.toLowerCase();
-				if (flagKey === "p" || flagKey === "x" || flagKey === "u") {
+				if (key === "p" || key === "x" || key === "u") {
 					e.preventDefault();
 					curateActivePhoto({
-						flag: flagKey === "p" ? "pick" : flagKey === "x" ? "reject" : null,
+						flag: key === "p" ? "pick" : key === "x" ? "reject" : null,
 					});
 					return;
 				}
@@ -154,5 +164,6 @@ export function useKeyboardShortcuts({
 		exitSimilar,
 		curateActivePhoto,
 		toggleLastUsedCollection,
+		resolveReviewPhoto,
 	]);
 }

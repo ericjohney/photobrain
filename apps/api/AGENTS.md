@@ -13,6 +13,9 @@ Scope: `apps/api`.
 - `src/inngest/functions/scan.ts`: durable incremental planning, continuous Rust processing, and completed-result checkpoints.
 - `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches; tags each saved vector in the same transaction and finally requests the tag backfill.
 - `src/inngest/functions/tags.ts`: `tag-photos-v1` backfill of vectors lacking current-vocabulary tags.
+- `src/inngest/functions/quality.ts`: `analyze-quality-v1` backfill measuring committed `medium` thumbnails lacking a current quality row.
+- `src/services/photo-quality.ts`: quality backfill eligibility, generation-fenced writes, and `analyzeQualityBatch`; native measurement is injected.
+- `src/services/junk-review.ts`: junk-review reasons, thresholds, candidate paging/counts, and `resolveJunk`, shared by tRPC and `/api/v1`.
 - `src/services/tag-vocabulary.ts`: `TAG_VOCABULARY_VERSION`, the 80-label `{ tag, prompt }` vocabulary, and the tag slug pattern.
 - `src/services/photo-tagging.ts`: pure zero-shot scoring (`scoreTags`), tag persistence, backfill batches, and `getPhotoTags`; imports no native code.
 - `src/services/tag-labels.ts`: lazy, per-process memoized label vectors from `clipTextEmbedding` (`loadTagLabelMatrix`).
@@ -24,7 +27,7 @@ Scope: `apps/api`.
 - `src/services/scan-jobs.ts`: shared durable scan creation/status/recovery operations used by both transports.
 - `src/services/import-persistence.ts`: synchronous transactional scan and embedding batch writes.
 - `src/services/scan-planner.ts`: source/artifact freshness checks and conservative legacy adoption.
-- `src/services/processing-versions.ts`: manual media and embedding-model invalidation constants.
+- `src/services/processing-versions.ts`: manual media, embedding-model, and image-quality (`QUALITY_VERSION`) invalidation constants.
 - `src/services/native-executor.ts` and `native-worker.ts`: bounded persistent worker with a native photo stream surviving checkpoint windows; no database or Inngest state in the worker.
 - `src/services/scan-work.ts`: frozen classifications, priority-ordered pending media, attempt/generation fences, atomic per-photo receipts/progress, and terminal cleanup.
 - `src/db/index.ts`: SQLite/Drizzle connection and optional startup migration.
@@ -83,6 +86,8 @@ Collections: `GET /collections` returns `{ collections }` sorted case-insensitiv
 
 Tags: `GET /photos/:id/tags` returns `{ tags: [{ tag, score }] }` (score descending, ties by tag) or 404 `PHOTO_NOT_FOUND`. `GET /filter-options` includes `tags: [{ tag, count }]`. `tag` (slug matching `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 64 characters) is accepted on `GET /photos`, `POST /search`, and `GET /photos/:id/similar`; an invalid slug is 400 `INVALID_REQUEST`.
 
+Junk review: `GET /review/junk?reason=&limit=&cursor=` (`reason` one of `screenshot`, `document`, `blurry`, `dark`; `limit` 1-500, default 200; `cursor` a positive photo ID) returns `{ photos, nextCursor, counts: { all, screenshot, document, blurry, dark } }` where each photo is the public Photo DTO plus `junkReasons`. `POST /review/junk/resolve` (`{ photoIds, action }`, 1-500 positive integers, `action` `reject` or `keep`, strict body) returns `{ updated }`. Invalid query/body is 400 `INVALID_REQUEST`. Both share `services/junk-review.ts` with tRPC.
+
 Every photo emitted by list, detail, search, or similarity must pass through the public projection and explicit serializer. Never expose `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, or `thumbnailFingerprint`; those fields reveal private source/artifact identity. `/api/v1` is unauthenticated like the existing tRPC and media routes, so the projection is a privacy boundary, not an authorization substitute.
 
 ## tRPC Procedures
@@ -100,11 +105,12 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `collectionsForPhoto({ photoId })`: returns `{ collectionIds }` sorted by ID, or `NOT_FOUND` for an unknown photo.
 - `createCollection({ name, photoIds? })`, `renameCollection({ id, name })`, `deleteCollection({ id })` (returns `{ id }`), `addToCollection({ collectionId, photoIds })` (returns `{ added, photoCount }`), `removeFromCollection({ collectionId, photoIds })` (returns `{ removed, photoCount }`): names are trimmed and 1-100 characters, unique case-insensitively (renaming to a case variant of the collection's own name is allowed). `NAME_TAKEN` maps to `CONFLICT`, an unknown collection to `NOT_FOUND`, invalid input to `BAD_REQUEST`. Adds/removes take 1-500 IDs, ignore duplicates and unknown photos, run one existence SELECT plus one multi-row INSERT/DELETE in a transaction, and bump `updatedAt` only when membership changes. Deleting a collection never touches photos.
 - `photoTags({ photoId })`: returns `{ tags: [{ tag, score }] }`, score descending then tag ascending, in one `LEFT JOIN` statement; `NOT_FOUND` for an unknown photo. `photos`, `searchPhotos`, and `similarPhotos` accept an optional `tag` slug, applied by `photoFilterConditions` as `photos.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)` (served by `idx_photo_tags_tag_photo_id`). `filterOptions` also returns `tags: [{ tag, count }]` under the same folder scope, count descending then tag ascending, only counts above zero.
+- `junkReview({ reason?, limit?, cursor? })` and `resolveJunk({ photoIds, action })`: see [Junk Review](#junk-review).
 - `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar and Expo Library Options expose a confirmed **Reprocess all photos** action for force mode; native iOS reaches the same shared scan service through gated `POST /api/v1/scans`.
 - `scanStatus({ jobId })`: returns the durable scan row or `null` when the UUID is unknown.
 - `realtimeToken({ jobId })`: returns `{ token, baseUrl? }` for channel `job:{jobId}`, topic `progress`. `baseUrl` is the client-reachable `INNGEST_REALTIME_BASE_URL`; it must not be inferred from an internal service hostname.
 
-Keep the tRPC router as the source of TypeScript client types for web/Expo; `src/types.ts` exports `AppRouter` for workspace consumers. Keep reusable behavior in the shared services and the native contract in `v1-schemas.ts`/`openapi-v1.json`. Both transports use `publicPhotoColumns` to omit six internal identity fields: `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, and `thumbnailFingerprint`.
+Keep the tRPC router as the source of TypeScript client types for web/Expo; `src/types.ts` exports `AppRouter` for workspace consumers. Keep reusable behavior in the shared services and the native contract in `v1-schemas.ts`/`openapi-v1.json`. Both transports use `publicPhotoColumns` to omit six internal identity fields (`sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, `thumbnailFingerprint`) plus the internal `junkDismissed` review state.
 
 ## Inngest Flow
 
@@ -118,6 +124,9 @@ photos/embeddings.requested
   { photoIds, thumbnailsDir, jobId }
 
 photos/tags.requested
+  {}
+
+photos/quality.requested
   {}
 ```
 
@@ -153,7 +162,7 @@ Embedding function details:
 - Converts the Rust number array to a `Float32Array` buffer before storage.
 - Marks current-generation photos `completed` or `failed` and publishes progress. Search excludes noncompleted, wrong-model, and wrong-generation vectors.
 - Marks the scan job failed if no requested embedding can be generated; partial success still completes the job.
-- After its final progress publication it appends one `trigger-photo-tags-v1` `step.sendEvent` for `photos/tags.requested`; existing step IDs are unchanged for replay safety. `scan-photos-v5` likewise appends the same send only when a scan finishes without dispatching embeddings (for example after a vocabulary bump), after its existing cleanup step.
+- After its final progress publication it appends one `trigger-photo-tags-v1` `step.sendEvent` carrying both `photos/tags.requested` and `photos/quality.requested`; existing step IDs are unchanged for replay safety. `scan-photos-v5` likewise appends the same two-event send only when a scan finishes without dispatching embeddings (for example after a vocabulary or quality-version bump), after its existing cleanup step.
 
 ## Automatic Tags
 
@@ -189,6 +198,51 @@ Measured on Apple M4 Pro/macOS 26.5.1 with the darwin-arm64 addon and `FASTEMBED
 |watercolor seascape|ocean .249, art .244, beach .182|ocean, art, beach|
 
 At 0.10 clearly wrong labels appear (dog .112 on the cats); at 0.20 correct secondary subjects are lost (street .157, flowers .190, insect .166). Wrong tags at 0.15 (motorcycle, baby) are top-2 confusions that no threshold removes without dropping correct primary tags. Diffuse vectors with more than six comparable labels tag nothing.
+
+## Junk Review
+
+`services/junk-review.ts` surfaces photos the user probably does not want. Reasons, reported in this order:
+
+- `screenshot`: tag `screenshot` with score `>= JUNK_TAG_MIN_SCORE` (0.5).
+- `document`: any of tags `document`, `receipt`, `whiteboard`, `text` with score `>= 0.5`.
+- `blurry`: `photo_quality.sharpness < BLUR_THRESHOLD` (40).
+- `dark`: `photo_quality.brightness < DARK_THRESHOLD` (40).
+
+Quality reasons count only a `photo_quality` row whose `thumbnail_key` equals the photo's committed key and whose `quality_version` is the current `QUALITY_VERSION`; a stale measurement is ignored until the backfill replaces it. Candidates exclude `junk_dismissed = 1`, any flag (`pick` or `reject`), and `rating >= 1`, expressed as `junk_dismissed = 0 AND flag IS NULL AND rating = 0` so the `idx_photos_junk_review (junk_dismissed, flag, rating)` equality prefix serves both statements.
+
+- `junkReview` (tRPC query, `GET /api/v1/review/junk`): `{ reason?, limit 1-500 default 200, cursor? }` returns `{ photos: (PublicPhoto & { junkReasons })[], nextCursor, counts }`. Order is **photo ID descending** (newest import first): `listPhotos` has no date ordering to share, and ID keyset pagination is stable, so pages have no duplicates or gaps even when photos are resolved between requests. `cursor` is exclusive; `nextCursor` is the last returned ID when more rows exist, else `null`. `counts` cover all candidates regardless of `reason` and `cursor`. Exactly two statements: the page (one relational query with EXIF hydration and the four reason flags as correlated `EXISTS`) and the counts (`WITH reasons AS MATERIALIZED` evaluating each `EXISTS` once per candidate). Invalid input throws `RangeError` in the service and `BAD_REQUEST`/400 at the transports.
+- `resolveJunk` (tRPC mutation, `POST /api/v1/review/junk/resolve`): 1-500 IDs, deduplicated. `reject` delegates to `updatePhotoCuration` (`flag = 'reject'`, rating untouched); `keep` sets `junk_dismissed = 1` in one `UPDATE ... RETURNING` transaction. Returns `{ updated }`, existing IDs ascending; unknown IDs are ignored. Both actions remove the photo from review permanently. Scans never write `junk_dismissed`.
+
+Measured over 8,000 photos (three tags and a quality row each, 3,850 candidates) on Apple M4 Pro with `ANALYZE`: page 8.3 ms, cursor page 8.3 ms, `reason=dark` 8.5 ms (each including counts and EXIF hydration), counts alone 7.4 ms. `EXPLAIN QUERY PLAN` for both statements: `SEARCH photos USING INDEX idx_photos_junk_review (junk_dismissed=? AND flag=? AND rating=?)`, tag `EXISTS` via `sqlite_autoindex_photo_tags_1 (photo_id=? AND tag=?)` / `idx_photo_tags_tag_photo_id`, quality via `photo_quality USING INTEGER PRIMARY KEY`; no `SCAN photos` and no temp B-tree for the page order.
+
+### Quality backfill
+
+`analyze-quality-v1` (event `photos/quality.requested`, concurrency 1) selects photos with `thumbnail_status = 'completed'`, a committed `thumbnail_key`, and a `photo_quality` row that is missing, keyed to another generation, or from another `QUALITY_VERSION`. Each `analyze-quality-batch-v1-N` step reads at most 200 rows past a photo-ID keyset cursor, measures `{thumbnailRoot ?? THUMBNAILS_DIRECTORY}/medium/<key>.webp` through `nativeExecutor.run("analyzeImageQuality", paths)` (off the API thread), and upserts in one transaction that re-checks each photo's committed key and completed status, so a generation replaced between measurement and write is skipped and picked up by the next event. Unreadable thumbnails (`null`) are not written and retry on the next event; a misaligned native result fails the step without writing. Repeated events are no-ops once every row is current. Bump `QUALITY_VERSION` (`processing-versions.ts`) when the metric or measured thumbnail size changes.
+
+### Calibration (`BLUR_THRESHOLD = 40`, `DARK_THRESHOLD = 40`)
+
+Measured with the release darwin-arm64 addon on Apple M4 Pro. The 16 real photos used for tag calibration were turned into `medium` WebPs by the real `generateThumbnailsFromFile` pipeline; Pillow then made Gaussian-blurred (sigma 4 and 6 at thumbnail scale) and darkened (brightness x0.10 and x0.15) variants, re-encoded as WebP q85. `analyzeImageQuality` measured all 96 files in 89.9 ms.
+
+|Image|Original sharpness / brightness|Blur sigma 4 / 6 sharpness|Dark x0.10 / x0.15 brightness|
+|---|---|---|---|
+|beach|414.7 / 129.6|4.2 / 3.1|12.5 / 19.1|
+|car|659.6 / 131.4|7.7 / 4.4|12.6 / 19.2|
+|cat|500.9 / 166.4|5.7 / 4.1|16.3 / 24.6|
+|city-night|1778.1 / 72.8|5.8 / 3.7|6.9 / 10.6|
+|document|7389.2 / 212.5|11.2 / 4.2|20.9 / 31.5|
+|dog|487.7 / 140.4|6.3 / 3.9|13.7 / 20.7|
+|flowers|257.1 / 86.3|4.0 / 2.8|8.3 / 12.6|
+|food|173.2 / 118.8|7.0 / 4.9|11.5 / 17.4|
+|forest|3914.3 / 109.4|7.5 / 4.2|10.6 / 16.0|
+|kitten|667.9 / 69.3|4.0 / 3.1|6.6 / 10.1|
+|mountain-snow|1641.5 / 94.5|5.0 / 3.2|9.1 / 13.8|
+|receipt|3073.2 / 177.5|7.6 / 4.3|17.4 / 26.3|
+|screenshot|1611.6 / 236.7|4.1 / 2.2|23.1 / 34.9|
+|street|2086.5 / 105.1|7.6 / 4.3|10.1 / 15.3|
+|sunset|218.1 / 207.4|2.9 / 1.9|20.1 / 30.7|
+|sunset2|256.5 / 110.7|3.7 / 2.5|10.6 / 16.2|
+
+Blurred variants peak at 12.2 sharpness and originals bottom out at 173.2 (food), so 40 flags all 32 blurred variants and no original with wide margin on both sides. Darkened variants peak at 34.9 brightness (screenshot x0.15) and the darkest originals are kitten (69.3) and the city-at-night shot (72.8), so 40 flags all 32 darkened variants and no original; the night shot is the only genuinely dark scene in the set and is correctly kept. Milder blur shows the boundary: sigma 1 flags 0/16 (47-1174), sigma 2 flags 12/16 (10-111; high-contrast document, receipt, forest, street survive), sigma 3 flags 16/16 (max 26.8). Laplacian variance scales with contrast squared, so heavily darkened photos usually also score below the blur threshold and report both `blurry` and `dark`.
 
 ## Configuration
 
@@ -237,6 +291,8 @@ The two POST maintenance routes are operational leftovers. HEIC reprocessing for
 ## Tests
 
 `src/__tests__/filters.test.ts` uses `createTestDb()` from `src/__tests__/setup.ts`, an in-memory SQLite database with shared migrations and seeded EXIF data. It covers folder-scoped filter options, raw/camera/lens/ISO/date filters, durable scan creation/status, dispatch failures, and missing job IDs.
+
+`src/__tests__/junk-review.test.ts` runs in an isolated child process (`PHOTOBRAIN_JUNK_TEST_CHILD=1`) with the database, native executor, and Inngest client mocked. It covers reason order and threshold/score boundaries, stale-generation and stale-version quality rows, candidate exclusions, counts independent of reason/cursor, ID-keyset pagination without duplicates or gaps (including resolution between pages), `resolveJunk` effects and validation, `analyze-quality-v1` eligibility, idempotency, 200-row steps, generation changes between measurement and write, tRPC/v1 shapes and 400s, the 8,000-photo performance/plan check (logged with `[junk-perf]`), and migration `0010` applied to a populated `0009` database.
 
 `src/__tests__/v1.test.ts` differentially checks `/api/v1` against tRPC/shared services, validates ISO DTOs and stable errors, proves the native scan mutation defaults off, verifies active-scan recovery ordering, and asserts that private source/artifact identities are absent from list/detail/search responses. OpenAPI parity tests keep the checked-in route contract synchronized.
 

@@ -22,6 +22,7 @@ extension LibraryFilters {
 struct LibraryScreen: View {
     @ObservedObject var store: LibraryStore
     let collections: CollectionsStore
+    @ObservedObject var review: ReviewStore
     @ObservedObject var scans: ScanCoordinator
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
@@ -30,6 +31,8 @@ struct LibraryScreen: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var optionsPresented = false
     @State private var addSelectionPresented = false
+    @State private var reviewPresented = false
+    @Environment(\.showTagInLibrary) private var showTagInLibrary
 
     var body: some View {
         NavigationStack {
@@ -55,6 +58,15 @@ struct LibraryScreen: View {
                         historyControls
                     }
                 }
+            }
+            .navigationDestination(isPresented: $reviewPresented) {
+                ReviewScreen(store: review, collections: collections)
+                    .environment(\.showTagInLibrary, showTagInLibrary.map { action in
+                        ShowTagInLibraryAction { tag in
+                            reviewPresented = false
+                            action(tag)
+                        }
+                    })
             }
         }
         .sheet(isPresented: $optionsPresented) {
@@ -99,6 +111,7 @@ struct LibraryScreen: View {
         .task {
             if store.loadState == .idle { await store.load() }
         }
+        .task { await review.refreshCounts() }
     }
 
     @ViewBuilder
@@ -135,6 +148,7 @@ struct LibraryScreen: View {
                 onRefresh: {
                     await scans.manualLibraryRefresh()
                     await store.load()
+                    await review.refreshCounts()
                 }
             )
             .ignoresSafeArea(edges: .horizontal)
@@ -181,6 +195,25 @@ struct LibraryScreen: View {
                 }
                 .accessibilityLabel("Finish selecting photos")
             } else {
+                Button {
+                    reviewPresented = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Review")
+                        if review.counts.all > 0 {
+                            Text(review.counts.all.formatted())
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(Color.accentColor))
+                                .contentTransition(.numericText())
+                        }
+                    }
+                    .fontWeight(.semibold)
+                    .frame(minHeight: 44)
+                }
+                .accessibilityLabel("Review, \(review.counts.all) photos")
                 Button("Select") {
                     store.beginSelection()
                 }

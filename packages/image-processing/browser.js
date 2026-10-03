@@ -6,6 +6,7 @@ const notAvailable = (name) => () => {
 	throw new Error(`${name}() is not available in the browser`);
 };
 
+module.exports.analyzeImageQuality = notAvailable("analyzeImageQuality");
 module.exports.batchGenerateClipEmbeddings = notAvailable(
 	"batchGenerateClipEmbeddings",
 );

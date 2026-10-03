@@ -193,6 +193,8 @@ struct PhotoDTO: Codable, Hashable, Identifiable, Sendable {
     let rating: Int
     /// Servers that predate curation omit it and decode as unflagged.
     let flag: PhotoFlag?
+    /// Junk-review reasons (only populated by `GET /review/junk`); unknown values are dropped.
+    var junkReasons: [JunkReason] = []
 }
 
 extension PhotoDTO {
@@ -218,6 +220,8 @@ extension PhotoDTO {
         exif = try container.decodeIfPresent(PhotoEXIFDTO.self, forKey: .exif)
         rating = try container.decodeIfPresent(Int.self, forKey: .rating) ?? 0
         flag = try container.decodeIfPresent(PhotoFlag.self, forKey: .flag)
+        junkReasons = (try container.decodeIfPresent([String].self, forKey: .junkReasons) ?? [])
+            .compactMap(JunkReason.init(rawValue:))
     }
 }
 
@@ -292,6 +296,89 @@ struct SimilarPhotosResponseDTO: Codable, Equatable, Sendable {
     let total: Int
     let sourcePhotoId: Int
     let indexed: Bool
+}
+
+/// Why a photo is in the junk review, in the server's precedence order.
+enum JunkReason: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
+    case screenshot
+    case document
+    case blurry
+    case dark
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .screenshot: "Screenshots"
+        case .document: "Documents"
+        case .blurry: "Blurry"
+        case .dark: "Too dark"
+        }
+    }
+}
+
+/// Candidate totals over the whole review, independent of the reason filter and cursor.
+/// A photo counts once in `all` and once under each of its reasons.
+struct JunkCountsDTO: Codable, Equatable, Sendable {
+    var all: Int
+    var screenshot: Int
+    var document: Int
+    var blurry: Int
+    var dark: Int
+
+    static let zero = JunkCountsDTO(all: 0, screenshot: 0, document: 0, blurry: 0, dark: 0)
+
+    /// `nil` is the unfiltered ("All") total.
+    func count(for reason: JunkReason?) -> Int {
+        let value: Int
+        switch reason {
+        case nil: value = all
+        case .screenshot: value = screenshot
+        case .document: value = document
+        case .blurry: value = blurry
+        case .dark: value = dark
+        }
+        return max(0, value)
+    }
+
+    /// Adds `delta` to `all` and to every listed reason for one photo.
+    mutating func adjust(reasons: [JunkReason], by delta: Int) {
+        all += delta
+        for reason in reasons {
+            switch reason {
+            case .screenshot: screenshot += delta
+            case .document: document += delta
+            case .blurry: blurry += delta
+            case .dark: dark += delta
+            }
+        }
+    }
+}
+
+/// `GET /api/v1/review/junk`: candidates newest first; `nextCursor` is the photo id to resume after.
+struct JunkReviewResponseDTO: Codable, Equatable, Sendable {
+    /// Largest `limit` the route accepts.
+    static let maximumLimit = 500
+
+    let photos: [PhotoDTO]
+    let nextCursor: Int?
+    let counts: JunkCountsDTO
+}
+
+/// Review decision: `reject` sets the reject flag; `keep` dismisses the photo from review for good.
+enum JunkAction: String, Codable, Hashable, Sendable {
+    case reject
+    case keep
+}
+
+/// `POST /api/v1/review/junk/resolve` body.
+struct ResolveJunkRequestDTO: Encodable, Equatable, Sendable {
+    let photoIds: [Int]
+    let action: JunkAction
+}
+
+/// Ids the server actually changed; unknown ids are skipped.
+struct ResolveJunkResponseDTO: Codable, Equatable, Sendable {
+    let updated: [Int]
 }
 
 enum ScanPhase: String, Codable, CaseIterable, Hashable, Sendable {

@@ -3,8 +3,10 @@ import superjson, { type SuperJSONResult } from "superjson";
 import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
 import {
 	FIXTURE_FOLDERS,
+	FIXTURE_JUNK_REASONS,
 	FIXTURE_PHOTO_TAGS,
 	FIXTURE_PHOTOS,
+	type FixtureJunkReason,
 	type FixturePhoto,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
@@ -90,6 +92,8 @@ function createDefaultHandlers(): Record<string, Handler> {
 	const library = FIXTURE_PHOTOS.map((photo) => ({ ...photo }));
 	const collections = new Map<number, FixtureCollection>();
 	let nextCollectionId = 1;
+	// Photos kept from junk review (the API's photos.junk_dismissed).
+	const junkDismissed = new Set<number>();
 	// Strictly increasing so same-millisecond writes still order deterministically.
 	let clock = Date.parse("2024-09-01T00:00:00Z");
 	const now = () => {
@@ -157,7 +161,6 @@ function createDefaultHandlers(): Record<string, Handler> {
 		const members = collections.get(collectionId)?.photoIds ?? [];
 		return library.filter((p) => members.includes(p.id));
 	};
-
 	return {
 		folders: () => FIXTURE_FOLDERS,
 		photos: (input) => {
@@ -217,6 +220,69 @@ function createDefaultHandlers(): Record<string, Handler> {
 					if (rating !== undefined) p.rating = rating;
 					if (flag !== undefined) p.flag = flag;
 					return { id: p.id, rating: p.rating, flag: p.flag };
+				});
+			return { updated };
+		},
+		junkReview: (input) => {
+			const {
+				reason,
+				limit = 200,
+				cursor,
+			} = (input ?? {}) as {
+				reason?: FixtureJunkReason;
+				limit?: number;
+				cursor?: number;
+			};
+			if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+				throw new TrpcFixtureError("BAD_REQUEST", "Invalid limit");
+			}
+			// Newest first (id desc: fixture dates are equal), with the API's
+			// exclusions: dismissed, picked/rejected, or rated photos.
+			const candidates = library
+				.filter(
+					(p) =>
+						FIXTURE_JUNK_REASONS[p.id] !== undefined &&
+						!junkDismissed.has(p.id) &&
+						p.flag === null &&
+						p.rating < 1,
+				)
+				.sort((a, b) => b.id - a.id)
+				.map((p) => ({ ...p, junkReasons: FIXTURE_JUNK_REASONS[p.id] }));
+			const matching = candidates.filter(
+				(p) =>
+					(reason === undefined || p.junkReasons.includes(reason)) &&
+					(cursor === undefined || p.id < cursor),
+			);
+			const photos = matching.slice(0, limit);
+			const countOf = (r: FixtureJunkReason) =>
+				candidates.filter((p) => p.junkReasons.includes(r)).length;
+			return {
+				photos,
+				nextCursor:
+					matching.length > limit ? (photos.at(-1)?.id ?? null) : null,
+				counts: {
+					all: candidates.length,
+					screenshot: countOf("screenshot"),
+					document: countOf("document"),
+					blurry: countOf("blurry"),
+					dark: countOf("dark"),
+				},
+			};
+		},
+		resolveJunk: (input) => {
+			const { photoIds, action } = input as {
+				photoIds: number[];
+				action: "reject" | "keep";
+			};
+			if (photoIds.length < 1 || photoIds.length > 500) {
+				throw new TrpcFixtureError("BAD_REQUEST", "Invalid photoIds");
+			}
+			const updated = library
+				.filter((p) => photoIds.includes(p.id))
+				.map((p) => {
+					if (action === "reject") p.flag = "reject";
+					else junkDismissed.add(p.id);
+					return p.id;
 				});
 			return { updated };
 		},

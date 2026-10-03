@@ -20,6 +20,9 @@ type PhotoEvents = {
 	"photos/tags.requested": {
 		data: Record<string, never>;
 	};
+	"photos/quality.requested": {
+		data: Record<string, never>;
+	};
 };
 
 export const inngest = new Inngest({

@@ -10,6 +10,7 @@ import {
 	removePhotosFromCollection,
 	renameCollection,
 } from "../services/collections";
+import { junkReview, resolveJunk } from "../services/junk-review";
 import type { ApiDatabase } from "../services/photo-catalog";
 import {
 	getPhoto,
@@ -36,6 +37,8 @@ import {
 	filterOptionsQuerySchema,
 	filterOptionsResponseSchema,
 	foldersResponseSchema,
+	junkReviewQuerySchema,
+	junkReviewResponseSchema,
 	PUBLIC_SCAN_START_ERROR,
 	photoCollectionsResponseSchema,
 	photoCurationPatchSchema,
@@ -46,11 +49,14 @@ import {
 	photoTagsResponseSchema,
 	removeCollectionPhotosResponseSchema,
 	renameCollectionRequestSchema,
+	resolveJunkRequestSchema,
+	resolveJunkResponseSchema,
 	scanIdSchema,
 	scanStatusResponseSchema,
 	searchRequestSchema,
 	searchResponseSchema,
 	serializeCollection,
+	serializeJunkReviewResponse,
 	serializePhoto,
 	serializePhotosResponse,
 	serializeScan,
@@ -247,6 +253,37 @@ export function createV1Router(dependencies: V1Dependencies) {
 				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
 			}
 			return jsonResponse(photoTagsResponseSchema, result);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/review/junk", async (context) => {
+		const input = junkReviewQuerySchema.safeParse(context.req.query());
+		if (!input.success) return invalidRequest();
+		try {
+			return jsonResponse(
+				junkReviewResponseSchema,
+				serializeJunkReviewResponse(
+					await junkReview(dependencies.database, input.data),
+				),
+			);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.post("/review/junk/resolve", async (context) => {
+		const input = await parseJsonBody(
+			context.req.raw,
+			resolveJunkRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			return jsonResponse(
+				resolveJunkResponseSchema,
+				resolveJunk(dependencies.database, input.photoIds, input.action),
+			);
 		} catch (error) {
 			return internalError(error);
 		}

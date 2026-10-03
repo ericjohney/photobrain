@@ -1,4 +1,4 @@
-import { Layers, Loader2, Search, Sparkles, X } from "lucide-react";
+import { Layers, Loader2, ScanEye, Search, Sparkles, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
@@ -13,10 +13,12 @@ import {
 } from "@/components/panels/LibraryPanel";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { PanelLayout } from "@/components/panels/PanelLayout";
+import { ReviewHeader } from "@/components/ReviewHeader";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { useCollections } from "@/hooks/use-collections";
 import { useJobProgress } from "@/hooks/use-job-progress";
+import { useJunkReview } from "@/hooks/use-junk-review";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useLibraryState } from "@/hooks/use-library-state";
 import { usePanelState } from "@/hooks/use-panel-state";
@@ -24,8 +26,9 @@ import {
 	type CurationPatch,
 	usePhotoCuration,
 } from "@/hooks/use-photo-curation";
+import { JUNK_REASON_LABELS } from "@/lib/junk-review";
 import { trpc } from "@/lib/trpc";
-import type { PhotoMetadata } from "@/lib/types";
+import type { JunkAction, JunkReason, PhotoMetadata } from "@/lib/types";
 import { formatMonthLabel } from "@/lib/utils";
 
 export function Dashboard() {
@@ -40,6 +43,10 @@ export function Dashboard() {
 		number | null
 	>(null);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
+	// Review replaces the library view; folder, collection, and filters are kept
+	// (but ignored) so leaving Review restores the previous library.
+	const [reviewActive, setReviewActive] = useState(false);
+	const [reviewReason, setReviewReason] = useState<JunkReason | null>(null);
 	const [filters, setFilters] = useState<LibraryFilters>(EMPTY_LIBRARY_FILTERS);
 	// The API defaults filterRaw to "all"; omit it from requests in that case.
 	const filterRaw = filters.filterRaw === "all" ? undefined : filters.filterRaw;
@@ -66,7 +73,7 @@ export function Dashboard() {
 			tag: filters.tag ?? undefined,
 		},
 		{
-			enabled: !searchQuery,
+			enabled: !searchQuery && !reviewActive,
 		},
 	);
 
@@ -86,7 +93,7 @@ export function Dashboard() {
 			flag: filters.flag ?? undefined,
 			tag: filters.tag ?? undefined,
 		},
-		{ enabled: !!searchQuery },
+		{ enabled: !!searchQuery && !reviewActive },
 	);
 
 	const similarPhotosQuery = trpc.similarPhotos.useQuery(
@@ -94,6 +101,7 @@ export function Dashboard() {
 		{ enabled: similarSource !== null },
 	);
 
+	const review = useJunkReview({ active: reviewActive, reason: reviewReason });
 	const collectionsApi = useCollections();
 	const selectedCollection =
 		selectedCollectionId === null
@@ -119,12 +127,14 @@ export function Dashboard() {
 	const scanDisabled = scanMutation.isPending || jobProgress.isActive;
 
 	// Determine which data to use
-	const activeQuery = similarSource
-		? similarPhotosQuery
-		: searchQuery
-			? searchPhotosQuery
-			: photosQuery;
-	const photos = activeQuery.data?.photos ?? [];
+	const activeQuery = reviewActive
+		? review.listQuery
+		: similarSource
+			? similarPhotosQuery
+			: searchQuery
+				? searchPhotosQuery
+				: photosQuery;
+	const photos: PhotoMetadata[] = activeQuery.data?.photos ?? [];
 	const loading = activeQuery.isLoading;
 	const error = activeQuery.error;
 	const similarNotIndexed =
@@ -138,11 +148,37 @@ export function Dashboard() {
 		const source = library.activePhoto;
 		if (!source) return;
 		setSearchQuery("");
+		setReviewActive(false);
 		setSimilarSource(source);
 		library.setViewMode("grid");
 	}, [library.activePhoto, library.setViewMode]);
 
 	const exitSimilar = useCallback(() => setSimilarSource(null), []);
+
+	// Review: resolving the active candidate advances to the next one.
+	const { resolve: resolveJunk, photos: reviewPhotos } = review;
+	const { activePhoto, setActivePhoto } = library;
+	const activeReviewPhoto = reviewActive
+		? reviewPhotos.find((photo) => photo.id === activePhoto?.id)
+		: undefined;
+	const resolveActiveReviewPhoto = useCallback(
+		(action: JunkAction) => {
+			const index = reviewPhotos.findIndex((p) => p.id === activePhoto?.id);
+			if (index === -1) return;
+			resolveJunk([reviewPhotos[index]], action);
+			setActivePhoto(
+				reviewPhotos[index + 1] ?? reviewPhotos[index - 1] ?? null,
+			);
+		},
+		[reviewPhotos, activePhoto, resolveJunk, setActivePhoto],
+	);
+	const resolveShownReviewPhotos = useCallback(
+		(action: JunkAction) => {
+			resolveJunk(reviewPhotos, action);
+			setActivePhoto(null);
+		},
+		[reviewPhotos, resolveJunk, setActivePhoto],
+	);
 
 	// Ratings/flags: optimistic across every cached photo list and the active photo.
 	const { setCuration } = usePhotoCuration(library.patchActivePhoto);
@@ -175,6 +211,7 @@ export function Dashboard() {
 		curateActivePhoto,
 		toggleLastUsedCollection:
 			lastUsedCollectionId === null ? null : toggleActiveInLastUsed,
+		resolveReviewPhoto: reviewActive ? resolveActiveReviewPhoto : null,
 	});
 
 	const handlePhotoClick = useCallback(
@@ -204,7 +241,10 @@ export function Dashboard() {
 
 	const handleSearchChange = useCallback((query: string) => {
 		setSearchQuery(query);
-		if (query) setSimilarSource(null);
+		if (query) {
+			setSimilarSource(null);
+			setReviewActive(false);
+		}
 	}, []);
 
 	const handleScan = useCallback(
@@ -224,6 +264,7 @@ export function Dashboard() {
 		setSelectedFolder(folder);
 		setSelectedCollectionId(null);
 		setSimilarSource(null);
+		setReviewActive(false);
 	}, []);
 
 	const handleCollectionSelect = useCallback((id: number | null) => {
@@ -231,7 +272,19 @@ export function Dashboard() {
 		setSelectedCollectionId(id);
 		setSelectedFolder(null);
 		setSimilarSource(null);
+		setReviewActive(false);
 	}, []);
+
+	const handleReviewSelect = useCallback(() => {
+		setReviewActive(true);
+		setSimilarSource(null);
+		setActivePhoto(null);
+	}, [setActivePhoto]);
+
+	const exitReview = useCallback(() => {
+		setReviewActive(false);
+		setActivePhoto(null);
+	}, [setActivePhoto]);
 
 	const { deleteCollection } = collectionsApi;
 	const handleDeleteCollection = useCallback(
@@ -249,6 +302,7 @@ export function Dashboard() {
 		(tag: string) => {
 			setFilters((current) => ({ ...current, tag }));
 			setSimilarSource(null);
+			setReviewActive(false);
 			setViewMode("grid");
 		},
 		[setViewMode],
@@ -314,6 +368,32 @@ export function Dashboard() {
 						similar-photo search.
 					</p>
 				</div>
+			);
+		}
+
+		if (reviewActive) {
+			if (reviewPhotos.length === 0) {
+				return (
+					<div
+						data-testid="review-empty"
+						className="flex h-full flex-col items-center justify-center text-muted-foreground"
+					>
+						<ScanEye className="mb-4 h-16 w-16 opacity-20" />
+						<p className="text-sm font-medium">Nothing to review</p>
+					</div>
+				);
+			}
+			return (
+				<PhotoGrid
+					photos={reviewPhotos}
+					activePhotoId={library.activePhoto?.id}
+					thumbnailSize={library.thumbnailSize}
+					onPhotoClick={handlePhotoClick}
+					onPhotoDoubleClick={handlePhotoDoubleClick}
+					badgeLabel={(photo) =>
+						photo.junkReasons[0] && JUNK_REASON_LABELS[photo.junkReasons[0]]
+					}
+				/>
 			);
 		}
 
@@ -410,7 +490,24 @@ export function Dashboard() {
 			</button>
 		</div>
 	);
-	const banner = similarChip || searchHeader || collectionHeader;
+	const reviewHeader = reviewActive && (
+		<ReviewHeader
+			reason={reviewReason}
+			onReasonChange={(reason) => {
+				setReviewReason(reason);
+				setActivePhoto(null);
+			}}
+			counts={review.counts}
+			shownCount={reviewPhotos.length}
+			onRejectAll={() => resolveShownReviewPhotos("reject")}
+			onKeepAll={() => resolveShownReviewPhotos("keep")}
+			error={review.error}
+			onDismissError={review.clearError}
+			onExit={exitReview}
+		/>
+	);
+	const banner =
+		reviewHeader || similarChip || searchHeader || collectionHeader;
 
 	return (
 		<PanelLayout
@@ -455,6 +552,9 @@ export function Dashboard() {
 							filterOptions={filterOptionsQuery.data}
 							activeFilters={filters}
 							onFilterChange={setFilters}
+							reviewCount={review.counts?.all}
+							reviewActive={reviewActive}
+							onReviewSelect={handleReviewSelect}
 						/>
 					</div>
 					<ActivityPanel
@@ -476,6 +576,12 @@ export function Dashboard() {
 						onCreate: collectionsApi.createCollection,
 						error: collectionsApi.membershipError,
 					}}
+					review={
+						activeReviewPhoto && {
+							reasons: activeReviewPhoto.junkReasons,
+							onResolve: resolveActiveReviewPhoto,
+						}
+					}
 				/>
 			}
 			filmstrip={

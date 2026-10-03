@@ -5,32 +5,35 @@ import { getThumbnailSrcSet, getThumbnailUrl } from "@/lib/thumbnails";
 import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-interface PhotoGridProps {
-	photos: PhotoMetadata[];
+interface PhotoGridProps<T extends PhotoMetadata> {
+	photos: T[];
 	activePhotoId?: number | null;
 	thumbnailSize?: number;
-	onPhotoClick?: (photo: PhotoMetadata) => void;
-	onPhotoDoubleClick?: (photo: PhotoMetadata) => void;
+	onPhotoClick?: (photo: T) => void;
+	onPhotoDoubleClick?: (photo: T) => void;
+	/** Optional per-photo label shown as a badge (e.g. a review reason). */
+	badgeLabel?: (photo: T) => string | undefined;
 	className?: string;
 }
 
-export function PhotoGrid({
+export function PhotoGrid<T extends PhotoMetadata>({
 	photos,
 	activePhotoId = null,
 	thumbnailSize = 200,
 	onPhotoClick,
 	onPhotoDoubleClick,
+	badgeLabel,
 	className,
-}: PhotoGridProps) {
+}: PhotoGridProps<T>) {
 	const handleClick = useCallback(
-		(photo: PhotoMetadata) => {
+		(photo: T) => {
 			onPhotoClick?.(photo);
 		},
 		[onPhotoClick],
 	);
 
 	const handleDoubleClick = useCallback(
-		(photo: PhotoMetadata) => {
+		(photo: T) => {
 			onPhotoDoubleClick?.(photo);
 		},
 		[onPhotoDoubleClick],
@@ -66,6 +69,7 @@ export function PhotoGrid({
 						const isActive = activePhotoId === photo.id;
 						const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
 						const isRejected = photo.flag === "reject";
+						const badge = badgeLabel?.(photo);
 
 						return (
 							<div
@@ -133,6 +137,15 @@ export function PhotoGrid({
 										{photo.name}
 									</p>
 								</div>
+
+								{badge && (
+									<div
+										data-testid="photo-badge"
+										className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
+									>
+										{badge}
+									</div>
+								)}
 
 								{/* Rating / flag badge */}
 								{(photo.rating > 0 || photo.flag) && (

@@ -176,12 +176,12 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 			}
 		});
 
-		// Appended after existing steps for replay safety: retag anything this run
-		// left untagged (or tagged with an older vocabulary).
-		await step.sendEvent("trigger-photo-tags-v1", {
-			name: "photos/tags.requested",
-			data: {},
-		});
+		// Appended after existing steps for replay safety: retag and re-measure
+		// anything this run left untagged/unmeasured (or from an older version).
+		await step.sendEvent("trigger-photo-tags-v1", [
+			{ name: "photos/tags.requested", data: {} },
+			{ name: "photos/quality.requested", data: {} },
+		]);
 
 		return { processed: processedCount, successful: successCount };
 	},

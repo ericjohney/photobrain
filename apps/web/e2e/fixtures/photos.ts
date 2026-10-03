@@ -223,6 +223,24 @@ export function fixtureTagCounts(photos: FixturePhoto[]) {
 		.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
+export type FixtureJunkReason = "screenshot" | "document" | "blurry" | "dark";
+
+/**
+ * Junk review reasons per photo ID, in the API's order. Review candidates are
+ * 3, 7, 9, 10, 11 and 12; sunset (1, picked) and beach (6, rated) have reasons
+ * but are excluded like the API excludes picked/rated photos.
+ */
+export const FIXTURE_JUNK_REASONS: Record<number, FixtureJunkReason[]> = {
+	1: ["blurry"],
+	3: ["blurry"],
+	6: ["dark"],
+	7: ["blurry", "dark"],
+	9: ["dark"],
+	10: ["blurry"],
+	11: ["screenshot"],
+	12: ["document", "blurry"],
+};
+
 export function searchPhotosByQuery(
 	query: string,
 	photos: FixturePhoto[] = FIXTURE_PHOTOS,

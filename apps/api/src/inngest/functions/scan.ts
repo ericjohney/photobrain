@@ -289,14 +289,14 @@ export const scanPhotosFunction = inngest.createFunction(
 			await nativeExecutor.cancelPhotos(jobId);
 			clearScanWork(db, jobId);
 		});
-		// Appended for replay safety. Scans that dispatch embeddings are tagged by
-		// that run; a finished scan without embeddings retags existing vectors
-		// (e.g. after a vocabulary bump).
+		// Appended for replay safety. Scans that dispatch embeddings are tagged and
+		// measured after that run; a finished scan without embeddings retags
+		// existing vectors and re-measures quality (e.g. after a version bump).
 		if (finished && photoIds.length === 0) {
-			await step.sendEvent("trigger-photo-tags-v1", {
-				name: "photos/tags.requested",
-				data: {},
-			});
+			await step.sendEvent("trigger-photo-tags-v1", [
+				{ name: "photos/tags.requested", data: {} },
+				{ name: "photos/quality.requested", data: {} },
+			]);
 		}
 		return result;
 	},

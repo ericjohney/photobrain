@@ -566,6 +566,8 @@ describe("API v1 contract", () => {
 			"/api/v1/photos/{id}/collections",
 			"/api/v1/photos/{id}/similar",
 			"/api/v1/photos/{id}/tags",
+			"/api/v1/review/junk",
+			"/api/v1/review/junk/resolve",
 			"/api/v1/scans",
 			"/api/v1/scans/active",
 			"/api/v1/scans/{jobId}",
@@ -610,6 +612,7 @@ describe("API v1 contract", () => {
 			"thumbnailKey",
 			"thumbnailRoot",
 			"thumbnailFingerprint",
+			"junkDismissed",
 		]) {
 			expect(document.components.schemas.Photo.properties).not.toHaveProperty(
 				key,

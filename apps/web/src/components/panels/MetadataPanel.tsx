@@ -3,14 +3,17 @@ import {
 	Aperture,
 	Calendar,
 	Camera,
+	Check,
 	ChevronDown,
 	FileImage,
 	Flag,
 	Gauge,
 	ImageIcon,
 	MapPin,
+	ScanEye,
 	Sparkles,
 	Star,
+	X,
 	XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +24,8 @@ import {
 } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { CurationPatch } from "@/hooks/use-photo-curation";
-import type { PhotoMetadata } from "@/lib/types";
+import { JUNK_REASON_LABELS } from "@/lib/junk-review";
+import type { JunkAction, JunkReason, PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
 	PhotoCollections,
@@ -37,6 +41,11 @@ interface MetadataPanelProps {
 	onTagSelect?: (tag: string) => void;
 	/** Collection membership controls for the active photo. */
 	collections?: Omit<PhotoCollectionsProps, "photoId">;
+	/** Junk review: why the active photo is a candidate, and how to resolve it. */
+	review?: {
+		reasons: readonly JunkReason[];
+		onResolve: (action: JunkAction) => void;
+	};
 	className?: string;
 }
 
@@ -168,12 +177,63 @@ function CurationControls({
 	);
 }
 
+/** Review-mode section: the photo's junk reasons with Reject/Keep actions. */
+function ReviewReasons({
+	reasons,
+	onResolve,
+}: NonNullable<MetadataPanelProps["review"]>) {
+	return (
+		<div
+			data-testid="review-reasons"
+			className="border-b border-border px-3 py-2"
+		>
+			<span className="metadata-label flex items-center gap-1.5 text-xs">
+				<ScanEye className="h-3.5 w-3.5" />
+				Why it's here
+			</span>
+			<ul aria-label="Review reasons" className="mt-1.5 flex flex-wrap gap-1">
+				{reasons.map((reason) => (
+					<li
+						key={reason}
+						className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs text-primary"
+					>
+						{JUNK_REASON_LABELS[reason]}
+					</li>
+				))}
+			</ul>
+			<div className="mt-2 flex gap-2">
+				<Button
+					variant="outline"
+					size="sm"
+					className="h-7 flex-1 text-xs"
+					title="Reject (X)"
+					onClick={() => onResolve("reject")}
+				>
+					<X className="h-3.5 w-3.5" />
+					Reject
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					className="h-7 flex-1 text-xs"
+					title="Keep (K)"
+					onClick={() => onResolve("keep")}
+				>
+					<Check className="h-3.5 w-3.5" />
+					Keep
+				</Button>
+			</div>
+		</div>
+	);
+}
+
 export function MetadataPanel({
 	photo,
 	onFindSimilar,
 	onCurate,
 	onTagSelect,
 	collections,
+	review,
 	className,
 }: MetadataPanelProps) {
 	if (!photo) {
@@ -195,6 +255,7 @@ export function MetadataPanel({
 	return (
 		<ScrollArea className={cn("h-full", className)}>
 			<div className="pb-4">
+				{review && <ReviewReasons {...review} />}
 				{onFindSimilar && (
 					<div className="border-b border-border px-3 py-2">
 						<Button

@@ -26,6 +26,8 @@ User curation fields are public and written only by the curation service (`apps/
 
 Scan and embedding saves never write these columns, so a rescan or generation upsert of an existing path preserves them.
 
+`junkDismissed` (`junk_dismissed`, integer boolean, NOT NULL default 0) is internal review state written only by the API's junk-review `keep` action (`apps/api/src/services/junk-review.ts`); scans never write it and the public photo projection omits it. `idx_photos_junk_review` on `(junk_dismissed, flag, rating)` serves the junk-review candidate filter.
+
 Six nullable internal identity fields describe committed media:
 
 - `sourceRoot`: canonical `realpath` of the scanned source directory.
@@ -55,6 +57,8 @@ The compound `(job_id, ordinal)` key makes completion ACKs idempotent; a `(job_i
 
 `photo_tags` stores up to three zero-shot CLIP tags per photo: `photo_id`, `tag` (lowercase hyphenated slug), and `score` (softmax probability, 4 dp), with primary key `(photo_id, tag)` and `idx_photo_tags_tag_photo_id` on `(tag, photo_id)` for tag filters and counts. The photo foreign key cascades on delete. `photo_embedding.tags_version` (nullable integer) records the API's `TAG_VOCABULARY_VERSION` used to tag that vector; null means untagged. Only the API tagging paths write either.
 
+`photo_quality` stores one image-quality measurement per photo: `photo_id` (primary key, foreign key to `photos.id`, cascading on delete), `sharpness` and `brightness` (real, NOT NULL), `thumbnail_key` (the committed thumbnail generation it was measured from, NOT NULL), and `quality_version` (the API's `QUALITY_VERSION`, NOT NULL). Only the API's `analyze-quality-v1` backfill writes it; a row whose key or version no longer matches is ignored by junk review and re-measured.
+
 Status strings, hash format, embedding dimensions, and RAW status values are conventions rather than database check constraints.
 
 ## Migrations
@@ -71,6 +75,7 @@ Current migrations:
 8. `0007_photo_curation.sql`: adds `photos.rating` (`integer NOT NULL DEFAULT 0`, CHECK 0-5) and nullable `photos.flag` (CHECK `'pick'`/`'reject'`), plus `idx_photos_rating` and `idx_photos_flag`. Existing rows receive rating 0 and flag NULL. drizzle-kit generated a full `photos` rebuild for the CHECK constraints; it was replaced with in-place `ADD COLUMN` statements because the migrator transaction cannot disable foreign keys, so the rebuild's `DROP TABLE photos` would cascade into the EXIF, embedding, and pHash sidecars. The snapshot still matches the schema (`db:generate` reports no changes).
 9. `0008_collections.sql`: pure `CREATE TABLE`/`CREATE INDEX` for `collections` and `collection_photos`; existing tables are not rebuilt, so photos, EXIF, embeddings, and pHashes are untouched. `bun run db:generate` reports no drift afterward.
 10. `0009_photo_tags.sql`: pure `CREATE TABLE`/`CREATE INDEX` for `photo_tags` plus `ALTER TABLE photo_embedding ADD tags_version integer`; no table is rebuilt, so existing rows and vectors are untouched and become eligible for the `tag-photos-v1` backfill. `bun run db:generate` reports no drift afterward.
+11. `0010_junk_review.sql`: pure `CREATE TABLE photo_quality`, `ALTER TABLE photos ADD junk_dismissed integer DEFAULT false NOT NULL`, and `CREATE INDEX idx_photos_junk_review`; no table is rebuilt, so existing photos, EXIF, tags, collections, and vectors are untouched and every completed thumbnail becomes eligible for the quality backfill. `bun run db:generate` reports no drift afterward.
 
 Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006` after preceding migrations. New function IDs do not protect against old code still publishing unfenced writes.
 

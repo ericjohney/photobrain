@@ -43,10 +43,21 @@ export const photos = sqliteTable(
 		// User curation. Scans never write these columns, so rescans preserve them.
 		rating: integer("rating").notNull().default(0),
 		flag: text("flag", { enum: ["pick", "reject"] }),
+		// Junk review "keep": the photo never re-enters review. Scans never write it.
+		junkDismissed: integer("junk_dismissed", { mode: "boolean" })
+			.notNull()
+			.default(false),
 	},
 	(table) => [
 		index("idx_photos_rating").on(table.rating),
 		index("idx_photos_flag").on(table.flag),
+		// Junk-review candidates (junk_dismissed = 0, flag IS NULL, rating = 0)
+		// in rowid order, so keyset pages need no sort.
+		index("idx_photos_junk_review").on(
+			table.junkDismissed,
+			table.flag,
+			table.rating,
+		),
 		check("photos_rating_range", sql`${table.rating} BETWEEN 0 AND 5`),
 		check(
 			"photos_flag_values",
@@ -242,6 +253,20 @@ export const photoTags = sqliteTable(
 	],
 );
 
+// Thumbnail quality measured from the committed `medium` WebP generation.
+export const photoQuality = sqliteTable("photo_quality", {
+	photoId: integer("photo_id")
+		.primaryKey()
+		.references(() => photos.id, { onDelete: "cascade" }),
+	// Variance of the 4-neighbour Laplacian over luma (long edge <= 512).
+	sharpness: real("sharpness").notNull(),
+	// Mean luma, 0-255.
+	brightness: real("brightness").notNull(),
+	// Committed thumbnail generation the measurement was taken from.
+	thumbnailKey: text("thumbnail_key").notNull(),
+	qualityVersion: integer("quality_version").notNull(),
+});
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -278,3 +303,5 @@ export type CollectionPhoto = typeof collectionPhotos.$inferSelect;
 export type NewCollectionPhoto = typeof collectionPhotos.$inferInsert;
 export type PhotoTag = typeof photoTags.$inferSelect;
 export type NewPhotoTag = typeof photoTags.$inferInsert;
+export type PhotoQuality = typeof photoQuality.$inferSelect;
+export type NewPhotoQuality = typeof photoQuality.$inferInsert;

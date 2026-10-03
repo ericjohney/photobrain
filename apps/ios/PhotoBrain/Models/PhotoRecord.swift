@@ -25,6 +25,8 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
     /// Mutable so a single record can be patched optimistically without a reload.
     var rating: Int
     var flag: PhotoFlag?
+    /// Why the photo is in the junk review; empty outside it.
+    var junkReasons: [JunkReason] = []
 
     var isConvertedRAW: Bool {
         isRaw && rawStatus == "converted"
@@ -106,6 +108,7 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
         exif = dto.exif
         rating = dto.rating
         flag = dto.flag
+        junkReasons = dto.junkReasons
         cameraModel = dto.exif?.cameraDescription
         lensModel = dto.exif?.lensDescription
     }

@@ -507,6 +507,96 @@
 				}
 			}
 		},
+		"/api/v1/review/junk": {
+			"get": {
+				"operationId": "listJunkReview",
+				"description": "Junk-review candidates: photos that are not dismissed, not flagged, and unrated (rating 0) with at least one reason. Ordered by photo id descending and keyset-paginated with `cursor` (exclusive photo id). `counts` covers every candidate regardless of `reason` and `cursor`.",
+				"parameters": [
+					{
+						"name": "reason",
+						"in": "query",
+						"required": false,
+						"description": "Only candidates with this reason",
+						"schema": {
+							"$ref": "#/components/schemas/JunkReason"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 500,
+							"default": 200
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"required": false,
+						"description": "`nextCursor` from the previous page",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "One page of candidates with reasons and counts",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/JunkReviewResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/review/junk/resolve": {
+			"post": {
+				"operationId": "resolveJunk",
+				"description": "Rejects (flag = reject) or keeps (dismissed from review permanently) the listed photos. Unknown photo IDs are ignored.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ResolveJunkRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Photos written",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ResolveJunkResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
 		"/api/v1/search": {
 			"post": {
 				"operationId": "searchPhotos",
@@ -1623,6 +1713,214 @@
 									"description": "Softmax probability over the vocabulary, 4 decimal places"
 								}
 							}
+						}
+					}
+				}
+			},
+			"JunkReason": {
+				"type": "string",
+				"enum": ["screenshot", "document", "blurry", "dark"],
+				"description": "Review reason. `screenshot`: tag screenshot; `document`: tag document, receipt, whiteboard, or text (tag score >= 0.5); `blurry`: thumbnail sharpness below the blur threshold; `dark`: thumbnail mean luma below the dark threshold."
+			},
+			"JunkReviewPhoto": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"id",
+					"path",
+					"name",
+					"size",
+					"createdAt",
+					"modifiedAt",
+					"width",
+					"height",
+					"mimeType",
+					"isRaw",
+					"rawFormat",
+					"rawStatus",
+					"rawError",
+					"thumbnailStatus",
+					"thumbnailUpdatedAt",
+					"embeddingStatus",
+					"phashStatus",
+					"rating",
+					"flag",
+					"exif",
+					"junkReasons"
+				],
+				"properties": {
+					"id": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"path": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"size": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"modifiedAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"width": {
+						"type": ["integer", "null"]
+					},
+					"height": {
+						"type": ["integer", "null"]
+					},
+					"mimeType": {
+						"type": ["string", "null"]
+					},
+					"isRaw": {
+						"type": ["boolean", "null"]
+					},
+					"rawFormat": {
+						"type": ["string", "null"]
+					},
+					"rawStatus": {
+						"type": ["string", "null"]
+					},
+					"rawError": {
+						"type": ["string", "null"]
+					},
+					"thumbnailStatus": {
+						"type": ["string", "null"]
+					},
+					"thumbnailUpdatedAt": {
+						"oneOf": [
+							{
+								"type": "string",
+								"format": "date-time"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"embeddingStatus": {
+						"type": ["string", "null"]
+					},
+					"phashStatus": {
+						"type": ["string", "null"]
+					},
+					"rating": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 5,
+						"description": "Star rating; 0 means unrated"
+					},
+					"flag": {
+						"type": ["string", "null"],
+						"enum": ["pick", "reject", null]
+					},
+					"exif": {
+						"oneOf": [
+							{
+								"$ref": "#/components/schemas/PhotoExif"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"junkReasons": {
+						"type": "array",
+						"description": "Reasons in fixed order: screenshot, document, blurry, dark. Clients should ignore unknown values.",
+						"items": {
+							"$ref": "#/components/schemas/JunkReason"
+						}
+					}
+				}
+			},
+			"JunkCounts": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["all", "screenshot", "document", "blurry", "dark"],
+				"properties": {
+					"all": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"screenshot": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"document": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"blurry": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"dark": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			},
+			"JunkReviewResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["photos", "nextCursor", "counts"],
+				"properties": {
+					"photos": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/JunkReviewPhoto"
+						}
+					},
+					"nextCursor": {
+						"type": ["integer", "null"],
+						"minimum": 1,
+						"description": "Pass as `cursor` for the next page; null on the last page"
+					},
+					"counts": {
+						"$ref": "#/components/schemas/JunkCounts"
+					}
+				}
+			},
+			"ResolveJunkRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["photoIds", "action"],
+				"properties": {
+					"photoIds": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 500,
+						"items": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					"action": {
+						"type": "string",
+						"enum": ["reject", "keep"],
+						"description": "`reject` sets flag to reject; `keep` dismisses the photo from review permanently"
+					}
+				}
+			},
+			"ResolveJunkResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["updated"],
+				"properties": {
+					"updated": {
+						"type": "array",
+						"description": "Existing photo IDs written, ascending; unknown IDs are ignored",
+						"items": {
+							"type": "integer",
+							"minimum": 1
 						}
 					}
 				}

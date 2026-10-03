@@ -37,6 +37,19 @@ actor TestAPI: PhotoBrainAPI {
     /// Server-side auto tags by photo id; photos without an entry are unknown (404).
     var photoTagResults: [Int: Result<PhotoTagsResponseDTO, PhotoBrainAPIError>] = [:]
     var photoTagRequests: [Int] = []
+    /// Server-side junk candidates, newest first; `junkReview` filters and pages over them.
+    var junkCandidates: [PhotoDTO] = []
+    /// Scripted responses returned (in order) before falling back to `junkCandidates`.
+    var junkScript: [JunkReviewResponseDTO] = []
+    var junkReviewRequests: [JunkReviewRequest] = []
+    var junkReviewFailure: PhotoBrainAPIError?
+    /// Delay applied to `junkReview` requests by reason filter (`nil` = All).
+    var junkReviewDelays: [JunkReason?: Duration] = [:]
+    var resolveRequests: [ResolveRequest] = []
+    var resolveDelay: Duration = .zero
+    var resolveFailure: PhotoBrainAPIError?
+    /// Server-side decisions by photo id.
+    var resolvedJunk: [Int: JunkAction] = [:]
     private var nextCollectionID = 1
 
     enum CollectionRoute: Hashable, Sendable {
@@ -57,6 +70,50 @@ actor TestAPI: PhotoBrainAPI {
         let id: Int
         let rating: Int?
         let flag: PhotoFlag??
+    }
+
+    struct JunkReviewRequest: Equatable, Sendable {
+        let reason: JunkReason?
+        let limit: Int
+        let cursor: Int?
+    }
+
+    struct ResolveRequest: Equatable, Sendable {
+        let ids: [Int]
+        let action: JunkAction
+    }
+
+    func setJunkCandidates(_ photos: [PhotoDTO]) {
+        junkCandidates = photos
+    }
+
+    func scriptJunkResponses(_ responses: [JunkReviewResponseDTO]) {
+        junkScript = responses
+    }
+
+    func setJunkReviewFailure(_ failure: PhotoBrainAPIError?) {
+        junkReviewFailure = failure
+    }
+
+    func setJunkReviewDelay(_ delay: Duration, for reason: JunkReason?) {
+        junkReviewDelays[reason] = delay
+    }
+
+    func setResolve(delay: Duration = .zero, failure: PhotoBrainAPIError? = nil) {
+        resolveDelay = delay
+        resolveFailure = failure
+    }
+
+    func recordedJunkReviewRequests() -> [JunkReviewRequest] {
+        junkReviewRequests
+    }
+
+    func recordedResolveRequests() -> [ResolveRequest] {
+        resolveRequests
+    }
+
+    func serverResolvedJunk() -> [Int: JunkAction] {
+        resolvedJunk
     }
 
     func setPhotos(_ response: PhotosResponseDTO, failing: Bool = false) {
@@ -298,6 +355,41 @@ actor TestAPI: PhotoBrainAPI {
         return PhotoCollectionsDTO(collectionIds: ids)
     }
 
+    func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO {
+        junkReviewRequests.append(JunkReviewRequest(reason: reason, limit: limit, cursor: cursor))
+        if let failure = junkReviewFailure { throw failure }
+        if let delay = junkReviewDelays[reason] { try await Task.sleep(for: delay) }
+        if !junkScript.isEmpty { return junkScript.removeFirst() }
+        let matching = junkCandidates.filter { photo in reason.map { photo.junkReasons.contains($0) } ?? true }
+        let start = cursor.flatMap { id in matching.firstIndex { $0.id == id }.map { $0 + 1 } } ?? 0
+        let page = Array(matching[min(start, matching.count)...].prefix(limit))
+        let hasMore = start + page.count < matching.count
+        return JunkReviewResponseDTO(
+            photos: page,
+            nextCursor: hasMore ? page.last?.id : nil,
+            counts: Self.junkCounts(junkCandidates)
+        )
+    }
+
+    func resolveJunk(ids: [Int], action: JunkAction) async throws -> ResolveJunkResponseDTO {
+        resolveRequests.append(ResolveRequest(ids: ids, action: action))
+        // Outcome is decided when the request arrives, like a real server.
+        let failure = resolveFailure
+        if resolveDelay > .zero { try await Task.sleep(for: resolveDelay) }
+        if let failure { throw failure }
+        let known = Set(junkCandidates.map(\.id))
+        let updated = ids.filter(known.contains)
+        junkCandidates.removeAll { updated.contains($0.id) }
+        for id in updated { resolvedJunk[id] = action }
+        return ResolveJunkResponseDTO(updated: updated)
+    }
+
+    static func junkCounts(_ photos: [PhotoDTO]) -> JunkCountsDTO {
+        var counts = JunkCountsDTO.zero
+        for photo in photos { counts.adjust(reasons: photo.junkReasons, by: 1) }
+        return counts
+    }
+
     static let collectionNotFound = PhotoBrainAPIError.server(
         status: 404,
         code: "COLLECTION_NOT_FOUND",
@@ -358,7 +450,8 @@ enum TestModels {
         id: Int,
         taken: String? = "2024-01-01T12:00:00Z",
         rating: Int = 0,
-        flag: PhotoFlag? = nil
+        flag: PhotoFlag? = nil,
+        junkReasons: [JunkReason] = []
     ) -> PhotoDTO {
         PhotoDTO(
             id: id,
@@ -396,7 +489,8 @@ enum TestModels {
                 gpsAltitude: nil
             ),
             rating: rating,
-            flag: flag
+            flag: flag,
+            junkReasons: junkReasons
         )
     }
 
