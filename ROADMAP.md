@@ -297,7 +297,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [ ] **Timeline and calendar views on web**
 - [x] **Camera, lens, ISO, and month filtering**
 - [x] **RAW/standard filtering in the API**
-- [ ] **RAW/standard filter controls in clients**
+- [x] **RAW/standard filter controls in clients** (web Type control, native iOS Media Type picker, Expo filter sheet)
 - [ ] **Aperture and shutter-speed filtering**
 - [ ] **Dimension, orientation, and MIME-type filtering**
 

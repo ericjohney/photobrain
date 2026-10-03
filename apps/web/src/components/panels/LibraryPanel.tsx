@@ -19,6 +19,30 @@ interface FolderNode {
 	children: FolderNode[];
 }
 
+export type RawFilter = "all" | "raw" | "standard";
+
+export interface LibraryFilters {
+	filterRaw: RawFilter;
+	camera: string | null;
+	lens: string | null;
+	iso: number | null;
+	dateMonth: string | null;
+}
+
+export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
+	filterRaw: "all",
+	camera: null,
+	lens: null,
+	iso: null,
+	dateMonth: null,
+};
+
+const RAW_FILTER_OPTIONS: { value: RawFilter; label: string }[] = [
+	{ value: "all", label: "All" },
+	{ value: "raw", label: "RAW" },
+	{ value: "standard", label: "Standard" },
+];
+
 interface LibraryPanelProps {
 	photoCount: number;
 	folders?: FolderNode[];
@@ -30,18 +54,8 @@ interface LibraryPanelProps {
 		isos: number[];
 		dates: string[];
 	};
-	activeFilters: {
-		camera: string | null;
-		lens: string | null;
-		iso: number | null;
-		dateMonth: string | null;
-	};
-	onFilterChange: (filters: {
-		camera: string | null;
-		lens: string | null;
-		iso: number | null;
-		dateMonth: string | null;
-	}) => void;
+	activeFilters: LibraryFilters;
+	onFilterChange: (filters: LibraryFilters) => void;
 }
 
 interface NavItemProps {
@@ -268,6 +282,36 @@ export function LibraryPanel({
 
 				{/* Filter By Section — also scopes an active search */}
 				<Section title="Filter By" defaultOpen={false}>
+					<Section title="Type">
+						<div
+							role="radiogroup"
+							aria-label="Photo type"
+							className="mx-2 mb-1 flex rounded bg-secondary p-0.5"
+						>
+							{RAW_FILTER_OPTIONS.map(({ value, label }) => {
+								const checked = activeFilters.filterRaw === value;
+								return (
+									<button
+										key={value}
+										type="button"
+										role="radio"
+										aria-checked={checked}
+										onClick={() =>
+											onFilterChange({ ...activeFilters, filterRaw: value })
+										}
+										className={cn(
+											"flex-1 rounded px-2 py-0.5 text-xs transition-colors",
+											checked
+												? "bg-primary text-primary-foreground"
+												: "text-muted-foreground hover:text-foreground",
+										)}
+									>
+										{label}
+									</button>
+								);
+							})}
+						</div>
+					</Section>
 					{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
 						<Section title="Camera" defaultOpen={false}>
 							{filterOptions.cameras.map((cam) => (
@@ -343,7 +387,8 @@ export function LibraryPanel({
 				</Section>
 
 				{/* Active filters indicator */}
-				{(activeFilters.camera ||
+				{(activeFilters.filterRaw !== "all" ||
+					activeFilters.camera ||
 					activeFilters.lens ||
 					activeFilters.iso ||
 					activeFilters.dateMonth) && (
@@ -352,14 +397,7 @@ export function LibraryPanel({
 						<button
 							type="button"
 							className="underline cursor-pointer"
-							onClick={() =>
-								onFilterChange({
-									camera: null,
-									lens: null,
-									iso: null,
-									dateMonth: null,
-								})
-							}
+							onClick={() => onFilterChange(EMPTY_LIBRARY_FILTERS)}
 						>
 							Clear all
 						</button>

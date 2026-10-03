@@ -146,6 +146,16 @@ export function LoupeView({
 				</div>
 			)}
 
+			{/* RAW badge */}
+			{photo.isRaw && (
+				<div
+					data-testid="loupe-raw-badge"
+					className="absolute left-3 top-3 rounded bg-orange-500/90 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
+				>
+					{photo.rawFormat || "RAW"}
+				</div>
+			)}
+
 			{/* Navigation arrows */}
 			{hasPrev && (
 				<button

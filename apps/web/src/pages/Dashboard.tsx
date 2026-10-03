@@ -4,7 +4,11 @@ import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { ActivityPanel } from "@/components/panels/ActivityPanel";
-import { LibraryPanel } from "@/components/panels/LibraryPanel";
+import {
+	EMPTY_LIBRARY_FILTERS,
+	LibraryPanel,
+	type LibraryFilters,
+} from "@/components/panels/LibraryPanel";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { PanelLayout } from "@/components/panels/PanelLayout";
 import { Toolbar } from "@/components/Toolbar";
@@ -25,12 +29,12 @@ export function Dashboard() {
 	);
 	const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
-	const [filters, setFilters] = useState<{
-		camera: string | null;
-		lens: string | null;
-		iso: number | null;
-		dateMonth: string | null;
-	}>({ camera: null, lens: null, iso: null, dateMonth: null });
+	const [filters, setFilters] = useState<LibraryFilters>(
+		EMPTY_LIBRARY_FILTERS,
+	);
+	// The API defaults filterRaw to "all"; omit it from requests in that case.
+	const filterRaw =
+		filters.filterRaw === "all" ? undefined : filters.filterRaw;
 
 	// tRPC queries
 	const foldersQuery = trpc.folders.useQuery();
@@ -42,6 +46,7 @@ export function Dashboard() {
 	const photosQuery = trpc.photos.useQuery(
 		{
 			folder: selectedFolder ?? undefined,
+			filterRaw,
 			camera: filters.camera ?? undefined,
 			lens: filters.lens ?? undefined,
 			iso: filters.iso ?? undefined,
@@ -58,6 +63,7 @@ export function Dashboard() {
 			query: searchQuery,
 			limit: 50,
 			folder: selectedFolder ?? undefined,
+			filterRaw,
 			camera: filters.camera ?? undefined,
 			lens: filters.lens ?? undefined,
 			iso: filters.iso ?? undefined,
@@ -267,6 +273,11 @@ export function Dashboard() {
 	);
 
 	const searchScope = [
+		filters.filterRaw === "raw"
+			? "RAW only"
+			: filters.filterRaw === "standard"
+				? "Standard only"
+				: null,
 		filters.camera,
 		filters.lens,
 		filters.iso !== null ? `ISO ${filters.iso}` : null,

@@ -143,6 +143,7 @@ export function searchPhotosByQuery(
 
 export type FixturePhotoFilters = {
 	folder?: string;
+	filterRaw?: "all" | "raw" | "standard";
 	camera?: string;
 	lens?: string;
 	iso?: number;
@@ -169,6 +170,8 @@ export function filterFixturePhotos(
 		) {
 			return false;
 		}
+		if (filters.filterRaw === "raw" && !p.isRaw) return false;
+		if (filters.filterRaw === "standard" && p.isRaw) return false;
 		const exif = p.exif;
 		if (filters.camera !== undefined) {
 			if (!exif || cameraLabel(exif) !== filters.camera) return false;
