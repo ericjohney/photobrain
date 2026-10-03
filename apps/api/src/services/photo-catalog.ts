@@ -25,6 +25,8 @@ export type PhotoFilters = {
 	/** Minimum star rating, 1-5 (`rating >= minRating`). */
 	minRating?: number;
 	flag?: "pick" | "reject" | "unflagged";
+	/** Only members of this collection. */
+	collectionId?: number;
 };
 
 export type PhotoCatalogRepresentation = {
@@ -190,6 +192,12 @@ export function photoFilterConditions(
 		conditions.push(isNull(photosTable.flag));
 	} else if (input.flag) {
 		conditions.push(eq(photosTable.flag, input.flag));
+	}
+	if (input.collectionId !== undefined) {
+		// Resolved through the (collection_id, photo_id) primary key.
+		conditions.push(
+			sql`${photosTable.id} IN (SELECT photo_id FROM collection_photos WHERE collection_id = ${input.collectionId})`,
+		);
 	}
 	return conditions;
 }

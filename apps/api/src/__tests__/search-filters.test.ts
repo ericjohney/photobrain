@@ -4,7 +4,13 @@ import { existsSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as sqliteVec from "sqlite-vec";
-import { photoEmbedding, photoExif, photos } from "../db/schema";
+import {
+	collectionPhotos,
+	collections,
+	photoEmbedding,
+	photoExif,
+	photos,
+} from "../db/schema";
 import type { PhotoFilters } from "../services/photo-catalog";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
 import { createTestDb } from "./setup";
@@ -471,6 +477,57 @@ if (process.env.PHOTOBRAIN_SEARCH_FILTERS_TEST_CHILD !== "1") {
 					caller.searchPhotos({ query: "beach", ...input }),
 				).rejects.toThrow();
 			}
+		});
+
+		test("collectionId restricts KNN to members before LIMIT on tRPC and v1", async () => {
+			db.delete(collectionPhotos).run();
+			db.delete(collections).run();
+			const now = new Date();
+			const collection = db
+				.insert(collections)
+				.values({ name: "Beach picks", createdAt: now, updatedAt: now })
+				.returning()
+				.get();
+			const empty = db
+				.insert(collections)
+				.values({ name: "Empty", createdAt: now, updatedAt: now })
+				.returning()
+				.get();
+			// `unindexed` is a member without a vector; it must never surface.
+			for (const name of ["c", "a", "noExif", "unindexed"]) {
+				db.insert(collectionPhotos)
+					.values({
+						collectionId: collection.id,
+						photoId: ids[name],
+						addedAt: now,
+					})
+					.run();
+			}
+
+			expect(names(await search({ collectionId: collection.id }))).toEqual([
+				"a",
+				"c",
+				"noExif",
+			]);
+			// Nearer non-members never consume LIMIT slots.
+			expect(names(await search({ collectionId: collection.id }, 1))).toEqual([
+				"a",
+			]);
+			expect(
+				names(
+					await search({ collectionId: collection.id, camera: "Canon EOS R5" }),
+				),
+			).toEqual(["c"]);
+			expect(names(await search({ collectionId: empty.id }))).toEqual([]);
+			expect(names(await search({ collectionId: 999_999 }))).toEqual([]);
+
+			const v1 = await v1Search({ collectionId: collection.id, limit: 2 });
+			expect(v1.status).toBe(200);
+			expect(names(v1.body)).toEqual(["a", "c"]);
+			for (const collectionId of [0, -1, 1.5, "1"]) {
+				expect((await v1Search({ collectionId })).status).toBe(400);
+			}
+			await expect(search({ collectionId: 0 })).rejects.toThrow();
 		});
 	});
 

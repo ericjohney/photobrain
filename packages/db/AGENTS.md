@@ -51,6 +51,8 @@ These fields remain internal: the API's `publicPhotoColumns` projection omits th
 
 The compound `(job_id, ordinal)` key makes completion ACKs idempotent; a `(job_id, status, ordinal)` index supports pending-only ordered recovery. Each new native attempt rotates the item's UUID artifact key. A result must match the frozen source, current attempt key, and previous committed photo ID/key/source fingerprint before publishing a new generation. These records are transient durable execution state; committed freshness and generation identity live on `photos` and `photo_embedding` after ledger cleanup.
 
+`collections` stores user-created manual albums: `name` (trimmed, 1-100 characters, enforced by the API service), `created_at`, and `updated_at`. The unique index `collections_name_nocase_unique` on `name COLLATE NOCASE` makes names case-insensitively unique; the API maps its violation to `NAME_TAKEN`. `collection_photos` is the membership join table with `added_at`, primary key `(collection_id, photo_id)`, and `idx_collection_photos_photo_id`. Both foreign keys cascade on delete: deleting a collection removes only its memberships, and deleting a photo removes it from every collection. The API service (`apps/api/src/services/collections.ts`) also deletes memberships explicitly and joins memberships to `photos`, so connections without foreign-key enforcement neither keep nor count orphans. A collection's cover is derived at read time (most recently added existing member), not stored.
+
 Status strings, hash format, embedding dimensions, and RAW status values are conventions rather than database check constraints.
 
 ## Migrations
@@ -65,6 +67,7 @@ Current migrations:
 6. `0005_continuous_scan_work.sql`: adds the continuous scan manifests, per-photo receipts, and pending-order index.
 7. `0006_incremental_scan.sql`: adds six nullable photo identity fields, nullable embedding thumbnail key, manifest roots and classification counters, and item action/source/attempt/previous-generation fields. Existing item actions default to `media`; new counters default to zero. Existing photo identity fields remain null for conservative legacy adoption rather than receiving fabricated provenance.
 8. `0007_photo_curation.sql`: adds `photos.rating` (`integer NOT NULL DEFAULT 0`, CHECK 0-5) and nullable `photos.flag` (CHECK `'pick'`/`'reject'`), plus `idx_photos_rating` and `idx_photos_flag`. Existing rows receive rating 0 and flag NULL. drizzle-kit generated a full `photos` rebuild for the CHECK constraints; it was replaced with in-place `ADD COLUMN` statements because the migrator transaction cannot disable foreign keys, so the rebuild's `DROP TABLE photos` would cascade into the EXIF, embedding, and pHash sidecars. The snapshot still matches the schema (`db:generate` reports no changes).
+9. `0008_collections.sql`: pure `CREATE TABLE`/`CREATE INDEX` for `collections` and `collection_photos`; existing tables are not rebuilt, so photos, EXIF, embeddings, and pHashes are untouched. `bun run db:generate` reports no drift afterward.
 
 Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006` after preceding migrations. New function IDs do not protect against old code still publishing unfenced writes.
 

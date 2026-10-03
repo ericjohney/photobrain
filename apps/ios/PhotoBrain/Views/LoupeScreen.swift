@@ -5,6 +5,7 @@ struct LoupeScreen: View {
     @Binding var activeID: Int
     let api: any PhotoBrainAPI
     @ObservedObject var curation: PhotoCurationCenter
+    let collections: CollectionsStore
     let dismiss: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -12,6 +13,7 @@ struct LoupeScreen: View {
     @State private var chromeVisible = true
     @State private var showingInfo = false
     @State private var similarSource: PhotoRecord?
+    @State private var collectionSheetPhotoID: CollectionSheetTarget?
 
     private var activeRecord: PhotoRecord? {
         records.first { $0.id == activeID }
@@ -55,7 +57,12 @@ struct LoupeScreen: View {
             }
         }
         .sheet(item: $similarSource) { source in
-            SimilarPhotosScreen(source: source, api: api, curation: curation) { similarSource = nil }
+            SimilarPhotosScreen(source: source, api: api, curation: curation, collections: collections) {
+                similarSource = nil
+            }
+        }
+        .sheet(item: $collectionSheetPhotoID) { target in
+            AddToCollectionSheet(photoID: target.id, collections: collections)
         }
         .accessibilityAction(named: chromeVisible ? "Hide controls" : "Show controls") {
             chromeVisible.toggle()
@@ -85,6 +92,15 @@ struct LoupeScreen: View {
             Text("\((records.firstIndex { $0.id == activeID } ?? 0) + 1) of \(records.count)")
                 .font(.caption.monospacedDigit())
                 .accessibilityLabel("Photo \((records.firstIndex { $0.id == activeID } ?? 0) + 1) of \(records.count)")
+            Button {
+                collectionSheetPhotoID = activeRecord.map { CollectionSheetTarget(id: $0.id) }
+            } label: {
+                Image(systemName: "rectangle.stack.badge.plus")
+                    .font(.title3)
+                    .frame(width: 36, height: 36)
+            }
+            .disabled(activeRecord == nil)
+            .accessibilityLabel("Add to Collection")
             Button {
                 similarSource = activeRecord
             } label: {
@@ -232,6 +248,10 @@ struct LoupeScreen: View {
             Rectangle().fill(.ultraThinMaterial)
         }
     }
+}
+
+private struct CollectionSheetTarget: Identifiable {
+    let id: Int
 }
 
 private struct PhotoMetadataView: View {

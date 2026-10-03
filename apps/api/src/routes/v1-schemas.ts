@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+	type Collection,
+	MAX_COLLECTION_NAME_LENGTH,
+	MAX_COLLECTION_PHOTO_IDS,
+} from "../services/collections";
 
 export type FolderDto = {
 	name: string;
@@ -41,6 +46,11 @@ export const minRatingFilterSchema = z.coerce
 export const curationFlagFilterSchema = z
 	.enum(["pick", "reject", "unflagged"])
 	.optional();
+export const collectionIdFilterSchema = z.coerce
+	.number()
+	.int()
+	.positive()
+	.optional();
 
 export const photoFiltersSchema = z.object({
 	filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
@@ -54,6 +64,7 @@ export const photoFiltersSchema = z.object({
 		.optional(),
 	minRating: minRatingFilterSchema,
 	flag: curationFlagFilterSchema,
+	collectionId: collectionIdFilterSchema,
 });
 
 export const photoIdSchema = z.coerce.number().int().positive();
@@ -129,6 +140,7 @@ export const searchRequestSchema = z
 		dateMonth: photoFiltersSchema.shape.dateMonth,
 		minRating: z.number().int().min(1).max(5).optional(),
 		flag: curationFlagFilterSchema,
+		collectionId: z.number().int().positive().optional(),
 	})
 	.strict();
 
@@ -142,6 +154,7 @@ export const similarPhotosQuerySchema = z.object({
 	limit: z.coerce.number().int().min(1).max(100).default(30),
 	minRating: minRatingFilterSchema,
 	flag: curationFlagFilterSchema,
+	collectionId: collectionIdFilterSchema,
 });
 
 export const similarPhotosResponseSchema = z.object({
@@ -149,6 +162,66 @@ export const similarPhotosResponseSchema = z.object({
 	total: z.number().int().nonnegative(),
 	sourcePhotoId: z.number().int().positive(),
 	indexed: z.boolean(),
+});
+
+export const collectionIdSchema = z.coerce.number().int().positive();
+
+const collectionNameSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(MAX_COLLECTION_NAME_LENGTH);
+
+const collectionPhotoIdsSchema = z
+	.array(z.number().int().positive())
+	.min(1)
+	.max(MAX_COLLECTION_PHOTO_IDS);
+
+export const createCollectionRequestSchema = z
+	.object({
+		name: collectionNameSchema,
+		photoIds: collectionPhotoIdsSchema.optional(),
+	})
+	.strict();
+
+export const renameCollectionRequestSchema = z
+	.object({ name: collectionNameSchema })
+	.strict();
+
+export const collectionPhotosRequestSchema = z
+	.object({ photoIds: collectionPhotoIdsSchema })
+	.strict();
+
+export const collectionSchema = z.object({
+	id: z.number().int().positive(),
+	name: z.string().min(1).max(MAX_COLLECTION_NAME_LENGTH),
+	photoCount: z.number().int().nonnegative(),
+	cover: z
+		.object({
+			photoId: z.number().int().positive(),
+			thumbnailUpdatedAt: isoTimestampSchema.nullable(),
+		})
+		.nullable(),
+	createdAt: isoTimestampSchema,
+	updatedAt: isoTimestampSchema,
+});
+
+export const collectionsResponseSchema = z.object({
+	collections: z.array(collectionSchema),
+});
+
+export const addCollectionPhotosResponseSchema = z.object({
+	added: z.number().int().nonnegative(),
+	photoCount: z.number().int().nonnegative(),
+});
+
+export const removeCollectionPhotosResponseSchema = z.object({
+	removed: z.number().int().nonnegative(),
+	photoCount: z.number().int().nonnegative(),
+});
+
+export const photoCollectionsResponseSchema = z.object({
+	collectionIds: z.array(z.number().int().positive()),
 });
 
 export const startScanRequestSchema = z
@@ -319,5 +392,19 @@ export function serializeSimilarPhotosResponse(value: {
 	return {
 		...value,
 		photos: value.photos.map(serializePhoto),
+	};
+}
+
+export function serializeCollection(value: Collection) {
+	return {
+		...value,
+		cover: value.cover && {
+			photoId: value.cover.photoId,
+			thumbnailUpdatedAt: toNullableIsoTimestamp(
+				value.cover.thumbnailUpdatedAt,
+			),
+		},
+		createdAt: toIsoTimestamp(value.createdAt),
+		updatedAt: toIsoTimestamp(value.updatedAt),
 	};
 }

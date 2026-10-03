@@ -5,7 +5,13 @@ import { TRPCError } from "@trpc/server";
 import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as sqliteVec from "sqlite-vec";
-import { photoEmbedding, photoExif, photos } from "../db/schema";
+import {
+	collectionPhotos,
+	collections,
+	photoEmbedding,
+	photoExif,
+	photos,
+} from "../db/schema";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
 import { createTestDb } from "./setup";
 
@@ -480,6 +486,75 @@ if (process.env.PHOTOBRAIN_SIMILAR_TEST_CHILD !== "1") {
 			await expect(
 				caller.similarPhotos({ photoId: source, minRating: 0 }),
 			).rejects.toThrow(TRPCError);
+		});
+
+		test("collectionId restricts candidates to members before LIMIT, never the source", async () => {
+			const now = new Date();
+			const collection = db
+				.insert(collections)
+				.values({
+					name: `Similar ${now.getTime()}`,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.returning()
+				.get();
+			// The source is not a member; stale old-model.jpg is a member at distance 0.
+			for (const name of ["far.jpg", "mid.jpg", "old-model.jpg"]) {
+				db.insert(collectionPhotos)
+					.values({
+						collectionId: collection.id,
+						photoId: ids[name],
+						addedAt: now,
+					})
+					.run();
+			}
+			const source = ids["source.jpg"];
+			expect(
+				similarIds(
+					await findSimilarToPhoto(db, source, 100, {
+						collectionId: collection.id,
+					}),
+				),
+			).toEqual([ids["mid.jpg"], ids["far.jpg"]]);
+			expect(
+				similarIds(
+					await findSimilarToPhoto(db, source, 1, {
+						collectionId: collection.id,
+					}),
+				),
+			).toEqual([ids["mid.jpg"]]);
+
+			const viaTrpc = await caller.similarPhotos({
+				photoId: source,
+				collectionId: collection.id,
+			});
+			expect(similarIds(viaTrpc)).toEqual([ids["mid.jpg"], ids["far.jpg"]]);
+			expect(viaTrpc.indexed).toBe(true);
+
+			const response = await app.request(
+				`/api/v1/photos/${source}/similar?collectionId=${collection.id}&limit=1`,
+			);
+			expect(response.status).toBe(200);
+			expect(await responseJson(response)).toMatchObject({
+				photos: [{ id: ids["mid.jpg"] }],
+				total: 1,
+				sourcePhotoId: source,
+			});
+			const unknown = await app.request(
+				`/api/v1/photos/${source}/similar?collectionId=999999`,
+			);
+			expect(await responseJson(unknown)).toMatchObject({
+				photos: [],
+				total: 0,
+				indexed: true,
+			});
+			for (const value of ["0", "-2", "1.5", "abc"]) {
+				const invalid = await app.request(
+					`/api/v1/photos/${source}/similar?collectionId=${value}`,
+				);
+				expect(invalid.status).toBe(400);
+			}
 		});
 	});
 

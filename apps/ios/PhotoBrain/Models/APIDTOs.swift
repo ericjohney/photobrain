@@ -206,6 +206,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let dateMonth: String?
     let minRating: Int?
     let flag: String?
+    let collectionId: Int?
 
     init(query: String, limit: Int, filters: PhotoQuery) {
         self.query = query
@@ -218,6 +219,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
         dateMonth = filters.dateMonth
         minRating = filters.minRating
         flag = filters.flag?.rawValue
+        collectionId = filters.collectionId
     }
 }
 
@@ -315,6 +317,91 @@ struct StartScanResponseDTO: Codable, Equatable, Sendable {
     }
 }
 
+struct CollectionCoverDTO: Codable, Hashable, Sendable {
+    let photoId: Int
+    let thumbnailUpdatedAt: Date?
+}
+
+struct CollectionDTO: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    let name: String
+    /// Mutable so membership responses can patch the count without refetching the list.
+    var photoCount: Int
+    /// Most recently added photo still present; `nil` for an empty collection.
+    let cover: CollectionCoverDTO?
+    let createdAt: Date
+    let updatedAt: Date
+
+    /// Medium cover thumbnail, versioned by the cover photo's `thumbnailUpdatedAt`.
+    func coverURL(apiBaseURL: URL) -> URL? {
+        guard let cover else { return nil }
+        return PhotoRecord.thumbnailURL(
+            baseURL: apiBaseURL,
+            id: cover.photoId,
+            size: "medium",
+            updatedAt: cover.thumbnailUpdatedAt
+        )
+    }
+}
+
+struct CollectionsResponseDTO: Codable, Equatable, Sendable {
+    let collections: [CollectionDTO]
+}
+
+/// `POST /api/v1/collections` body; `photoIds` is omitted when nil.
+struct CreateCollectionRequestDTO: Encodable, Equatable, Sendable {
+    let name: String
+    let photoIds: [Int]?
+}
+
+struct RenameCollectionRequestDTO: Encodable, Equatable, Sendable {
+    let name: String
+}
+
+struct CollectionPhotosRequestDTO: Encodable, Equatable, Sendable {
+    let photoIds: [Int]
+}
+
+struct CollectionPhotosAddedDTO: Codable, Equatable, Sendable {
+    let added: Int
+    let photoCount: Int
+}
+
+struct CollectionPhotosRemovedDTO: Codable, Equatable, Sendable {
+    let removed: Int
+    let photoCount: Int
+}
+
+struct PhotoCollectionsDTO: Codable, Equatable, Sendable {
+    let collectionIds: [Int]
+}
+
+/// Client-side mirror of the server's collection name rule: trimmed, 1-100 UTF-16 units.
+enum CollectionName {
+    static let maximumLength = 100
+    /// Largest photo-id batch accepted by membership routes.
+    static let maximumPhotoBatch = 500
+
+    static func validated(_ raw: String) throws -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw CollectionNameError.empty }
+        guard trimmed.utf16.count <= maximumLength else { throw CollectionNameError.tooLong }
+        return trimmed
+    }
+}
+
+enum CollectionNameError: Error, Equatable, LocalizedError, Sendable {
+    case empty
+    case tooLong
+
+    var errorDescription: String? {
+        switch self {
+        case .empty: "Enter a collection name."
+        case .tooLong: "Collection names can be at most \(CollectionName.maximumLength) characters."
+        }
+    }
+}
+
 struct APIErrorEnvelope: Codable, Equatable, Sendable {
     struct Detail: Codable, Equatable, Sendable {
         let code: String
@@ -338,7 +425,12 @@ enum PhotoBrainAPIError: Error, Equatable, LocalizedError, Sendable {
         case .invalidRequest: "The request could not be created."
         case .invalidResponse: "The server returned an invalid response."
         case let .transport(message): message
-        case let .server(_, _, message): message
+        case let .server(_, code, message):
+            switch code {
+            case "COLLECTION_NAME_TAKEN": "A collection with that name already exists."
+            case "COLLECTION_NOT_FOUND": "This collection no longer exists."
+            default: message
+            }
         case .decoding: "PhotoBrain could not read the server response."
         }
     }

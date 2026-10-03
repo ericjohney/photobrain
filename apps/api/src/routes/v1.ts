@@ -1,5 +1,15 @@
 import { Hono } from "hono";
-import type { ZodType } from "zod";
+import type { ZodType, ZodTypeDef } from "zod";
+import {
+	addPhotosToCollection,
+	CollectionError,
+	collectionsForPhoto,
+	createCollection,
+	deleteCollection,
+	listCollections,
+	removePhotosFromCollection,
+	renameCollection,
+} from "../services/collections";
 import type { ApiDatabase } from "../services/photo-catalog";
 import {
 	getPhoto,
@@ -15,20 +25,30 @@ import { getScan, listActiveScans, startScan } from "../services/scan-jobs";
 import { findSimilarToPhoto } from "../services/vector-search";
 import {
 	activeScansResponseSchema,
+	addCollectionPhotosResponseSchema,
+	collectionIdSchema,
+	collectionPhotosRequestSchema,
+	collectionSchema,
+	collectionsResponseSchema,
+	createCollectionRequestSchema,
 	errorResponseSchema,
 	filterOptionsQuerySchema,
 	filterOptionsResponseSchema,
 	foldersResponseSchema,
 	PUBLIC_SCAN_START_ERROR,
+	photoCollectionsResponseSchema,
 	photoCurationPatchSchema,
 	photoFiltersSchema,
 	photoIdSchema,
 	photoSchema,
 	photosResponseSchema,
+	removeCollectionPhotosResponseSchema,
+	renameCollectionRequestSchema,
 	scanIdSchema,
 	scanStatusResponseSchema,
 	searchRequestSchema,
 	searchResponseSchema,
+	serializeCollection,
 	serializePhoto,
 	serializePhotosResponse,
 	serializeScan,
@@ -49,7 +69,7 @@ export type V1Dependencies = {
 	nativeScanMutationsEnabled: boolean;
 };
 
-type ErrorStatus = 400 | 404 | 500 | 503;
+type ErrorStatus = 400 | 404 | 409 | 500 | 503;
 
 function jsonResponse<T>(schema: ZodType<T>, value: unknown, status = 200) {
 	const body = schema.parse(value);
@@ -88,6 +108,35 @@ function internalError(error: unknown): Response {
 		"The request could not be completed",
 		500,
 	);
+}
+
+/** Maps collection domain errors to stable envelopes; anything else is a 500. */
+function collectionError(error: unknown): Response {
+	if (error instanceof CollectionError) {
+		return error.code === "NAME_TAKEN"
+			? errorResponse(
+					"COLLECTION_NAME_TAKEN",
+					"A collection with that name already exists",
+					409,
+				)
+			: errorResponse("COLLECTION_NOT_FOUND", "Collection not found", 404);
+	}
+	return internalError(error);
+}
+
+/** Parses a required JSON body against a strict schema; `null` means 400. */
+async function parseJsonBody<T>(
+	request: Request,
+	schema: ZodType<T, ZodTypeDef, unknown>,
+): Promise<T | null> {
+	let body: unknown;
+	try {
+		body = await readJsonBody(request, false);
+	} catch {
+		return null;
+	}
+	const parsed = schema.safeParse(body);
+	return parsed.success ? parsed.data : null;
 }
 
 export function createV1Router(dependencies: V1Dependencies) {
@@ -173,22 +222,138 @@ export function createV1Router(dependencies: V1Dependencies) {
 		}
 	});
 
+	router.get("/photos/:id/collections", (context) => {
+		const id = photoIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		try {
+			const result = collectionsForPhoto(dependencies.database, id.data);
+			if (!result) {
+				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+			}
+			return jsonResponse(photoCollectionsResponseSchema, result);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/collections", () => {
+		try {
+			return jsonResponse(collectionsResponseSchema, {
+				collections: listCollections(dependencies.database).map(
+					serializeCollection,
+				),
+			});
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.post("/collections", async (context) => {
+		const input = await parseJsonBody(
+			context.req.raw,
+			createCollectionRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			const collection = createCollection(
+				dependencies.database,
+				input.name,
+				input.photoIds,
+			);
+			return jsonResponse(
+				collectionSchema,
+				serializeCollection(collection),
+				201,
+			);
+		} catch (error) {
+			return collectionError(error);
+		}
+	});
+
+	router.patch("/collections/:id", async (context) => {
+		const id = collectionIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		const input = await parseJsonBody(
+			context.req.raw,
+			renameCollectionRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			return jsonResponse(
+				collectionSchema,
+				serializeCollection(
+					renameCollection(dependencies.database, id.data, input.name),
+				),
+			);
+		} catch (error) {
+			return collectionError(error);
+		}
+	});
+
+	router.delete("/collections/:id", (context) => {
+		const id = collectionIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		try {
+			deleteCollection(dependencies.database, id.data);
+			return new Response(null, { status: 204 });
+		} catch (error) {
+			return collectionError(error);
+		}
+	});
+
+	router.post("/collections/:id/photos", async (context) => {
+		const id = collectionIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		const input = await parseJsonBody(
+			context.req.raw,
+			collectionPhotosRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			return jsonResponse(
+				addCollectionPhotosResponseSchema,
+				addPhotosToCollection(dependencies.database, id.data, input.photoIds),
+			);
+		} catch (error) {
+			return collectionError(error);
+		}
+	});
+
+	router.post("/collections/:id/photos/remove", async (context) => {
+		const id = collectionIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		const input = await parseJsonBody(
+			context.req.raw,
+			collectionPhotosRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			return jsonResponse(
+				removeCollectionPhotosResponseSchema,
+				removePhotosFromCollection(
+					dependencies.database,
+					id.data,
+					input.photoIds,
+				),
+			);
+		} catch (error) {
+			return collectionError(error);
+		}
+	});
+
 	router.patch("/photos/:id", async (context) => {
 		const id = photoIdSchema.safeParse(context.req.param("id"));
 		if (!id.success) return invalidRequest();
-		let body: unknown;
-		try {
-			body = await readJsonBody(context.req.raw, false);
-		} catch {
-			return invalidRequest();
-		}
-		const patch = photoCurationPatchSchema.safeParse(body);
-		if (!patch.success) return invalidRequest();
+		const patch = await parseJsonBody(
+			context.req.raw,
+			photoCurationPatchSchema,
+		);
+		if (!patch) return invalidRequest();
 		try {
 			const { updated } = updatePhotoCuration(
 				dependencies.database,
 				[id.data],
-				patch.data,
+				patch,
 			);
 			const photo =
 				updated.length > 0
@@ -204,18 +369,12 @@ export function createV1Router(dependencies: V1Dependencies) {
 	});
 
 	router.post("/search", async (context) => {
-		let body: unknown;
-		try {
-			body = await readJsonBody(context.req.raw, false);
-		} catch {
-			return invalidRequest();
-		}
-		const input = searchRequestSchema.safeParse(body);
-		if (!input.success) return invalidRequest();
+		const input = await parseJsonBody(context.req.raw, searchRequestSchema);
+		if (!input) return invalidRequest();
 		try {
 			const result = await searchPhotoCatalog(
 				dependencies.searchPhotos,
-				input.data,
+				input,
 				{ normalizeDateMonths: true },
 			);
 			return jsonResponse(

@@ -549,10 +549,15 @@ describe("API v1 contract", () => {
 			};
 		};
 		expect(Object.keys(document.paths).sort()).toEqual([
+			"/api/v1/collections",
+			"/api/v1/collections/{id}",
+			"/api/v1/collections/{id}/photos",
+			"/api/v1/collections/{id}/photos/remove",
 			"/api/v1/filter-options",
 			"/api/v1/folders",
 			"/api/v1/photos",
 			"/api/v1/photos/{id}",
+			"/api/v1/photos/{id}/collections",
 			"/api/v1/photos/{id}/similar",
 			"/api/v1/scans",
 			"/api/v1/scans/active",

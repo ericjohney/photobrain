@@ -15,6 +15,8 @@ interface KeyboardShortcutsOptions {
 	exitSimilar: (() => void) | null;
 	/** Rate or flag the active photo (`0`-`5`, `P`, `X`, `U`). */
 	curateActivePhoto: (patch: CurationPatch) => void;
+	/** Toggle the active photo in the last-used collection (`B`); null when none. */
+	toggleLastUsedCollection: (() => void) | null;
 	enabled?: boolean;
 }
 
@@ -28,6 +30,7 @@ export function useKeyboardShortcuts({
 	findSimilar,
 	exitSimilar,
 	curateActivePhoto,
+	toggleLastUsedCollection,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
 	useEffect(() => {
@@ -85,6 +88,18 @@ export function useKeyboardShortcuts({
 					}
 					break;
 
+				case "b":
+					if (
+						!isCtrlOrCmd &&
+						!e.altKey &&
+						hasActivePhoto &&
+						toggleLastUsedCollection
+					) {
+						e.preventDefault();
+						toggleLastUsedCollection();
+					}
+					break;
+
 				// Panel shortcuts
 				case "tab":
 					e.preventDefault();
@@ -138,5 +153,6 @@ export function useKeyboardShortcuts({
 		findSimilar,
 		exitSimilar,
 		curateActivePhoto,
+		toggleLastUsedCollection,
 	]);
 }

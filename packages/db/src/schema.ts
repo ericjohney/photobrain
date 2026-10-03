@@ -7,6 +7,7 @@ import {
 	primaryKey,
 	sqliteTable,
 	text,
+	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 export const photos = sqliteTable(
@@ -188,6 +189,40 @@ export const scanItems = sqliteTable(
 	],
 );
 
+// Manual albums. Names are unique case-insensitively (NOCASE unique index).
+export const collections = sqliteTable(
+	"collections",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		name: text("name").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("collections_name_nocase_unique").on(
+			sql`${table.name} COLLATE NOCASE`,
+		),
+	],
+);
+
+// Collection membership. Deleting either a collection or a photo removes the row.
+export const collectionPhotos = sqliteTable(
+	"collection_photos",
+	{
+		collectionId: integer("collection_id")
+			.notNull()
+			.references(() => collections.id, { onDelete: "cascade" }),
+		photoId: integer("photo_id")
+			.notNull()
+			.references(() => photos.id, { onDelete: "cascade" }),
+		addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.collectionId, table.photoId] }),
+		index("idx_collection_photos_photo_id").on(table.photoId),
+	],
+);
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -218,3 +253,7 @@ export type ScanManifest = typeof scanManifests.$inferSelect;
 export type NewScanManifest = typeof scanManifests.$inferInsert;
 export type ScanItem = typeof scanItems.$inferSelect;
 export type NewScanItem = typeof scanItems.$inferInsert;
+export type Collection = typeof collections.$inferSelect;
+export type NewCollection = typeof collections.$inferInsert;
+export type CollectionPhoto = typeof collectionPhotos.$inferSelect;
+export type NewCollectionPhoto = typeof collectionPhotos.$inferInsert;

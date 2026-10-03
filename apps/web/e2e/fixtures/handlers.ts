@@ -44,24 +44,126 @@ export type HandlerOverrides = Partial<Record<string, Handler>>;
 
 export const FIXTURE_JOB_ID = "11111111-1111-4111-8111-111111111111";
 
+const TRPC_ERROR_CODES = {
+	BAD_REQUEST: { code: -32600, httpStatus: 400 },
+	NOT_FOUND: { code: -32004, httpStatus: 404 },
+	CONFLICT: { code: -32009, httpStatus: 409 },
+	INTERNAL_SERVER_ERROR: { code: -32603, httpStatus: 500 },
+} as const;
+
+/** Thrown by a handler to answer with a typed tRPC error instead of a 500. */
+export class TrpcFixtureError extends Error {
+	constructor(
+		readonly code: keyof typeof TRPC_ERROR_CODES,
+		message: string,
+	) {
+		super(message);
+	}
+}
+
 type CurationInput = {
 	photoIds: number[];
 	rating?: number;
 	flag?: FixturePhoto["flag"];
 };
 
+/** Optional collection scope accepted by photos, searchPhotos and similarPhotos. */
+type CollectionScope = { collectionId?: number };
+
+type FixtureCollection = {
+	id: number;
+	name: string;
+	createdAt: Date;
+	updatedAt: Date;
+	/** Member photo IDs in the order they were added (last = cover). */
+	photoIds: number[];
+};
+
 /**
- * Builds handlers over a private copy of the fixture library, so
- * `setPhotoCuration` writes are visible to later reads on the same page.
+ * Builds handlers over a private copy of the fixture library and an empty
+ * collection store, so writes (`setPhotoCuration`, collection mutations) are
+ * visible to later reads on the same page.
  */
 function createDefaultHandlers(): Record<string, Handler> {
 	const library = FIXTURE_PHOTOS.map((photo) => ({ ...photo }));
+	const collections = new Map<number, FixtureCollection>();
+	let nextCollectionId = 1;
+	// Strictly increasing so same-millisecond writes still order deterministically.
+	let clock = Date.parse("2024-09-01T00:00:00Z");
+	const now = () => {
+		clock += 1000;
+		return new Date(clock);
+	};
+
+	const collectionDto = (collection: FixtureCollection) => {
+		const coverId = collection.photoIds.at(-1);
+		return {
+			id: collection.id,
+			name: collection.name,
+			photoCount: collection.photoIds.length,
+			cover:
+				coverId === undefined
+					? null
+					: { photoId: coverId, thumbnailUpdatedAt: null },
+			createdAt: collection.createdAt,
+			updatedAt: collection.updatedAt,
+		};
+	};
+	const findCollection = (id: number) => {
+		const collection = collections.get(id);
+		if (!collection) {
+			throw new TrpcFixtureError("NOT_FOUND", "Collection not found");
+		}
+		return collection;
+	};
+	/** Trimmed name; NAME_TAKEN (case-insensitive) maps to CONFLICT like the API. */
+	const checkedName = (name: string, exceptId?: number) => {
+		const trimmed = name.trim();
+		if (trimmed.length < 1 || trimmed.length > 100) {
+			throw new TrpcFixtureError("BAD_REQUEST", "Invalid collection name");
+		}
+		for (const other of collections.values()) {
+			if (
+				other.id !== exceptId &&
+				other.name.toLowerCase() === trimmed.toLowerCase()
+			) {
+				throw new TrpcFixtureError(
+					"CONFLICT",
+					"A collection with that name already exists",
+				);
+			}
+		}
+		return trimmed;
+	};
+	const addPhotos = (collection: FixtureCollection, photoIds: number[]) => {
+		let added = 0;
+		for (const photoId of photoIds) {
+			if (
+				library.some((p) => p.id === photoId) &&
+				!collection.photoIds.includes(photoId)
+			) {
+				collection.photoIds.push(photoId);
+				added++;
+			}
+		}
+		collection.updatedAt = now();
+		return added;
+	};
+	/** Applies `collectionId` like the API's `photos.id IN (members)` condition. */
+	const scopeToCollection = ({ collectionId }: CollectionScope) => {
+		if (collectionId === undefined) return library;
+		const members = collections.get(collectionId)?.photoIds ?? [];
+		return library.filter((p) => members.includes(p.id));
+	};
+
 	return {
 		folders: () => FIXTURE_FOLDERS,
 		photos: (input) => {
+			const { collectionId, ...filters } = (input ??
+				{}) as FixturePhotoFilters & CollectionScope;
 			const photos = filterFixturePhotos(
-				library,
-				(input ?? {}) as FixturePhotoFilters,
+				scopeToCollection({ collectionId }),
+				filters,
 			);
 			return {
 				photos,
@@ -70,25 +172,30 @@ function createDefaultHandlers(): Record<string, Handler> {
 			};
 		},
 		searchPhotos: (input) => {
-			const { query = "", ...filters } = (input ??
-				{}) as FixturePhotoFilters & {
-				query?: string;
-			};
+			const {
+				query = "",
+				collectionId,
+				...filters
+			} = (input ?? {}) as FixturePhotoFilters &
+				CollectionScope & {
+					query?: string;
+				};
 			const photos = searchPhotosByQuery(
 				query,
-				filterFixturePhotos(library, filters),
+				filterFixturePhotos(scopeToCollection({ collectionId }), filters),
 			);
 			return { photos, total: photos.length, query };
 		},
 		similarPhotos: (input) => {
-			const photoId =
-				input && typeof input === "object" && "photoId" in input
-					? input.photoId
-					: undefined;
+			const { photoId, collectionId } = (input ?? {}) as CollectionScope & {
+				photoId?: number;
+			};
 			if (!library.some((p) => p.id === photoId)) {
 				throw new Error(`Photo ${photoId} not found`);
 			}
-			const photos = library.filter((p) => p.id !== photoId).reverse();
+			const photos = scopeToCollection({ collectionId })
+				.filter((p) => p.id !== photoId)
+				.reverse();
 			return {
 				photos,
 				total: photos.length,
@@ -106,6 +213,79 @@ function createDefaultHandlers(): Record<string, Handler> {
 					return { id: p.id, rating: p.rating, flag: p.flag };
 				});
 			return { updated };
+		},
+		collections: () => ({
+			collections: [...collections.values()]
+				.sort((a, b) =>
+					a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
+				)
+				.map(collectionDto),
+		}),
+		collectionsForPhoto: (input) => {
+			const { photoId } = input as { photoId: number };
+			if (!library.some((p) => p.id === photoId)) {
+				throw new TrpcFixtureError("NOT_FOUND", "Photo not found");
+			}
+			return {
+				collectionIds: [...collections.values()]
+					.filter((c) => c.photoIds.includes(photoId))
+					.map((c) => c.id),
+			};
+		},
+		createCollection: (input) => {
+			const { name, photoIds = [] } = input as {
+				name: string;
+				photoIds?: number[];
+			};
+			const createdAt = now();
+			const collection: FixtureCollection = {
+				id: nextCollectionId++,
+				name: checkedName(name),
+				createdAt,
+				updatedAt: createdAt,
+				photoIds: [],
+			};
+			collections.set(collection.id, collection);
+			if (photoIds.length > 0) addPhotos(collection, photoIds);
+			return collectionDto(collection);
+		},
+		renameCollection: (input) => {
+			const { id, name } = input as { id: number; name: string };
+			const collection = findCollection(id);
+			collection.name = checkedName(name, id);
+			collection.updatedAt = now();
+			return collectionDto(collection);
+		},
+		deleteCollection: (input) => {
+			const { id } = input as { id: number };
+			findCollection(id);
+			collections.delete(id);
+			return { id };
+		},
+		addToCollection: (input) => {
+			const { collectionId, photoIds } = input as {
+				collectionId: number;
+				photoIds: number[];
+			};
+			const collection = findCollection(collectionId);
+			const added = addPhotos(collection, photoIds);
+			return { added, photoCount: collection.photoIds.length };
+		},
+		removeFromCollection: (input) => {
+			const { collectionId, photoIds } = input as {
+				collectionId: number;
+				photoIds: number[];
+			};
+			const collection = findCollection(collectionId);
+			const before = collection.photoIds.length;
+			collection.photoIds = collection.photoIds.filter(
+				(id) => !photoIds.includes(id),
+			);
+			collection.updatedAt = now();
+			return {
+				removed: before - collection.photoIds.length,
+				photoCount: collection.photoIds.length,
+			};
 		},
 		filterOptions: () => ({
 			cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
@@ -176,16 +356,20 @@ export async function installTrpcHandlers(
 						},
 					};
 				} catch (error) {
-					// A throwing handler (e.g. an override told to fail) becomes a
-					// tRPC INTERNAL_SERVER_ERROR for that batch entry.
+					// A TrpcFixtureError carries its tRPC code; any other throw (e.g. an
+					// override told to fail) becomes INTERNAL_SERVER_ERROR.
+					const code =
+						error instanceof TrpcFixtureError
+							? error.code
+							: "INTERNAL_SERVER_ERROR";
 					return {
 						error: {
 							json: {
 								message: error instanceof Error ? error.message : String(error),
-								code: -32603,
+								code: TRPC_ERROR_CODES[code].code,
 								data: {
-									code: "INTERNAL_SERVER_ERROR",
-									httpStatus: 500,
+									code,
+									httpStatus: TRPC_ERROR_CODES[code].httpStatus,
 									path,
 								},
 							},

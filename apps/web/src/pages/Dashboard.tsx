@@ -1,4 +1,4 @@
-import { Loader2, Search, Sparkles, X } from "lucide-react";
+import { Layers, Loader2, Search, Sparkles, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
@@ -7,19 +7,23 @@ import { ActivityPanel } from "@/components/panels/ActivityPanel";
 import {
 	EMPTY_LIBRARY_FILTERS,
 	FLAG_FILTER_LABELS,
-	LibraryPanel,
 	type LibraryFilters,
+	LibraryPanel,
 	minRatingLabel,
 } from "@/components/panels/LibraryPanel";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { PanelLayout } from "@/components/panels/PanelLayout";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
+import { useCollections } from "@/hooks/use-collections";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useLibraryState } from "@/hooks/use-library-state";
-import { type CurationPatch, usePhotoCuration } from "@/hooks/use-photo-curation";
 import { usePanelState } from "@/hooks/use-panel-state";
+import {
+	type CurationPatch,
+	usePhotoCuration,
+} from "@/hooks/use-photo-curation";
 import { trpc } from "@/lib/trpc";
 import type { PhotoMetadata } from "@/lib/types";
 import { formatMonthLabel } from "@/lib/utils";
@@ -31,13 +35,15 @@ export function Dashboard() {
 		null,
 	);
 	const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+	// Mutually exclusive with selectedFolder; null with no folder = All Photos.
+	const [selectedCollectionId, setSelectedCollectionId] = useState<
+		number | null
+	>(null);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
-	const [filters, setFilters] = useState<LibraryFilters>(
-		EMPTY_LIBRARY_FILTERS,
-	);
+	const [filters, setFilters] = useState<LibraryFilters>(EMPTY_LIBRARY_FILTERS);
 	// The API defaults filterRaw to "all"; omit it from requests in that case.
-	const filterRaw =
-		filters.filterRaw === "all" ? undefined : filters.filterRaw;
+	const filterRaw = filters.filterRaw === "all" ? undefined : filters.filterRaw;
+	const collectionId = selectedCollectionId ?? undefined;
 
 	// tRPC queries
 	const foldersQuery = trpc.folders.useQuery();
@@ -49,6 +55,7 @@ export function Dashboard() {
 	const photosQuery = trpc.photos.useQuery(
 		{
 			folder: selectedFolder ?? undefined,
+			collectionId,
 			filterRaw,
 			camera: filters.camera ?? undefined,
 			lens: filters.lens ?? undefined,
@@ -68,6 +75,7 @@ export function Dashboard() {
 			query: searchQuery,
 			limit: 50,
 			folder: selectedFolder ?? undefined,
+			collectionId,
 			filterRaw,
 			camera: filters.camera ?? undefined,
 			lens: filters.lens ?? undefined,
@@ -83,6 +91,14 @@ export function Dashboard() {
 		{ photoId: similarSource?.id ?? 0, limit: 60 },
 		{ enabled: similarSource !== null },
 	);
+
+	const collectionsApi = useCollections();
+	const selectedCollection =
+		selectedCollectionId === null
+			? null
+			: (collectionsApi.collections?.find(
+					(c) => c.id === selectedCollectionId,
+				) ?? null);
 
 	// Inngest-based async scan
 	const scanMutation = trpc.scan.useMutation({
@@ -135,6 +151,15 @@ export function Dashboard() {
 		[library.activePhoto, setCuration],
 	);
 
+	// `B`: toggle the active photo in the last-used collection.
+	const { lastUsedCollectionId, toggleLastUsedCollection } = collectionsApi;
+	const activePhotoId = library.activePhoto?.id;
+	const toggleActiveInLastUsed = useCallback(() => {
+		if (activePhotoId !== undefined) {
+			void toggleLastUsedCollection(activePhotoId);
+		}
+	}, [activePhotoId, toggleLastUsedCollection]);
+
 	// Keyboard shortcuts
 	useKeyboardShortcuts({
 		viewMode: library.viewMode,
@@ -146,6 +171,8 @@ export function Dashboard() {
 		findSimilar: handleFindSimilar,
 		exitSimilar: similarSource ? exitSimilar : null,
 		curateActivePhoto,
+		toggleLastUsedCollection:
+			lastUsedCollectionId === null ? null : toggleActiveInLastUsed,
 	});
 
 	const handlePhotoClick = useCallback(
@@ -184,6 +211,7 @@ export function Dashboard() {
 			setSearchQuery("");
 			setSimilarSource(null);
 			setSelectedFolder(null);
+			setSelectedCollectionId(null);
 			scanMutation.mutate(force ? { force: true } : undefined);
 		},
 		[scanMutation, scanDisabled],
@@ -192,8 +220,26 @@ export function Dashboard() {
 	const handleFolderSelect = useCallback((folder: string | null) => {
 		// Folder selection scopes an active search rather than clearing it.
 		setSelectedFolder(folder);
+		setSelectedCollectionId(null);
 		setSimilarSource(null);
 	}, []);
+
+	const handleCollectionSelect = useCallback((id: number | null) => {
+		// Like folders, a collection scopes an active search; the two are exclusive.
+		setSelectedCollectionId(id);
+		setSelectedFolder(null);
+		setSimilarSource(null);
+	}, []);
+
+	const { deleteCollection } = collectionsApi;
+	const handleDeleteCollection = useCallback(
+		async (id: number) => {
+			await deleteCollection(id);
+			// Deleting the viewed collection returns to All Photos.
+			setSelectedCollectionId((current) => (current === id ? null : current));
+		},
+		[deleteCollection],
+	);
 
 	// Navigation helpers for loupe - memoized to avoid recalculation on every render
 	const { hasPrev, hasNext } = useMemo(() => {
@@ -314,6 +360,7 @@ export function Dashboard() {
 					? "Searching"
 					: `${searchResultCount} ${searchResultCount === 1 ? "result" : "results"}`}{" "}
 				for “{searchQuery}”{selectedFolder ? ` in ${selectedFolder}` : ""}
+				{selectedCollection ? ` in ${selectedCollection.name}` : ""}
 				{searchScope.length > 0 ? ` · ${searchScope.join(" · ")}` : ""}
 			</span>
 			<button
@@ -326,7 +373,30 @@ export function Dashboard() {
 			</button>
 		</div>
 	);
-	const banner = similarChip || searchHeader;
+	const collectionHeader = selectedCollection && (
+		<div
+			data-testid="collection-header"
+			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
+		>
+			<Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			<h2 className="min-w-0 truncate font-medium">
+				{selectedCollection.name}
+			</h2>
+			<span className="flex-1 text-xs text-muted-foreground">
+				{selectedCollection.photoCount}{" "}
+				{selectedCollection.photoCount === 1 ? "photo" : "photos"}
+			</span>
+			<button
+				type="button"
+				aria-label="Show all photos"
+				onClick={() => handleCollectionSelect(null)}
+				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+			>
+				<X className="h-3.5 w-3.5" />
+			</button>
+		</div>
+	);
+	const banner = similarChip || searchHeader || collectionHeader;
 
 	return (
 		<PanelLayout
@@ -362,6 +432,12 @@ export function Dashboard() {
 							folders={foldersQuery.data?.folders}
 							selectedFolder={selectedFolder}
 							onFolderSelect={handleFolderSelect}
+							collections={collectionsApi.collections}
+							selectedCollectionId={selectedCollectionId}
+							onCollectionSelect={handleCollectionSelect}
+							onCreateCollection={collectionsApi.createCollection}
+							onRenameCollection={collectionsApi.renameCollection}
+							onDeleteCollection={handleDeleteCollection}
 							filterOptions={filterOptionsQuery.data}
 							activeFilters={filters}
 							onFilterChange={setFilters}
@@ -379,6 +455,12 @@ export function Dashboard() {
 					photo={library.activePhoto}
 					onFindSimilar={handleFindSimilar}
 					onCurate={curateActivePhoto}
+					collections={{
+						collections: collectionsApi.collections,
+						onSetMembership: collectionsApi.setMembership,
+						onCreate: collectionsApi.createCollection,
+						error: collectionsApi.membershipError,
+					}}
 				/>
 			}
 			filmstrip={

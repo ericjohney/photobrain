@@ -18,3 +18,6 @@ export type PhotoFlag = NonNullable<PhotoMetadata["flag"]>;
 export type FlagFilter = NonNullable<
 	Extract<RouterInputs["photos"], object>["flag"]
 >;
+
+// Collection types
+export type Collection = RouterOutputs["collections"]["collections"][number];

@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { About } from "@/pages/About";
-import { Collections } from "@/pages/Collections";
 import { Dashboard } from "@/pages/Dashboard";
 import { Preferences } from "@/pages/Preferences";
 
@@ -21,7 +20,6 @@ function App() {
 		<BrowserRouter>
 			<Routes>
 				<Route path="/" element={<Dashboard />} />
-				<Route path="/collections" element={<Collections />} />
 				<Route path="/preferences" element={<Preferences />} />
 				<Route path="/about" element={<About />} />
 			</Routes>

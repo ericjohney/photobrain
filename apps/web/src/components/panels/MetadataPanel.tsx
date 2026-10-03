@@ -23,11 +23,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { CurationPatch } from "@/hooks/use-photo-curation";
 import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+	PhotoCollections,
+	type PhotoCollectionsProps,
+} from "./PhotoCollections";
 
 interface MetadataPanelProps {
 	photo: PhotoMetadata | null;
 	onFindSimilar?: () => void;
 	onCurate?: (patch: CurationPatch) => void;
+	/** Collection membership controls for the active photo. */
+	collections?: Omit<PhotoCollectionsProps, "photoId">;
 	className?: string;
 }
 
@@ -163,6 +169,7 @@ export function MetadataPanel({
 	photo,
 	onFindSimilar,
 	onCurate,
+	collections,
 	className,
 }: MetadataPanelProps) {
 	if (!photo) {
@@ -199,6 +206,9 @@ export function MetadataPanel({
 					</div>
 				)}
 				{onCurate && <CurationControls photo={photo} onCurate={onCurate} />}
+				{collections && (
+					<PhotoCollections photoId={photo.id} {...collections} />
+				)}
 				{/* File Info */}
 				<MetadataSection title="File" icon={FileImage}>
 					<div className="space-y-0.5 pt-1">

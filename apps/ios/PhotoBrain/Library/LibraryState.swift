@@ -122,7 +122,7 @@ protocol FilterEditingStore: ObservableObject {
 }
 
 @MainActor
-final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying {
+final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying, CollectionMembershipObserving {
     enum LoadState: Equatable {
         case idle
         case loading
@@ -143,7 +143,11 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     @Published var sort: LibrarySort = .captured
     @Published var selectedPhotoIDs: Set<Int> = []
     @Published var isSelecting = false
-    @Published var activePhotoID: Int?
+    @Published var activePhotoID: Int? {
+        didSet {
+            if activePhotoID == nil, !pendingRemovalIDs.isEmpty { removeRecords(pendingRemovalIDs) }
+        }
+    }
     @Published var firstVisiblePhotoID: Int?
     @Published var isAtNewestEdge = true
     @Published var isBrowsingHistory = false
@@ -152,15 +156,21 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
 
     let api: any PhotoBrainAPI
     let curation: PhotoCurationCenter
+    /// When set, every listing is scoped to this collection's members.
+    let collectionId: Int?
     private var loadTask: Task<Void, Never>?
     private var generation = 0
     private var recordsByID: [Int: PhotoRecord] = [:]
     private var presentationGeneration = 0
     private var groupingBeforeSelection: LibraryGrouping?
+    /// Photos removed from the scoped collection while the loupe is open; dropped on dismissal
+    /// so the loupe never pages away underneath the membership sheet.
+    private var pendingRemovalIDs: Set<Int> = []
 
-    init(api: any PhotoBrainAPI, curation: PhotoCurationCenter? = nil) {
+    init(api: any PhotoBrainAPI, curation: PhotoCurationCenter? = nil, collectionId: Int? = nil) {
         self.api = api
         self.curation = curation ?? PhotoCurationCenter(api: api)
+        self.collectionId = collectionId
         self.curation.register(self)
     }
 
@@ -198,18 +208,22 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
             loadState = .loading
         }
         refreshError = nil
-        let query = filters.photoQuery
+        var query = filters.photoQuery
+        query.collectionId = collectionId
+        // Filter metadata is library-wide; a collection screen has no filter UI to feed.
+        let loadsFilterOptions = collectionId == nil
         let task = Task { [api] in
             let photosTask = Task { try await api.photos(query: query) }
-            let optionsTask = Task { try await api.filterOptions(folder: nil) }
+            let optionsTask = loadsFilterOptions ? Task { try await api.filterOptions(folder: nil) } : nil
             defer {
                 photosTask.cancel()
-                optionsTask.cancel()
+                optionsTask?.cancel()
             }
 
             do {
                 let photos = try await photosTask.value
                 guard !Task.isCancelled, requestGeneration == generation else { return }
+                pendingRemovalIDs.removeAll()
                 records = curation.overlay(photos.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
                 recordsByID.removeAll(keepingCapacity: true)
                 for photo in records {
@@ -238,6 +252,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
                 }
             }
 
+            guard let optionsTask else { return }
             do {
                 let options = try await optionsTask.value
                 guard !Task.isCancelled, requestGeneration == generation else { return }
@@ -252,6 +267,36 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         }
         loadTask = task
         await task.value
+    }
+
+    /// Keeps a collection-scoped listing in sync with membership edits made anywhere in the app.
+    func collectionMembershipChanged(collectionId: Int, photoIds: [Int], isMember: Bool) {
+        guard collectionId == self.collectionId else { return }
+        if isMember {
+            pendingRemovalIDs.subtract(photoIds)
+            if photoIds.contains(where: { recordsByID[$0] == nil }) {
+                Task { await load() }
+            }
+        } else if activePhotoID == nil {
+            removeRecords(Set(photoIds))
+        } else {
+            pendingRemovalIDs.formUnion(photoIds.filter { recordsByID[$0] != nil })
+        }
+    }
+
+    private func removeRecords(_ ids: Set<Int>) {
+        pendingRemovalIDs.subtract(ids)
+        guard ids.contains(where: { recordsByID[$0] != nil }) else { return }
+        records.removeAll { ids.contains($0.id) }
+        for id in ids { recordsByID[id] = nil }
+        selectedPhotoIDs.subtract(ids)
+        orderedRecords.removeAll { ids.contains($0.id) }
+        for index in sections.indices {
+            sections[index].photos.removeAll { ids.contains($0.id) }
+        }
+        sections.removeAll { $0.photos.isEmpty }
+        presentationRevision &+= 1
+        if case .content = loadState, records.isEmpty { loadState = .empty }
     }
 
     /// Patches one record in place (records, lookup, ordered list, and its section) and bumps

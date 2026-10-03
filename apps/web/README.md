@@ -28,10 +28,10 @@ The production server is `serve.ts`. It reads `API_URL`, `HOST`, and `PORT`, ser
 ## Application Structure
 
 - `src/main.tsx`: React Query and tRPC providers.
-- `src/App.tsx`: routes `/`, `/collections`, `/preferences`, and `/about`.
+- `src/App.tsx`: routes `/`, `/preferences`, and `/about`.
 - `src/pages/Dashboard.tsx`: primary data and state composition.
 - `src/components/`: toolbar, grid, loupe, filmstrip, metadata, panels, and UI primitives.
-- `src/hooks/`: library, panels, shortcuts, and Inngest Realtime progress state.
+- `src/hooks/`: library, panels, shortcuts, collections, and Inngest Realtime progress state.
 - `src/lib/`: tRPC client, runtime configuration, thumbnail URLs, and shared types.
 - `e2e/`: Playwright specs and mocked network fixtures.
 
@@ -40,7 +40,8 @@ The dashboard uses tRPC at `/api/trpc` for metadata, folders, filters, search, s
 ## Current Behavior
 
 - Grid and loupe views use one active photo; multi-selection is not implemented.
-- `G` switches to grid, `E` opens loupe when a photo is active, `Tab` toggles panels, `Shift+Space` toggles the filmstrip, arrows navigate, and `Escape` returns to grid. With an active photo, `0`-`5` set its star rating, `P` picks, `X` rejects, and `U` clears the flag.
+- `G` switches to grid, `E` opens loupe when a photo is active, `Tab` toggles panels, `Shift+Space` toggles the filmstrip, arrows navigate, and `Escape` returns to grid. With an active photo, `0`-`5` set its star rating, `P` picks, `X` rejects, `U` clears the flag, and `B` toggles it in the last-used collection.
+- Collections are managed in the library panel (create with "+", rename/delete from each row's "…" menu; deleting never removes photos). Selecting one scopes the grid and search; the metadata panel's "Add to collection" popover adds or removes the active photo.
 - The dashboard uses fixed left/right panel dimensions even though panel dimensions are persisted in localStorage.
 - Search runs reactively on each non-empty input change; it is not debounced.
 - `Lightbox.tsx` and `SearchBar.tsx` are legacy/unreferenced by the active dashboard. Verify imports before extending them.

@@ -10,6 +10,8 @@ struct PhotoQuery: Hashable, Sendable {
     /// Only photos rated at least this many stars (1-5).
     var minRating: Int?
     var flag: PhotoFlagFilter?
+    /// Scopes results to one collection's members.
+    var collectionId: Int?
 }
 
 protocol PhotoBrainAPI: Sendable {
@@ -23,6 +25,15 @@ protocol PhotoBrainAPI: Sendable {
     /// `PATCH /photos/{id}`. `rating: nil` and `flag: nil` leave a field unchanged;
     /// `flag: .some(nil)` clears the flag. At least one field must be provided.
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO
+    func collections() async throws -> CollectionsResponseDTO
+    /// `POST /collections`, expects `201`. The name is validated client-side first.
+    func createCollection(name: String, photoIds: [Int]?) async throws -> CollectionDTO
+    func renameCollection(id: Int, name: String) async throws -> CollectionDTO
+    /// `DELETE /collections/{id}`, expects `204` with an empty body. Photos are untouched.
+    func deleteCollection(id: Int) async throws
+    func addPhotos(toCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosAddedDTO
+    func removePhotos(fromCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosRemovedDTO
+    func collectionsForPhoto(id: Int) async throws -> PhotoCollectionsDTO
     func startScan(force: Bool) async throws -> StartScanResponseDTO
     func scan(id: String) async throws -> ScanDTO?
     func activeScans() async throws -> ActiveScansResponseDTO
@@ -77,6 +88,9 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
             items.append(URLQueryItem(name: "minRating", value: String(minRating)))
         }
         if let flag = query.flag { items.append(URLQueryItem(name: "flag", value: flag.rawValue)) }
+        if let collectionId = query.collectionId {
+            items.append(URLQueryItem(name: "collectionId", value: String(collectionId)))
+        }
         return try await get(path: ["photos"], queryItems: items)
     }
 
@@ -112,6 +126,69 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
             path: ["photos", String(id)],
             body: CurationPatchDTO(rating: rating, flag: flag)
         )
+    }
+
+    func collections() async throws -> CollectionsResponseDTO {
+        try await get(path: ["collections"])
+    }
+
+    func createCollection(name: String, photoIds: [Int]?) async throws -> CollectionDTO {
+        let name = try CollectionName.validated(name)
+        if let photoIds { try Self.validatePhotoBatch(photoIds, allowEmpty: true) }
+        return try await send(
+            method: "POST",
+            path: ["collections"],
+            body: CreateCollectionRequestDTO(name: name, photoIds: photoIds),
+            expectedStatus: 201
+        )
+    }
+
+    func renameCollection(id: Int, name: String) async throws -> CollectionDTO {
+        let name = try CollectionName.validated(name)
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await send(
+            method: "PATCH",
+            path: ["collections", String(id)],
+            body: RenameCollectionRequestDTO(name: name)
+        )
+    }
+
+    func deleteCollection(id: Int) async throws {
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        var request = try request(path: ["collections", String(id)])
+        request.httpMethod = "DELETE"
+        _ = try await transfer(request, expectedStatus: 204)
+    }
+
+    func addPhotos(toCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosAddedDTO {
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        try Self.validatePhotoBatch(photoIds, allowEmpty: false)
+        return try await post(
+            path: ["collections", String(id), "photos"],
+            body: CollectionPhotosRequestDTO(photoIds: photoIds)
+        )
+    }
+
+    func removePhotos(fromCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosRemovedDTO {
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        try Self.validatePhotoBatch(photoIds, allowEmpty: false)
+        return try await post(
+            path: ["collections", String(id), "photos", "remove"],
+            body: CollectionPhotosRequestDTO(photoIds: photoIds)
+        )
+    }
+
+    func collectionsForPhoto(id: Int) async throws -> PhotoCollectionsDTO {
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await get(path: ["photos", String(id), "collections"])
+    }
+
+    private static func validatePhotoBatch(_ ids: [Int], allowEmpty: Bool) throws {
+        guard (allowEmpty || !ids.isEmpty),
+              ids.count <= CollectionName.maximumPhotoBatch,
+              ids.allSatisfy({ $0 > 0 }) else {
+            throw PhotoBrainAPIError.invalidRequest
+        }
     }
 
     func startScan(force: Bool) async throws -> StartScanResponseDTO {
@@ -154,7 +231,8 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
     private func send<Body: Encodable, Response: Decodable>(
         method: String,
         path: [String],
-        body: Body
+        body: Body,
+        expectedStatus: Int? = nil
     ) async throws -> Response {
         var request = try request(path: path)
         request.httpMethod = method
@@ -164,7 +242,7 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         } catch {
             throw PhotoBrainAPIError.invalidRequest
         }
-        return try await perform(request)
+        return try await perform(request, expectedStatus: expectedStatus)
     }
 
     private func request(path: [String], queryItems: [URLQueryItem] = []) throws -> URLRequest {
@@ -179,7 +257,31 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         return request
     }
 
-    private func perform<Response: Decodable>(_ request: URLRequest) async throws -> Response {
+    /// Decodes a JSON body. `expectedStatus` pins the success status (e.g. `201` for create);
+    /// when nil any 2xx is accepted.
+    private func perform<Response: Decodable>(
+        _ request: URLRequest,
+        expectedStatus: Int? = nil
+    ) async throws -> Response {
+        let data = try await transfer(request, expectedStatus: expectedStatus)
+        let endpoint = request.url?.path ?? "unknown"
+        let decodeSignpost = SpikeSignposts.beginJSONDecode(
+            endpoint: endpoint,
+            byteCount: data.count
+        )
+        do {
+            let decoded = try decoder.decode(Response.self, from: data)
+            SpikeSignposts.endJSONDecode(decodeSignpost, succeeded: true)
+            return decoded
+        } catch {
+            SpikeSignposts.endJSONDecode(decodeSignpost, succeeded: false)
+            throw PhotoBrainAPIError.decoding(String(describing: error))
+        }
+    }
+
+    /// Sends `request` and returns the body of a successful response. Non-2xx responses map to
+    /// `.server`; a 2xx other than `expectedStatus` is an invalid response.
+    private func transfer(_ request: URLRequest, expectedStatus: Int?) async throws -> Data {
         let identifier = UUID()
         let endpoint = request.url?.path ?? "unknown"
         let metricsDelegate = APITransferMetricsDelegate(endpoint: endpoint)
@@ -263,19 +365,10 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
                 message: HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
             )
         }
-
-        let decodeSignpost = SpikeSignposts.beginJSONDecode(
-            endpoint: endpoint,
-            byteCount: data.count
-        )
-        do {
-            let decoded = try decoder.decode(Response.self, from: data)
-            SpikeSignposts.endJSONDecode(decodeSignpost, succeeded: true)
-            return decoded
-        } catch {
-            SpikeSignposts.endJSONDecode(decodeSignpost, succeeded: false)
-            throw PhotoBrainAPIError.decoding(String(describing: error))
+        if let expectedStatus, http.statusCode != expectedStatus {
+            throw PhotoBrainAPIError.invalidResponse
         }
+        return data
     }
 
     private func store(_ task: Task<(Data, URLResponse), Error>, id: UUID) {

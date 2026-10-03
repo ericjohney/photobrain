@@ -114,7 +114,7 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
     let cameraModel: String?
     let lensModel: String?
 
-    private static func thumbnailURL(
+    static func thumbnailURL(
         baseURL: URL,
         id: Int,
         size: String,

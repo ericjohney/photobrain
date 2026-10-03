@@ -8,9 +8,12 @@ Scope: `apps/web`.
 - `src/App.tsx`: browser routes and initial dark-mode class setup.
 - `src/pages/Dashboard.tsx`: primary data/state composition.
 - `src/components/panels/PanelLayout.tsx`: fixed three-region layout.
-- `src/components/panels/LibraryPanel.tsx`: folders and EXIF filters.
+- `src/components/panels/LibraryPanel.tsx`: folders, collections, and EXIF filters.
+- `src/components/panels/CollectionList.tsx`: library-panel collection rows (select, inline create/rename, delete confirmation).
 - `src/components/panels/ActivityPanel.tsx`: scan/embedding progress.
 - `src/components/panels/MetadataPanel.tsx`: active-photo metadata.
+- `src/components/panels/PhotoCollections.tsx`: active-photo collection chips and "Add to collection" popover.
+- `src/components/CollectionNameInput.tsx`: shared inline collection-name field (Enter/Escape, inline errors).
 - `src/components/PhotoGrid.tsx`: grid thumbnails and active-photo selection.
 - `src/components/LoupeView.tsx`: single-photo view and navigation.
 - `src/components/Filmstrip.tsx`: loupe filmstrip.
@@ -18,6 +21,8 @@ Scope: `apps/web`.
 - `src/hooks/use-library-state.ts`: grid/loupe state, active photo, localStorage persistence.
 - `src/hooks/use-panel-state.ts`: panel visibility and persisted dimensions.
 - `src/hooks/use-keyboard-shortcuts.ts`: Lightroom-style keyboard behavior.
+- `src/hooks/use-collections.ts`: collection list, CRUD/membership mutations, cache invalidation, and the `B` last-used target.
+- `src/hooks/use-dismiss.ts`: outside-pointer/`Escape` dismissal for lightweight popovers and menus.
 - `src/hooks/use-job-progress.ts`: Inngest Realtime subscription, durable status polling, and incremental query invalidation.
 - `src/lib/trpc-client.ts`: HTTP batch link plus HTTP subscription link.
 - `src/lib/config.ts`: runtime-injected/API URL resolution.
@@ -40,11 +45,10 @@ The Playwright config starts the Vite server on `http://localhost:3001`, runs Ch
 Active browser routes:
 
 - `/` -> `Dashboard`
-- `/collections` -> placeholder `Collections`
 - `/preferences` -> placeholder `Preferences`
 - `/about` -> `About`
 
-`Dashboard` owns search text, selected folder, camera/lens/ISO/month filters, and the active scan job ID. It queries `folders`, `filterOptions`, `photos`, and `searchPhotos` through tRPC. Search is reactive: a non-empty query enables `searchPhotos` (with the selected folder and camera/lens/ISO/month filters) and disables the `photos` library query; `filterOptions({ folder })` stays active so filters remain selectable during search.
+`Dashboard` owns search text, the selected folder or collection (mutually exclusive), camera/lens/ISO/month filters, and the active scan job ID. It queries `folders`, `filterOptions`, `photos`, and `searchPhotos` through tRPC. Search is reactive: a non-empty query enables `searchPhotos` (with the selected folder or `collectionId` and camera/lens/ISO/month filters) and disables the `photos` library query; `filterOptions({ folder })` stays active so filters remain selectable during search.
 
 The dashboard scan mutation receives an Inngest `jobId`; `useJobProgress` obtains a Realtime token through `realtimeToken` and subscribes to `job:{jobId}`. An advancing `processing.current` invalidates photos, folders, and filter options: the first advance refreshes immediately, and subsequent advances coalesce into a trailing refresh at most once per second. Duplicate or stale progress does not trigger another processing refresh. Entering `scan-complete` or the first `embedding` phase refreshes the library immediately, without waiting for embeddings to finish.
 
@@ -69,7 +73,8 @@ The tRPC client uses `httpBatchLink` for queries/mutations and `unstable_httpSub
 - The Type control (All/RAW/Standard; `filterRaw` sent only when not `all`), folders, and camera/lens/ISO/date filters combine as query filters for both the library and search. The library panel stays fully visible during search; changing the folder or a filter re-runs the search with that scope. A results header shows the count, query, and scope (e.g. `12 results for “beach” in photos/2024 · Sony A7III · RAW only`) with a ✕ that clears the search and returns to the library grid with the same folder and filters. RAW photos show their format badge in both grid and loupe.
 - **Find similar** (metadata panel button or `S` with an active photo, ignored while typing) queries `similarPhotos({ photoId, limit: 60 })` and shows a dismissible "Similar to …" grid. ✕, `Escape` in grid view, a non-empty search, folder selection, or starting a scan exits it; `indexed: false` shows a run-a-scan message.
 - **Curation** (`src/hooks/use-photo-curation.ts`): with an active photo and focus outside inputs, `0`-`5` set the rating, `P` picks, `X` rejects, and `U` unflags; the metadata panel's Rating stars (clicking the current star clears to 0) and Pick/Reject toggles do the same. `trpc.setPhotoCuration` is applied optimistically to every cached `photos`/`searchPhotos`/`similarPhotos` list and the active photo, rolled back on error, and invalidated on settle. Grid cells show a ★n/flag badge; rejected photos are dimmed in the grid and filmstrip. Filter By's Rating (Any, ★1+…★5) and Flag (Any/Picks/Rejected/Unflagged) controls send `minRating`/`flag` to `photos` and `searchPhotos` and join Filters active, Clear all, and the search header scope.
-- Implemented shortcuts are `G`, `E`, `S`, `0`-`5`, `P`, `X`, `U`, `Tab`, `Shift+Space`, left/right arrows, and `Escape`.
+- **Collections** (`src/hooks/use-collections.ts`): the library panel's Collections section (between Folders and Filter By) lists each collection with its photo count. "+" opens an inline name field (Enter creates, Escape cancels; a case-insensitive duplicate shows the API's `CONFLICT` inline); each row's hover "…" menu offers inline Rename and Delete (confirmation sheet; photos are never touched, and deleting the selected collection returns to All Photos). Selecting a collection sends `collectionId` on `photos`/`searchPhotos`, clears the folder (and vice versa; All Photos clears both), and shows a collection header or `… in <name>` search scope. The metadata panel shows the active photo's collection chips (`collectionsForPhoto`) and an "Add to collection" popover whose checkboxes add/remove immediately, plus "New collection…" which creates the collection containing the photo. `B` (focus outside inputs) toggles the active photo in the last collection added to or created this session; it does nothing before one exists. Membership changes update `collectionsForPhoto` optimistically, then invalidate `collections`, `collectionsForPhoto`, and `photos`/`searchPhotos` queries scoped to that `collectionId`, so a photo removed while viewing the collection leaves the grid. Failures appear inline under the chips.
+- Implemented shortcuts are `G`, `E`, `S`, `B`, `0`-`5`, `P`, `X`, `U`, `Tab`, `Shift+Space`, left/right arrows, and `Escape`.
 - Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Do not document or test them as supported behavior.
 - `src/components/Lightbox.tsx` and `src/components/SearchBar.tsx` are legacy/unreferenced by the active dashboard. Check imports before extending them.
 
@@ -116,4 +121,4 @@ When adding a test:
 
 - No web unit-test or real API integration-test script exists.
 - Search executes on every input change; debounce behavior is not part of the current web contract.
-- The non-dashboard pages are mostly placeholders and their shared `Layout`/sidebar context should be verified before use.
+- The non-dashboard pages (`/preferences`, `/about`) are mostly placeholders and their shared `Layout`/sidebar context should be verified before use. Collections live in the dashboard; there is no `/collections` route.

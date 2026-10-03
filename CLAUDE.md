@@ -107,6 +107,8 @@ The tables are:
 - `photo_exif`: one-to-one camera, lens, exposure, date, and GPS metadata.
 - `photo_embedding`: one CLIP embedding blob per photo, with model version and thumbnail generation.
 - `photo_phash`: one perceptual hash per photo.
+- `collections`: manual albums; name unique case-insensitively (`COLLATE NOCASE` index).
+- `collection_photos`: collection membership with `added_at`; both foreign keys cascade, so deleting a collection never deletes photos.
 - `scan_jobs`: durable scan/embedding phase, status, counts, errors, and timestamps.
 - `scan_manifests`: immutable per-job discovery boundary, roots, and processed/successful/unchanged/media/embedding counters.
 - `scan_items`: priority-ordered paths, work classification, frozen source/prior generation, current attempt key, and durable receipts; retained until final dispatch is checkpointed, then removed with the manifest.
@@ -224,11 +226,14 @@ The tRPC and `/api/v1` procedures are public; there is no authentication or auth
 |---|---|---|
 | `folders` | query | Builds a sorted folder tree and counts direct-child photos |
 | `filterOptions` | query | Distinct camera, lens, ISO, and stored date-month prefixes, optionally folder-scoped |
-| `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, month, `minRating`, and `flag` (`pick`/`reject`/`unflagged`) filters |
+| `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, month, `minRating`, `flag` (`pick`/`reject`/`unflagged`), and `collectionId` filters |
 | `photo` | query | Returns one photo with EXIF by numeric ID |
 | `searchPhotos` | query | CLIP text search, limit 1-100, optionally scoped by the same filters as `photos` (applied inside the KNN query) |
 | `similarPhotos` | query | Nearest CLIP neighbours of a photo's committed vector, limit 1-100, optionally filtered like `photos`; `{ photos, total, sourcePhotoId, indexed }`, `NOT_FOUND` for unknown IDs |
 | `setPhotoCuration` | mutation | Sets `rating` (0-5) and/or `flag` (`pick`/`reject`/null) on 1-500 photo IDs in one statement; returns only existing IDs |
+| `collections` / `collectionsForPhoto` | query | All collections (name, count, most-recently-added cover) in one statement / collection IDs containing a photo |
+| `createCollection` / `renameCollection` / `deleteCollection` | mutation | Trimmed 1-100 char names, case-insensitive uniqueness (`CONFLICT`); delete leaves photos intact |
+| `addToCollection` / `removeFromCollection` | mutation | 1-500 photo IDs; duplicates and unknown IDs ignored; returns counts |
 | `scan` | mutation | Defaults to incremental scanning; optional `{ force: true }` reprocesses all discovered files. Creates a durable job and returns `{ success, jobId? }` |
 | `scanStatus` | query | Returns durable progress for a scan UUID or `null` |
 | `realtimeToken` | query | Returns `{ token, baseUrl? }` for a job ID; optional client-reachable self-hosted origin |
@@ -241,6 +246,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `GET /api/v1/photos/:id`
 - `PATCH /api/v1/photos/:id` (`{ rating?, flag? }`; returns the Photo DTO; not gated by the scan flag)
 - `GET /api/v1/photos/:id/similar`
+- `GET|POST /api/v1/collections`, `PATCH|DELETE /api/v1/collections/:id`, `POST /api/v1/collections/:id/photos`, `POST /api/v1/collections/:id/photos/remove`, `GET /api/v1/photos/:id/collections` (409 `COLLECTION_NAME_TAKEN`, 404 `COLLECTION_NOT_FOUND`)
 - `POST /api/v1/search`
 - `POST /api/v1/scans` (disabled by default through `V1_NATIVE_SCAN_MUTATIONS_ENABLED`)
 - `GET /api/v1/scans/active`
@@ -264,11 +270,10 @@ Managed scans write `{thumbnailRoot}/{size}/.versions/{uuid}/photo.webp` and pub
 The active route tree is in `apps/web/src/App.tsx`:
 
 - `/` -> `Dashboard`
-- `/collections` -> placeholder page
 - `/preferences` -> placeholder page
 - `/about` -> informational page
 
-The dashboard combines folder navigation, EXIF filters, semantic search, similar-photo search, grid/loupe views, metadata, curation, scan progress, and a loupe filmstrip. The web uses single active-photo state, not multi-selection. Type, Rating, Flag, folder, and EXIF filters stay visible during search and scope it; a results header names the query and scope. **Find similar** in the metadata panel (or `S`) replaces the grid with the active photo's nearest neighbours until dismissed, searched, or navigated away. The metadata panel's Rating stars and Pick/Reject toggles update every cached result optimistically and roll back on failure; grid cells show a ★/flag badge and rejected photos are dimmed in grid and filmstrip.
+The dashboard combines folder and collection navigation, EXIF filters, semantic search, similar-photo search, grid/loupe views, metadata, curation, scan progress, and a loupe filmstrip. The web uses single active-photo state, not multi-selection. Type, Rating, Flag, folder, and EXIF filters stay visible during search and scope it; a results header names the query and scope. Selecting a collection in the left panel scopes the grid and search (exclusive with folder selection); the panel creates, renames, and deletes collections, and the metadata panel's **Add to collection** popover toggles membership for the active photo. **Find similar** in the metadata panel (or `S`) replaces the grid with the active photo's nearest neighbours until dismissed, searched, or navigated away. The metadata panel's Rating stars and Pick/Reject toggles update every cached result optimistically and roll back on failure; grid cells show a ★/flag badge and rejected photos are dimmed in grid and filmstrip.
 
 The normal scan control is incremental. The separate **Reprocess all photos…** control requires confirmation before regenerating thumbnails and embeddings; originals remain untouched.
 
@@ -281,13 +286,14 @@ Implemented keyboard shortcuts:
 - Left/right arrows: navigate in loupe or with an active photo
 - `S`: find photos similar to the active photo
 - `0`-`5`: rate the active photo; `P` pick, `X` reject, `U` unflag (ignored while typing)
+- `B`: toggle the active photo in the most recently used collection
 - `Escape`: return from loupe to grid; in grid, exit similar-photo mode
 
 Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width/height values are persisted by `usePanelState`, but `PanelLayout` currently renders fixed dimensions.
 
 ### Native iOS
 
-`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering (media type, EXIF, minimum rating, flag), semantic search scoped by the shared Library filter sheet, loupe **Find Similar** results, loupe star/Pick/Reject curation (`PhotoCurationCenter` coalesces in-flight PATCHes per photo and rolls back on failure across Library, Search, and Similar), theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
+`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering (media type, EXIF, minimum rating, flag), semantic search scoped by the shared Library filter sheet, loupe **Find Similar** results, loupe star/Pick/Reject curation (`PhotoCurationCenter` coalesces in-flight PATCHes per photo and rolls back on failure across Library, Search, and Similar), collections (cover-card grid with create/rename/delete, collection-scoped grid/loupe detail, loupe **Add to Collection** sheet), theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
 
 ### Expo Android/web
 

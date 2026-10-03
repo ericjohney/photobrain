@@ -3,6 +3,7 @@ import SwiftUI
 struct SearchScreen: View {
     @ObservedObject var store: SearchStore
     let api: any PhotoBrainAPI
+    let collections: CollectionsStore
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var filtersPresented = false
@@ -62,6 +63,7 @@ struct SearchScreen: View {
                     ),
                     api: api,
                     curation: store.curation,
+                    collections: collections,
                     dismiss: { store.activePhotoID = nil }
                 )
             }

@@ -27,6 +27,28 @@ actor TestAPI: PhotoBrainAPI {
     /// Server-side curation state; PATCHes apply onto it and responses echo it.
     var curationState: [Int: PhotoCuration] = [:]
     var photoQueries: [PhotoQuery] = []
+    /// Server-side collections, kept sorted by name like the real list route.
+    var collectionList: [CollectionDTO] = []
+    /// Server-side membership: collection id -> photo ids.
+    var collectionMembers: [Int: Set<Int>] = [:]
+    var collectionFailures: [CollectionRoute: PhotoBrainAPIError] = [:]
+    var collectionDelay: Duration = .zero
+    var collectionRequests: [CollectionRequest] = []
+    private var nextCollectionID = 1
+
+    enum CollectionRoute: Hashable, Sendable {
+        case list, create, rename, delete, add, remove, forPhoto
+    }
+
+    enum CollectionRequest: Equatable, Sendable {
+        case list
+        case create(name: String, photoIds: [Int]?)
+        case rename(id: Int, name: String)
+        case delete(id: Int)
+        case add(id: Int, photoIds: [Int])
+        case remove(id: Int, photoIds: [Int])
+        case forPhoto(id: Int)
+    }
 
     struct CurationRequest: Equatable, Sendable {
         let id: Int
@@ -117,6 +139,32 @@ actor TestAPI: PhotoBrainAPI {
         photoQueries
     }
 
+    func setCollections(_ collections: [CollectionDTO], members: [Int: Set<Int>] = [:]) {
+        collectionList = collections
+        collectionMembers = members
+        nextCollectionID = (collections.map(\.id).max() ?? 0) + 1
+    }
+
+    func setCollectionFailure(_ route: CollectionRoute, _ failure: PhotoBrainAPIError?) {
+        collectionFailures[route] = failure
+    }
+
+    func setCollectionDelay(_ delay: Duration) {
+        collectionDelay = delay
+    }
+
+    func recordedCollectionRequests() -> [CollectionRequest] {
+        collectionRequests
+    }
+
+    func serverMembers(of collectionId: Int) -> Set<Int> {
+        collectionMembers[collectionId] ?? []
+    }
+
+    func serverCollections() -> [CollectionDTO] {
+        collectionList
+    }
+
     func folders() async throws -> FoldersResponseDTO {
         FoldersResponseDTO(folders: [], totalPhotos: photosResponse.total)
     }
@@ -164,6 +212,104 @@ actor TestAPI: PhotoBrainAPI {
         let next = CurationPatch(rating: rating, flag: flag).applied(to: current)
         curationState[id] = next
         return TestModels.photo(id: id, rating: next.rating, flag: next.flag)
+    }
+
+    func collections() async throws -> CollectionsResponseDTO {
+        try await collectionCall(.list, .list)
+        return CollectionsResponseDTO(collections: collectionList)
+    }
+
+    func createCollection(name: String, photoIds: [Int]?) async throws -> CollectionDTO {
+        try await collectionCall(.create, .create(name: name, photoIds: photoIds))
+        try ensureNameAvailable(name, excluding: nil)
+        let id = nextCollectionID
+        nextCollectionID += 1
+        collectionMembers[id] = Set(photoIds ?? [])
+        let created = TestModels.collection(id: id, name: name, photoCount: collectionMembers[id]?.count ?? 0)
+        collectionList.append(created)
+        sortCollections()
+        return created
+    }
+
+    func renameCollection(id: Int, name: String) async throws -> CollectionDTO {
+        try await collectionCall(.rename, .rename(id: id, name: name))
+        guard let index = collectionList.firstIndex(where: { $0.id == id }) else { throw Self.collectionNotFound }
+        try ensureNameAvailable(name, excluding: id)
+        let existing = collectionList[index]
+        let renamed = TestModels.collection(id: id, name: name, photoCount: existing.photoCount, cover: existing.cover)
+        collectionList[index] = renamed
+        sortCollections()
+        return renamed
+    }
+
+    func deleteCollection(id: Int) async throws {
+        try await collectionCall(.delete, .delete(id: id))
+        guard collectionList.contains(where: { $0.id == id }) else { throw Self.collectionNotFound }
+        collectionList.removeAll { $0.id == id }
+        collectionMembers[id] = nil
+    }
+
+    func addPhotos(toCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosAddedDTO {
+        try await collectionCall(.add, .add(id: id, photoIds: photoIds))
+        guard collectionList.contains(where: { $0.id == id }) else { throw Self.collectionNotFound }
+        let before = collectionMembers[id] ?? []
+        let after = before.union(photoIds)
+        collectionMembers[id] = after
+        updateCount(id: id, count: after.count)
+        return CollectionPhotosAddedDTO(added: after.count - before.count, photoCount: after.count)
+    }
+
+    func removePhotos(fromCollection id: Int, photoIds: [Int]) async throws -> CollectionPhotosRemovedDTO {
+        try await collectionCall(.remove, .remove(id: id, photoIds: photoIds))
+        guard collectionList.contains(where: { $0.id == id }) else { throw Self.collectionNotFound }
+        let before = collectionMembers[id] ?? []
+        let after = before.subtracting(photoIds)
+        collectionMembers[id] = after
+        updateCount(id: id, count: after.count)
+        return CollectionPhotosRemovedDTO(removed: before.count - after.count, photoCount: after.count)
+    }
+
+    func collectionsForPhoto(id: Int) async throws -> PhotoCollectionsDTO {
+        try await collectionCall(.forPhoto, .forPhoto(id: id))
+        let ids = collectionMembers.filter { $0.value.contains(id) }.map(\.key).sorted()
+        return PhotoCollectionsDTO(collectionIds: ids)
+    }
+
+    static let collectionNotFound = PhotoBrainAPIError.server(
+        status: 404,
+        code: "COLLECTION_NOT_FOUND",
+        message: "Collection not found"
+    )
+
+    /// Records the request, then applies the configured delay and failure. Like a real server,
+    /// the failure is decided when the request arrives.
+    private func collectionCall(_ route: CollectionRoute, _ request: CollectionRequest) async throws {
+        collectionRequests.append(request)
+        let failure = collectionFailures[route]
+        if collectionDelay > .zero { try await Task.sleep(for: collectionDelay) }
+        if let failure { throw failure }
+    }
+
+    private func ensureNameAvailable(_ name: String, excluding id: Int?) throws {
+        let taken = collectionList.contains {
+            $0.id != id && $0.name.compare(name, options: .caseInsensitive) == .orderedSame
+        }
+        if taken {
+            throw PhotoBrainAPIError.server(
+                status: 409,
+                code: "COLLECTION_NAME_TAKEN",
+                message: "Collection name already exists"
+            )
+        }
+    }
+
+    private func updateCount(id: Int, count: Int) {
+        guard let index = collectionList.firstIndex(where: { $0.id == id }) else { return }
+        collectionList[index].photoCount = count
+    }
+
+    private func sortCollections() {
+        collectionList.sort { $0.name.compare($1.name, options: .caseInsensitive) == .orderedAscending }
     }
 
     func startScan(force: Bool) async throws -> StartScanResponseDTO {
@@ -258,6 +404,22 @@ enum TestModels {
             error: phase == .failed ? "Synthetic failure" : nil,
             createdAt: updatedAt.addingTimeInterval(-10),
             updatedAt: updatedAt
+        )
+    }
+
+    static func collection(
+        id: Int,
+        name: String,
+        photoCount: Int = 0,
+        cover: CollectionCoverDTO? = nil
+    ) -> CollectionDTO {
+        CollectionDTO(
+            id: id,
+            name: name,
+            photoCount: photoCount,
+            cover: cover,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(id))
         )
     }
 }

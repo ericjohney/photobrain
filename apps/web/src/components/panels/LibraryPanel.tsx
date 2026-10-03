@@ -6,12 +6,14 @@ import {
 	Folder,
 	FolderOpen,
 	Images,
+	Plus,
 	Star,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { FlagFilter } from "@/lib/types";
+import type { Collection, FlagFilter } from "@/lib/types";
 import { cn, formatMonthLabel } from "@/lib/utils";
+import { CollectionList } from "./CollectionList";
 
 interface FolderNode {
 	name: string;
@@ -118,7 +120,15 @@ interface LibraryPanelProps {
 	photoCount: number;
 	folders?: FolderNode[];
 	selectedFolder: string | null;
+	/** Selects a folder (clearing any collection), or null for All Photos. */
 	onFolderSelect: (folder: string | null) => void;
+	collections: Collection[] | undefined;
+	selectedCollectionId: number | null;
+	/** Selects a collection (clearing any folder), or null for All Photos. */
+	onCollectionSelect: (collectionId: number | null) => void;
+	onCreateCollection: (name: string) => Promise<unknown>;
+	onRenameCollection: (collectionId: number, name: string) => Promise<unknown>;
+	onDeleteCollection: (collectionId: number) => Promise<unknown>;
 	filterOptions?: {
 		cameras: string[];
 		lenses: string[];
@@ -170,23 +180,40 @@ interface SectionProps {
 	title: string;
 	children: React.ReactNode;
 	defaultOpen?: boolean;
+	/** Controlled open state; omit for an uncontrolled section. */
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
+	/** Header controls rendered beside the title (e.g. a "+" button). */
+	actions?: ReactNode;
 }
 
-function Section({ title, children, defaultOpen = true }: SectionProps) {
-	const [open, setOpen] = useState(defaultOpen);
+function Section({
+	title,
+	children,
+	defaultOpen = true,
+	open: controlledOpen,
+	onOpenChange,
+	actions,
+}: SectionProps) {
+	const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
+	const open = controlledOpen ?? uncontrolledOpen;
+	const setOpen = onOpenChange ?? setUncontrolledOpen;
 
 	return (
 		<div className="mb-1">
-			<button
-				type="button"
-				onClick={() => setOpen(!open)}
-				className="flex w-full items-center gap-1 px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
-			>
-				<ChevronRight
-					className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
-				/>
-				{title}
-			</button>
+			<div className="flex items-center">
+				<button
+					type="button"
+					onClick={() => setOpen(!open)}
+					className="flex flex-1 items-center gap-1 px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+				>
+					<ChevronRight
+						className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+					/>
+					{title}
+				</button>
+				{actions}
+			</div>
 			{open && <div className="mt-0.5">{children}</div>}
 		</div>
 	);
@@ -281,6 +308,12 @@ export function LibraryPanel({
 	folders = [],
 	selectedFolder,
 	onFolderSelect,
+	collections,
+	selectedCollectionId,
+	onCollectionSelect,
+	onCreateCollection,
+	onRenameCollection,
+	onDeleteCollection,
 	filterOptions,
 	activeFilters,
 	onFilterChange,
@@ -288,6 +321,8 @@ export function LibraryPanel({
 	const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
 		new Set(),
 	);
+	const [collectionsOpen, setCollectionsOpen] = useState(true);
+	const [creatingCollection, setCreatingCollection] = useState(false);
 
 	const handleToggleExpand = (path: string) => {
 		setExpandedFolders((prev) => {
@@ -315,7 +350,7 @@ export function LibraryPanel({
 						icon={<Images className="h-4 w-4" />}
 						label="All Photos"
 						count={photoCount}
-						active={selectedFolder === null}
+						active={selectedFolder === null && selectedCollectionId === null}
 						onClick={() => onFolderSelect(null)}
 					/>
 					<NavItem
@@ -349,6 +384,41 @@ export function LibraryPanel({
 							/>
 						))
 					)}
+				</Section>
+
+				{/* Collections Section */}
+				<Section
+					title="Collections"
+					open={collectionsOpen}
+					onOpenChange={setCollectionsOpen}
+					actions={
+						<button
+							type="button"
+							aria-label="New collection"
+							title="New collection"
+							onClick={() => {
+								setCollectionsOpen(true);
+								setCreatingCollection(true);
+							}}
+							className="mr-1 rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+						>
+							<Plus className="h-3.5 w-3.5" />
+						</button>
+					}
+				>
+					<CollectionList
+						collections={collections}
+						selectedCollectionId={selectedCollectionId}
+						onSelect={(id) =>
+							// Re-selecting the active collection returns to All Photos.
+							onCollectionSelect(selectedCollectionId === id ? null : id)
+						}
+						creating={creatingCollection}
+						onCreatingChange={setCreatingCollection}
+						onCreate={onCreateCollection}
+						onRename={onRenameCollection}
+						onDelete={onDeleteCollection}
+					/>
 				</Section>
 
 				{/* Filter By Section — also scopes an active search */}

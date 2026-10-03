@@ -71,11 +71,26 @@ final class RedirectAwareImageLoader {
         url: URL? = nil,
         targetSize: CGSize = CGSize(width: 320, height: 320)
     ) async throws -> UIImage {
-        let requestedURL = url ?? photo.thumbnailURL
-        return try await SharedImagePipeline.shared.image(
+        try await image(
             photoID: photo.id,
-            url: requestedURL,
-            metadata: PhotoMediaMetadata(isConvertedRAW: photo.isConvertedRAW),
+            url: url ?? photo.thumbnailURL,
+            isConvertedRAW: photo.isConvertedRAW,
+            targetSize: targetSize
+        )
+    }
+
+    /// Loads a thumbnail known only by photo id and URL (e.g. a collection cover).
+    @MainActor
+    func image(
+        photoID: Int,
+        url: URL,
+        isConvertedRAW: Bool,
+        targetSize: CGSize
+    ) async throws -> UIImage {
+        try await SharedImagePipeline.shared.image(
+            photoID: photoID,
+            url: url,
+            metadata: PhotoMediaMetadata(isConvertedRAW: isConvertedRAW),
             targetSize: targetSize,
             scale: UIScreen.main.scale
         )

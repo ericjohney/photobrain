@@ -21,6 +21,7 @@ extension LibraryFilters {
 
 struct LibraryScreen: View {
     @ObservedObject var store: LibraryStore
+    let collections: CollectionsStore
     @ObservedObject var scans: ScanCoordinator
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
@@ -28,6 +29,7 @@ struct LibraryScreen: View {
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var optionsPresented = false
+    @State private var addSelectionPresented = false
 
     var body: some View {
         NavigationStack {
@@ -63,6 +65,13 @@ struct LibraryScreen: View {
                 theme: theme
             )
         }
+        .sheet(isPresented: $addSelectionPresented) {
+            AddSelectionToCollectionSheet(
+                photoIDs: store.orderedRecords.map(\.id).filter(store.selectedPhotoIDs.contains),
+                collections: collections,
+                completed: { store.endSelection() }
+            )
+        }
         .fullScreenCover(isPresented: loupePresented) {
             if let activeID = store.activePhotoID {
                 LoupeScreen(
@@ -73,6 +82,7 @@ struct LibraryScreen: View {
                     ),
                     api: environment.api,
                     curation: store.curation,
+                    collections: collections,
                     dismiss: { store.activePhotoID = nil }
                 )
             }
@@ -153,6 +163,15 @@ struct LibraryScreen: View {
             }
             Spacer()
             if store.isSelecting {
+                Button {
+                    addSelectionPresented = true
+                } label: {
+                    Image(systemName: "rectangle.stack.badge.plus")
+                        .font(.title2)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Add to Collection")
+                .disabled(store.selectedPhotoIDs.isEmpty)
                 Button {
                     store.endSelection()
                 } label: {

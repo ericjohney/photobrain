@@ -18,6 +18,7 @@ final class AppBootstrap: ObservableObject {
     @Published private(set) var environment: AppEnvironment?
     @Published private(set) var library: LibraryStore?
     @Published private(set) var search: SearchStore?
+    @Published private(set) var collections: CollectionsStore?
     @Published private(set) var scans: ScanCoordinator?
     @Published private(set) var theme: ThemeController?
     @Published private(set) var configurationError: String?
@@ -36,6 +37,7 @@ final class AppBootstrap: ObservableObject {
             let curation = PhotoCurationCenter(api: environment.api)
             let library = LibraryStore(api: environment.api, curation: curation)
             let search = SearchStore(api: environment.api, curation: curation)
+            let collections = CollectionsStore(api: environment.api)
             let scans = ScanCoordinator(api: environment.api, migration: migration)
             scans.invalidateLibrary = { [weak library] in
                 await library?.load()
@@ -50,6 +52,7 @@ final class AppBootstrap: ObservableObject {
             self.theme = theme
             self.library = library
             self.search = search
+            self.collections = collections
             self.scans = scans
         } catch {
             configurationError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -64,12 +67,14 @@ private struct BootstrapView: View {
         if let environment = bootstrap.environment,
            let library = bootstrap.library,
            let search = bootstrap.search,
+           let collections = bootstrap.collections,
            let scans = bootstrap.scans,
            let theme = bootstrap.theme {
             RootTabView(
                 environment: environment,
                 library: library,
                 search: search,
+                collections: collections,
                 scans: scans,
                 theme: theme,
                 links: bootstrap.links
@@ -90,6 +95,7 @@ private struct RootTabView: View {
     let environment: AppEnvironment
     @ObservedObject var library: LibraryStore
     @ObservedObject var search: SearchStore
+    let collections: CollectionsStore
     @ObservedObject var scans: ScanCoordinator
     @ObservedObject var theme: ThemeController
     @ObservedObject var links: AppLinkRouter
@@ -100,6 +106,7 @@ private struct RootTabView: View {
         TabView(selection: $navigation.selectedTab) {
             LibraryScreen(
                 store: library,
+                collections: collections,
                 scans: scans,
                 environment: environment,
                 theme: theme,
@@ -108,28 +115,16 @@ private struct RootTabView: View {
             .tabItem { Label("Library", systemImage: "photo.on.rectangle") }
             .tag(AppTab.library)
 
-            NavigationStack {
-                ContentUnavailableView(
-                    "Collections",
-                    systemImage: "rectangle.stack",
-                    description: Text("Collections will appear here.")
-                )
-                .navigationTitle("Collections")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink {
-                            SettingsView(environment: environment, theme: theme)
-                        } label: {
-                            Image(systemName: "gearshape")
-                        }
-                        .accessibilityLabel("Settings")
-                    }
-                }
-            }
+            CollectionsScreen(
+                store: collections,
+                curation: library.curation,
+                environment: environment,
+                theme: theme
+            )
             .tabItem { Label("Collections", systemImage: "rectangle.stack") }
             .tag(AppTab.collections)
 
-            SearchScreen(store: search, api: environment.api)
+            SearchScreen(store: search, api: environment.api, collections: collections)
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
                 .tag(AppTab.search)
         }

@@ -131,6 +131,16 @@
 							"type": "string",
 							"enum": ["pick", "reject", "unflagged"]
 						}
+					},
+					{
+						"name": "collectionId",
+						"in": "query",
+						"required": false,
+						"description": "Only photos that are members of this collection",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
 					}
 				],
 				"responses": {
@@ -273,7 +283,7 @@
 		"/api/v1/photos/{id}/similar": {
 			"get": {
 				"operationId": "listSimilarPhotos",
-				"description": "Photos nearest to the source photo by CLIP vector distance (L2), nearest first with ties ordered by ascending id. The source photo is excluded. Only completed vectors for the current model and committed thumbnail generation participate. Optional `minRating` and `flag` filters apply to candidates before ranking and the limit, never to the source. When the source photo has no usable vector, `indexed` is false and `photos` is empty.",
+				"description": "Photos nearest to the source photo by CLIP vector distance (L2), nearest first with ties ordered by ascending id. The source photo is excluded. Only completed vectors for the current model and committed thumbnail generation participate. Optional `minRating`, `flag`, and `collectionId` filters apply to candidates before ranking and the limit, never to the source. When the source photo has no usable vector, `indexed` is false and `photos` is empty.",
 				"parameters": [
 					{
 						"name": "id",
@@ -313,6 +323,16 @@
 							"type": "string",
 							"enum": ["pick", "reject", "unflagged"]
 						}
+					},
+					{
+						"name": "collectionId",
+						"in": "query",
+						"required": false,
+						"description": "Only photos that are members of this collection",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
 					}
 				],
 				"responses": {
@@ -322,6 +342,61 @@
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/SimilarPhotosResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"description": "Photo not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"photoNotFound": {
+										"value": {
+											"error": {
+												"code": "PHOTO_NOT_FOUND",
+												"message": "Photo not found"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/photos/{id}/collections": {
+			"get": {
+				"operationId": "listPhotoCollections",
+				"description": "IDs (ascending) of the collections containing the photo.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Collection membership",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PhotoCollectionsResponse"
 								}
 							}
 						}
@@ -495,6 +570,238 @@
 					},
 					"400": {
 						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/collections": {
+			"get": {
+				"operationId": "listCollections",
+				"description": "All collections sorted case-insensitively by name.",
+				"responses": {
+					"200": {
+						"description": "Collections",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CollectionsResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"operationId": "createCollection",
+				"description": "Creates a collection. The name is trimmed and must be unique case-insensitively. Optional `photoIds` are added immediately; unknown and duplicate IDs are ignored.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateCollectionRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Created collection",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Collection"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"409": {
+						"$ref": "#/components/responses/CollectionNameTaken"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/collections/{id}": {
+			"patch": {
+				"operationId": "renameCollection",
+				"description": "Renames a collection. Changing only the letter case of its own name is allowed.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/RenameCollectionRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Renamed collection",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Collection"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/CollectionNotFound"
+					},
+					"409": {
+						"$ref": "#/components/responses/CollectionNameTaken"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteCollection",
+				"description": "Deletes the collection and its memberships. Photos are never deleted.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Collection deleted"
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/CollectionNotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/collections/{id}/photos": {
+			"post": {
+				"operationId": "addCollectionPhotos",
+				"description": "Adds photos to the collection. Existing members and unknown photo IDs are ignored; `added` counts new memberships.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CollectionPhotosRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Membership result",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AddCollectionPhotosResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/CollectionNotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/collections/{id}/photos/remove": {
+			"post": {
+				"operationId": "removeCollectionPhotos",
+				"description": "Removes photos from the collection. Non-members are ignored; `removed` counts deleted memberships.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CollectionPhotosRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Membership result",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RemoveCollectionPhotosResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/CollectionNotFound"
 					},
 					"500": {
 						"$ref": "#/components/responses/InternalError"
@@ -844,6 +1151,11 @@
 						"type": "string",
 						"enum": ["pick", "reject", "unflagged"],
 						"description": "Only picks, only rejects, or only photos without a flag"
+					},
+					"collectionId": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "Only photos that are members of this collection"
 					}
 				}
 			},
@@ -1011,6 +1323,182 @@
 					}
 				}
 			},
+			"Collection": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"id",
+					"name",
+					"photoCount",
+					"cover",
+					"createdAt",
+					"updatedAt"
+				],
+				"properties": {
+					"id": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"photoCount": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"cover": {
+						"description": "The most recently added member photo, or null when the collection is empty",
+						"oneOf": [
+							{
+								"$ref": "#/components/schemas/CollectionCover"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"CollectionCover": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["photoId", "thumbnailUpdatedAt"],
+				"properties": {
+					"photoId": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"thumbnailUpdatedAt": {
+						"oneOf": [
+							{
+								"type": "string",
+								"format": "date-time"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"CollectionsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["collections"],
+				"properties": {
+					"collections": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Collection"
+						}
+					}
+				}
+			},
+			"CreateCollectionRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["name"],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100,
+						"description": "Trimmed; unique case-insensitively"
+					},
+					"photoIds": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 500,
+						"items": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				}
+			},
+			"RenameCollectionRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["name"],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100,
+						"description": "Trimmed; unique case-insensitively"
+					}
+				}
+			},
+			"CollectionPhotosRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["photoIds"],
+				"properties": {
+					"photoIds": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 500,
+						"items": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				}
+			},
+			"AddCollectionPhotosResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["added", "photoCount"],
+				"properties": {
+					"added": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"photoCount": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			},
+			"RemoveCollectionPhotosResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["removed", "photoCount"],
+				"properties": {
+					"removed": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"photoCount": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			},
+			"PhotoCollectionsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["collectionIds"],
+				"properties": {
+					"collectionIds": {
+						"type": "array",
+						"items": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				}
+			},
 			"ErrorResponse": {
 				"type": "object",
 				"additionalProperties": false,
@@ -1066,6 +1554,46 @@
 									"error": {
 										"code": "INTERNAL_ERROR",
 										"message": "The request could not be completed"
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"CollectionNotFound": {
+				"description": "Collection not found",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"examples": {
+							"collectionNotFound": {
+								"value": {
+									"error": {
+										"code": "COLLECTION_NOT_FOUND",
+										"message": "Collection not found"
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"CollectionNameTaken": {
+				"description": "Collection name already in use",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"examples": {
+							"collectionNameTaken": {
+								"value": {
+									"error": {
+										"code": "COLLECTION_NAME_TAKEN",
+										"message": "A collection with that name already exists"
 									}
 								}
 							}

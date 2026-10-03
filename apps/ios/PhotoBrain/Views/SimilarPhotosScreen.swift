@@ -3,6 +3,7 @@ import SwiftUI
 struct SimilarPhotosScreen: View {
     let source: PhotoRecord
     let api: any PhotoBrainAPI
+    let collections: CollectionsStore
     let dismiss: () -> Void
     @StateObject private var store: SimilarPhotosStore
 
@@ -10,10 +11,12 @@ struct SimilarPhotosScreen: View {
         source: PhotoRecord,
         api: any PhotoBrainAPI,
         curation: PhotoCurationCenter,
+        collections: CollectionsStore,
         dismiss: @escaping () -> Void
     ) {
         self.source = source
         self.api = api
+        self.collections = collections
         self.dismiss = dismiss
         _store = StateObject(wrappedValue: SimilarPhotosStore(api: api, curation: curation))
     }
@@ -53,6 +56,7 @@ struct SimilarPhotosScreen: View {
                     ),
                     api: api,
                     curation: store.curation,
+                    collections: collections,
                     dismiss: { store.activePhotoID = nil }
                 )
             }
