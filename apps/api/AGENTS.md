@@ -6,12 +6,16 @@ Scope: `apps/api`.
 
 - `src/index.ts`: Hono/Bun entrypoint and route registration.
 - `src/config.ts`: environment parsing and defaults.
-- `src/trpc/router.ts`: public tRPC contract.
+- `src/trpc/router.ts`: public tRPC transport contract for web and Expo clients.
+- `src/routes/v1.ts`, `v1-schemas.ts`, and `openapi-v1.json`: versioned JSON compatibility API, runtime DTO validation/serialization, and checked-in native-client contract.
 - `src/routes/photos.ts`: binary file and thumbnail routes plus one-off maintenance routes.
 - `src/inngest/client.ts`: typed event definitions and Realtime middleware.
 - `src/inngest/functions/scan.ts`: durable incremental planning, continuous Rust processing, and completed-result checkpoints.
 - `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches.
 - `src/services/vector-search.ts`: sqlite-vec text search.
+- `src/services/photo-catalog.ts`: shared folder/filter/photo reads used by tRPC and `/api/v1`.
+- `src/services/photo-search.ts`: shared search response orchestration used by both transports.
+- `src/services/scan-jobs.ts`: shared durable scan creation/status/recovery operations used by both transports.
 - `src/services/import-persistence.ts`: synchronous transactional scan and embedding batch writes.
 - `src/services/scan-planner.ts`: source/artifact freshness checks and conservative legacy adoption.
 - `src/services/processing-versions.ts`: manual media and embedding-model invalidation constants.
@@ -40,13 +44,29 @@ The Hono server registers:
 
 - `GET /api/health`
 - `GET|POST /api/trpc/*` through the fetch adapter
+- `GET /api/v1/folders`
+- `GET /api/v1/filter-options`
+- `GET /api/v1/photos`
+- `GET /api/v1/photos/:id`
+- `POST /api/v1/search`
+- `POST /api/v1/scans`
+- `GET /api/v1/scans/active`
+- `GET /api/v1/scans/:jobId`
 - `GET /api/photos/:id/file`
 - `GET /api/photos/:id/thumbnail/:size`
 - `POST /api/photos/reprocess-heic` (one-off maintenance)
 - `POST /api/photos/backfill-thumbnail-timestamps` (one-off maintenance)
 - `GET|PUT|POST /api/inngest`
 
-There are no REST `GET /api/photos`, `GET /api/photos/:id`, `POST /api/scan`, or `GET /api/image/:filename` routes. Metadata and scan operations use tRPC.
+There are no unversioned REST `GET /api/photos`, `GET /api/photos/:id`, `POST /api/scan`, or `GET /api/image/:filename` metadata routes. Web and Expo metadata/scan operations use tRPC; native Swift uses the `/api/v1` compatibility surface. Binary media remains under `/api/photos`.
+
+## `/api/v1` Compatibility API
+
+`/api/v1` is the explicit JSON contract for `apps/ios`. It shares `photo-catalog`, `photo-search`, and `scan-jobs` domain services with tRPC; do not fork query, search, scan creation, or scan-status behavior into a second implementation. Transport-specific Zod schemas validate requests, serialize dates as ISO strings, bound search limits to 1-100, and return stable error envelopes. The shared catalog's representation option normalizes Rust EXIF `YYYY:MM` month prefixes to `YYYY-MM` only for `/api/v1`, preserving the existing tRPC wire representation. Keep `src/routes/openapi-v1.json` synchronized with these routes and schemas.
+
+`GET /folders`, `GET /filter-options`, `GET /photos`, `GET /photos/:id`, `POST /search`, `GET /scans/active`, and `GET /scans/:jobId` are readable regardless of the mutation flag. `POST /scans` accepts optional `{ force }`, but defaults to `503` with `NATIVE_SCAN_DISABLED` until `V1_NATIVE_SCAN_MUTATIONS_ENABLED=true` or `1`. The default is deliberately contained while native rollout gates remain external.
+
+Every photo emitted by list, detail, or search must pass through the public projection and explicit serializer. Never expose `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, or `thumbnailFingerprint`; those fields reveal private source/artifact identity. `/api/v1` is unauthenticated like the existing tRPC and media routes, so the projection is a privacy boundary, not an authorization substitute.
 
 ## tRPC Procedures
 
@@ -57,11 +77,11 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `photos({ filterRaw?, folder?, camera?, lens?, iso?, dateMonth? })`: returns `{ photos, total, rawCount }` with EXIF relations. A folder query initially matches descendants, then JavaScript removes nested descendants so only direct files are returned.
 - `photo({ id })`: returns one photo with EXIF or throws `Photo not found`.
 - `searchPhotos({ query, limit? })`: generates a CLIP text embedding and returns nearest photo rows. `limit` is 1-100 and defaults to 20.
-- `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar and mobile Library Options expose a confirmed **Reprocess all photos** action for force mode.
+- `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar and Expo Library Options expose a confirmed **Reprocess all photos** action for force mode; native iOS reaches the same shared scan service through gated `POST /api/v1/scans`.
 - `scanStatus({ jobId })`: returns the durable scan row or `null` when the UUID is unknown.
 - `realtimeToken({ jobId })`: returns `{ token, baseUrl? }` for channel `job:{jobId}`, topic `progress`. `baseUrl` is the client-reachable `INNGEST_REALTIME_BASE_URL`; it must not be inferred from an internal service hostname.
 
-Keep the router as the source of client types. `src/types.ts` exports `AppRouter` for workspace consumers. Photo list, detail, and search DTOs use `publicPhotoColumns` to omit six internal identity fields: `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, and `thumbnailFingerprint`.
+Keep the tRPC router as the source of TypeScript client types for web/Expo; `src/types.ts` exports `AppRouter` for workspace consumers. Keep reusable behavior in the shared services and the native contract in `v1-schemas.ts`/`openapi-v1.json`. Both transports use `publicPhotoColumns` to omit six internal identity fields: `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, and `thumbnailFingerprint`.
 
 ## Inngest Flow
 
@@ -97,7 +117,7 @@ Scan function details:
 - Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006_incremental_scan.sql` (after prior migrations). New function IDs alone do not fence old code.
 - Receipts remain until final IDs/dispatch are checkpointed; success and terminal failure clean them up. Cancellation failure cannot leave an exhausted job running. Retired and abandoned artifact generations are retained: there is no artifact GC, deletion reconciliation, content hashing, outbox/reconciler, distributed lease, or native process-crash isolation.
 
-Both clients refresh library queries as committed processing counts advance: first advance immediately, then coalesced trailing refreshes at most once per second. They also refresh on `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web polls durable `scanStatus` every 1,500 ms while active; mobile retains its fallback/recovery polling. Progress payloads retain their existing shape; the scan event adds optional `force`.
+Web and Expo refresh library queries as committed processing counts advance: first advance immediately, then coalesced trailing refreshes at most once per second. They also refresh on `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web polls durable `scanStatus` every 1,500 ms while active; Expo retains its fallback/recovery polling. Native iOS uses `/api/v1` durable scan polling. Progress payloads retain their existing shape; the scan event adds optional `force`.
 
 Embedding function details:
 
@@ -119,6 +139,7 @@ Active API variables are parsed in `src/config.ts`:
 - `THUMBNAILS_DIRECTORY=./thumbnails`
 - `NODE_ENV=development`
 - `RUN_DB_INIT=false`
+- `V1_NATIVE_SCAN_MUTATIONS_ENABLED=false` (`true` or `1` enables `POST /api/v1/scans`; reads remain available)
 - `INNGEST_SERVE_ORIGIN` (optional validated URL, passed to the Hono handler as `serveHost`)
 - `INNGEST_REALTIME_BASE_URL` (optional validated URL, returned to clients)
 
@@ -132,7 +153,7 @@ The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, an
 
 - Use `@photobrain/db/schema` for schema changes.
 - Migrations live at `packages/db/drizzle`.
-- `scan_jobs` is the durable source for web/mobile polling and recovery; preserve terminal-state monotonicity when changing job code.
+- `scan_jobs` is the durable source for web/Expo tRPC polling and native `/api/v1` recovery; preserve terminal-state monotonicity when changing job code.
 - Startup migration is opt-in with `RUN_DB_INIT=true` for direct API runs. The API Docker image enables it so deployed schema changes are applied before serving traffic.
 - The standalone `src/db/migrate.ts` is not the normal migration path and currently points at an API-local `./drizzle` directory that does not exist.
 - Do not assume scan removes rows for files deleted from disk.
@@ -154,6 +175,8 @@ The two POST maintenance routes are operational leftovers. HEIC reprocessing for
 ## Tests
 
 `src/__tests__/filters.test.ts` uses `createTestDb()` from `src/__tests__/setup.ts`, an in-memory SQLite database with shared migrations and seeded EXIF data. It covers folder-scoped filter options, raw/camera/lens/ISO/date filters, durable scan creation/status, dispatch failures, and missing job IDs.
+
+`src/__tests__/v1.test.ts` differentially checks `/api/v1` against tRPC/shared services, validates ISO DTOs and stable errors, proves the native scan mutation defaults off, verifies active-scan recovery ordering, and asserts that private source/artifact identities are absent from list/detail/search responses. OpenAPI parity tests keep the checked-in route contract synchronized.
 
 `src/__tests__/scan.test.ts` exercises real SQLite manifests/receipts with controlled native/Inngest dependencies: new-first dispatch with free completion order, early visibility, partial ACK restart, lost checkpoints, atomic rollback, publication failure, final dispatch/fast-child ordering, empty and terminal jobs, cleanup, and the 7,961-input checkpoint budget. These are not actual Inngest delivery or native integration tests.
 

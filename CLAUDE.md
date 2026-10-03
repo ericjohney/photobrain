@@ -4,12 +4,12 @@ This is the current implementation guide for agents working in PhotoBrain. Prefe
 
 ## Read First
 
-- This repository is a Bun/Turbo monorepo with three applications and four shared packages.
+- This repository is a Bun/Turbo monorepo with four applications and four shared packages.
 - There is no `apps/worker` directory, BullMQ consumer, or Redis requirement in the current implementation.
 - Background scan and embedding functions are Inngest functions registered by the API at `/api/inngest`.
 - Image processing is a native Rust N-API addon. It is not an active WASM implementation.
 - EXIF extraction and RAW preview extraction invoke the external `exiftool` executable.
-- The shared database schema is authoritative. `apps/api/src/db/schema.ts` re-exports it and defines an API-only projection that excludes private photo processing identities.
+- The shared database schema is authoritative. `apps/api/src/db/schema.ts` re-exports it and defines the public photo projection used by tRPC and `/api/v1`; private source/artifact identities must not cross either client boundary.
 - `README.md` is for user/developer setup. `ROADMAP.md` is forward-looking and may contain historical session notes. The scoped `AGENTS.md` files below are the detailed agent guides.
 
 ## Documentation Map
@@ -18,7 +18,8 @@ Read the guide for the area being changed:
 
 - [API and background jobs](apps/api/AGENTS.md)
 - [Web application](apps/web/AGENTS.md)
-- [Mobile application](apps/mobile/AGENTS.md)
+- [Native iOS application source and XCTest](apps/ios)
+- [Expo Android/web application and temporary iOS migration bridge](apps/mobile/AGENTS.md)
 - [Rust image processing](packages/image-processing/AGENTS.md)
 - [Database and migrations](packages/db/AGENTS.md)
 - [Shared utilities](packages/utils/AGENTS.md)
@@ -33,7 +34,8 @@ Historical implementation plans live under `docs/superpowers/`. They document pa
 apps/
   api/                    Hono server, tRPC router, REST file routes, Inngest functions
   web/                    React/Vite browser application
-  mobile/                 Expo/React Native application using Expo Router
+  ios/                    Native SwiftUI/UIKit iOS application (iOS 17+)
+  mobile/                 Expo/React Native Android/web app and temporary iOS migration bridge
 packages/
   config/                 Shared TypeScript configuration package
   db/                     Drizzle schema and migration files
@@ -41,7 +43,7 @@ packages/
   utils/                  Shared TypeScript helpers and thumbnail configuration
 docs/
   superpowers/            Historical design specifications and implementation plans
-.github/workflows/        CI tests, Docker builds, EAS updates, and ArgoCD tag updates
+.github/workflows/        CI, Android EAS updates, native iOS CI/releases, and ArgoCD tag updates
 Dockerfile                Five targets: builder, api, web-builder, web, mobile
 ```
 
@@ -53,8 +55,11 @@ The API entrypoint is `apps/api/src/index.ts`:
 
 1. Hono serves `/api/health`.
 2. tRPC handles `/api/trpc/*` using the router in `apps/api/src/trpc/router.ts`.
-3. REST routes under `/api/photos/*` stream original files and generated thumbnails.
-4. Inngest serves `GET`, `PUT`, and `POST /api/inngest` and registers the scan and embedding functions.
+3. The compatibility JSON API is mounted at `/api/v1` for the native Swift client.
+4. REST routes under `/api/photos/*` stream original files and generated thumbnails.
+5. Inngest serves `GET`, `PUT`, and `POST /api/inngest` and registers the scan and embedding functions.
+
+The tRPC and `/api/v1` metadata, search, and scan contracts share the catalog/search/scan-job service layer rather than maintaining separate domain implementations. `/api/v1` explicitly serializes public DTOs and strips `sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, and `thumbnailFingerprint`. Its scan-start mutation is disabled by default and returns `503 NATIVE_SCAN_DISABLED` unless `V1_NATIVE_SCAN_MUTATIONS_ENABLED=true` (or `1`); read-only catalog, search, and scan-status routes remain available.
 
 The scan flow is:
 
@@ -68,7 +73,7 @@ The scan flow is:
 
 Incremental identity uses the canonical source root, byte size, nanosecond mtime/ctime, `MEDIA_VERSION`, and stat fingerprints of all four thumbnail files. Legacy rows receive one-time conservative adoption: matching size/whole-second mtime, completed media metadata, unambiguous stems, source ctime older than every thumbnail, full WebP/dimension validation, and post-validation stat checks. Valid artifacts are not re-encoded. These checks are metadata-based, not content hashes or proof of historical source provenance. `MEDIA_VERSION` and `EMBEDDING_MODEL_VERSION` in `processing-versions.ts` must change when their respective output contracts change.
 
-Both clients obtain Realtime tokens through `trpc.realtimeToken`, subscribe with `@inngest/realtime`, and use `trpc.scanStatus` as a durable fallback; web polls every 1,500 ms while active, and mobile retains its recovery polling. Processing advances refresh the library immediately on the first advance and then coalesce trailing refreshes to at most once per second. Scan completion/first embedding progress and terminal progress also refresh the library; embedding remains nonterminal, and terminal progress refreshes search.
+Web and Expo clients obtain Realtime tokens through `trpc.realtimeToken`, subscribe with `@inngest/realtime`, and use `trpc.scanStatus` as a durable fallback; web polls every 1,500 ms while active, and Expo retains its recovery polling. Processing advances refresh the library immediately on the first advance and then coalesce trailing refreshes to at most once per second. Scan completion/first embedding progress and terminal progress also refresh the library; embedding remains nonterminal, and terminal progress refreshes search. Native iOS uses the durable `/api/v1/scans/active` and `/api/v1/scans/:jobId` compatibility routes rather than the tRPC/Realtime client.
 
 There is no repository-local worker process. Running the API alone exposes the Inngest handler, but an Inngest development/runtime service must deliver events to that handler for asynchronous jobs to execute. This repository has no `dev:worker` script.
 
@@ -134,6 +139,20 @@ bun run dev:mobile       # Expo development server
 
 The root `dev` command does not start mobile because mobile defines `start`, not `dev`. There is no worker command. Configure an Inngest development/runtime service separately when testing scan execution locally.
 
+### Native iOS simulator
+
+Native iOS requires Xcode 26.6. The app targets iOS 17+ and has separate Debug, Preview, and Production configurations. With Xcode 26.6 selected, run the same unsigned Preview simulator build/test used by CI:
+
+```bash
+xcodebuild \
+  -project apps/ios/PhotoBrain.xcodeproj \
+  -scheme PhotoBrain-Preview \
+  -configuration Preview \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  CODE_SIGNING_ALLOWED=NO \
+  test
+```
+
 ### Quality and tests
 
 ```bash
@@ -148,10 +167,11 @@ cd apps/api && bun run bench:exif /path/to/photo1.jpg /path/to/photo2.heic # Rea
 cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui
 cd apps/mobile && bun run test
+xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' CODE_SIGNING_ALLOWED=NO test # Xcode 26.6
 cd packages/image-processing && cargo test
 ```
 
-Web E2E tests use Playwright with mocked tRPC, image, and Inngest requests. Mobile tests use Jest Expo and heavily mocked native/API dependencies. API tests use an in-memory SQLite database and the shared migrations.
+Web E2E tests use Playwright with mocked tRPC, image, and Inngest requests. Expo tests use Jest with heavily mocked native/API dependencies. Native iOS tests run in the iOS Simulator. API tests use an in-memory SQLite database and the shared migrations.
 
 ## Environment
 
@@ -168,6 +188,7 @@ The schema and defaults are in `apps/api/src/config.ts`:
 | `THUMBNAILS_DIRECTORY` | `./thumbnails` | Generated WebP root |
 | `NODE_ENV` | `development` | `development`, `production`, or `test` |
 | `RUN_DB_INIT` | `false` | `true` or `1` runs shared migrations on API startup |
+| `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false` | Enables `POST /api/v1/scans`; catalog/search/status compatibility routes remain readable while disabled |
 | `FASTEMBED_CACHE_DIR` | unset | Optional Rust/FastEmbed model cache |
 | `PHOTO_PROCESSING_THREADS` | available CPU capacity | Positive integer read by Rust at pool initialization; lower it to reduce concurrent decoded-image memory |
 | `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable Inngest HTTP(S) origin returned alongside subscription tokens |
@@ -175,7 +196,7 @@ The schema and defaults are in `apps/api/src/config.ts`:
 
 `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are still parsed as legacy configuration but are not used by the current Rust preview pipeline. Do not document them as active RAW dependencies.
 
-The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` directly. PhotoBrain parses `INNGEST_SERVE_ORIGIN` and passes it to the Hono handler as `serveHost`; set it to an API origin reachable from the runtime so registration cannot infer `localhost` from an internal request. Production/self-hosting requires `INNGEST_DEV=0`, matching runtime/API keys, and a reachable runtime. Keep `INNGEST_BASE_URL` server-internal if desired; `INNGEST_REALTIME_BASE_URL` must be reachable by web/mobile and expose `/v1/realtime/connect`. Both clients attach a keyless SDK client to initial/refreshed tokens. Never ship server keys in public client variables. The homelab runtime is managed in the external ArgoCD repository; it stores orchestration state separately from PhotoBrain's database/photos. See [self-hosted setup](README.md#self-hosted-inngest).
+The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` directly. PhotoBrain parses `INNGEST_SERVE_ORIGIN` and passes it to the Hono handler as `serveHost`; set it to an API origin reachable from the runtime so registration cannot infer `localhost` from an internal request. Production/self-hosting requires `INNGEST_DEV=0`, matching runtime/API keys, and a reachable runtime. Keep `INNGEST_BASE_URL` server-internal if desired; `INNGEST_REALTIME_BASE_URL` must be reachable by web/Expo and expose `/v1/realtime/connect`. Those clients attach a keyless SDK client to initial/refreshed tokens. Never ship server keys in public client variables. The homelab runtime is managed in the external ArgoCD repository; it stores orchestration state separately from PhotoBrain's database/photos. See [self-hosted setup](README.md#self-hosted-inngest).
 
 The tracked `.envrc` sets `PHOTO_DIRECTORY=/photos`, `PORT=3000`, and `VITE_API_URL=http://localhost:3000` when direnv loads it. Check the shell environment before diagnosing path behavior.
 
@@ -191,24 +212,37 @@ The production Bun server in `apps/web/serve.ts` reads:
 
 It injects `window.__CONFIG__` into `index.html`, allowing the API URL to change without rebuilding the Vite bundle.
 
-### Mobile
+### Mobile clients
 
-`EXPO_PUBLIC_API_URL` is read by `apps/mobile/src/config.ts`, with a fallback to `http://localhost:3000`. EAS profiles currently set `https://photobrain-api.ericj5.com` in `apps/mobile/eas.json`.
+The native Swift app reads `PhotoBrainAPIURL` from the selected configuration under `apps/ios/Config`: Debug uses local HTTP, while Preview and Production require a non-local HTTPS origin. The Expo app reads `EXPO_PUBLIC_API_URL` from `apps/mobile/src/config.ts`, with a fallback to `http://localhost:3000`; EAS profiles set `https://photobrain-api.ericj5.com`. Expo is the Android/web implementation. Its iOS module temporarily maintains the versioned theme/active-scan migration envelope consumed by the native app.
 
 ## API Contract Summary
 
-All tRPC procedures are public; there is no authentication or authorization middleware.
+The tRPC and `/api/v1` procedures are public; there is no authentication or authorization middleware.
 
 | Procedure | Type | Purpose |
 |---|---|---|
 | `folders` | query | Builds a sorted folder tree and counts direct-child photos |
-| `filterOptions` | query | Distinct camera, lens, ISO, and `YYYY-MM` values, optionally folder-scoped |
+| `filterOptions` | query | Distinct camera, lens, ISO, and stored date-month prefixes, optionally folder-scoped |
 | `photos` | query | Lists photos with optional raw/type, folder, camera, lens, ISO, and month filters |
 | `photo` | query | Returns one photo with EXIF by numeric ID |
 | `searchPhotos` | query | CLIP text search, limit 1-100 |
 | `scan` | mutation | Defaults to incremental scanning; optional `{ force: true }` reprocesses all discovered files. Creates a durable job and returns `{ success, jobId? }` |
 | `scanStatus` | query | Returns durable progress for a scan UUID or `null` |
 | `realtimeToken` | query | Returns `{ token, baseUrl? }` for a job ID; optional client-reachable self-hosted origin |
+
+The native compatibility surface under `/api/v1` uses the same catalog, search, and scan-job services:
+
+- `GET /api/v1/folders`
+- `GET /api/v1/filter-options`
+- `GET /api/v1/photos`
+- `GET /api/v1/photos/:id`
+- `POST /api/v1/search`
+- `POST /api/v1/scans` (disabled by default through `V1_NATIVE_SCAN_MUTATIONS_ENABLED`)
+- `GET /api/v1/scans/active`
+- `GET /api/v1/scans/:jobId`
+
+It emits explicit ISO JSON DTOs, normalizes Rust EXIF month prefixes from `YYYY:MM` to `YYYY-MM`, and never exposes the six private source/artifact identity fields. The shared catalog service keeps this as a `/api/v1` representation option so tRPC wire behavior does not change. The OpenAPI contract is checked in at `apps/api/src/routes/openapi-v1.json`.
 
 REST routes under `/api/photos`:
 
@@ -245,11 +279,15 @@ Implemented keyboard shortcuts:
 
 Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width/height values are persisted by `usePanelState`, but `PanelLayout` currently renders fixed dimensions.
 
-### Mobile
+### Native iOS
 
-The active entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint and is not the configured production entrypoint or the target of active navigation tests.
+`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering, semantic search, theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
 
-The active native tabs are Library, Collections, and an isolated Search tab. Library has a persistent header with live scrolling-grid blur and a visible-photo date, a continuous five-column phone grid ordered oldest-to-newest and opened at its newest edge, basic selection, EXIF filters, durable scan progress, and metadata. Scrolling back in time replaces the native tabs with a collapsed Collections + Years/Months/All + Search browsing bar. The modal loupe combines paged swipes, native iOS pinch zoom, a synchronized thumbnail filmstrip, and compact date/time and info controls. Library and Search create separate full-screen modal safe-area providers. Search uses a native iOS search bar and a 350 ms cancellable debounce. Library and loupe chrome use `expo-glass-effect` with opaque platform/Reduce Transparency fallbacks; Library also uses a masked `expo-blur` backdrop.
+### Expo Android/web
+
+The Expo entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint and is not the configured route tree or the target of active navigation tests. The Expo implementation remains current for Android/web and keeps an iOS build path only for the temporary migration bridge and explicit emergency preview/Production replacement workflows.
+
+The Expo route tree retains Library, Collections, and an isolated Search tab. Library has a persistent header with live scrolling-grid blur and a visible-photo date, a continuous five-column phone grid ordered oldest-to-newest and opened at its newest edge, basic selection, EXIF filters, durable scan progress, and metadata. Scrolling back in time replaces the native tabs with a collapsed Collections + Years/Months/All + Search browsing bar. The modal loupe combines paged swipes, platform-native pinch zoom, a synchronized thumbnail filmstrip, and compact date/time and info controls. Search uses a 350 ms cancellable debounce. Its iOS-specific search bar, safe-area, and Liquid Glass behavior remains relevant only to bridge/emergency builds; Android and unsupported environments use their existing fallbacks.
 
 Library Options offers incremental **Scan Library** and a separately confirmed **Reprocess all photos** action. Both are disabled during saved-scan recovery, dispatch, or an active scan.
 
@@ -267,13 +305,17 @@ There is no worker image and the mobile Docker target is not a static Expo web-e
 
 `.github/workflows/build.yml` currently:
 
-- Runs API tests and typecheck.
-- Runs web Playwright E2E tests.
-- Runs mobile Jest tests and preview-build decision regressions.
-- Before main's iOS/Android preview OTA publication, resolves the iOS Expo fingerprint runtime and reuses, waits for, or creates a compatible internal iOS preview. Failed or incompatible builds block publication. Version tags still wait for a production iOS EAS build before the iOS production update.
-- Provides a manual forced iOS preview rebuild sharing the automatic release's concurrency group. Both report install links; preview environment values must match the build profile.
+- Runs API tests/typecheck, web Playwright tests, Expo Jest tests, and retained emergency-preview decision tests.
+- Builds Android preview receivers and publishes Android preview EAS updates on `main`.
+- Builds Android production receivers and publishes Android production EAS updates on version tags.
 - Builds and pushes API, web, and mobile Docker targets.
 - Updates API/web/mobile image tags in the external ArgoCD repository on pushes to `main`.
+
+Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6 and runs the unsigned Preview configuration on an iOS 26.5 simulator. The manual `.github/workflows/native-ios-release.yml` validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
+
+`.github/workflows/expo-ios-emergency-production.yml` is a manually confirmed, bridge-compatible emergency Production replacement. It resolves the EAS Production environment but builds, signs, inspects, retains, and uploads a full replacement IPA to TestFlight; it is explicitly never an OTA release. Native and emergency Production workflows share the serialized `ios-production-release` concurrency group and `apps/ios/scripts/allocate-app-store-build.mjs`, which chooses a build number above both App Store Connect history and the run reservation floor. Operators must pass the same App Store marketing version to a native release and any replacement; both lanes enforce the production bundle/API contract and iOS 17.0 minimum.
+
+The permanent `.github/workflows/build.yml` never publishes iOS OTA updates. Its EAS release work is explicitly Android-only for preview on `main` and production on version tags. The workflow definitions are implemented controls, not evidence that signed execution or upload has occurred: physical-device drills, signed workflow execution, TestFlight verification, and production cutover remain external release gates.
 
 The API and worker must not be described as separate services unless a future change actually introduces a worker. Production still requires a reachable Inngest runtime for asynchronous processing and shared access to the SQLite database, photo directory, and thumbnail directory.
 
@@ -281,10 +323,11 @@ The API and worker must not be described as separate services unless a future ch
 
 ### Add or change an API capability
 
-1. Add typed procedures to `apps/api/src/trpc/router.ts` for metadata/query/mutation behavior.
-2. Add binary streaming behavior to `apps/api/src/routes/photos.ts` only when tRPC is unsuitable.
-3. Keep client types inferred from `@photobrain/api`; do not hand-maintain duplicate DTOs.
-4. Add or update API tests using the in-memory database setup when behavior is query/filter related.
+1. Put reusable metadata, query, search, and scan-job behavior in the shared services consumed by both `apps/api/src/trpc/router.ts` and `apps/api/src/routes/v1.ts`; keep their transport validation/serialization separate.
+2. Update `apps/api/src/routes/openapi-v1.json` when the native compatibility contract changes.
+3. Add binary streaming behavior to `apps/api/src/routes/photos.ts` only when tRPC or `/api/v1` JSON is unsuitable.
+4. Keep web/Expo client types inferred from `@photobrain/api`; do not hand-maintain duplicate tRPC DTOs.
+5. Add or update API tests using the in-memory database setup when behavior is query/filter related.
 
 ### Change the schema
 

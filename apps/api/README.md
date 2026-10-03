@@ -41,6 +41,7 @@ Variables are parsed in `src/config.ts`:
 | `THUMBNAILS_DIRECTORY` | `./thumbnails` |
 | `NODE_ENV` | `development` |
 | `RUN_DB_INIT` | `false` |
+| `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false`; accepts `true`, `false`, `1`, or `0` |
 | `INNGEST_SERVE_ORIGIN` | unset; inferred from the request |
 | `INNGEST_REALTIME_BASE_URL` | unset; client SDK default |
 
@@ -52,17 +53,18 @@ The Inngest SDK reads its server variables `INNGEST_DEV`, `INNGEST_BASE_URL`, `I
 
 ## HTTP API
 
-Registered routes:
+Registered route families:
 
 - `GET /api/health`
 - `GET|POST /api/trpc/*`
+- `GET|POST /api/v1/*`
 - `GET /api/photos/:id/file`
 - `GET /api/photos/:id/thumbnail/:size`
 - `POST /api/photos/reprocess-heic` (one-off maintenance)
 - `POST /api/photos/backfill-thumbnail-timestamps` (one-off maintenance)
 - `GET|PUT|POST /api/inngest`
 
-Photo metadata, folders, filters, search, scans, and Realtime token creation are tRPC procedures in `src/trpc/router.ts`:
+Photo metadata, folders, filters, search, scans, durable scan status, and Realtime token creation remain available to the Expo/web clients as tRPC procedures in `src/trpc/router.ts`:
 
 - `folders`
 - `filterOptions`
@@ -70,23 +72,41 @@ Photo metadata, folders, filters, search, scans, and Realtime token creation are
 - `photo`
 - `searchPhotos`
 - `scan`
+- `scanStatus`
 - `realtimeToken`
 
-There are no REST `GET /api/photos`, `GET /api/photos/:id`, `POST /api/scan`, or `GET /api/image/:filename` endpoints.
+There are no legacy REST `GET /api/photos`, `GET /api/photos/:id`, `POST /api/scan`, or `GET /api/image/:filename` endpoints.
 
-All procedures and file routes are currently public and unauthenticated.
+### Native JSON API v1
+
+The additive native Swift transport is ordinary JSON mounted at `/api/v1`; it does not require tRPC batching or SuperJSON. Its checked-in OpenAPI 3.1 contract is `src/routes/openapi-v1.json`.
+
+| Method and path | Contract |
+|---|---|
+| `GET /api/v1/folders` | Sorted recursive folder tree and total photo count. |
+| `GET /api/v1/filter-options?folder=` | Camera, lens, ISO, and normalized `YYYY-MM` options, optionally folder-scoped. |
+| `GET /api/v1/photos` | All matching photos with EXIF and `{ total, rawCount }`; accepts `filterRaw`, `folder`, `camera`, `lens`, `iso`, and `dateMonth`. |
+| `GET /api/v1/photos/:id` | One positive-integer photo ID or `PHOTO_NOT_FOUND`. |
+| `POST /api/v1/search` | Strict `{ query, limit }` JSON; limit defaults to 20 and must be 1–100. |
+| `POST /api/v1/scans` | Strict optional `{ force }` JSON; incremental by default and containment-gated as described below. |
+| `GET /api/v1/scans/active` | `{ jobs }` containing only active scans in deterministic recovery order. |
+| `GET /api/v1/scans/:jobId` | Durable scan status, or JSON `null` for an unknown valid UUID. |
+
+V1 scan responses expose only the approved phases `queued`, `discovering`, `processing`, `generating-embeddings`, `completed`, `failed`, and `cancelled`, and statuses `queued`, `processing`, `completed`, and `failed`. The serializer maps persisted legacy/internal `scan-complete` and `embedding` phases to `generating-embeddings`, and `running` status to `processing`; any other stored value fails closed. Timestamps are ISO 8601 strings. Stored scan failure details are replaced with the public error `The scan could not be completed`; start-dispatch failures use `The scan could not be started`.
+
+All v1, tRPC, and file routes are currently public and unauthenticated.
+
+### V1 scan-mutation containment
+
+`V1_NATIVE_SCAN_MUTATIONS_ENABLED` defaults to `false`. While false, `POST /api/v1/scans` returns HTTP 503 with `{ "error": { "code": "NATIVE_SCAN_DISABLED", "message": "Native scan mutations are disabled" } }` before request parsing or the start-scan service, so it creates no scan row and sends no event. The flag does not disable v1 reads, image routes, `/api/inngest`, or legacy tRPC, including the legacy scan mutation.
+
+Setting the flag true enables only the v1 scan mutation; it is not an authentication or authorization boundary. Deployment value, ACL behavior, and no-side-effect containment remain external release evidence rather than facts established by source inspection.
 
 ## Background Processing
 
-`scan` sends `photos/scan.requested` with absolute photo and thumbnail directories plus a job ID. The registered Inngest scan function:
+The legacy tRPC `scan` mutation and enabled v1 scan mutation share the same scan-start service. A request defaults to incremental work, creates a durable queued job, and dispatches `photos/scan.requested`. The registered `scan-photos-v5` function freezes discovery and work classification in durable manifests/items, streams pending media through the bounded native executor, atomically commits current-generation results and progress, and checkpoints every 20 completions. It dispatches only photos needing current embeddings to `generate-embeddings-v3`.
 
-1. Discovers supported files with the Rust addon.
-2. Processes files in batches of 20.
-3. Persists successful photo, EXIF, and pHash results.
-4. Publishes progress on `job:{jobId}`.
-5. Sends pending photo IDs to `photos/embeddings.requested`.
-
-The embedding function reads `large` WebP thumbnails in batches of 16, stores CLIP vectors in `photo_embedding`, and publishes `embedding`/`completed` progress. Clients obtain subscription tokens through `realtimeToken`.
+The embedding function reads committed `large` WebP thumbnails in batches of 16, generation-checks vector writes, and publishes `embedding`/`completed` progress. Both functions persist durable `scan_jobs` state and publish Realtime progress on `job:{jobId}`. Clients obtain subscription tokens through `realtimeToken`; the native v1 client uses durable status and active-scan recovery rather than that tRPC token procedure.
 
 ## Database
 
@@ -107,4 +127,4 @@ The API loads `sqlite-vec` at runtime for `vec_distance_L2` semantic search. See
 bun test
 ```
 
-The current API tests use an in-memory SQLite database with the shared migrations and cover folder-scoped filter options and EXIF/raw/camera/lens/ISO/date filtering. REST, Inngest function, vector-search, and migration-startup coverage is not currently present.
+The API tests use in-memory SQLite with the shared migrations. They cover catalog filtering, scan creation/failure semantics, v1 validation/serialization/parity/containment, active-scan ordering, scan planning and durable receipts, native-executor coordination, embedding generation checks, and import persistence. Binary REST file streaming, live Inngest delivery, live vector-model inference, and migration startup remain outside this test suite.
