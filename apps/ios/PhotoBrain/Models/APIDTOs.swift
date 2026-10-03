@@ -108,6 +108,29 @@ private extension ISO8601DateFormatter {
 
     static let internet = ISO8601DateFormatter()
 }
+
+/// Culling flag set from the loupe; `nil` on a photo means unflagged.
+enum PhotoFlag: String, Codable, CaseIterable, Hashable, Sendable {
+    case pick
+    case reject
+}
+
+/// Flag filter accepted by `GET /photos` and `POST /search`.
+enum PhotoFlagFilter: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case pick
+    case reject
+    case unflagged
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .pick: "Picks"
+        case .reject: "Rejected"
+        case .unflagged: "Unflagged"
+        }
+    }
+}
+
 struct PhotoDTO: Codable, Hashable, Identifiable, Sendable {
     let id: Int
     let path: String
@@ -127,6 +150,36 @@ struct PhotoDTO: Codable, Hashable, Identifiable, Sendable {
     let embeddingStatus: String?
     let phashStatus: String?
     let exif: PhotoEXIFDTO?
+    /// 0-5; servers that predate curation omit it and decode as 0.
+    let rating: Int
+    /// Servers that predate curation omit it and decode as unflagged.
+    let flag: PhotoFlag?
+}
+
+extension PhotoDTO {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        path = try container.decode(String.self, forKey: .path)
+        name = try container.decode(String.self, forKey: .name)
+        size = try container.decode(Int.self, forKey: .size)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        modifiedAt = try container.decode(Date.self, forKey: .modifiedAt)
+        width = try container.decodeIfPresent(Int.self, forKey: .width)
+        height = try container.decodeIfPresent(Int.self, forKey: .height)
+        mimeType = try container.decodeIfPresent(String.self, forKey: .mimeType)
+        isRaw = try container.decodeIfPresent(Bool.self, forKey: .isRaw)
+        rawFormat = try container.decodeIfPresent(String.self, forKey: .rawFormat)
+        rawStatus = try container.decodeIfPresent(String.self, forKey: .rawStatus)
+        rawError = try container.decodeIfPresent(String.self, forKey: .rawError)
+        thumbnailStatus = try container.decodeIfPresent(String.self, forKey: .thumbnailStatus)
+        thumbnailUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .thumbnailUpdatedAt)
+        embeddingStatus = try container.decodeIfPresent(String.self, forKey: .embeddingStatus)
+        phashStatus = try container.decodeIfPresent(String.self, forKey: .phashStatus)
+        exif = try container.decodeIfPresent(PhotoEXIFDTO.self, forKey: .exif)
+        rating = try container.decodeIfPresent(Int.self, forKey: .rating) ?? 0
+        flag = try container.decodeIfPresent(PhotoFlag.self, forKey: .flag)
+    }
 }
 
 struct PhotosResponseDTO: Codable, Equatable, Sendable {
@@ -151,6 +204,8 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let lens: String?
     let iso: Int?
     let dateMonth: String?
+    let minRating: Int?
+    let flag: String?
 
     init(query: String, limit: Int, filters: PhotoQuery) {
         self.query = query
@@ -161,6 +216,31 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
         lens = filters.lens
         iso = filters.iso
         dateMonth = filters.dateMonth
+        minRating = filters.minRating
+        flag = filters.flag?.rawValue
+    }
+}
+
+/// `PATCH /api/v1/photos/:id` body. Only provided keys are encoded; clearing the flag
+/// (`flag: .some(nil)`) encodes an explicit JSON `null`, while `flag: nil` omits the key.
+struct CurationPatchDTO: Encodable, Equatable, Sendable {
+    let rating: Int?
+    let flag: PhotoFlag??
+
+    private enum CodingKeys: String, CodingKey {
+        case rating
+        case flag
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(rating, forKey: .rating)
+        guard case let .some(flag) = flag else { return }
+        if let flag {
+            try container.encode(flag, forKey: .flag)
+        } else {
+            try container.encodeNil(forKey: .flag)
+        }
     }
 }
 

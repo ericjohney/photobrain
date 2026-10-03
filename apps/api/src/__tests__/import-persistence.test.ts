@@ -222,6 +222,36 @@ describe("saveScanBatch", () => {
 		});
 	});
 
+	test("rescans and generation upserts preserve user rating and flag", () => {
+		const input = result("curated.jpg");
+		const [id] = saveScanBatch(db, [input], mediaStates([input], "first"));
+		expect(snapshot().photos[0]).toMatchObject({ rating: 0, flag: null });
+		db.update(photos)
+			.set({ rating: 4, flag: "reject" })
+			.where(eq(photos.id, id))
+			.run();
+
+		const changed = result(input.path, {
+			size: 999,
+			modifiedAt: Date.UTC(2025, 5, 1),
+			phash: "Y2hhbmdlZA==",
+		});
+		expect(
+			saveScanBatch(db, [changed], mediaStates([changed], "second")),
+		).toEqual([id]);
+		expect(saveScanBatch(db, [changed])).toEqual([id]);
+		saveEmbeddingBatch(db, targets([id]), [[0.5]]);
+
+		const [saved] = snapshot().photos;
+		expect(saved).toMatchObject({
+			id,
+			size: 999,
+			embeddingStatus: "completed",
+			rating: 4,
+			flag: "reject",
+		});
+	});
+
 	test("generation-aware saves preserve IDs while direct saves invalidate freshness", () => {
 		const input = result("generations.jpg");
 		const first = mediaStates([input], "first");

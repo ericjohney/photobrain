@@ -15,6 +15,8 @@ export type FixturePhoto = {
 	thumbnailStatus: string;
 	embeddingStatus: string;
 	phashStatus: string;
+	rating: number;
+	flag: "pick" | "reject" | null;
 	exif: {
 		id: number;
 		photoId: number;
@@ -55,6 +57,8 @@ function makePhoto(
 		thumbnailStatus: "completed",
 		embeddingStatus: "completed",
 		phashStatus: "completed",
+		rating: 0,
+		flag: null,
 		exif: {
 			id,
 			photoId: id,
@@ -77,7 +81,12 @@ function makePhoto(
 }
 
 export const FIXTURE_PHOTOS: FixturePhoto[] = [
-	makePhoto(1, { name: "sunset.jpg", path: "photos/2024/sunset.jpg" }),
+	makePhoto(1, {
+		name: "sunset.jpg",
+		path: "photos/2024/sunset.jpg",
+		rating: 5,
+		flag: "pick",
+	}),
 	makePhoto(2, {
 		name: "portrait.arw",
 		path: "photos/2024/portrait.arw",
@@ -104,6 +113,8 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		isRaw: true,
 		rawFormat: "CR2",
 		mimeType: "image/x-canon-cr2",
+		rating: 1,
+		flag: "reject",
 	}),
 	makePhoto(5, {
 		name: "street.jpg",
@@ -111,13 +122,22 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		width: 4000,
 		height: 6000,
 	}),
-	makePhoto(6, { name: "beach.jpg", path: "photos/2024/beach.jpg" }),
+	makePhoto(6, {
+		name: "beach.jpg",
+		path: "photos/2024/beach.jpg",
+		rating: 3,
+	}),
 	makePhoto(7, {
 		name: "mountain.heic",
 		path: "photos/2024/mountain.heic",
 		mimeType: "image/heic",
 	}),
-	makePhoto(8, { name: "forest.jpg", path: "photos/2024/forest.jpg" }),
+	makePhoto(8, {
+		name: "forest.jpg",
+		path: "photos/2024/forest.jpg",
+		rating: 4,
+		flag: "pick",
+	}),
 	makePhoto(9, { name: "city.jpg", path: "photos/2024/city.jpg" }),
 	makePhoto(10, { name: "flower.jpg", path: "photos/2024/flower.jpg" }),
 	makePhoto(11, { name: "cat.jpg", path: "photos/2024/cat.jpg", exif: null }),
@@ -148,6 +168,8 @@ export type FixturePhotoFilters = {
 	lens?: string;
 	iso?: number;
 	dateMonth?: string;
+	minRating?: number;
+	flag?: "pick" | "reject" | "unflagged";
 };
 
 /** Camera label as the API composes it: model alone when it already starts with the make. */
@@ -184,6 +206,14 @@ export function filterFixturePhotos(
 			filters.dateMonth !== undefined &&
 			exif?.dateTaken?.slice(0, 7) !== filters.dateMonth
 		) {
+			return false;
+		}
+		if (filters.minRating !== undefined && p.rating < filters.minRating) {
+			return false;
+		}
+		if (filters.flag === "unflagged") {
+			if (p.flag !== null) return false;
+		} else if (filters.flag !== undefined && p.flag !== filters.flag) {
 			return false;
 		}
 		return true;

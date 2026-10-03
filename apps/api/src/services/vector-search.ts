@@ -114,9 +114,10 @@ type SimilarRow = {
  * Rank photos by CLIP vector distance to an existing photo's committed vector.
  *
  * One statement resolves the source vector, applies the text-search validity
- * filters to candidates, excludes the source, and orders by distance then ID.
- * The source row is always returned (left-joined to neighbours) so existence
- * and indexing state need no extra round trip.
+ * filters and any catalog filters to candidates (before ranking and LIMIT),
+ * excludes the source, and orders by distance then ID. Filters never apply to
+ * the source itself. The source row is always returned (left-joined to
+ * neighbours) so existence and indexing state need no extra round trip.
  *
  * @returns `null` when the photo does not exist; `indexed: false` when it has no
  * usable vector.
@@ -125,7 +126,13 @@ export async function findSimilarToPhoto(
 	database: ApiDatabase,
 	photoId: number,
 	limit: number,
+	filters: PhotoFilters = {},
 ): Promise<SimilarPhotosResult | null> {
+	const filterConditions = photoFilterConditions(filters);
+	const filterClause =
+		filterConditions.length > 0
+			? sql` AND ${sql.join(filterConditions, sql` AND `)}`
+			: sql``;
 	const rows = await database.all<SimilarRow>(
 		sql`
       WITH source AS (
@@ -149,11 +156,11 @@ export async function findSimilarToPhoto(
         INNER JOIN photo_embedding e
           ON e.photo_id != s.id
           AND length(e.embedding) = length(s.embedding)
-        INNER JOIN photos p ON p.id = e.photo_id
+        INNER JOIN photos ON photos.id = e.photo_id
         WHERE s.embedding IS NOT NULL
-          AND p.embedding_status = 'completed'
-          AND e.thumbnail_key IS p.thumbnail_key
-          AND e.model_version = ${EMBEDDING_MODEL_VERSION}
+          AND photos.embedding_status = 'completed'
+          AND e.thumbnail_key IS photos.thumbnail_key
+          AND e.model_version = ${EMBEDDING_MODEL_VERSION}${filterClause}
         ORDER BY distance ASC, e.photo_id ASC
         LIMIT ${limit}
       )

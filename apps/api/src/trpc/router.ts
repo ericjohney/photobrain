@@ -9,6 +9,11 @@ import {
 	listFolders,
 	listPhotos,
 } from "../services/photo-catalog";
+import {
+	MAX_CURATION_IDS,
+	PHOTO_FLAGS,
+	updatePhotoCuration,
+} from "../services/photo-curation";
 import { searchPhotoCatalog } from "../services/photo-search";
 import { getScan, startScan } from "../services/scan-jobs";
 import {
@@ -18,6 +23,11 @@ import {
 import { publicProcedure, router } from "./trpc";
 
 export type { FolderNode } from "../services/photo-catalog";
+
+const curationFilterShape = {
+	minRating: z.number().int().min(1).max(5).optional(),
+	flag: z.enum(["pick", "reject", "unflagged"]).optional(),
+};
 
 export const appRouter = router({
 	folders: publicProcedure.query(({ ctx }) => listFolders(ctx.db)),
@@ -42,6 +52,7 @@ export const appRouter = router({
 					lens: z.string().optional(),
 					iso: z.number().optional(),
 					dateMonth: z.string().optional(),
+					...curationFilterShape,
 				})
 				.optional(),
 		)
@@ -66,6 +77,7 @@ export const appRouter = router({
 				lens: z.string().optional(),
 				iso: z.number().int().optional(),
 				dateMonth: z.string().optional(),
+				...curationFilterShape,
 			}),
 		)
 		.query(({ ctx, input }) =>
@@ -81,18 +93,37 @@ export const appRouter = router({
 			z.object({
 				photoId: z.number().int().positive(),
 				limit: z.number().int().min(1).max(100).default(30),
+				...curationFilterShape,
 			}),
 		)
 		.query(async ({ ctx, input }) => {
-			const result = await findSimilarToPhoto(
-				ctx.db,
-				input.photoId,
-				input.limit,
-			);
+			const { photoId, limit, ...filters } = input;
+			const result = await findSimilarToPhoto(ctx.db, photoId, limit, filters);
 			if (!result) {
 				throw new TRPCError({ code: "NOT_FOUND", message: "Photo not found" });
 			}
 			return result;
+		}),
+
+	setPhotoCuration: publicProcedure
+		.input(
+			z
+				.object({
+					photoIds: z
+						.array(z.number().int().positive())
+						.min(1)
+						.max(MAX_CURATION_IDS),
+					rating: z.number().int().min(0).max(5).optional(),
+					flag: z.enum(PHOTO_FLAGS).nullable().optional(),
+				})
+				.refine(
+					(input) => input.rating !== undefined || input.flag !== undefined,
+					{ message: "Provide rating or flag" },
+				),
+		)
+		.mutation(({ ctx, input }) => {
+			const { photoIds, ...patch } = input;
+			return updatePhotoCuration(ctx.db, photoIds, patch);
 		}),
 
 	scan: publicProcedure

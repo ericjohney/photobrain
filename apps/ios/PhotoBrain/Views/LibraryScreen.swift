@@ -72,6 +72,7 @@ struct LibraryScreen: View {
                         set: { store.activePhotoID = $0 }
                     ),
                     api: environment.api,
+                    curation: store.curation,
                     dismiss: { store.activePhotoID = nil }
                 )
             }
@@ -388,6 +389,23 @@ struct FilterView<Store: FilterEditingStore>: View {
                 .pickerStyle(.segmented)
             }
 
+            Section("Rating") {
+                Picker("Minimum Rating", selection: minRatingBinding) {
+                    Text("Any").tag(Int?.none)
+                    ForEach(1...5, id: \.self) { stars in
+                        Text(LibraryFilters.formatMinRating(stars))
+                            .accessibilityLabel(stars == 5 ? "5 stars" : "\(stars) or more stars")
+                            .tag(Optional(stars))
+                    }
+                }
+                Picker("Flag", selection: flagBinding) {
+                    Text("Any").tag(PhotoFlagFilter?.none)
+                    ForEach(PhotoFlagFilter.allCases) { flag in
+                        Text(flag.title).tag(Optional(flag))
+                    }
+                }
+            }
+
             Section("Metadata") {
                 if let options = store.filterOptions {
                     NavigationLink {
@@ -481,6 +499,28 @@ struct FilterView<Store: FilterEditingStore>: View {
             set: { value in
                 var filters = store.filters
                 filters.iso = value
+                store.applyFilters(filters)
+            }
+        )
+    }
+
+    private var minRatingBinding: Binding<Int?> {
+        Binding(
+            get: { store.filters.minRating },
+            set: { value in
+                var filters = store.filters
+                filters.minRating = value
+                store.applyFilters(filters)
+            }
+        )
+    }
+
+    private var flagBinding: Binding<PhotoFlagFilter?> {
+        Binding(
+            get: { store.filters.flag },
+            set: { value in
+                var filters = store.filters
+                filters.flag = value
                 store.applyFilters(filters)
             }
         )

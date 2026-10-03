@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as sqliteVec from "sqlite-vec";
 import { photoEmbedding, photoExif, photos } from "../db/schema";
@@ -400,6 +401,77 @@ if (process.env.PHOTOBRAIN_SEARCH_FILTERS_TEST_CHILD !== "1") {
 				}),
 			).rejects.toThrow();
 		});
+
+		test("minRating and flag filter inside the KNN statement, before LIMIT", async () => {
+			db.update(photos)
+				.set({ rating: 5, flag: "pick" })
+				.where(eq(photos.id, ids.c))
+				.run();
+			db.update(photos)
+				.set({ rating: 3, flag: "reject" })
+				.where(eq(photos.id, ids.a))
+				.run();
+			db.update(photos)
+				.set({ rating: 1 })
+				.where(eq(photos.id, ids.noExif))
+				.run();
+			// Same filters on an unindexed photo must not surface it.
+			db.update(photos)
+				.set({ rating: 5, flag: "pick" })
+				.where(eq(photos.id, ids.unindexed))
+				.run();
+
+			expect(names(await search({ minRating: 1 }))).toEqual([
+				"a",
+				"c",
+				"noExif",
+			]);
+			expect(names(await search({ minRating: 3 }))).toEqual(["a", "c"]);
+			expect(names(await search({ minRating: 5 }))).toEqual(["c"]);
+			expect(names(await search({ minRating: 3 }, 1))).toEqual(["a"]);
+			expect(names(await search({ flag: "pick" }))).toEqual(["c"]);
+			expect(names(await search({ flag: "reject" }, 1))).toEqual(["a"]);
+			expect(names(await search({ flag: "unflagged" }))).toEqual(
+				ALL_INDEXED.filter((name) => name !== "a" && name !== "c"),
+			);
+			expect(
+				names(
+					await search({
+						folder: "2024/Trip",
+						minRating: 1,
+						flag: "unflagged",
+					}),
+				),
+			).toEqual(["noExif"]);
+			const picked = await search({ flag: "pick" });
+			expect(picked.photos[0]).toMatchObject({ rating: 5, flag: "pick" });
+
+			for (const filters of [
+				{ minRating: 1 },
+				{ flag: "unflagged" },
+				{ minRating: 3, flag: "reject" },
+			] satisfies PhotoFilters[]) {
+				const listed = (await listPhotos(db, filters)).photos
+					.map((photo) => photo.id)
+					.filter((id) => id !== ids.unindexed)
+					.sort((left, right) => left - right);
+				const searched = (await search(filters)).photos
+					.map((photo) => photo.id)
+					.sort((left, right) => left - right);
+				expect(searched).toEqual(listed);
+			}
+
+			for (const input of [
+				{ minRating: 0 },
+				{ minRating: 6 },
+				{ minRating: 1.5 },
+				{ flag: "maybe" as PhotoFilters["flag"] },
+			]) {
+				await expect(
+					caller.searchPhotos({ query: "beach", ...input }),
+				).rejects.toThrow();
+			}
+		});
 	});
 
 	describe("POST /api/v1/search filters", () => {
@@ -471,6 +543,40 @@ if (process.env.PHOTOBRAIN_SEARCH_FILTERS_TEST_CHILD !== "1") {
 					message: "Request validation failed",
 				},
 			} as unknown as typeof response.body);
+		});
+
+		test("minRating and flag narrow v1 search like tRPC and reject invalid values", async () => {
+			db.update(photos)
+				.set({ rating: 4, flag: "pick" })
+				.where(eq(photos.id, ids.b))
+				.run();
+			db.update(photos)
+				.set({ rating: 2, flag: "reject" })
+				.where(eq(photos.id, ids.nested))
+				.run();
+			for (const filters of [
+				{ minRating: 3 },
+				{ flag: "reject" },
+				{ flag: "unflagged", folder: "2024/Trip" },
+			] satisfies PhotoFilters[]) {
+				const response = await v1Search(filters);
+				expect(response.status).toBe(200);
+				expect(names(response.body)).toEqual(names(await search(filters)));
+				for (const photo of response.body.photos) {
+					expect(photo).toHaveProperty("rating");
+					expect(photo).toHaveProperty("flag");
+				}
+			}
+			for (const body of [
+				{ minRating: 0 },
+				{ minRating: 6 },
+				{ minRating: 2.5 },
+				{ minRating: "3" },
+				{ flag: "maybe" },
+				{ flag: null },
+			]) {
+				expect((await v1Search(body)).status).toBe(400);
+			}
 		});
 	});
 

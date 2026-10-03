@@ -4,6 +4,7 @@ import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
 import {
 	FIXTURE_FOLDERS,
 	FIXTURE_PHOTOS,
+	type FixturePhoto,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
 	searchPhotosByQuery,
@@ -33,82 +34,111 @@ function parseTrpcBatchRequest(
 	});
 }
 
-type Handler = (input: unknown) => unknown | Promise<unknown>;
+/** Overrides also receive the page's default handlers, to delegate to them. */
+type Handler = (
+	input: unknown,
+	defaults: Record<string, Handler>,
+) => unknown | Promise<unknown>;
 
 export type HandlerOverrides = Partial<Record<string, Handler>>;
 
 export const FIXTURE_JOB_ID = "11111111-1111-4111-8111-111111111111";
 
-export const DEFAULT_HANDLERS: Record<string, Handler> = {
-	folders: () => FIXTURE_FOLDERS,
-	photos: (input) => {
-		const photos = filterFixturePhotos(
-			FIXTURE_PHOTOS,
-			(input ?? {}) as FixturePhotoFilters,
-		);
-		return {
-			photos,
-			total: photos.length,
-			rawCount: photos.filter((p) => p.isRaw).length,
-		};
-	},
-	searchPhotos: (input) => {
-		const { query = "", ...filters } = (input ?? {}) as FixturePhotoFilters & {
-			query?: string;
-		};
-		const photos = searchPhotosByQuery(
-			query,
-			filterFixturePhotos(FIXTURE_PHOTOS, filters),
-		);
-		return { photos, total: photos.length, query };
-	},
-	similarPhotos: (input) => {
-		const photoId =
-			input && typeof input === "object" && "photoId" in input
-				? input.photoId
-				: undefined;
-		if (!FIXTURE_PHOTOS.some((p) => p.id === photoId)) {
-			throw new Error(`Photo ${photoId} not found`);
-		}
-		const photos = FIXTURE_PHOTOS.filter((p) => p.id !== photoId).reverse();
-		return {
-			photos,
-			total: photos.length,
-			sourcePhotoId: photoId,
-			indexed: true,
-		};
-	},
-	filterOptions: () => ({
-		cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
-		lenses: [
-			"FE 24-70mm f/2.8 GM",
-			"FE 85mm f/1.4 GM",
-			"RF 15-35mm f/2.8L IS USM",
-		],
-		isos: [100, 200, 400, 800, 3200],
-		dates: ["2024-06", "2024-07", "2024-08"],
-	}),
-	scan: () => ({ success: true, jobId: FIXTURE_JOB_ID }),
-	scanStatus: (input) => ({
-		id:
-			typeof input === "object" && input !== null && "jobId" in input
-				? input.jobId
-				: FIXTURE_JOB_ID,
-		status: "queued",
-		phase: "queued",
-		current: 0,
-		total: 0,
-		error: null,
-		updatedAt: new Date("2024-01-01T00:00:00Z"),
-	}),
-	realtimeToken: () => ({
-		token: {
-			channel: `job:${FIXTURE_JOB_ID}`,
-			topics: ["progress"],
-			key: "test-token-xyz",
-		},
-	}),
+type CurationInput = {
+	photoIds: number[];
+	rating?: number;
+	flag?: FixturePhoto["flag"];
 };
+
+/**
+ * Builds handlers over a private copy of the fixture library, so
+ * `setPhotoCuration` writes are visible to later reads on the same page.
+ */
+function createDefaultHandlers(): Record<string, Handler> {
+	const library = FIXTURE_PHOTOS.map((photo) => ({ ...photo }));
+	return {
+		folders: () => FIXTURE_FOLDERS,
+		photos: (input) => {
+			const photos = filterFixturePhotos(
+				library,
+				(input ?? {}) as FixturePhotoFilters,
+			);
+			return {
+				photos,
+				total: photos.length,
+				rawCount: photos.filter((p) => p.isRaw).length,
+			};
+		},
+		searchPhotos: (input) => {
+			const { query = "", ...filters } = (input ??
+				{}) as FixturePhotoFilters & {
+				query?: string;
+			};
+			const photos = searchPhotosByQuery(
+				query,
+				filterFixturePhotos(library, filters),
+			);
+			return { photos, total: photos.length, query };
+		},
+		similarPhotos: (input) => {
+			const photoId =
+				input && typeof input === "object" && "photoId" in input
+					? input.photoId
+					: undefined;
+			if (!library.some((p) => p.id === photoId)) {
+				throw new Error(`Photo ${photoId} not found`);
+			}
+			const photos = library.filter((p) => p.id !== photoId).reverse();
+			return {
+				photos,
+				total: photos.length,
+				sourcePhotoId: photoId,
+				indexed: true,
+			};
+		},
+		setPhotoCuration: (input) => {
+			const { photoIds, rating, flag } = input as CurationInput;
+			const updated = library
+				.filter((p) => photoIds.includes(p.id))
+				.map((p) => {
+					if (rating !== undefined) p.rating = rating;
+					if (flag !== undefined) p.flag = flag;
+					return { id: p.id, rating: p.rating, flag: p.flag };
+				});
+			return { updated };
+		},
+		filterOptions: () => ({
+			cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
+			lenses: [
+				"FE 24-70mm f/2.8 GM",
+				"FE 85mm f/1.4 GM",
+				"RF 15-35mm f/2.8L IS USM",
+			],
+			isos: [100, 200, 400, 800, 3200],
+			dates: ["2024-06", "2024-07", "2024-08"],
+		}),
+		scan: () => ({ success: true, jobId: FIXTURE_JOB_ID }),
+		scanStatus: (input) => ({
+			id:
+				typeof input === "object" && input !== null && "jobId" in input
+					? input.jobId
+					: FIXTURE_JOB_ID,
+			status: "queued",
+			phase: "queued",
+			current: 0,
+			total: 0,
+			error: null,
+			updatedAt: new Date("2024-01-01T00:00:00Z"),
+		}),
+		realtimeToken: () => ({
+			token: {
+				channel: `job:${FIXTURE_JOB_ID}`,
+				topics: ["progress"],
+				key: "test-token-xyz",
+			},
+		}),
+	};
+}
 
 /** Inputs received by each mocked procedure, in request order. */
 export type TrpcCallLog = Record<string, unknown[]>;
@@ -117,7 +147,8 @@ export async function installTrpcHandlers(
 	page: Page,
 	overrides: HandlerOverrides = {},
 ): Promise<TrpcCallLog> {
-	const handlers = { ...DEFAULT_HANDLERS, ...overrides };
+	const defaults = createDefaultHandlers();
+	const handlers = { ...defaults, ...overrides };
 	const calls: TrpcCallLog = {};
 
 	await page.route(/\/trpc\//, async (route: Route) => {
@@ -135,14 +166,32 @@ export async function installTrpcHandlers(
 					};
 				}
 				(calls[path] ??= []).push(input);
-				// superjson response envelope preserves Date/undefined/etc via meta
-				const value = await handler(input);
-				const serialized = superjson.serialize(value);
-				return {
-					result: {
-						data: { json: serialized.json, meta: serialized.meta },
-					},
-				};
+				try {
+					// superjson response envelope preserves Date/undefined/etc via meta
+					const value = await handler(input, defaults);
+					const serialized = superjson.serialize(value);
+					return {
+						result: {
+							data: { json: serialized.json, meta: serialized.meta },
+						},
+					};
+				} catch (error) {
+					// A throwing handler (e.g. an override told to fail) becomes a
+					// tRPC INTERNAL_SERVER_ERROR for that batch entry.
+					return {
+						error: {
+							json: {
+								message: error instanceof Error ? error.message : String(error),
+								code: -32603,
+								data: {
+									code: "INTERNAL_SERVER_ERROR",
+									httpStatus: 500,
+									path,
+								},
+							},
+						},
+					};
+				}
 			}),
 		);
 		await route.fulfill({

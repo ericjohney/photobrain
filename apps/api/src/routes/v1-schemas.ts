@@ -32,6 +32,16 @@ export const filterOptionsResponseSchema = z.object({
 	dates: z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)),
 });
 
+export const minRatingFilterSchema = z.coerce
+	.number()
+	.int()
+	.min(1)
+	.max(5)
+	.optional();
+export const curationFlagFilterSchema = z
+	.enum(["pick", "reject", "unflagged"])
+	.optional();
+
 export const photoFiltersSchema = z.object({
 	filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
 	folder: z.string().optional(),
@@ -42,9 +52,21 @@ export const photoFiltersSchema = z.object({
 		.string()
 		.regex(/^\d{4}-(0[1-9]|1[0-2])$/)
 		.optional(),
+	minRating: minRatingFilterSchema,
+	flag: curationFlagFilterSchema,
 });
 
 export const photoIdSchema = z.coerce.number().int().positive();
+
+export const photoFlagSchema = z.enum(["pick", "reject"]);
+
+export const photoCurationPatchSchema = z
+	.object({
+		rating: z.number().int().min(0).max(5).optional(),
+		flag: photoFlagSchema.nullable().optional(),
+	})
+	.strict()
+	.refine((patch) => patch.rating !== undefined || patch.flag !== undefined);
 
 export const photoExifSchema = z.object({
 	id: z.number().int().positive(),
@@ -84,6 +106,8 @@ export const photoSchema = z.object({
 	thumbnailUpdatedAt: isoTimestampSchema.nullable(),
 	embeddingStatus: z.string().nullable(),
 	phashStatus: z.string().nullable(),
+	rating: z.number().int().min(0).max(5),
+	flag: photoFlagSchema.nullable(),
 	exif: photoExifSchema.nullable(),
 });
 
@@ -103,6 +127,8 @@ export const searchRequestSchema = z
 		lens: photoFiltersSchema.shape.lens,
 		iso: z.number().int().optional(),
 		dateMonth: photoFiltersSchema.shape.dateMonth,
+		minRating: z.number().int().min(1).max(5).optional(),
+		flag: curationFlagFilterSchema,
 	})
 	.strict();
 
@@ -114,6 +140,8 @@ export const searchResponseSchema = z.object({
 
 export const similarPhotosQuerySchema = z.object({
 	limit: z.coerce.number().int().min(1).max(100).default(30),
+	minRating: minRatingFilterSchema,
+	flag: curationFlagFilterSchema,
 });
 
 export const similarPhotosResponseSchema = z.object({

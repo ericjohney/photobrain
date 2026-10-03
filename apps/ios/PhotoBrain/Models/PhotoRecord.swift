@@ -22,10 +22,15 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
     let pixelHeight: Int
     let mimeType: String?
     let exif: PhotoEXIFDTO?
+    /// Mutable so a single record can be patched optimistically without a reload.
+    var rating: Int
+    var flag: PhotoFlag?
 
     var isConvertedRAW: Bool {
         isRaw && rawStatus == "converted"
     }
+
+    var isRejected: Bool { flag == .reject }
 
     init(
         id: Int,
@@ -61,6 +66,8 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
         self.pixelHeight = pixelHeight
         mimeType = nil
         exif = nil
+        rating = 0
+        flag = nil
         self.cameraModel = cameraModel
         self.lensModel = lensModel
     }
@@ -97,6 +104,8 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
         pixelHeight = dto.height ?? 0
         mimeType = dto.mimeType
         exif = dto.exif
+        rating = dto.rating
+        flag = dto.flag
         cameraModel = dto.exif?.cameraDescription
         lensModel = dto.exif?.lensDescription
     }
@@ -158,5 +167,5 @@ struct PhotoSection: Identifiable, Hashable, Sendable {
 
     let id: ID
     let title: String
-    let photos: [PhotoRecord]
+    var photos: [PhotoRecord]
 }

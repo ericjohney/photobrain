@@ -7,6 +7,9 @@ struct PhotoQuery: Hashable, Sendable {
     var lens: String?
     var iso: Int?
     var dateMonth: String?
+    /// Only photos rated at least this many stars (1-5).
+    var minRating: Int?
+    var flag: PhotoFlagFilter?
 }
 
 protocol PhotoBrainAPI: Sendable {
@@ -17,6 +20,9 @@ protocol PhotoBrainAPI: Sendable {
     func photo(id: Int) async throws -> PhotoDTO
     func search(query: String, limit: Int, filters: PhotoQuery) async throws -> SearchResponseDTO
     func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO
+    /// `PATCH /photos/{id}`. `rating: nil` and `flag: nil` leave a field unchanged;
+    /// `flag: .some(nil)` clears the flag. At least one field must be provided.
+    func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO
     func startScan(force: Bool) async throws -> StartScanResponseDTO
     func scan(id: String) async throws -> ScanDTO?
     func activeScans() async throws -> ActiveScansResponseDTO
@@ -67,6 +73,10 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         if let lens = query.lens { items.append(URLQueryItem(name: "lens", value: lens)) }
         if let iso = query.iso { items.append(URLQueryItem(name: "iso", value: String(iso))) }
         if let month = query.dateMonth { items.append(URLQueryItem(name: "dateMonth", value: month)) }
+        if let minRating = query.minRating {
+            items.append(URLQueryItem(name: "minRating", value: String(minRating)))
+        }
+        if let flag = query.flag { items.append(URLQueryItem(name: "flag", value: flag.rawValue)) }
         return try await get(path: ["photos"], queryItems: items)
     }
 
@@ -91,6 +101,16 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         return try await get(
             path: ["photos", String(id), "similar"],
             queryItems: [URLQueryItem(name: "limit", value: String(limit))]
+        )
+    }
+
+    func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {
+        guard id > 0, rating != nil || flag != nil else { throw PhotoBrainAPIError.invalidRequest }
+        if let rating, !(0...5).contains(rating) { throw PhotoBrainAPIError.invalidRequest }
+        return try await send(
+            method: "PATCH",
+            path: ["photos", String(id)],
+            body: CurationPatchDTO(rating: rating, flag: flag)
         )
     }
 
@@ -128,8 +148,16 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         path: [String],
         body: Body
     ) async throws -> Response {
+        try await send(method: "POST", path: path, body: body)
+    }
+
+    private func send<Body: Encodable, Response: Decodable>(
+        method: String,
+        path: [String],
+        body: Body
+    ) async throws -> Response {
         var request = try request(path: path)
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do {
             request.httpBody = try encoder.encode(body)

@@ -33,8 +33,9 @@ final class AppBootstrap: ObservableObject {
             let environment = try AppEnvironment()
             let imported = await migration.importSchemaOne()
             let theme = ThemeController(preference: imported.theme, migration: migration)
-            let library = LibraryStore(api: environment.api)
-            let search = SearchStore(api: environment.api)
+            let curation = PhotoCurationCenter(api: environment.api)
+            let library = LibraryStore(api: environment.api, curation: curation)
+            let search = SearchStore(api: environment.api, curation: curation)
             let scans = ScanCoordinator(api: environment.api, migration: migration)
             scans.invalidateLibrary = { [weak library] in
                 await library?.load()

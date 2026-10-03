@@ -7,6 +7,7 @@ import {
 	listFolders,
 	listPhotos,
 } from "../services/photo-catalog";
+import { updatePhotoCuration } from "../services/photo-curation";
 import type { PhotoSearchProvider } from "../services/photo-search";
 import { searchPhotoCatalog } from "../services/photo-search";
 import type { ScanEventDispatcher } from "../services/scan-jobs";
@@ -19,6 +20,7 @@ import {
 	filterOptionsResponseSchema,
 	foldersResponseSchema,
 	PUBLIC_SCAN_START_ERROR,
+	photoCurationPatchSchema,
 	photoFiltersSchema,
 	photoIdSchema,
 	photoSchema,
@@ -138,10 +140,12 @@ export function createV1Router(dependencies: V1Dependencies) {
 		const query = similarPhotosQuerySchema.safeParse(context.req.query());
 		if (!id.success || !query.success) return invalidRequest();
 		try {
+			const { limit, ...filters } = query.data;
 			const result = await findSimilarToPhoto(
 				dependencies.database,
 				id.data,
-				query.data.limit,
+				limit,
+				filters,
 			);
 			if (!result) {
 				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
@@ -160,6 +164,36 @@ export function createV1Router(dependencies: V1Dependencies) {
 		if (!id.success) return invalidRequest();
 		try {
 			const photo = await getPhoto(dependencies.database, id.data);
+			if (!photo) {
+				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+			}
+			return jsonResponse(photoSchema, serializePhoto(photo));
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.patch("/photos/:id", async (context) => {
+		const id = photoIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		let body: unknown;
+		try {
+			body = await readJsonBody(context.req.raw, false);
+		} catch {
+			return invalidRequest();
+		}
+		const patch = photoCurationPatchSchema.safeParse(body);
+		if (!patch.success) return invalidRequest();
+		try {
+			const { updated } = updatePhotoCuration(
+				dependencies.database,
+				[id.data],
+				patch.data,
+			);
+			const photo =
+				updated.length > 0
+					? await getPhoto(dependencies.database, id.data)
+					: undefined;
 			if (!photo) {
 				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
 			}

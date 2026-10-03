@@ -5,7 +5,13 @@ import { Hono } from "hono";
 import { parseConfig } from "../config";
 import { photoExif, photos, scanJobs } from "../db/schema";
 import { createV1Router } from "../routes/v1";
-import { scanPhaseSchema, scanStatusSchema } from "../routes/v1-schemas";
+import {
+	curationFlagFilterSchema,
+	photoCurationPatchSchema,
+	photoFlagSchema,
+	scanPhaseSchema,
+	scanStatusSchema,
+} from "../routes/v1-schemas";
 import type { ApiDatabase } from "../services/photo-catalog";
 import type { ScanRequestedEvent } from "../services/scan-jobs";
 import { createTestDb, seedTestData } from "./setup";
@@ -496,6 +502,13 @@ describe("API v1 contract", () => {
 		});
 	});
 
+	type OpenApiSchema = {
+		type?: string | string[];
+		minimum?: number;
+		maximum?: number;
+		enum?: Array<string | null>;
+	};
+
 	test("checked-in OpenAPI document describes every v1 route without private fields", async () => {
 		const document = (await Bun.file(
 			new URL("../routes/openapi-v1.json", import.meta.url),
@@ -503,13 +516,26 @@ describe("API v1 contract", () => {
 			paths: Record<
 				string,
 				{
-					get?: { responses: Record<string, unknown> };
+					get?: {
+						parameters?: Array<{ name: string; schema: OpenApiSchema }>;
+						responses: Record<string, unknown>;
+					};
 					post?: { responses: Record<string, unknown> };
+					patch?: { responses: Record<string, unknown> };
 				}
 			>;
 			components: {
 				schemas: {
-					Photo: { properties: Record<string, unknown> };
+					Photo: {
+						required: string[];
+						properties: Record<string, OpenApiSchema>;
+					};
+					PhotoCurationPatch: {
+						additionalProperties: boolean;
+						minProperties: number;
+						properties: Record<string, OpenApiSchema>;
+					};
+					SearchRequest: { properties: Record<string, OpenApiSchema> };
 					StartScanFailure: {
 						properties: { error: { const: string } };
 					};
@@ -575,6 +601,53 @@ describe("API v1 contract", () => {
 		]) {
 			expect(document.components.schemas.Photo.properties).not.toHaveProperty(
 				key,
+			);
+		}
+		expect(
+			Object.keys(
+				document.paths["/api/v1/photos/{id}"].patch?.responses ?? {},
+			).sort(),
+		).toEqual(["200", "400", "404", "500"]);
+		const photo = document.components.schemas.Photo;
+		expect(photo.required).toEqual(expect.arrayContaining(["rating", "flag"]));
+		expect(photo.properties.rating).toMatchObject({
+			type: "integer",
+			minimum: 0,
+			maximum: 5,
+		});
+		expect(photo.properties.flag.enum).toEqual([
+			...photoFlagSchema.options,
+			null,
+		]);
+		const patch = document.components.schemas.PhotoCurationPatch;
+		expect(patch.additionalProperties).toBe(false);
+		expect(patch.minProperties).toBe(1);
+		expect(Object.keys(patch.properties).sort()).toEqual(
+			Object.keys(photoCurationPatchSchema.innerType().shape).sort(),
+		);
+		expect(patch.properties.flag.enum).toEqual([
+			...photoFlagSchema.options,
+			null,
+		]);
+		const queryParameters = (path: string) =>
+			Object.fromEntries(
+				(document.paths[path].get?.parameters ?? []).map((parameter) => [
+					parameter.name,
+					parameter.schema,
+				]),
+			);
+		for (const filters of [
+			queryParameters("/api/v1/photos"),
+			queryParameters("/api/v1/photos/{id}/similar"),
+			document.components.schemas.SearchRequest.properties,
+		]) {
+			expect(filters.minRating).toMatchObject({
+				type: "integer",
+				minimum: 1,
+				maximum: 5,
+			});
+			expect(filters.flag?.enum).toEqual(
+				curationFlagFilterSchema.unwrap().options,
 			);
 		}
 	});

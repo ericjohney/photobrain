@@ -40,7 +40,7 @@ The dashboard uses tRPC at `/api/trpc` for metadata, folders, filters, search, s
 ## Current Behavior
 
 - Grid and loupe views use one active photo; multi-selection is not implemented.
-- `G` switches to grid, `E` opens loupe when a photo is active, `Tab` toggles panels, `Shift+Space` toggles the filmstrip, arrows navigate, and `Escape` returns to grid.
+- `G` switches to grid, `E` opens loupe when a photo is active, `Tab` toggles panels, `Shift+Space` toggles the filmstrip, arrows navigate, and `Escape` returns to grid. With an active photo, `0`-`5` set its star rating, `P` picks, `X` rejects, and `U` clears the flag.
 - The dashboard uses fixed left/right panel dimensions even though panel dimensions are persisted in localStorage.
 - Search runs reactively on each non-empty input change; it is not debounced.
 - `Lightbox.tsx` and `SearchBar.tsx` are legacy/unreferenced by the active dashboard. Verify imports before extending them.

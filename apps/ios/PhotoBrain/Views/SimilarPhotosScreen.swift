@@ -6,11 +6,16 @@ struct SimilarPhotosScreen: View {
     let dismiss: () -> Void
     @StateObject private var store: SimilarPhotosStore
 
-    init(source: PhotoRecord, api: any PhotoBrainAPI, dismiss: @escaping () -> Void) {
+    init(
+        source: PhotoRecord,
+        api: any PhotoBrainAPI,
+        curation: PhotoCurationCenter,
+        dismiss: @escaping () -> Void
+    ) {
         self.source = source
         self.api = api
         self.dismiss = dismiss
-        _store = StateObject(wrappedValue: SimilarPhotosStore(api: api))
+        _store = StateObject(wrappedValue: SimilarPhotosStore(api: api, curation: curation))
     }
 
     var body: some View {
@@ -47,6 +52,7 @@ struct SimilarPhotosScreen: View {
                         set: { store.activePhotoID = $0 }
                     ),
                     api: api,
+                    curation: store.curation,
                     dismiss: { store.activePhotoID = nil }
                 )
             }

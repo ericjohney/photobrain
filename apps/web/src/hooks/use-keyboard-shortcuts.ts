@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ViewMode } from "./use-library-state";
+import type { CurationPatch } from "./use-photo-curation";
 
 interface KeyboardShortcutsOptions {
 	viewMode: ViewMode;
@@ -12,6 +13,8 @@ interface KeyboardShortcutsOptions {
 	findSimilar: () => void;
 	/** Exit similar-photos mode from the grid (`Escape`); null when inactive. */
 	exitSimilar: (() => void) | null;
+	/** Rate or flag the active photo (`0`-`5`, `P`, `X`, `U`). */
+	curateActivePhoto: (patch: CurationPatch) => void;
 	enabled?: boolean;
 }
 
@@ -24,6 +27,7 @@ export function useKeyboardShortcuts({
 	hasActivePhoto,
 	findSimilar,
 	exitSimilar,
+	curateActivePhoto,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
 	useEffect(() => {
@@ -40,6 +44,23 @@ export function useKeyboardShortcuts({
 
 			// Check for modifier keys
 			const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+			// Lightroom culling: 0-5 rate, P pick, X reject, U unflag.
+			if (hasActivePhoto && !isCtrlOrCmd && !e.altKey) {
+				if (/^[0-5]$/.test(e.key)) {
+					e.preventDefault();
+					curateActivePhoto({ rating: Number(e.key) });
+					return;
+				}
+				const flagKey = e.key.toLowerCase();
+				if (flagKey === "p" || flagKey === "x" || flagKey === "u") {
+					e.preventDefault();
+					curateActivePhoto({
+						flag: flagKey === "p" ? "pick" : flagKey === "x" ? "reject" : null,
+					});
+					return;
+				}
+			}
 
 			switch (e.key.toLowerCase()) {
 				// View mode shortcuts
@@ -116,5 +137,6 @@ export function useKeyboardShortcuts({
 		hasActivePhoto,
 		findSimilar,
 		exitSimilar,
+		curateActivePhoto,
 	]);
 }

@@ -46,6 +46,8 @@
 		A2000000000000000000000E /* InstrumentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000E /* InstrumentationTests.swift */; };
 		A10000000000000000000016 /* SimilarPhotosScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* SimilarPhotosScreen.swift */; };
 		A2000000000000000000000F /* SimilarPhotosTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000F /* SimilarPhotosTests.swift */; };
+		A10000000000000000000017 /* PhotoCuration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* PhotoCuration.swift */; };
+		A20000000000000000000010 /* PhotoCurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000010 /* PhotoCurationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -105,6 +107,8 @@
 		B2000000000000000000000E /* InstrumentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstrumentationTests.swift; sourceTree = "<group>"; };
 		B10000000000000000000016 /* SimilarPhotosScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimilarPhotosScreen.swift; sourceTree = "<group>"; };
 		B2000000000000000000000F /* SimilarPhotosTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimilarPhotosTests.swift; sourceTree = "<group>"; };
+		B10000000000000000000017 /* PhotoCuration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCuration.swift; sourceTree = "<group>"; };
+		B20000000000000000000010 /* PhotoCurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCurationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,7 +158,7 @@
 		C00000000000000000000004 /* App */ = {isa = PBXGroup; children = (B10000000000000000000001 /* PhotoBrainApp.swift */, B1000000000000000000000D /* AppEnvironment.swift */, B10000000000000000000015 /* AppLinkRouting.swift */,); path = App; sourceTree = "<group>"; };
 		C00000000000000000000005 /* Fixtures */ = {isa = PBXGroup; children = (B10000000000000000000002 /* RedactedFixture.swift */,); path = Fixtures; sourceTree = "<group>"; };
 		C00000000000000000000006 /* Instrumentation */ = {isa = PBXGroup; children = (B10000000000000000000003 /* SpikeSignposts.swift */,); path = Instrumentation; sourceTree = "<group>"; };
-		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */,); path = Library; sourceTree = "<group>"; };
+		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */,); path = Library; sourceTree = "<group>"; };
 		C00000000000000000000008 /* Models */ = {isa = PBXGroup; children = (B10000000000000000000006 /* PhotoRecord.swift */, B1000000000000000000000B /* APIDTOs.swift */,); path = Models; sourceTree = "<group>"; };
 		C00000000000000000000009 /* Networking */ = {isa = PBXGroup; children = (B10000000000000000000007 /* RedirectAwareImageLoader.swift */, B1000000000000000000000C /* APIClient.swift */,); path = Networking; sourceTree = "<group>"; };
 		C0000000000000000000000A /* PhotoBrainTests */ = {
@@ -175,6 +179,7 @@
 				B2000000000000000000000D /* AppLinkRoutingTests.swift */,
 				B2000000000000000000000E /* InstrumentationTests.swift */,
 				B2000000000000000000000F /* SimilarPhotosTests.swift */,
+				B20000000000000000000010 /* PhotoCurationTests.swift */,
 			);
 			path = PhotoBrainTests;
 			sourceTree = "<group>";
@@ -265,6 +270,7 @@
 				A10000000000000000000014 /* SearchScreen.swift in Sources */,
 				A10000000000000000000015 /* AppLinkRouting.swift in Sources */,
 				A10000000000000000000016 /* SimilarPhotosScreen.swift in Sources */,
+				A10000000000000000000017 /* PhotoCuration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -287,6 +293,7 @@
 				A2000000000000000000000D /* AppLinkRoutingTests.swift in Sources */,
 				A2000000000000000000000E /* InstrumentationTests.swift in Sources */,
 				A2000000000000000000000F /* SimilarPhotosTests.swift in Sources */,
+				A20000000000000000000010 /* PhotoCurationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

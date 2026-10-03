@@ -1,5 +1,5 @@
 import type { WebSocketRoute } from "@playwright/test";
-import { DEFAULT_HANDLERS, FIXTURE_JOB_ID } from "./fixtures/handlers";
+import { FIXTURE_JOB_ID } from "./fixtures/handlers";
 import { FIXTURE_PHOTOS } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
@@ -191,13 +191,13 @@ test("committed photos stream during processing and refreshes are coalesced", as
 				rawCount: photos.filter((photo) => photo.isRaw).length,
 			};
 		},
-		folders: (input) => {
+		folders: (input, defaults) => {
 			requests.folders++;
-			return DEFAULT_HANDLERS.folders(input);
+			return defaults.folders(input, defaults);
 		},
-		filterOptions: (input) => {
+		filterOptions: (input, defaults) => {
 			requests.filterOptions++;
-			return DEFAULT_HANDLERS.filterOptions(input);
+			return defaults.filterOptions(input, defaults);
 		},
 		realtimeToken: () => ({
 			baseUrl: "https://realtime.example.test",

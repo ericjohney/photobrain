@@ -61,6 +61,7 @@ struct SearchScreen: View {
                         set: { store.activePhotoID = $0 }
                     ),
                     api: api,
+                    curation: store.curation,
                     dismiss: { store.activePhotoID = nil }
                 )
             }
@@ -191,9 +192,14 @@ struct PhotoResultsGrid: View {
                         }
                         .aspectRatio(1, contentMode: .fit)
                         .clipped()
+                        .opacity(photo.isRejected ? 0.35 : 1)
+                        .overlay(alignment: .bottomTrailing) { CurationBadge(rating: photo.rating, flag: photo.flag) }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Open \(photo.filename)")
+                    .accessibilityLabel(
+                        "Open \(photo.filename)"
+                            + CurationBadgeText.accessibilitySuffix(rating: photo.rating, flag: photo.flag)
+                    )
                 }
             }
         }
@@ -205,6 +211,32 @@ struct PhotoResultsGrid: View {
         case ..<768: 5
         case ..<1_024: 7
         default: 8
+        }
+    }
+}
+
+/// Compact star/flag overlay for SwiftUI thumbnails; matches the library grid badge.
+struct CurationBadge: View {
+    let rating: Int
+    let flag: PhotoFlag?
+
+    var body: some View {
+        if rating > 0 || flag != nil {
+            HStack(spacing: 2) {
+                if let stars = CurationBadgeText.stars(rating) { Text(stars) }
+                switch flag {
+                case .pick: Image(systemName: "flag.fill").foregroundStyle(.white)
+                case .reject: Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                case nil: EmptyView()
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.72)))
+            .padding(4)
+            .accessibilityHidden(true)
         }
     }
 }

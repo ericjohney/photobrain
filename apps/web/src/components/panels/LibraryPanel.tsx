@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { FlagFilter } from "@/lib/types";
 import { cn, formatMonthLabel } from "@/lib/utils";
 
 interface FolderNode {
@@ -27,6 +28,9 @@ export interface LibraryFilters {
 	lens: string | null;
 	iso: number | null;
 	dateMonth: string | null;
+	/** Minimum star rating (1-5); null matches any rating. */
+	minRating: number | null;
+	flag: FlagFilter | null;
 }
 
 export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
@@ -35,6 +39,8 @@ export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
 	lens: null,
 	iso: null,
 	dateMonth: null,
+	minRating: null,
+	flag: null,
 };
 
 const RAW_FILTER_OPTIONS: { value: RawFilter; label: string }[] = [
@@ -42,6 +48,71 @@ const RAW_FILTER_OPTIONS: { value: RawFilter; label: string }[] = [
 	{ value: "raw", label: "RAW" },
 	{ value: "standard", label: "Standard" },
 ];
+
+/** Compact label for a minimum-rating filter: ★5 or ★n+. */
+export function minRatingLabel(minRating: number) {
+	return minRating === 5 ? "★5" : `★${minRating}+`;
+}
+
+const RATING_FILTER_OPTIONS: { value: number | null; label: string }[] = [
+	{ value: null, label: "Any" },
+	...[1, 2, 3, 4, 5].map((value) => ({ value, label: minRatingLabel(value) })),
+];
+
+export const FLAG_FILTER_LABELS: Record<FlagFilter, string> = {
+	pick: "Picks",
+	reject: "Rejected",
+	unflagged: "Unflagged",
+};
+
+const FLAG_FILTER_OPTIONS: { value: FlagFilter | null; label: string }[] = [
+	{ value: null, label: "Any" },
+	{ value: "pick", label: FLAG_FILTER_LABELS.pick },
+	{ value: "reject", label: FLAG_FILTER_LABELS.reject },
+	{ value: "unflagged", label: FLAG_FILTER_LABELS.unflagged },
+];
+
+/** Single-choice segmented control (one radio per option). */
+function SegmentedFilter<T>({
+	label,
+	options,
+	value,
+	onChange,
+}: {
+	label: string;
+	options: { value: T; label: string }[];
+	value: T;
+	onChange: (value: T) => void;
+}) {
+	return (
+		<div
+			role="radiogroup"
+			aria-label={label}
+			className="mx-2 mb-1 flex rounded bg-secondary p-0.5"
+		>
+			{options.map((option) => {
+				const checked = option.value === value;
+				return (
+					<button
+						key={option.label}
+						type="button"
+						role="radio"
+						aria-checked={checked}
+						onClick={() => onChange(option.value)}
+						className={cn(
+							"flex-auto whitespace-nowrap rounded px-1.5 py-0.5 text-xs transition-colors",
+							checked
+								? "bg-primary text-primary-foreground"
+								: "text-muted-foreground hover:text-foreground",
+						)}
+					>
+						{option.label}
+					</button>
+				);
+			})}
+		</div>
+	);
+}
 
 interface LibraryPanelProps {
 	photoCount: number;
@@ -283,34 +354,32 @@ export function LibraryPanel({
 				{/* Filter By Section — also scopes an active search */}
 				<Section title="Filter By" defaultOpen={false}>
 					<Section title="Type">
-						<div
-							role="radiogroup"
-							aria-label="Photo type"
-							className="mx-2 mb-1 flex rounded bg-secondary p-0.5"
-						>
-							{RAW_FILTER_OPTIONS.map(({ value, label }) => {
-								const checked = activeFilters.filterRaw === value;
-								return (
-									<button
-										key={value}
-										type="button"
-										role="radio"
-										aria-checked={checked}
-										onClick={() =>
-											onFilterChange({ ...activeFilters, filterRaw: value })
-										}
-										className={cn(
-											"flex-1 rounded px-2 py-0.5 text-xs transition-colors",
-											checked
-												? "bg-primary text-primary-foreground"
-												: "text-muted-foreground hover:text-foreground",
-										)}
-									>
-										{label}
-									</button>
-								);
-							})}
-						</div>
+						<SegmentedFilter
+							label="Photo type"
+							options={RAW_FILTER_OPTIONS}
+							value={activeFilters.filterRaw}
+							onChange={(filterRaw) =>
+								onFilterChange({ ...activeFilters, filterRaw })
+							}
+						/>
+					</Section>
+					<Section title="Rating">
+						<SegmentedFilter
+							label="Minimum rating"
+							options={RATING_FILTER_OPTIONS}
+							value={activeFilters.minRating}
+							onChange={(minRating) =>
+								onFilterChange({ ...activeFilters, minRating })
+							}
+						/>
+					</Section>
+					<Section title="Flag">
+						<SegmentedFilter
+							label="Flag"
+							options={FLAG_FILTER_OPTIONS}
+							value={activeFilters.flag}
+							onChange={(flag) => onFilterChange({ ...activeFilters, flag })}
+						/>
 					</Section>
 					{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
 						<Section title="Camera" defaultOpen={false}>
@@ -391,7 +460,9 @@ export function LibraryPanel({
 					activeFilters.camera ||
 					activeFilters.lens ||
 					activeFilters.iso ||
-					activeFilters.dateMonth) && (
+					activeFilters.dateMonth ||
+					activeFilters.minRating !== null ||
+					activeFilters.flag !== null) && (
 					<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary flex items-center justify-between">
 						<span>Filters active</span>
 						<button

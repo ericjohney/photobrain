@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { TRPCError } from "@trpc/server";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as sqliteVec from "sqlite-vec";
 import { photoEmbedding, photoExif, photos } from "../db/schema";
@@ -393,6 +393,93 @@ if (process.env.PHOTOBRAIN_SIMILAR_TEST_CHILD !== "1") {
 					},
 				});
 			}
+		});
+
+		test("minRating and flag filter candidates before LIMIT, never the source", async () => {
+			const curate = (
+				name: string,
+				rating: number,
+				flag: "pick" | "reject" | null,
+			) =>
+				db
+					.update(photos)
+					.set({ rating, flag })
+					.where(eq(photos.id, ids[name]))
+					.run();
+			// The source itself is unrated/unflagged, so filters cannot hide it.
+			curate("far.jpg", 5, "pick");
+			curate("mid.jpg", 4, "reject");
+			curate("tie-high.jpg", 3, null);
+			curate("near.jpg", 1, "pick");
+			// Stale candidate that matches every filter must still be excluded.
+			curate("old-model.jpg", 5, "pick");
+			const source = ids["source.jpg"];
+
+			expect(
+				similarIds(await findSimilarToPhoto(db, source, 100, { minRating: 3 })),
+			).toEqual([ids["mid.jpg"], ids["tie-high.jpg"], ids["far.jpg"]]);
+			expect(
+				similarIds(await findSimilarToPhoto(db, source, 1, { minRating: 3 })),
+			).toEqual([ids["mid.jpg"]]);
+			expect(
+				similarIds(await findSimilarToPhoto(db, source, 100, { flag: "pick" })),
+			).toEqual([ids["near.jpg"], ids["far.jpg"]]);
+			expect(
+				similarIds(
+					await findSimilarToPhoto(db, source, 100, { flag: "unflagged" }),
+				),
+			).toEqual([ids["twin.jpg"], ids["tie-low.jpg"], ids["tie-high.jpg"]]);
+			expect(
+				similarIds(
+					await findSimilarToPhoto(db, source, 100, {
+						minRating: 1,
+						flag: "pick",
+					}),
+				),
+			).toEqual([ids["near.jpg"], ids["far.jpg"]]);
+			const filtered = await findSimilarToPhoto(db, source, 100, {
+				minRating: 5,
+				flag: "reject",
+			});
+			expect(filtered).toEqual({
+				photos: [],
+				total: 0,
+				sourcePhotoId: source,
+				indexed: true,
+			});
+
+			const viaTrpc = await caller.similarPhotos({
+				photoId: source,
+				limit: 100,
+				flag: "pick",
+			});
+			expect(similarIds(viaTrpc)).toEqual([ids["near.jpg"], ids["far.jpg"]]);
+			expect(viaTrpc.photos[0]).toMatchObject({ rating: 1, flag: "pick" });
+
+			const response = await app.request(
+				`/api/v1/photos/${source}/similar?minRating=3&flag=reject`,
+			);
+			expect(response.status).toBe(200);
+			expect(await responseJson(response)).toMatchObject({
+				photos: [{ id: ids["mid.jpg"], rating: 4, flag: "reject" }],
+				total: 1,
+				indexed: true,
+			});
+
+			for (const query of [
+				"minRating=0",
+				"minRating=6",
+				"minRating=2.5",
+				"flag=maybe",
+			]) {
+				const invalid = await app.request(
+					`/api/v1/photos/${source}/similar?${query}`,
+				);
+				expect(invalid.status).toBe(400);
+			}
+			await expect(
+				caller.similarPhotos({ photoId: source, minRating: 0 }),
+			).rejects.toThrow(TRPCError);
 		});
 	});
 

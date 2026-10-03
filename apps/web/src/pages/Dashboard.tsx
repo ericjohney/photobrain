@@ -6,8 +6,10 @@ import { PhotoGrid } from "@/components/PhotoGrid";
 import { ActivityPanel } from "@/components/panels/ActivityPanel";
 import {
 	EMPTY_LIBRARY_FILTERS,
+	FLAG_FILTER_LABELS,
 	LibraryPanel,
 	type LibraryFilters,
+	minRatingLabel,
 } from "@/components/panels/LibraryPanel";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { PanelLayout } from "@/components/panels/PanelLayout";
@@ -16,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useLibraryState } from "@/hooks/use-library-state";
+import { type CurationPatch, usePhotoCuration } from "@/hooks/use-photo-curation";
 import { usePanelState } from "@/hooks/use-panel-state";
 import { trpc } from "@/lib/trpc";
 import type { PhotoMetadata } from "@/lib/types";
@@ -51,6 +54,8 @@ export function Dashboard() {
 			lens: filters.lens ?? undefined,
 			iso: filters.iso ?? undefined,
 			dateMonth: filters.dateMonth ?? undefined,
+			minRating: filters.minRating ?? undefined,
+			flag: filters.flag ?? undefined,
 		},
 		{
 			enabled: !searchQuery,
@@ -68,6 +73,8 @@ export function Dashboard() {
 			lens: filters.lens ?? undefined,
 			iso: filters.iso ?? undefined,
 			dateMonth: filters.dateMonth ?? undefined,
+			minRating: filters.minRating ?? undefined,
+			flag: filters.flag ?? undefined,
 		},
 		{ enabled: !!searchQuery },
 	);
@@ -119,6 +126,15 @@ export function Dashboard() {
 
 	const exitSimilar = useCallback(() => setSimilarSource(null), []);
 
+	// Ratings/flags: optimistic across every cached photo list and the active photo.
+	const { setCuration } = usePhotoCuration(library.patchActivePhoto);
+	const curateActivePhoto = useCallback(
+		(patch: CurationPatch) => {
+			if (library.activePhoto) setCuration([library.activePhoto], patch);
+		},
+		[library.activePhoto, setCuration],
+	);
+
 	// Keyboard shortcuts
 	useKeyboardShortcuts({
 		viewMode: library.viewMode,
@@ -129,6 +145,7 @@ export function Dashboard() {
 		hasActivePhoto: library.activePhoto !== null,
 		findSimilar: handleFindSimilar,
 		exitSimilar: similarSource ? exitSimilar : null,
+		curateActivePhoto,
 	});
 
 	const handlePhotoClick = useCallback(
@@ -282,6 +299,8 @@ export function Dashboard() {
 		filters.lens,
 		filters.iso !== null ? `ISO ${filters.iso}` : null,
 		filters.dateMonth !== null ? formatMonthLabel(filters.dateMonth) : null,
+		filters.minRating !== null ? minRatingLabel(filters.minRating) : null,
+		filters.flag !== null ? FLAG_FILTER_LABELS[filters.flag] : null,
 	].filter((part): part is string => part !== null);
 	const searchResultCount = searchPhotosQuery.data?.photos.length;
 	const searchHeader = searchQuery && (
@@ -359,6 +378,7 @@ export function Dashboard() {
 				<MetadataPanel
 					photo={library.activePhoto}
 					onFindSimilar={handleFindSimilar}
+					onCurate={curateActivePhoto}
 				/>
 			}
 			filmstrip={

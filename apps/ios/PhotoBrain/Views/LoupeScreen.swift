@@ -4,6 +4,7 @@ struct LoupeScreen: View {
     let records: [PhotoRecord]
     @Binding var activeID: Int
     let api: any PhotoBrainAPI
+    @ObservedObject var curation: PhotoCurationCenter
     let dismiss: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -38,7 +39,9 @@ struct LoupeScreen: View {
             if chromeVisible {
                 VStack(spacing: 0) {
                     topChrome
+                    if let message = curation.errorMessage { curationError(message) }
                     Spacer()
+                    if let activeRecord { curationBar(activeRecord) }
                     filmstrip
                 }
                 .transition(.opacity)
@@ -52,7 +55,7 @@ struct LoupeScreen: View {
             }
         }
         .sheet(item: $similarSource) { source in
-            SimilarPhotosScreen(source: source, api: api) { similarSource = nil }
+            SimilarPhotosScreen(source: source, api: api, curation: curation) { similarSource = nil }
         }
         .accessibilityAction(named: chromeVisible ? "Hide controls" : "Show controls") {
             chromeVisible.toggle()
@@ -106,6 +109,71 @@ struct LoupeScreen: View {
         .background(chromeBackground)
     }
 
+    private func curationBar(_ photo: PhotoRecord) -> some View {
+        let current = PhotoCuration(photo)
+        return HStack(spacing: 2) {
+            ForEach(1...5, id: \.self) { stars in
+                Button {
+                    curation.update(photo, patch: .toggledRating(stars, current: current))
+                } label: {
+                    Image(systemName: stars <= current.rating ? "star.fill" : "star")
+                        .font(.title3)
+                        .foregroundStyle(stars <= current.rating ? Color.yellow : Color.white)
+                        .frame(width: 40, height: 40)
+                }
+                .accessibilityLabel(stars == 1 ? "Rate 1 star" : "Rate \(stars) stars")
+                .accessibilityAddTraits(current.rating == stars ? .isSelected : [])
+            }
+            Spacer(minLength: 8)
+            Button {
+                curation.update(photo, patch: .toggledFlag(.pick, current: current))
+            } label: {
+                Image(systemName: current.flag == .pick ? "flag.fill" : "flag")
+                    .font(.title3)
+                    .foregroundStyle(current.flag == .pick ? Color.green : Color.white)
+                    .frame(width: 44, height: 40)
+            }
+            .accessibilityLabel("Pick")
+            .accessibilityAddTraits(current.flag == .pick ? .isSelected : [])
+            Button {
+                curation.update(photo, patch: .toggledFlag(.reject, current: current))
+            } label: {
+                Image(systemName: current.flag == .reject ? "xmark.circle.fill" : "xmark.circle")
+                    .font(.title3)
+                    .foregroundStyle(current.flag == .reject ? Color.red : Color.white)
+                    .frame(width: 44, height: 40)
+            }
+            .accessibilityLabel("Reject")
+            .accessibilityAddTraits(current.flag == .reject ? .isSelected : [])
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 2)
+        .background(chromeBackground)
+    }
+
+    private func curationError(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text("Couldn’t save rating. \(message)")
+                .lineLimit(2)
+            Spacer(minLength: 4)
+            Button {
+                curation.dismissError()
+            } label: {
+                Image(systemName: "xmark")
+                    .frame(width: 32, height: 32)
+            }
+            .accessibilityLabel("Dismiss error")
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.85))
+        .accessibilityElement(children: .combine)
+    }
+
     private var filmstrip: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -125,6 +193,7 @@ struct LoupeScreen: View {
                             }
                             .frame(width: 58, height: 58)
                             .clipped()
+                            .opacity(photo.isRejected ? 0.35 : 1)
                             .overlay {
                                 RoundedRectangle(cornerRadius: 4)
                                     .stroke(photo.id == activeID ? Color.white : Color.clear, lineWidth: 3)

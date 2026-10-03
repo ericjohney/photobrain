@@ -22,6 +22,9 @@ struct LibraryFilters: Equatable, Sendable {
     var lens: String?
     var iso: Int?
     var dateMonth: String?
+    /// Minimum star rating, 1-5; `nil` means any rating.
+    var minRating: Int?
+    var flag: PhotoFlagFilter?
 
     enum Field: Hashable, Sendable {
         case mediaKind
@@ -29,10 +32,13 @@ struct LibraryFilters: Equatable, Sendable {
         case lens
         case iso
         case dateMonth
+        case minRating
+        case flag
     }
 
     var isActive: Bool {
         mediaKind != .all || camera != nil || lens != nil || iso != nil || dateMonth != nil
+            || minRating != nil || flag != nil
     }
 
     struct ActiveFilter: Identifiable, Equatable, Sendable {
@@ -49,6 +55,8 @@ struct LibraryFilters: Equatable, Sendable {
         if let lens { fields.append(ActiveFilter(field: .lens, title: lens)) }
         if let iso { fields.append(ActiveFilter(field: .iso, title: "ISO \(iso)")) }
         if let dateMonth { fields.append(ActiveFilter(field: .dateMonth, title: Self.formatMonth(dateMonth))) }
+        if let minRating { fields.append(ActiveFilter(field: .minRating, title: Self.formatMinRating(minRating))) }
+        if let flag { fields.append(ActiveFilter(field: .flag, title: flag.title)) }
         return fields
     }
 
@@ -65,7 +73,9 @@ struct LibraryFilters: Equatable, Sendable {
             camera: camera,
             lens: lens,
             iso: iso,
-            dateMonth: dateMonth
+            dateMonth: dateMonth,
+            minRating: minRating,
+            flag: flag
         )
     }
 
@@ -77,6 +87,8 @@ struct LibraryFilters: Equatable, Sendable {
         case .lens: updated.lens = nil
         case .iso: updated.iso = nil
         case .dateMonth: updated.dateMonth = nil
+        case .minRating: updated.minRating = nil
+        case .flag: updated.flag = nil
         }
         return updated
     }
@@ -93,6 +105,10 @@ struct LibraryFilters: Equatable, Sendable {
               (1...12).contains(month) else { return value }
         return "\(PhotoDateResolver.calendar.monthSymbols[month - 1]) \(year)"
     }
+
+    static func formatMinRating(_ stars: Int) -> String {
+        "\(String(repeating: "★", count: stars))+"
+    }
 }
 
 /// A store whose results are narrowed by `LibraryFilters`; drives the shared filter UI.
@@ -106,7 +122,7 @@ protocol FilterEditingStore: ObservableObject {
 }
 
 @MainActor
-final class LibraryStore: ObservableObject, FilterEditingStore {
+final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying {
     enum LoadState: Equatable {
         case idle
         case loading
@@ -135,14 +151,17 @@ final class LibraryStore: ObservableObject, FilterEditingStore {
     @Published private(set) var browsingResetVersion = 0
 
     let api: any PhotoBrainAPI
+    let curation: PhotoCurationCenter
     private var loadTask: Task<Void, Never>?
     private var generation = 0
     private var recordsByID: [Int: PhotoRecord] = [:]
     private var presentationGeneration = 0
     private var groupingBeforeSelection: LibraryGrouping?
 
-    init(api: any PhotoBrainAPI) {
+    init(api: any PhotoBrainAPI, curation: PhotoCurationCenter? = nil) {
         self.api = api
+        self.curation = curation ?? PhotoCurationCenter(api: api)
+        self.curation.register(self)
     }
 
 
@@ -191,7 +210,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore {
             do {
                 let photos = try await photosTask.value
                 guard !Task.isCancelled, requestGeneration == generation else { return }
-                records = photos.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) }
+                records = curation.overlay(photos.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
                 recordsByID.removeAll(keepingCapacity: true)
                 for photo in records {
                     recordsByID[photo.id] = photo
@@ -233,6 +252,30 @@ final class LibraryStore: ObservableObject, FilterEditingStore {
         }
         loadTask = task
         await task.value
+    }
+
+    /// Patches one record in place (records, lookup, ordered list, and its section) and bumps
+    /// the presentation revision so the grid reconfigures only that cell; no reload or re-sort.
+    func applyCuration(id: Int, curation: PhotoCuration) {
+        guard let existing = recordsByID[id],
+              existing.rating != curation.rating || existing.flag != curation.flag else { return }
+        var updated = existing
+        updated.rating = curation.rating
+        updated.flag = curation.flag
+        recordsByID[id] = updated
+        if let index = records.firstIndex(where: { $0.id == id }) {
+            records[index] = updated
+        }
+        if let index = orderedRecords.firstIndex(where: { $0.id == id }) {
+            orderedRecords[index] = updated
+        }
+        for sectionIndex in sections.indices {
+            if let index = sections[sectionIndex].photos.firstIndex(where: { $0.id == id }) {
+                sections[sectionIndex].photos[index] = updated
+                break
+            }
+        }
+        presentationRevision &+= 1
     }
 
     func retryFilterOptions() async {
@@ -443,7 +486,7 @@ enum LibraryPresentationBuilder {
 }
 
 @MainActor
-final class SearchStore: ObservableObject, FilterEditingStore {
+final class SearchStore: ObservableObject, FilterEditingStore, CurationApplying {
     enum State: Equatable {
         case idle
         case waiting
@@ -466,13 +509,20 @@ final class SearchStore: ObservableObject, FilterEditingStore {
     @Published var activePhotoID: Int?
 
     private let api: any PhotoBrainAPI
+    let curation: PhotoCurationCenter
     private var task: Task<Void, Never>?
     private var optionsTask: Task<Void, Never>?
     /// Bumped for every new (query, filters) request; responses from older generations are dropped.
     private var generation = 0
 
-    init(api: any PhotoBrainAPI) {
+    init(api: any PhotoBrainAPI, curation: PhotoCurationCenter? = nil) {
         self.api = api
+        self.curation = curation ?? PhotoCurationCenter(api: api)
+        self.curation.register(self)
+    }
+
+    func applyCuration(id: Int, curation: PhotoCuration) {
+        records.applyCuration(id: id, curation: curation)
     }
 
     func retry() {
@@ -541,7 +591,7 @@ final class SearchStore: ObservableObject, FilterEditingStore {
                 state = .loading
                 let response = try await api.search(query: trimmed, limit: Self.resultLimit, filters: request)
                 guard !Task.isCancelled, currentGeneration == generation else { return }
-                records = response.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) }
+                records = curation.overlay(response.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
                 state = records.isEmpty ? .empty : .results
             } catch is CancellationError {
                 return
@@ -555,7 +605,7 @@ final class SearchStore: ObservableObject, FilterEditingStore {
 }
 
 @MainActor
-final class SimilarPhotosStore: ObservableObject {
+final class SimilarPhotosStore: ObservableObject, CurationApplying {
     enum State: Equatable {
         case idle
         case loading
@@ -573,11 +623,18 @@ final class SimilarPhotosStore: ObservableObject {
     @Published var activePhotoID: Int?
 
     private let api: any PhotoBrainAPI
+    let curation: PhotoCurationCenter
     private var task: Task<Void, Never>?
     private var generation = 0
 
-    init(api: any PhotoBrainAPI) {
+    init(api: any PhotoBrainAPI, curation: PhotoCurationCenter? = nil) {
         self.api = api
+        self.curation = curation ?? PhotoCurationCenter(api: api)
+        self.curation.register(self)
+    }
+
+    func applyCuration(id: Int, curation: PhotoCuration) {
+        records.applyCuration(id: id, curation: curation)
     }
 
     /// Starts loading neighbours for `sourceID` unless that source already has a settled result.
@@ -628,7 +685,7 @@ final class SimilarPhotosStore: ObservableObject {
                     state = .notIndexed
                     return
                 }
-                records = response.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) }
+                records = curation.overlay(response.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
                 state = records.isEmpty ? .empty : .loaded
             } catch is CancellationError {
                 return
@@ -640,5 +697,15 @@ final class SimilarPhotosStore: ObservableObject {
         }
         self.task = task
         return task
+    }
+}
+
+extension Array where Element == PhotoRecord {
+    /// Replaces one record's curation in place; a no-op when absent or unchanged.
+    mutating func applyCuration(id: Int, curation: PhotoCuration) {
+        guard let index = firstIndex(where: { $0.id == id }),
+              self[index].rating != curation.rating || self[index].flag != curation.flag else { return }
+        self[index].rating = curation.rating
+        self[index].flag = curation.flag
     }
 }

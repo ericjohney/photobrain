@@ -158,25 +158,35 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             return
         }
 
-        let signpost = SpikeSignposts.beginSnapshot(
-            itemCount: sections.reduce(into: 0) { $0 += $1.photos.count },
-            sectionCount: sections.count
-        )
         appliedContentRevision = contentRevision
         let nextIDs = sections.flatMap(\.photos).map(\.id)
         let nextSectionIDs = sections.map(\.id)
         let nextRecords = Dictionary(uniqueKeysWithValues: sections.flatMap(\.photos).map { ($0.id, $0) })
-        let changedImageIDs = nextIDs.filter {
-            recordsByID[$0] != nil
-                && nextRecords[$0]?.thumbnailURL != recordsByID[$0]?.thumbnailURL
-        }
-        let reconfigureIDs = Set(changedImageIDs)
-            .union(changedSelectionIDs)
-            .filter { nextRecords[$0] != nil }
+        let reconfigureIDs = LibraryGridDiff.reconfigureIDs(
+            previous: recordsByID,
+            next: nextRecords,
+            changedSelectionIDs: changedSelectionIDs
+        )
+        let nextTitles = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0.title) })
+        let layoutUnchanged = nextIDs == currentIDs && nextSectionIDs == sectionIDs && nextTitles == sectionTitles
 
         recordsByID = nextRecords
-        sectionTitles = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0.title) })
+        sectionTitles = nextTitles
 
+        // Same items in the same order (e.g. a rating/flag edit): refresh only the changed
+        // cells in place so the scroll position and layout are untouched.
+        if layoutUnchanged, !shouldReset, didInitialPosition {
+            guard !reconfigureIDs.isEmpty else { return }
+            var snapshot = dataSource.snapshot()
+            snapshot.reconfigureItems(reconfigureIDs)
+            dataSource.apply(snapshot, animatingDifferences: false)
+            return
+        }
+
+        let signpost = SpikeSignposts.beginSnapshot(
+            itemCount: nextIDs.count,
+            sectionCount: sections.count
+        )
         let visibleAnchorID = collectionView.indexPathsForVisibleItems.sorted().first
             .flatMap { dataSource.itemIdentifier(for: $0) }
         currentIDs = nextIDs
@@ -187,7 +197,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             snapshot.appendItems(section.photos.map(\.id), toSection: section.id)
         }
         if !reconfigureIDs.isEmpty {
-            snapshot.reconfigureItems(reconfigureIDs.sorted())
+            snapshot.reconfigureItems(reconfigureIDs)
         }
         collectionView.collectionViewLayout.invalidateLayout()
 
@@ -290,6 +300,52 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     }
 }
 
+/// Decides which already-displayed grid cells must be reconfigured between two content revisions.
+enum LibraryGridDiff {
+    /// Items present in both revisions whose rendered content changed, plus items whose
+    /// selection changed, in ascending ID order. New items are configured on insertion.
+    static func reconfigureIDs(
+        previous: [Int: PhotoRecord],
+        next: [Int: PhotoRecord],
+        changedSelectionIDs: Set<Int>
+    ) -> [Int] {
+        var ids: Set<Int> = changedSelectionIDs.filter { previous[$0] != nil && next[$0] != nil }
+        for (id, record) in next {
+            guard let old = previous[id], rendersDifferently(old, record) else { continue }
+            ids.insert(id)
+        }
+        return ids.sorted()
+    }
+
+    /// Every field `PhotoGridCell.configure` draws: image, RAW badge, label, rating, and flag.
+    static func rendersDifferently(_ old: PhotoRecord, _ new: PhotoRecord) -> Bool {
+        old.thumbnailURL != new.thumbnailURL
+            || old.rating != new.rating
+            || old.flag != new.flag
+            || old.isRaw != new.isRaw
+            || old.filename != new.filename
+    }
+}
+
+enum CurationBadgeText {
+    /// Compact grid badge text, e.g. "★3"; nil when unrated.
+    static func stars(_ rating: Int) -> String? {
+        rating > 0 ? "★\(rating)" : nil
+    }
+
+    /// Spoken suffix for a photo's curation, e.g. ", 3 stars, Pick".
+    static func accessibilitySuffix(rating: Int, flag: PhotoFlag?) -> String {
+        var parts: [String] = []
+        if rating > 0 { parts.append(rating == 1 ? "1 star" : "\(rating) stars") }
+        switch flag {
+        case .pick: parts.append("Pick")
+        case .reject: parts.append("Rejected")
+        case nil: break
+        }
+        return parts.map { ", \($0)" }.joined()
+    }
+}
+
 private extension Collection {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
@@ -329,11 +385,18 @@ private final class PhotoSectionHeader: UICollectionReusableView {
 @MainActor
 private final class PhotoGridCell: UICollectionViewCell {
     static let reuseIdentifier = "PhotoGridCell"
+    private static let rejectedAlpha: CGFloat = 0.35
     private let imageView = UIImageView()
     private let checkmark = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
     private let rawBadge = UILabel()
+    private let curationBadge = UIStackView()
+    private let ratingLabel = UILabel()
+    private let flagView = UIImageView()
     private var loadTask: Task<Void, Never>?
     private(set) var representedID: Int?
+    /// Thumbnail URL whose image is currently displayed; lets curation/selection
+    /// reconfigures keep the loaded image instead of flashing the placeholder.
+    private var displayedURL: URL?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -353,9 +416,26 @@ private final class PhotoGridCell: UICollectionViewCell {
         rawBadge.clipsToBounds = true
         rawBadge.textAlignment = .center
         rawBadge.translatesAutoresizingMaskIntoConstraints = false
+        ratingLabel.font = .preferredFont(forTextStyle: .caption2)
+        ratingLabel.adjustsFontForContentSizeCategory = true
+        ratingLabel.textColor = .white
+        flagView.contentMode = .scaleAspectFit
+        flagView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .caption2)
+        curationBadge.axis = .horizontal
+        curationBadge.spacing = 2
+        curationBadge.alignment = .center
+        curationBadge.isLayoutMarginsRelativeArrangement = true
+        curationBadge.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4)
+        curationBadge.backgroundColor = UIColor.black.withAlphaComponent(0.72)
+        curationBadge.layer.cornerRadius = 4
+        curationBadge.clipsToBounds = true
+        curationBadge.translatesAutoresizingMaskIntoConstraints = false
+        curationBadge.addArrangedSubview(ratingLabel)
+        curationBadge.addArrangedSubview(flagView)
         contentView.addSubview(imageView)
         contentView.addSubview(checkmark)
         contentView.addSubview(rawBadge)
+        contentView.addSubview(curationBadge)
         NSLayoutConstraint.activate([
             imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
@@ -369,6 +449,9 @@ private final class PhotoGridCell: UICollectionViewCell {
             rawBadge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -5),
             rawBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 34),
             rawBadge.heightAnchor.constraint(greaterThanOrEqualToConstant: 20),
+            curationBadge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            curationBadge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            curationBadge.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 4),
         ])
         isAccessibilityElement = true
     }
@@ -382,20 +465,29 @@ private final class PhotoGridCell: UICollectionViewCell {
         loadTask?.cancel()
         loadTask = nil
         representedID = nil
+        displayedURL = nil
         imageView.image = nil
+        imageView.alpha = 1
         checkmark.isHidden = true
         rawBadge.isHidden = true
+        curationBadge.isHidden = true
     }
 
     func configure(photo: PhotoRecord, selected: Bool, loader: RedirectAwareImageLoader) {
-        loadTask?.cancel()
+        let keepsImage = representedID == photo.id && displayedURL == photo.thumbnailURL
         representedID = photo.id
-        imageView.image = SyntheticThumbnail.image(id: photo.id, size: bounds.size)
+        imageView.alpha = photo.isRejected ? Self.rejectedAlpha : 1
         checkmark.isHidden = !selected
         rawBadge.isHidden = !photo.isRaw
-        accessibilityLabel = photo.isRaw ? "\(photo.filename), RAW photo" : photo.filename
+        configureCurationBadge(rating: photo.rating, flag: photo.flag)
+        let base = photo.isRaw ? "\(photo.filename), RAW photo" : photo.filename
+        accessibilityLabel = base + CurationBadgeText.accessibilitySuffix(rating: photo.rating, flag: photo.flag)
         accessibilityTraits = selected ? [.button, .selected] : [.button]
 
+        guard !keepsImage else { return }
+        loadTask?.cancel()
+        displayedURL = nil
+        imageView.image = SyntheticThumbnail.image(id: photo.id, size: bounds.size)
         guard photo.thumbnailURL.host != "photos.example.invalid" else { return }
         loadTask = Task { @MainActor [weak self] in
             let target = self?.bounds.size ?? CGSize(width: 160, height: 160)
@@ -407,7 +499,28 @@ private final class PhotoGridCell: UICollectionViewCell {
                   !Task.isCancelled,
                   self?.representedID == photo.id else { return }
             self?.imageView.image = image
+            self?.displayedURL = photo.thumbnailURL
         }
+    }
+
+    private func configureCurationBadge(rating: Int, flag: PhotoFlag?) {
+        let stars = CurationBadgeText.stars(rating)
+        ratingLabel.text = stars
+        ratingLabel.isHidden = stars == nil
+        switch flag {
+        case .pick:
+            flagView.image = UIImage(systemName: "flag.fill")
+            flagView.tintColor = .white
+            flagView.isHidden = false
+        case .reject:
+            flagView.image = UIImage(systemName: "xmark.circle.fill")
+            flagView.tintColor = .systemRed
+            flagView.isHidden = false
+        case nil:
+            flagView.image = nil
+            flagView.isHidden = true
+        }
+        curationBadge.isHidden = stars == nil && flag == nil
     }
 }
 

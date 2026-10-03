@@ -21,7 +21,18 @@ actor TestAPI: PhotoBrainAPI {
     var similarResponses: [Int: Result<SimilarPhotosResponseDTO, PhotoBrainAPIError>] = [:]
     var similarDelays: [Int: Duration] = [:]
     var similarRequests: [(id: Int, limit: Int)] = []
+    var curationRequests: [CurationRequest] = []
+    var curationDelay: Duration = .zero
+    var curationFailure: PhotoBrainAPIError?
+    /// Server-side curation state; PATCHes apply onto it and responses echo it.
+    var curationState: [Int: PhotoCuration] = [:]
+    var photoQueries: [PhotoQuery] = []
 
+    struct CurationRequest: Equatable, Sendable {
+        let id: Int
+        let rating: Int?
+        let flag: PhotoFlag??
+    }
 
     func setPhotos(_ response: PhotosResponseDTO, failing: Bool = false) {
         photosResponse = response
@@ -89,6 +100,22 @@ actor TestAPI: PhotoBrainAPI {
         startForces
     }
 
+    func setCuration(delay: Duration = .zero, failure: PhotoBrainAPIError? = nil) {
+        curationDelay = delay
+        curationFailure = failure
+    }
+
+    func recordedCurationRequests() -> [CurationRequest] {
+        curationRequests
+    }
+
+    func serverCuration(id: Int) -> PhotoCuration? {
+        curationState[id]
+    }
+
+    func recordedPhotoQueries() -> [PhotoQuery] {
+        photoQueries
+    }
 
     func folders() async throws -> FoldersResponseDTO {
         FoldersResponseDTO(folders: [], totalPhotos: photosResponse.total)
@@ -99,6 +126,7 @@ actor TestAPI: PhotoBrainAPI {
     }
 
     func photos(query: PhotoQuery) async throws -> PhotosResponseDTO {
+        photoQueries.append(query)
         if shouldFailPhotos { throw URLError(.notConnectedToInternet) }
         return photosResponse
     }
@@ -126,6 +154,18 @@ actor TestAPI: PhotoBrainAPI {
         return try result.get()
     }
 
+    func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {
+        curationRequests.append(CurationRequest(id: id, rating: rating, flag: flag))
+        // Outcome is decided when the request is sent, like a real server receiving it.
+        let failure = curationFailure
+        if curationDelay > .zero { try await Task.sleep(for: curationDelay) }
+        if let failure { throw failure }
+        let current = curationState[id] ?? PhotoCuration(rating: 0, flag: nil)
+        let next = CurationPatch(rating: rating, flag: flag).applied(to: current)
+        curationState[id] = next
+        return TestModels.photo(id: id, rating: next.rating, flag: next.flag)
+    }
+
     func startScan(force: Bool) async throws -> StartScanResponseDTO {
         startForces.append(force)
         if shouldFailStart { throw URLError(.networkConnectionLost) }
@@ -145,7 +185,12 @@ actor TestAPI: PhotoBrainAPI {
 }
 
 enum TestModels {
-    static func photo(id: Int, taken: String? = "2024-01-01T12:00:00Z") -> PhotoDTO {
+    static func photo(
+        id: Int,
+        taken: String? = "2024-01-01T12:00:00Z",
+        rating: Int = 0,
+        flag: PhotoFlag? = nil
+    ) -> PhotoDTO {
         PhotoDTO(
             id: id,
             path: "synthetic/photo_\(id).jpg",
@@ -180,7 +225,9 @@ enum TestModels {
                 gpsLatitude: nil,
                 gpsLongitude: nil,
                 gpsAltitude: nil
-            )
+            ),
+            rating: rating,
+            flag: flag
         )
     }
 

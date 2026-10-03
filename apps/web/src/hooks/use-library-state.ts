@@ -93,6 +93,14 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 		[setViewMode],
 	);
 
+	/** Applies an in-place update (e.g. rating/flag) to the active photo copy. */
+	const patchActivePhoto = useCallback(
+		(patch: (photo: PhotoMetadata) => PhotoMetadata) => {
+			setActivePhoto((current) => (current ? patch(current) : current));
+		},
+		[],
+	);
+
 	// When entering loupe mode, ensure we have an active photo
 	useEffect(() => {
 		if (viewMode === "loupe" && !activePhoto && photos.length > 0) {
@@ -109,5 +117,6 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 		setActivePhoto,
 		navigatePhoto,
 		openInLoupe,
+		patchActivePhoto,
 	};
 }

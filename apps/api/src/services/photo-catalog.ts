@@ -1,4 +1,4 @@
-import { eq, type SQL, sql } from "drizzle-orm";
+import { eq, gte, isNull, type SQL, sql } from "drizzle-orm";
 import type { db as productionDb } from "../db";
 import {
 	photoExif,
@@ -22,6 +22,9 @@ export type PhotoFilters = {
 	lens?: string;
 	iso?: number;
 	dateMonth?: string;
+	/** Minimum star rating, 1-5 (`rating >= minRating`). */
+	minRating?: number;
+	flag?: "pick" | "reject" | "unflagged";
 };
 
 export type PhotoCatalogRepresentation = {
@@ -179,6 +182,14 @@ export function photoFilterConditions(
 		conditions.push(
 			sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND ${dateMonthExpression} = ${input.dateMonth})`,
 		);
+	}
+	if (input.minRating !== undefined) {
+		conditions.push(gte(photosTable.rating, input.minRating));
+	}
+	if (input.flag === "unflagged") {
+		conditions.push(isNull(photosTable.flag));
+	} else if (input.flag) {
+		conditions.push(eq(photosTable.flag, input.flag));
 	}
 	return conditions;
 }

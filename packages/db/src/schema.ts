@@ -1,6 +1,7 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
 	blob,
+	check,
 	index,
 	integer,
 	primaryKey,
@@ -8,34 +9,49 @@ import {
 	text,
 } from "drizzle-orm/sqlite-core";
 
-export const photos = sqliteTable("photos", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
-	path: text("path").notNull().unique(),
-	name: text("name").notNull(),
-	size: integer("size").notNull(),
-	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-	modifiedAt: integer("modified_at", { mode: "timestamp" }).notNull(),
-	width: integer("width"),
-	height: integer("height"),
-	mimeType: text("mime_type"),
-	// RAW file support
-	isRaw: integer("is_raw", { mode: "boolean" }).default(false),
-	rawFormat: text("raw_format"), // "CR2", "NEF", "ARW", etc.
-	rawStatus: text("raw_status"), // "converted", "failed", "no_converter"
-	rawError: text("raw_error"), // Error message if conversion failed
-	// Processing status columns
-	thumbnailStatus: text("thumbnail_status").default("pending"),
-	thumbnailUpdatedAt: integer("thumbnail_updated_at", { mode: "timestamp" }),
-	embeddingStatus: text("embedding_status").default("pending"),
-	phashStatus: text("phash_status").default("pending"),
-	// Precise identity and the committed thumbnail generation used by incremental scans.
-	sourceRoot: text("source_root"),
-	sourceFingerprint: text("source_fingerprint"),
-	mediaVersion: text("media_version"),
-	thumbnailKey: text("thumbnail_key"),
-	thumbnailRoot: text("thumbnail_root"),
-	thumbnailFingerprint: text("thumbnail_fingerprint"),
-});
+export const photos = sqliteTable(
+	"photos",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		path: text("path").notNull().unique(),
+		name: text("name").notNull(),
+		size: integer("size").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		modifiedAt: integer("modified_at", { mode: "timestamp" }).notNull(),
+		width: integer("width"),
+		height: integer("height"),
+		mimeType: text("mime_type"),
+		// RAW file support
+		isRaw: integer("is_raw", { mode: "boolean" }).default(false),
+		rawFormat: text("raw_format"), // "CR2", "NEF", "ARW", etc.
+		rawStatus: text("raw_status"), // "converted", "failed", "no_converter"
+		rawError: text("raw_error"), // Error message if conversion failed
+		// Processing status columns
+		thumbnailStatus: text("thumbnail_status").default("pending"),
+		thumbnailUpdatedAt: integer("thumbnail_updated_at", { mode: "timestamp" }),
+		embeddingStatus: text("embedding_status").default("pending"),
+		phashStatus: text("phash_status").default("pending"),
+		// Precise identity and the committed thumbnail generation used by incremental scans.
+		sourceRoot: text("source_root"),
+		sourceFingerprint: text("source_fingerprint"),
+		mediaVersion: text("media_version"),
+		thumbnailKey: text("thumbnail_key"),
+		thumbnailRoot: text("thumbnail_root"),
+		thumbnailFingerprint: text("thumbnail_fingerprint"),
+		// User curation. Scans never write these columns, so rescans preserve them.
+		rating: integer("rating").notNull().default(0),
+		flag: text("flag", { enum: ["pick", "reject"] }),
+	},
+	(table) => [
+		index("idx_photos_rating").on(table.rating),
+		index("idx_photos_flag").on(table.flag),
+		check("photos_rating_range", sql`${table.rating} BETWEEN 0 AND 5`),
+		check(
+			"photos_flag_values",
+			sql`${table.flag} IS NULL OR ${table.flag} IN ('pick', 'reject')`,
+		),
+	],
+);
 
 export const photoExif = sqliteTable(
 	"photo_exif",

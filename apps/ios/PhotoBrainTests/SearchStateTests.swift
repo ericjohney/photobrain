@@ -192,10 +192,27 @@ final class SearchStateTests: XCTestCase {
     }
 
     func testFilterQueryMapsEveryFieldAndNeverScopesToAFolder() {
-        let filters = LibraryFilters(mediaKind: .raw, camera: "C", lens: "L", iso: 800, dateMonth: "2023-01")
+        let filters = LibraryFilters(
+            mediaKind: .raw,
+            camera: "C",
+            lens: "L",
+            iso: 800,
+            dateMonth: "2023-01",
+            minRating: 3,
+            flag: .reject
+        )
         XCTAssertEqual(
             filters.photoQuery,
-            PhotoQuery(filterRaw: .raw, folder: nil, camera: "C", lens: "L", iso: 800, dateMonth: "2023-01")
+            PhotoQuery(
+                filterRaw: .raw,
+                folder: nil,
+                camera: "C",
+                lens: "L",
+                iso: 800,
+                dateMonth: "2023-01",
+                minRating: 3,
+                flag: .reject
+            )
         )
         XCTAssertEqual(LibraryFilters().photoQuery, PhotoQuery())
     }
@@ -238,13 +255,15 @@ final class SearchRequestEncodingTests: XCTestCase {
             camera: "Sony A7 IV",
             lens: "FE 35mm F1.8",
             iso: 400,
-            dateMonth: "2024-08"
+            dateMonth: "2024-08",
+            minRating: 4,
+            flag: .unflagged
         )
         let body = try await sentBody(query: "beach", limit: 100, filters: filters)
 
         XCTAssertEqual(
             Set(body.keys),
-            ["query", "limit", "filterRaw", "folder", "camera", "lens", "iso", "dateMonth"]
+            ["query", "limit", "filterRaw", "folder", "camera", "lens", "iso", "dateMonth", "minRating", "flag"]
         )
         XCTAssertEqual(body["filterRaw"] as? String, "raw")
         XCTAssertEqual(body["folder"] as? String, "2024/Trip_1")
@@ -252,6 +271,8 @@ final class SearchRequestEncodingTests: XCTestCase {
         XCTAssertEqual(body["lens"] as? String, "FE 35mm F1.8")
         XCTAssertEqual(body["iso"] as? Int, 400)
         XCTAssertEqual(body["dateMonth"] as? String, "2024-08")
+        XCTAssertEqual(body["minRating"] as? Int, 4)
+        XCTAssertEqual(body["flag"] as? String, "unflagged")
     }
 
     func testPartiallyFilteredBodyContainsOnlySetFields() async throws {

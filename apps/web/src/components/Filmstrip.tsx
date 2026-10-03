@@ -62,12 +62,15 @@ export function Filmstrip({
 			{photos.map((photo) => {
 				const isActive = activePhotoId === photo.id;
 				const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
+				const isRejected = photo.flag === "reject";
 
 				return (
 					<button
 						key={photo.id}
 						ref={isActive ? activeRef : undefined}
 						type="button"
+						data-filmstrip-photo-id={photo.id}
+						data-rejected={isRejected || undefined}
 						onClick={() => handleClick(photo)}
 						className={cn(
 							"relative flex-shrink-0 overflow-hidden",
@@ -76,6 +79,7 @@ export function Filmstrip({
 							"ring-inset focus:outline-none",
 							isActive && "ring-2 ring-selection brightness-110",
 							!isActive && "opacity-70 hover:opacity-100 hover:ring-1 hover:ring-thumbnail-border",
+							isRejected && "opacity-30 hover:opacity-50",
 						)}
 					>
 						{isFailedRaw ? (

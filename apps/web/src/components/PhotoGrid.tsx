@@ -1,4 +1,4 @@
-import { AlertCircle, Camera, ImageIcon } from "lucide-react";
+import { AlertCircle, Camera, Flag, ImageIcon, Star, X } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getThumbnailSrcSet, getThumbnailUrl } from "@/lib/thumbnails";
@@ -65,17 +65,20 @@ export function PhotoGrid({
 					{photos.map((photo) => {
 						const isActive = activePhotoId === photo.id;
 						const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
+						const isRejected = photo.flag === "reject";
 
 						return (
 							<div
 								key={photo.id}
 								data-photo-id={photo.id}
+								data-rejected={isRejected || undefined}
 								className={cn(
 									"group relative aspect-square cursor-pointer overflow-hidden bg-muted",
 									"transition-all duration-75",
 									"ring-inset",
 									isActive && "ring-2 ring-selection brightness-110",
 									!isActive && "hover:ring-1 hover:ring-thumbnail-border",
+									isRejected && "opacity-40",
 								)}
 								onClick={() => handleClick(photo)}
 								onDoubleClick={() => handleDoubleClick(photo)}
@@ -130,6 +133,37 @@ export function PhotoGrid({
 										{photo.name}
 									</p>
 								</div>
+
+								{/* Rating / flag badge */}
+								{(photo.rating > 0 || photo.flag) && (
+									<div
+										data-testid="curation-badge"
+										className="absolute bottom-1 right-1 flex items-center gap-1 rounded bg-black/60 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
+									>
+										{photo.rating > 0 && (
+											<span
+												role="img"
+												className="flex items-center gap-0.5"
+												aria-label={`${photo.rating} ${photo.rating === 1 ? "star" : "stars"}`}
+											>
+												<Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+												{photo.rating}
+											</span>
+										)}
+										{photo.flag === "pick" && (
+											<Flag
+												aria-label="Pick"
+												className="h-3 w-3 fill-green-400 text-green-400"
+											/>
+										)}
+										{photo.flag === "reject" && (
+											<X
+												aria-label="Rejected"
+												className="h-3 w-3 stroke-[3] text-red-500"
+											/>
+										)}
+									</div>
+								)}
 							</div>
 						);
 					})}

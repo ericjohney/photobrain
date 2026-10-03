@@ -5,10 +5,13 @@ import {
 	Camera,
 	ChevronDown,
 	FileImage,
+	Flag,
 	Gauge,
 	ImageIcon,
 	MapPin,
 	Sparkles,
+	Star,
+	XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,12 +20,14 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { CurationPatch } from "@/hooks/use-photo-curation";
 import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface MetadataPanelProps {
 	photo: PhotoMetadata | null;
 	onFindSimilar?: () => void;
+	onCurate?: (patch: CurationPatch) => void;
 	className?: string;
 }
 
@@ -69,9 +74,95 @@ function MetadataRow({
 	);
 }
 
+const RATINGS = [1, 2, 3, 4, 5] as const;
+
+/** Star rating plus pick/reject toggles; re-selecting the current value clears it. */
+function CurationControls({
+	photo,
+	onCurate,
+}: {
+	photo: PhotoMetadata;
+	onCurate: (patch: CurationPatch) => void;
+}) {
+	return (
+		<div
+			data-testid="curation-controls"
+			className="flex items-center gap-2 border-b border-border px-3 py-2"
+		>
+			<span className="metadata-label text-xs">Rating</span>
+			<div
+				role="radiogroup"
+				aria-label="Rating"
+				className="flex flex-1 items-center"
+			>
+				{RATINGS.map((stars) => (
+					<button
+						key={stars}
+						type="button"
+						role="radio"
+						aria-checked={photo.rating === stars}
+						aria-label={`Rate ${stars} ${stars === 1 ? "star" : "stars"}`}
+						title={`${stars} ${stars === 1 ? "star" : "stars"} (${stars})`}
+						onClick={() =>
+							onCurate({ rating: photo.rating === stars ? 0 : stars })
+						}
+						className="rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+					>
+						<Star
+							className={cn(
+								"h-4 w-4",
+								stars <= photo.rating && "fill-current text-yellow-400",
+							)}
+						/>
+					</button>
+				))}
+			</div>
+			<div className="flex items-center gap-1">
+				<button
+					type="button"
+					aria-pressed={photo.flag === "pick"}
+					aria-label="Pick"
+					title="Pick (P)"
+					onClick={() =>
+						onCurate({ flag: photo.flag === "pick" ? null : "pick" })
+					}
+					className={cn(
+						"rounded p-1 transition-colors hover:bg-secondary",
+						photo.flag === "pick"
+							? "text-green-400"
+							: "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					<Flag
+						className={cn("h-4 w-4", photo.flag === "pick" && "fill-current")}
+					/>
+				</button>
+				<button
+					type="button"
+					aria-pressed={photo.flag === "reject"}
+					aria-label="Reject"
+					title="Reject (X)"
+					onClick={() =>
+						onCurate({ flag: photo.flag === "reject" ? null : "reject" })
+					}
+					className={cn(
+						"rounded p-1 transition-colors hover:bg-secondary",
+						photo.flag === "reject"
+							? "text-red-500"
+							: "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					<XCircle className="h-4 w-4" />
+				</button>
+			</div>
+		</div>
+	);
+}
+
 export function MetadataPanel({
 	photo,
 	onFindSimilar,
+	onCurate,
 	className,
 }: MetadataPanelProps) {
 	if (!photo) {
@@ -107,6 +198,7 @@ export function MetadataPanel({
 						</Button>
 					</div>
 				)}
+				{onCurate && <CurationControls photo={photo} onCurate={onCurate} />}
 				{/* File Info */}
 				<MetadataSection title="File" icon={FileImage}>
 					<div className="space-y-0.5 pt-1">

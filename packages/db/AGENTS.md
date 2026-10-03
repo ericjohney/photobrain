@@ -19,6 +19,13 @@ The API's `apps/api/src/db/schema.ts` re-exports this package. Update this packa
 - `embeddingStatus`
 - `phashStatus`
 
+User curation fields are public and written only by the curation service (`apps/api/src/services/photo-curation.ts`):
+
+- `rating`: integer 0-5, default 0, enforced by the `photos_rating_range` CHECK constraint and indexed by `idx_photos_rating`.
+- `flag`: `'pick'`, `'reject'`, or NULL, enforced by the `photos_flag_values` CHECK constraint and indexed by `idx_photos_flag`.
+
+Scan and embedding saves never write these columns, so a rescan or generation upsert of an existing path preserves them.
+
 Six nullable internal identity fields describe committed media:
 
 - `sourceRoot`: canonical `realpath` of the scanned source directory.
@@ -57,6 +64,7 @@ Current migrations:
 5. `0004_repair-photo-exif-unique.sql`: restores the declared one-to-one unique index on `photo_exif.photo_id` for databases created before the invariant was migrated consistently.
 6. `0005_continuous_scan_work.sql`: adds the continuous scan manifests, per-photo receipts, and pending-order index.
 7. `0006_incremental_scan.sql`: adds six nullable photo identity fields, nullable embedding thumbnail key, manifest roots and classification counters, and item action/source/attempt/previous-generation fields. Existing item actions default to `media`; new counters default to zero. Existing photo identity fields remain null for conservative legacy adoption rather than receiving fabricated provenance.
+8. `0007_photo_curation.sql`: adds `photos.rating` (`integer NOT NULL DEFAULT 0`, CHECK 0-5) and nullable `photos.flag` (CHECK `'pick'`/`'reject'`), plus `idx_photos_rating` and `idx_photos_flag`. Existing rows receive rating 0 and flag NULL. drizzle-kit generated a full `photos` rebuild for the CHECK constraints; it was replaced with in-place `ADD COLUMN` statements because the migrator transaction cannot disable foreign keys, so the rebuild's `DROP TABLE photos` would cascade into the EXIF, embedding, and pHash sidecars. The snapshot still matches the schema (`db:generate` reports no changes).
 
 Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006` after preceding migrations. New function IDs do not protect against old code still publishing unfenced writes.
 

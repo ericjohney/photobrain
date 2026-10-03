@@ -112,6 +112,25 @@
 							"type": "string",
 							"pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
 						}
+					},
+					{
+						"name": "minRating",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 5
+						}
+					},
+					{
+						"name": "flag",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["pick", "reject", "unflagged"]
+						}
 					}
 				],
 				"responses": {
@@ -186,12 +205,75 @@
 						"$ref": "#/components/responses/InternalError"
 					}
 				}
+			},
+			"patch": {
+				"operationId": "updatePhotoCuration",
+				"description": "Sets the photo's star rating and/or pick/reject flag. `flag: null` clears the flag. Available regardless of the native scan mutation flag.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/PhotoCurationPatch"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated photo detail",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Photo"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"description": "Photo not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"photoNotFound": {
+										"value": {
+											"error": {
+												"code": "PHOTO_NOT_FOUND",
+												"message": "Photo not found"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
 			}
 		},
 		"/api/v1/photos/{id}/similar": {
 			"get": {
 				"operationId": "listSimilarPhotos",
-				"description": "Photos nearest to the source photo by CLIP vector distance (L2), nearest first with ties ordered by ascending id. The source photo is excluded. Only completed vectors for the current model and committed thumbnail generation participate. When the source photo has no usable vector, `indexed` is false and `photos` is empty.",
+				"description": "Photos nearest to the source photo by CLIP vector distance (L2), nearest first with ties ordered by ascending id. The source photo is excluded. Only completed vectors for the current model and committed thumbnail generation participate. Optional `minRating` and `flag` filters apply to candidates before ranking and the limit, never to the source. When the source photo has no usable vector, `indexed` is false and `photos` is empty.",
 				"parameters": [
 					{
 						"name": "id",
@@ -211,6 +293,25 @@
 							"minimum": 1,
 							"maximum": 100,
 							"default": 30
+						}
+					},
+					{
+						"name": "minRating",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 5
+						}
+					},
+					{
+						"name": "flag",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["pick", "reject", "unflagged"]
 						}
 					}
 				],
@@ -567,6 +668,8 @@
 					"thumbnailUpdatedAt",
 					"embeddingStatus",
 					"phashStatus",
+					"rating",
+					"flag",
 					"exif"
 				],
 				"properties": {
@@ -633,6 +736,16 @@
 					"phashStatus": {
 						"type": ["string", "null"]
 					},
+					"rating": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 5,
+						"description": "Star rating; 0 means unrated"
+					},
+					"flag": {
+						"type": ["string", "null"],
+						"enum": ["pick", "reject", null]
+					},
 					"exif": {
 						"oneOf": [
 							{
@@ -642,6 +755,24 @@
 								"type": "null"
 							}
 						]
+					}
+				}
+			},
+			"PhotoCurationPatch": {
+				"type": "object",
+				"additionalProperties": false,
+				"minProperties": 1,
+				"description": "At least one of `rating` or `flag` is required.",
+				"properties": {
+					"rating": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 5
+					},
+					"flag": {
+						"type": ["string", "null"],
+						"enum": ["pick", "reject", null],
+						"description": "`null` clears the flag"
 					}
 				}
 			},
@@ -702,6 +833,17 @@
 					"dateMonth": {
 						"type": "string",
 						"pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+					},
+					"minRating": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 5,
+						"description": "Only photos rated at least this many stars"
+					},
+					"flag": {
+						"type": "string",
+						"enum": ["pick", "reject", "unflagged"],
+						"description": "Only picks, only rejects, or only photos without a flag"
 					}
 				}
 			},

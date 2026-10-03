@@ -50,6 +50,13 @@
       "when": 1789850904017,
       "tag": "0006_incremental_scan",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791047092948,
+      "tag": "0007_photo_curation",
+      "breakpoints": true
     }
   ]
 }
