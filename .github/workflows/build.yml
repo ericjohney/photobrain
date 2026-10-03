@@ -89,13 +89,13 @@ jobs:
       - name: Typecheck API
         run: cd apps/api && bun run typecheck
 
-  eas-update:
+  eas-android-release:
     runs-on: ericjohney-org-runners
     needs: [test-web, test-mobile, test-api]
     if: github.event_name == 'push'
     timeout-minutes: 120
     concurrency:
-      group: ${{ github.ref == 'refs/heads/main' && 'eas-preview-ios' || format('eas-production-{0}', github.ref) }}
+      group: ${{ github.ref == 'refs/heads/main' && 'eas-android-preview' || 'eas-android-production' }}
       cancel-in-progress: false
     steps:
       - name: Checkout code
@@ -117,34 +117,35 @@ jobs:
       - name: Install EAS CLI
         run: npm install -g eas-cli@24.7.0
 
-      - name: Ensure compatible iOS preview (push to main)
+      - name: Build Android preview receiver (push to main)
         if: github.ref == 'refs/heads/main'
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
-        run: eas env:exec preview 'node scripts/ensure-preview-build.mjs' --non-interactive
+        run: eas build --platform android --profile android-preview --non-interactive
         working-directory: apps/mobile
 
-      - name: Publish to preview (push to main)
+      - name: Verify and publish Android preview (push to main)
         if: github.ref == 'refs/heads/main'
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
-        run: cd apps/mobile && eas update --branch preview --environment preview --message "main@${GITHUB_SHA::7}" --non-interactive
+        run: |
+          eas env:exec preview "node -e 'const { readFileSync } = require(\"node:fs\"); const profile = JSON.parse(readFileSync(\"eas.json\", \"utf8\")).build[\"android-preview\"]; for (const [name, value] of Object.entries(profile.env ?? {})) { if (process.env[name] !== value) throw new Error(\"EAS preview environment \" + name + \" must match android-preview profile.\"); }' && eas update --platform android --branch preview --environment preview --message \"main@${GITHUB_SHA::7}\" --non-interactive" --non-interactive
+        working-directory: apps/mobile
 
-      - name: Build production iOS app (tagged release)
+      - name: Build Android production receiver (tagged release)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
-        run: cd apps/mobile && eas build --platform ios --profile production --non-interactive
+        run: eas build --platform android --profile android-production --non-interactive
+        working-directory: apps/mobile
 
-      - name: Publish to production (tagged release)
+      - name: Verify and publish Android production (tagged release)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
-        run: cd apps/mobile && eas update --branch production --environment production --platform ios --message "${{ github.ref_name }}" --non-interactive
+        run: |
+          eas env:exec production "node -e 'const { readFileSync } = require(\"node:fs\"); const profile = JSON.parse(readFileSync(\"eas.json\", \"utf8\")).build[\"android-production\"]; for (const [name, value] of Object.entries(profile.env ?? {})) { if (process.env[name] !== value) throw new Error(\"EAS production environment \" + name + \" must match android-production profile.\"); }' && eas update --platform android --branch production --environment production --message \"${{ github.ref_name }}\" --non-interactive" --non-interactive
+        working-directory: apps/mobile
 
   docker-api:
     runs-on: ericjohney-org-runners

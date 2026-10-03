@@ -1,4 +1,4 @@
-name: EAS Preview iOS Build
+name: Expo iOS Emergency Preview Build
 
 on:
   workflow_dispatch:
@@ -7,11 +7,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: eas-preview-ios
+  group: ios-production-release
   cancel-in-progress: false
 
 jobs:
-  build-preview-ios:
+  expo-ios-emergency-preview:
     runs-on: ericjohney-org-runners
     timeout-minutes: 120
     steps:
@@ -34,7 +34,7 @@ jobs:
       - name: Install EAS CLI
         run: npm install --global eas-cli@24.7.0
 
-      - name: Build iOS preview
+      - name: Build emergency Expo iOS preview
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
