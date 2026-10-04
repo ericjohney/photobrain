@@ -24,6 +24,7 @@ struct OnThisDaySection: View {
                 }
                 .padding(.horizontal, 14)
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 8)
     }

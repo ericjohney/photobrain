@@ -219,11 +219,14 @@ struct LibraryScreen: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Library")
                     .font(.headline)
+                    .lineLimit(1)
                 Text(store.headerSubtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                     .contentTransition(.numericText())
             }
+            .fixedSize()
             Spacer()
             if store.isSelecting {
                 Button {
@@ -260,57 +263,55 @@ struct LibraryScreen: View {
                         }
                     }
                     .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .fixedSize()
                     .frame(minHeight: 44)
                 }
                 .accessibilityLabel("Review, \(review.counts.all) photos")
-                if duplicates.counts.total > 0 {
-                    Button {
-                        duplicatesPresented = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text("Duplicates")
-                            Text(duplicates.counts.total.formatted())
-                                .font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(Capsule().fill(Color.accentColor))
-                                .contentTransition(.numericText())
+                Menu {
+                    if duplicates.counts.total > 0 {
+                        Button {
+                            duplicatesPresented = true
+                        } label: {
+                            Label(
+                                "Duplicates (\(duplicates.counts.total.formatted()))",
+                                systemImage: "square.on.square"
+                            )
                         }
-                        .fontWeight(.semibold)
-                        .frame(minHeight: 44)
+                        .accessibilityLabel("Duplicates, \(duplicates.counts.total) groups")
                     }
-                    .accessibilityLabel("Duplicates, \(duplicates.counts.total) groups")
-                }
-                Button {
-                    calendarPresented = true
+                    Button {
+                        calendarPresented = true
+                    } label: {
+                        Label("Calendar", systemImage: "calendar")
+                    }
+                    .disabled(store.records.isEmpty)
+                    Button {
+                        mapPresented = true
+                    } label: {
+                        Label("Map", systemImage: "map")
+                    }
+                    Button {
+                        gearStatsPresented = true
+                    } label: {
+                        Label("Gear Stats", systemImage: "chart.bar")
+                    }
                 } label: {
-                    Image(systemName: "calendar")
+                    Image(systemName: duplicates.counts.total > 0
+                        ? "square.grid.2x2.fill"
+                        : "square.grid.2x2")
                         .font(.title3)
                         .frame(width: 44, height: 44)
                 }
-                .accessibilityLabel("Calendar")
-                .disabled(store.records.isEmpty)
-                Button {
-                    mapPresented = true
-                } label: {
-                    Image(systemName: "map")
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Map")
-                Button {
-                    gearStatsPresented = true
-                } label: {
-                    Image(systemName: "chart.bar")
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Gear Stats")
+                .accessibilityLabel(duplicates.counts.total > 0
+                    ? "Browse, \(duplicates.counts.total) duplicate groups"
+                    : "Browse")
                 Button("Select") {
                     store.beginSelection()
                 }
                 .fontWeight(.semibold)
+                .lineLimit(1)
+                .fixedSize()
                 .accessibilityLabel("Select photos")
                 .disabled(store.records.isEmpty)
             }

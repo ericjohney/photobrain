@@ -267,7 +267,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             }
             let item = NSCollectionLayoutItem(
                 layoutSize: NSCollectionLayoutSize(
-                    widthDimension: .fractionalWidth(1),
+                    widthDimension: .fractionalWidth(1 / CGFloat(columns)),
                     heightDimension: .fractionalHeight(1)
                 )
             )
