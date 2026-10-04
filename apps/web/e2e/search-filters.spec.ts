@@ -4,6 +4,7 @@ import {
 	FIXTURE_PHOTOS,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
+	fixtureGridIds,
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
@@ -144,9 +145,9 @@ test("clearing the search restores the filtered library grid", async ({
 	mockBackend,
 }) => {
 	const calls = await mockBackend();
-	const sonyIds = filterFixturePhotos(FIXTURE_PHOTOS, {
-		camera: "Sony A7III",
-	}).map((p) => p.id);
+	const sonyIds = fixtureGridIds(
+		filterFixturePhotos(FIXTURE_PHOTOS, { camera: "Sony A7III" }),
+	);
 	await page.goto("/");
 	await expect(page.getByText("12 photos")).toBeVisible();
 	await openCameraFilters(page);

@@ -1,6 +1,12 @@
 import type { AppRouter } from "@photobrain/api";
 import type { inferRouterOutputs } from "@trpc/server";
 import { useCallback, useEffect, useState } from "react";
+import {
+	TIMELINE_GROUPINGS,
+	TIMELINE_SORTS,
+	type TimelineGrouping,
+	type TimelineSort,
+} from "@/lib/timeline";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
@@ -11,11 +17,17 @@ interface LibraryState {
 	viewMode: ViewMode;
 	activePhoto: PhotoMetadata | null;
 	thumbnailSize: number;
+	grouping: TimelineGrouping;
+	sort: TimelineSort;
 }
+
+type StoredLibraryState = Partial<
+	Pick<LibraryState, "viewMode" | "thumbnailSize" | "grouping" | "sort">
+>;
 
 const STORAGE_KEY = "photobrain-library-state";
 
-function loadFromStorage(): Partial<LibraryState> {
+function loadFromStorage(): StoredLibraryState {
 	try {
 		const stored = localStorage.getItem(STORAGE_KEY);
 		if (stored) {
@@ -23,6 +35,10 @@ function loadFromStorage(): Partial<LibraryState> {
 			return {
 				viewMode: parsed.viewMode || "grid",
 				thumbnailSize: parsed.thumbnailSize || 200,
+				grouping: TIMELINE_GROUPINGS.includes(parsed.grouping)
+					? parsed.grouping
+					: undefined,
+				sort: TIMELINE_SORTS.includes(parsed.sort) ? parsed.sort : undefined,
 			};
 		}
 	} catch {
@@ -31,20 +47,40 @@ function loadFromStorage(): Partial<LibraryState> {
 	return {};
 }
 
-function saveToStorage(state: Partial<LibraryState>) {
+/** Merges `state` into the stored state, keeping the keys it leaves out. */
+function saveToStorage(state: StoredLibraryState) {
 	try {
-		const current = loadFromStorage();
 		localStorage.setItem(
 			STORAGE_KEY,
-			JSON.stringify({
-				...current,
-				viewMode: state.viewMode,
-				thumbnailSize: state.thumbnailSize,
-			}),
+			JSON.stringify({ ...loadFromStorage(), ...state }),
 		);
 	} catch {
 		// Ignore errors
 	}
+}
+
+/**
+ * Library timeline grouping and sort (default months by capture date),
+ * persisted with the rest of the library state. Separate from
+ * `useLibraryState` because the sorted photo list it produces is what
+ * `useLibraryState` navigates.
+ */
+export function useTimelineSettings() {
+	const [grouping, setGroupingInternal] = useState<TimelineGrouping>(
+		() => loadFromStorage().grouping ?? "months",
+	);
+	const [sort, setSortInternal] = useState<TimelineSort>(
+		() => loadFromStorage().sort ?? "captured",
+	);
+	const setGrouping = useCallback((value: TimelineGrouping) => {
+		setGroupingInternal(value);
+		saveToStorage({ grouping: value });
+	}, []);
+	const setSort = useCallback((value: TimelineSort) => {
+		setSortInternal(value);
+		saveToStorage({ sort: value });
+	}, []);
+	return { grouping, setGrouping, sort, setSort };
 }
 
 export function useLibraryState(photos: PhotoMetadata[] = []) {

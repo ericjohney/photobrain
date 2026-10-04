@@ -296,7 +296,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - [x] Smart albums (saved filters plus optional semantic query, evaluated live) on web and native iOS
   - [ ] Nested album support
 - [x] **Date-grouped browsing on mobile**
-- [ ] **Timeline and calendar views on web**
+- [x] **Timeline and calendar views on web** (Years/Months/All grouping, capture/added sort, year rail, calendar popover; calendar sheet on native iOS)
 - [x] **Camera, lens, ISO, and month filtering**
 - [x] **RAW/standard filtering in the API**
 - [x] **RAW/standard filter controls in clients** (web Type control, native iOS Media Type picker, Expo filter sheet)

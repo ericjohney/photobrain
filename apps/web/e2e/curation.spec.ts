@@ -4,6 +4,7 @@ import {
 	FIXTURE_PHOTOS,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
+	fixtureGridIds,
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
@@ -25,11 +26,9 @@ function gridBadge(page: Page, id: number) {
 }
 
 function star(page: Page, stars: number) {
-	return page
-		.getByTestId("right-panel")
-		.getByRole("radio", {
-			name: `Rate ${stars} ${stars === 1 ? "star" : "stars"}`,
-		});
+	return page.getByTestId("right-panel").getByRole("radio", {
+		name: `Rate ${stars} ${stars === 1 ? "star" : "stars"}`,
+	});
 }
 
 function flagButton(page: Page, name: "Pick" | "Reject") {
@@ -57,7 +56,9 @@ function gate() {
 
 async function openLibrary(page: Page) {
 	await page.goto("/");
-	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
+	await expect(
+		page.getByText(`${FIXTURE_LIBRARY.length} photos`),
+	).toBeVisible();
 }
 
 test("0-5, P, X and U curate the active photo and update panel and grid immediately", async ({
@@ -325,7 +326,7 @@ test("Rating and Flag filters scope the library and search and clear with Clear 
 	const threePlus = filterFixturePhotos(FIXTURE_PHOTOS, { minRating: 3 });
 	await ratingRadio("★3+").click();
 	await expect(page.getByText(`${threePlus.length} photos`)).toBeVisible();
-	expect(await gridIds(page)).toEqual(threePlus.map((p) => p.id));
+	expect(await gridIds(page)).toEqual(fixtureGridIds(threePlus));
 	expect(calls.photos?.at(-1)).toEqual({ minRating: 3 });
 	await expect(leftPanel.getByText("Filters active")).toBeVisible();
 
@@ -335,7 +336,7 @@ test("Rating and Flag filters scope the library and search and clear with Clear 
 	});
 	await flagRadio("Picks").click();
 	await expect(page.getByText(`${picks.length} photos`)).toBeVisible();
-	expect(await gridIds(page)).toEqual(picks.map((p) => p.id));
+	expect(await gridIds(page)).toEqual(fixtureGridIds(picks));
 	expect(calls.photos?.at(-1)).toEqual({ minRating: 3, flag: "pick" });
 
 	await page.getByPlaceholder("Search photos...").fill("jpg");
@@ -386,8 +387,10 @@ test("Rating and Flag filters scope the library and search and clear with Clear 
 
 	// The unfiltered library may render from cache, so assert what is shown.
 	await page.getByRole("button", { name: "Clear search" }).click();
-	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
+	await expect(
+		page.getByText(`${FIXTURE_LIBRARY.length} photos`),
+	).toBeVisible();
 	await expect
 		.poll(() => gridIds(page))
-		.toEqual(FIXTURE_LIBRARY.map((p) => p.id));
+		.toEqual(fixtureGridIds(FIXTURE_LIBRARY));
 });

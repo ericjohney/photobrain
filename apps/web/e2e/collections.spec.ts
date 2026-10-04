@@ -1,9 +1,9 @@
 import type { Page } from "@playwright/test";
 import type { HandlerOverrides } from "./fixtures/handlers";
-import { FIXTURE_LIBRARY } from "./fixtures/photos";
+import { FIXTURE_LIBRARY, fixtureGridIds } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
-const ALL_IDS = FIXTURE_LIBRARY.map((p) => p.id);
+const ALL_IDS = fixtureGridIds(FIXTURE_LIBRARY);
 
 async function gridIds(page: Page) {
 	return page
@@ -80,7 +80,9 @@ function seedCollections(
 
 async function openLibrary(page: Page) {
 	await page.goto("/");
-	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
+	await expect(
+		page.getByText(`${FIXTURE_LIBRARY.length} photos`),
+	).toBeVisible();
 }
 
 test("+ creates a collection on Enter and lists it with a zero count", async ({

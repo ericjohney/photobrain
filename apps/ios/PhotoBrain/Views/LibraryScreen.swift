@@ -37,6 +37,7 @@ struct LibraryScreen: View {
     @State private var reviewPresented = false
     @State private var duplicatesPresented = false
     @State private var mapPresented = false
+    @State private var calendarPresented = false
     @Environment(\.showInLibrary) private var showInLibrary
 
     var body: some View {
@@ -99,6 +100,13 @@ struct LibraryScreen: View {
                 scans: scans,
                 environment: environment,
                 theme: theme
+            )
+        }
+        .sheet(isPresented: $calendarPresented) {
+            CaptureCalendarView(
+                calendar: store.captureCalendar,
+                capturedDate: store.filters.capturedDate,
+                select: store.showCapturedDate
             )
         }
         .sheet(isPresented: $addSelectionPresented) {
@@ -270,6 +278,15 @@ struct LibraryScreen: View {
                     }
                     .accessibilityLabel("Duplicates, \(duplicates.counts.total) groups")
                 }
+                Button {
+                    calendarPresented = true
+                } label: {
+                    Image(systemName: "calendar")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Calendar")
+                .disabled(store.records.isEmpty)
                 Button {
                     mapPresented = true
                 } label: {

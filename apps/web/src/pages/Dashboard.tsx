@@ -42,7 +42,11 @@ import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { useJunkReview } from "@/hooks/use-junk-review";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useLibraryState, type ViewMode } from "@/hooks/use-library-state";
+import {
+	useLibraryState,
+	useTimelineSettings,
+	type ViewMode,
+} from "@/hooks/use-library-state";
 import { useOnThisDay } from "@/hooks/use-on-this-day";
 import { usePanelState } from "@/hooks/use-panel-state";
 import {
@@ -58,6 +62,7 @@ import {
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
 import { photoLocation } from "@/lib/map";
 import { formatCapturedDate } from "@/lib/on-this-day";
+import { countCapturedDays, groupPhotos } from "@/lib/timeline";
 import { trpc } from "@/lib/trpc";
 import type {
 	DuplicateKind,
@@ -237,7 +242,7 @@ export function Dashboard() {
 			: searchQuery
 				? searchPhotosQuery
 				: photosQuery;
-	const photos: PhotoMetadata[] = duplicatesActive
+	const listedPhotos: PhotoMetadata[] = duplicatesActive
 		? duplicatePhotos
 		: (activeQuery.data?.photos ?? []);
 	const loading = duplicatesActive
@@ -248,6 +253,35 @@ export function Dashboard() {
 		: activeQuery.error;
 	const similarNotIndexed =
 		similarSource !== null && similarPhotosQuery.data?.indexed === false;
+
+	// Timeline: only the library listing is sorted and grouped; search and
+	// similar results keep their ranking, Review and Duplicates their order.
+	const timelineSettings = useTimelineSettings();
+	const libraryListed =
+		catalogView === null && similarSource === null && !searchQuery;
+	const timeline = useMemo(
+		() =>
+			libraryListed
+				? groupPhotos(
+						listedPhotos,
+						timelineSettings.grouping,
+						timelineSettings.sort,
+					)
+				: { photos: listedPhotos, sections: null },
+		[
+			libraryListed,
+			listedPhotos,
+			timelineSettings.grouping,
+			timelineSettings.sort,
+		],
+	);
+	// The displayed order: what the grid, loupe, filmstrip, and arrows walk.
+	const photos = timeline.photos;
+	// Calendar counts come from the loaded (already filtered) library list.
+	const calendarCounts = useMemo(
+		() => countCapturedDays(libraryListed ? listedPhotos : []),
+		[libraryListed, listedPhotos],
+	);
 
 	// State management hooks
 	const library = useLibraryState(photos);
@@ -701,6 +735,7 @@ export function Dashboard() {
 		const grid = (
 			<PhotoGrid
 				photos={photos}
+				sections={timeline.sections}
 				activePhotoId={library.activePhoto?.id}
 				thumbnailSize={library.thumbnailSize}
 				onPhotoClick={handlePhotoClick}
@@ -899,6 +934,19 @@ export function Dashboard() {
 					onViewModeChange={changeViewMode}
 					thumbnailSize={library.thumbnailSize}
 					onThumbnailSizeChange={library.setThumbnailSize}
+					timeline={
+						libraryListed && library.viewMode === "grid"
+							? {
+									grouping: timelineSettings.grouping,
+									onGroupingChange: timelineSettings.setGrouping,
+									sort: timelineSettings.sort,
+									onSortChange: timelineSettings.setSort,
+									calendarCounts,
+									capturedDate: filters.capturedDate,
+									onCapturedDateSelect: handleCapturedDateSelect,
+								}
+							: null
+					}
 					leftPanelVisible={panels.leftPanelVisible}
 					rightPanelVisible={panels.rightPanelVisible}
 					onToggleLeftPanel={panels.toggleLeftPanel}

@@ -263,7 +263,9 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         case failed(String)
     }
 
-    @Published private(set) var records: [PhotoRecord] = []
+    @Published private(set) var records: [PhotoRecord] = [] {
+        didSet { cachedCaptureCalendar = nil }
+    }
     @Published private(set) var orderedRecords: [PhotoRecord] = []
     @Published private(set) var sections: [PhotoSection] = []
     @Published private(set) var filterOptions: FilterOptionsDTO?
@@ -298,6 +300,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     /// Photos removed from the scoped collection while the loupe is open; dropped on dismissal
     /// so the loupe never pages away underneath the membership sheet.
     private var pendingRemovalIDs: Set<Int> = []
+    private var cachedCaptureCalendar: CaptureCalendar?
 
     init(
         api: any PhotoBrainAPI,
@@ -316,6 +319,14 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     var collectionId: Int? {
         guard case let .collection(id) = scope else { return nil }
         return id
+    }
+
+    /// EXIF capture-day counts over the loaded (filtered) records, built once per records change.
+    var captureCalendar: CaptureCalendar {
+        if let cachedCaptureCalendar { return cachedCaptureCalendar }
+        let calendar = CaptureCalendar(records: records)
+        cachedCaptureCalendar = calendar
+        return calendar
     }
 
 

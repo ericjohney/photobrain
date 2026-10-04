@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import {
 	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
+	fixtureGridIds,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
@@ -121,7 +122,7 @@ test("chip ✕ exits similar mode and restores the library grid", async ({
 	await page.getByRole("button", { name: "Exit similar photos" }).click();
 	await expect(page.getByTestId("similar-chip")).toHaveCount(0);
 	await expect(page.getByText("12 photos")).toBeVisible();
-	expect(await gridIds(page)).toEqual(FIXTURE_LIBRARY.map((p) => p.id));
+	expect(await gridIds(page)).toEqual(fixtureGridIds(FIXTURE_LIBRARY));
 });
 
 test("Escape in grid exits similar mode", async ({ page, mockBackend }) => {

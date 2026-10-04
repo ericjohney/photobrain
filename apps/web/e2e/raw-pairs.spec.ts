@@ -3,6 +3,7 @@ import {
 	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
 	filterFixturePhotos,
+	fixtureGridIds,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
@@ -91,8 +92,8 @@ test("the RAW filter shows the paired RAW with its combined badge and Pair row",
 	await page.getByTestId("left-panel").getByText("Filter By").click();
 	await typeRadio(page, "RAW").click();
 
-	const rawIds = filterFixturePhotos(FIXTURE_PHOTOS, { filterRaw: "raw" }).map(
-		(p) => p.id,
+	const rawIds = fixtureGridIds(
+		filterFixturePhotos(FIXTURE_PHOTOS, { filterRaw: "raw" }),
 	);
 	expect(rawIds).toContain(RAW_ID);
 	await expect.poll(() => gridIds(page)).toEqual(rawIds);

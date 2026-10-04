@@ -3,6 +3,7 @@ import {
 	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
 	filterFixturePhotos,
+	fixtureGridIds,
 	fixtureOnThisDay,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
@@ -46,8 +47,8 @@ async function openLibrary(page: Page, now = PINNED_NOW) {
 }
 
 async function expectCapturedDateGrid(page: Page, capturedDate: string) {
-	const ids = filterFixturePhotos(FIXTURE_PHOTOS, { capturedDate }).map(
-		(p) => p.id,
+	const ids = fixtureGridIds(
+		filterFixturePhotos(FIXTURE_PHOTOS, { capturedDate }),
 	);
 	await expect(
 		page.getByText(`${ids.length} photos`, { exact: true }).first(),
@@ -118,7 +119,7 @@ test("the strip is hidden when no earlier year has photos on this day", async ({
 	await expect(strip(page)).toHaveCount(0);
 	await expect
 		.poll(() => gridIds(page))
-		.toEqual(FIXTURE_LIBRARY.map((p) => p.id));
+		.toEqual(fixtureGridIds(FIXTURE_LIBRARY));
 });
 
 test("a new local day is requested when the window regains focus", async ({
@@ -198,7 +199,7 @@ test("a card filters to its capture date; the chip and Clear all restore the str
 	await expect(strip(page)).toBeVisible();
 	await expect
 		.poll(() => gridIds(page))
-		.toEqual(FIXTURE_LIBRARY.map((p) => p.id));
+		.toEqual(fixtureGridIds(FIXTURE_LIBRARY));
 
 	// Clear all clears it too.
 	await card(page, "2019-06-15").click();
@@ -210,7 +211,7 @@ test("a card filters to its capture date; the chip and Clear all restore the str
 	await expect(strip(page)).toBeVisible();
 	await expect
 		.poll(() => gridIds(page))
-		.toEqual(FIXTURE_LIBRARY.map((p) => p.id));
+		.toEqual(fixtureGridIds(FIXTURE_LIBRARY));
 });
 
 test("capturedDate scopes search and the map", async ({

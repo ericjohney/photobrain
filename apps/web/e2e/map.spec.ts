@@ -6,6 +6,7 @@ import {
 	FIXTURE_PHOTOS,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
+	fixtureGridIds,
 	fixtureLocation,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
@@ -293,7 +294,7 @@ test("Show photos in this area filters the grid with a clearable Map area chip",
 	await expect(chip).toHaveCount(0);
 	await expect
 		.poll(() => gridIds(page))
-		.toEqual(FIXTURE_LIBRARY.map((p) => p.id));
+		.toEqual(fixtureGridIds(FIXTURE_LIBRARY));
 	// The unfiltered grid may come from the query cache; no new request needed.
 	expect(calls.photos).toContainEqual({});
 });

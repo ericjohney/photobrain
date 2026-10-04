@@ -184,7 +184,15 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 			dateTaken: "2024:06:14 23:59:59",
 		},
 	}),
-	makePhoto(11, { name: "cat.jpg", path: "photos/2024/cat.jpg", exif: null }),
+	// No EXIF: the timeline falls back to its file dates, on a day of its own so
+	// its place never depends on the browser's time zone.
+	makePhoto(11, {
+		name: "cat.jpg",
+		path: "photos/2024/cat.jpg",
+		createdAt: new Date("2023-03-10T12:00:00.000Z"),
+		modifiedAt: new Date("2023-03-10T12:00:00.000Z"),
+		exif: null,
+	}),
 	makePhoto(12, {
 		name: "dog.jpg",
 		path: "photos/2024/dog.jpg",
@@ -515,6 +523,30 @@ export function fixtureCapturedDate(photo: FixturePhoto): string | null {
 	const date = photo.exif?.dateTaken?.slice(0, 10).replaceAll(":", "-");
 	if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
 	return Number(date.slice(0, 4)) >= 1900 ? date : null;
+}
+
+/**
+ * The library grid's default order (sort by capture date): EXIF wall-clock
+ * capture time, else `modifiedAt`, oldest first, ID tiebreak. Fixture
+ * fallback dates sit on days without EXIF photos, so comparing them in UTC
+ * orders them as the browser's local time does.
+ */
+export function fixtureCapturedOrder(photos: FixturePhoto[]): FixturePhoto[] {
+	const key = (photo: FixturePhoto) => {
+		const day = fixtureCapturedDate(photo);
+		const dateTaken = photo.exif?.dateTaken;
+		return day && dateTaken
+			? `${day}T${dateTaken.slice(11, 19)}`
+			: photo.modifiedAt.toISOString().slice(0, 19);
+	};
+	return [...photos].sort(
+		(a, b) => key(a).localeCompare(key(b)) || a.id - b.id,
+	);
+}
+
+/** Photo IDs in the library grid's default (capture date) order. */
+export function fixtureGridIds(photos: FixturePhoto[]): number[] {
+	return fixtureCapturedOrder(photos).map((p) => p.id);
 }
 
 /** Camera label as the API composes it: model alone when it already starts with the make. */

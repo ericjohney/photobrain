@@ -4,15 +4,17 @@ import {
 	FIXTURE_PHOTOS,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
+	fixtureGridIds,
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
 // RAW shows every RAW file, including forest.arw (13) whose JPEG partner is
-// filtered out; All stacks that pair into forest.jpg (8).
+// filtered out; All stacks that pair into forest.jpg (8). The library grid
+// shows them in capture-date order.
 const RAW_IDS = [2, 4, 13];
-const STANDARD_IDS = FIXTURE_PHOTOS.filter((p) => !p.isRaw).map((p) => p.id);
-const ALL_IDS = FIXTURE_LIBRARY.map((p) => p.id);
+const STANDARD_IDS = fixtureGridIds(FIXTURE_PHOTOS.filter((p) => !p.isRaw));
+const ALL_IDS = fixtureGridIds(FIXTURE_LIBRARY);
 
 async function gridIds(page: Page) {
 	return page
@@ -83,7 +85,8 @@ test("Clear all resets the type filter to All", async ({
 	await expect(page.getByText("Filters active")).toHaveCount(0);
 	expect(
 		(calls.photos ?? []).some(
-			(input) => (input as FixturePhotoFilters | undefined)?.filterRaw === "all",
+			(input) =>
+				(input as FixturePhotoFilters | undefined)?.filterRaw === "all",
 		),
 	).toBe(false);
 });

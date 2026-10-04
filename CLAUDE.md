@@ -301,6 +301,8 @@ The dashboard combines folder and collection navigation, EXIF filters, semantic 
 
 Filter By has a Tags section (top 12 by count, then **Show all**; single-select, click again to clear) that scopes the grid and search (`#tag` in the search header). The metadata panel lists the active photo's tags as chips in score order ("No tags yet" when untagged); clicking a chip applies that tag filter and returns to the grid.
 
+Timeline on web: the library grid (not search, similar, review, or duplicates) sorts by capture date (EXIF wall clock, else modified/created local time; oldest first, ID tiebreak) or by added (ID), grouped by Years/Months/All with sticky section headers and counts and a final "Unknown date" section. Grouping/sort persist in `photobrain-library-state`; loupe, filmstrip, and arrow keys follow the displayed order. A year rail jumps between years. The toolbar Calendar popover counts EXIF capture days in the loaded, filtered list; clicking a day applies `capturedDate`.
+
 Catalog **Review** (badge = candidate count) replaces the grid with junk candidates, each badged with its first reason; a reason radiogroup with counts, **Reject all (N)** (confirmation above 50) and **Keep all (N)** act on the shown photos. In Review, `X` rejects and `K` keeps the active photo and advance; the metadata panel shows "Why it's here" with Reject/Keep. Resolutions remove photos optimistically and roll back on error. Choosing a folder, collection, tag, search, or Find similar leaves Review and restores the library filters.
 
 **Smart Albums** sit under Collections in the library panel (count badge, or a search icon for query albums) with rename/delete. **Save as Smart Album…** appears when a folder, filter, or search is active and saves them (never the collection). Opening an album replaces folder, filters, and search, leaves collection/similar/Review modes, and shows the album name in the grid header; any later change deselects it.
@@ -337,6 +339,8 @@ Map on iOS: the Library header's **Map** button pushes an `MKMapView` with clust
 Places on iOS: the Library filter sheet's Places category lists countries with counts and, under the selected country, its cities. The loupe info sheet shows a tappable Place row ("Kyoto, Japan") that applies the place filter. Smart albums save `country`/`place`.
 
 On this day on iOS: over the unfiltered Library grid, a horizontal "On this day" row shows one card per earlier year (cover, "N years ago", date, count) for the device's local date, reloading when the app becomes active on a new day. Tapping a card applies the `capturedDate` filter (date chip); smart-album saves omit it.
+
+Calendar on iOS: the Library header's Calendar button opens a month sheet counting EXIF capture days (raw `dateTaken` day, no time-zone conversion) from the loaded, filtered records; prev/next skip empty months; tapping a day applies `capturedDate`.
 
 Smart albums on iOS: a Smart Albums section in the Collections tab (cards with count or a magnifier for query albums, rename/delete with rollback); **Save as Smart Album…** in the Library filter sheet and Search. Detail screens reuse the collection grid/loupe through `LibraryStore` scope `.smartAlbum(filters, query)`.
 

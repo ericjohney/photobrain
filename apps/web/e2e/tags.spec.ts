@@ -4,6 +4,7 @@ import {
 	FIXTURE_PHOTOS,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
+	fixtureGridIds,
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
@@ -59,7 +60,7 @@ async function openLibrary(page: Page) {
 }
 
 async function expectGrid(page: Page, filters: FixturePhotoFilters) {
-	const ids = filterFixturePhotos(FIXTURE_PHOTOS, filters).map((p) => p.id);
+	const ids = fixtureGridIds(filterFixturePhotos(FIXTURE_PHOTOS, filters));
 	await expect(
 		page.getByText(`${ids.length} photos`, { exact: true }),
 	).toBeVisible();

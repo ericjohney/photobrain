@@ -4,11 +4,12 @@ import {
 	FIXTURE_LIBRARY,
 	FIXTURE_PHOTOS,
 	filterFixturePhotos,
+	fixtureGridIds,
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
 
-const ALL_IDS = FIXTURE_LIBRARY.map((p) => p.id);
+const ALL_IDS = fixtureGridIds(FIXTURE_LIBRARY);
 
 async function gridIds(page: Page) {
 	return page
@@ -41,7 +42,9 @@ async function openAlbumMenu(page: Page, name: string) {
 
 async function openLibrary(page: Page) {
 	await page.goto("/");
-	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
+	await expect(
+		page.getByText(`${FIXTURE_LIBRARY.length} photos`),
+	).toBeVisible();
 }
 
 async function pickRaw(page: Page) {
@@ -125,9 +128,7 @@ test("a filter-only album is listed with its live count and saves without a quer
 	await expect
 		.poll(() => gridIds(page))
 		.toEqual(
-			filterFixturePhotos(FIXTURE_PHOTOS, { filterRaw: "raw" }).map(
-				(p) => p.id,
-			),
+			fixtureGridIds(filterFixturePhotos(FIXTURE_PHOTOS, { filterRaw: "raw" })),
 		);
 
 	await leftPanel(page)
@@ -195,10 +196,12 @@ test("clicking an album replaces filters, folder, and search and leaves collecti
 
 	await albumButton(page, "Top rated").click();
 
-	const expected = filterFixturePhotos(FIXTURE_PHOTOS, {
-		minRating: 4,
-		folder: "photos/2024",
-	}).map((p) => p.id);
+	const expected = fixtureGridIds(
+		filterFixturePhotos(FIXTURE_PHOTOS, {
+			minRating: 4,
+			folder: "photos/2024",
+		}),
+	);
 	await expect.poll(() => gridIds(page)).toEqual(expected);
 	expect(calls.photos?.at(-1)).toEqual({
 		folder: "photos/2024",

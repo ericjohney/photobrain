@@ -13,6 +13,7 @@ import {
 	Sun,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { TimelineCalendar } from "@/components/TimelineCalendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -34,7 +35,90 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ViewMode } from "@/hooks/use-library-state";
+import type { TimelineGrouping, TimelineSort } from "@/lib/timeline";
 import { cn } from "@/lib/utils";
+
+/** Timeline controls; only offered while the library grid is shown. */
+export interface ToolbarTimeline {
+	grouping: TimelineGrouping;
+	onGroupingChange: (grouping: TimelineGrouping) => void;
+	sort: TimelineSort;
+	onSortChange: (sort: TimelineSort) => void;
+	/** Photos per EXIF capture day in the loaded library. */
+	calendarCounts: ReadonlyMap<string, number>;
+	capturedDate: string | null;
+	onCapturedDateSelect: (capturedDate: string) => void;
+}
+
+const GROUPING_OPTIONS: { value: TimelineGrouping; label: string }[] = [
+	{ value: "years", label: "Years" },
+	{ value: "months", label: "Months" },
+	{ value: "all", label: "All" },
+];
+
+const SORT_OPTIONS: { value: TimelineSort; label: string }[] = [
+	{ value: "captured", label: "Captured" },
+	{ value: "added", label: "Added" },
+];
+
+/** Compact single-choice segmented control (one radio per option). */
+function ToolbarSegmented<T extends string>({
+	label,
+	options,
+	value,
+	onChange,
+}: {
+	label: string;
+	options: { value: T; label: string }[];
+	value: T;
+	onChange: (value: T) => void;
+}) {
+	// Arrow keys move the choice like a native radio group.
+	const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+		const step =
+			event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+		if (step === 0) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const index = options.findIndex((option) => option.value === value);
+		const next = options[(index + step + options.length) % options.length];
+		onChange(next.value);
+		event.currentTarget
+			.querySelector<HTMLButtonElement>(`[data-value="${next.value}"]`)
+			?.focus();
+	};
+	return (
+		<div
+			role="radiogroup"
+			aria-label={label}
+			onKeyDown={handleKeyDown}
+			className="flex h-7 items-center rounded bg-secondary p-0.5"
+		>
+			{options.map((option) => {
+				const checked = option.value === value;
+				return (
+					<button
+						key={option.value}
+						type="button"
+						role="radio"
+						aria-checked={checked}
+						data-value={option.value}
+						tabIndex={checked ? 0 : -1}
+						onClick={() => onChange(option.value)}
+						className={cn(
+							"h-full whitespace-nowrap rounded px-1.5 text-2xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+							checked
+								? "bg-primary text-primary-foreground"
+								: "text-muted-foreground hover:text-foreground",
+						)}
+					>
+						{option.label}
+					</button>
+				);
+			})}
+		</div>
+	);
+}
 
 interface ToolbarProps {
 	// View
@@ -42,6 +126,8 @@ interface ToolbarProps {
 	onViewModeChange: (mode: ViewMode) => void;
 	thumbnailSize: number;
 	onThumbnailSizeChange: (size: number) => void;
+	/** Grouping/sort/calendar controls; null outside the library grid. */
+	timeline?: ToolbarTimeline | null;
 
 	// Panels
 	leftPanelVisible: boolean;
@@ -73,6 +159,7 @@ export function Toolbar({
 	onViewModeChange,
 	thumbnailSize,
 	onThumbnailSizeChange,
+	timeline = null,
 	leftPanelVisible,
 	rightPanelVisible,
 	onToggleLeftPanel,
@@ -198,6 +285,28 @@ export function Toolbar({
 								className="w-24"
 							/>
 						</div>
+					</>
+				)}
+
+				{timeline && (
+					<>
+						<ToolbarSegmented
+							label="Group by"
+							options={GROUPING_OPTIONS}
+							value={timeline.grouping}
+							onChange={timeline.onGroupingChange}
+						/>
+						<ToolbarSegmented
+							label="Sort by"
+							options={SORT_OPTIONS}
+							value={timeline.sort}
+							onChange={timeline.onSortChange}
+						/>
+						<TimelineCalendar
+							counts={timeline.calendarCounts}
+							capturedDate={timeline.capturedDate}
+							onSelectDay={timeline.onCapturedDateSelect}
+						/>
 					</>
 				)}
 
