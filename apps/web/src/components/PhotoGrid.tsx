@@ -1,5 +1,6 @@
 import { AlertCircle, Camera, Flag, ImageIcon, Star, X } from "lucide-react";
 import { useCallback, useMemo, useRef } from "react";
+import { DurationBadge, LiveBadge } from "@/components/MediaBadges";
 import { TimelineYearRail } from "@/components/TimelineYearRail";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { rawBadge } from "@/lib/raw-badge";
@@ -156,6 +157,11 @@ export function PhotoGrid<T extends PhotoMetadata>({
 						</div>
 					)}
 
+					{/* Live Photo: a still with a motion clip */}
+					{photo.motionVideoId !== null && (
+						<LiveBadge className="absolute right-1 top-1" />
+					)}
+
 					{/* Filename on hover */}
 					<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-1.5 pt-4 opacity-0 transition-opacity group-hover:opacity-100">
 						<p className="truncate text-2xs font-medium text-white">
@@ -172,36 +178,41 @@ export function PhotoGrid<T extends PhotoMetadata>({
 						</div>
 					)}
 
-					{/* Rating / flag badge */}
-					{(photo.rating > 0 || photo.flag) && (
-						<div
-							data-testid="curation-badge"
-							className="absolute bottom-1 right-1 flex items-center gap-1 rounded bg-black/60 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
-						>
-							{photo.rating > 0 && (
-								<span
-									role="img"
-									className="flex items-center gap-0.5"
-									aria-label={`${photo.rating} ${photo.rating === 1 ? "star" : "stars"}`}
-								>
-									<Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
-									{photo.rating}
-								</span>
-							)}
-							{photo.flag === "pick" && (
-								<Flag
-									aria-label="Pick"
-									className="h-3 w-3 fill-green-400 text-green-400"
-								/>
-							)}
-							{photo.flag === "reject" && (
-								<X
-									aria-label="Rejected"
-									className="h-3 w-3 stroke-[3] text-red-500"
-								/>
-							)}
-						</div>
-					)}
+					<div className="absolute bottom-1 right-1 flex items-center gap-1">
+						{/* Rating / flag badge */}
+						{(photo.rating > 0 || photo.flag) && (
+							<div
+								data-testid="curation-badge"
+								className="flex items-center gap-1 rounded bg-black/60 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
+							>
+								{photo.rating > 0 && (
+									<span
+										role="img"
+										className="flex items-center gap-0.5"
+										aria-label={`${photo.rating} ${photo.rating === 1 ? "star" : "stars"}`}
+									>
+										<Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+										{photo.rating}
+									</span>
+								)}
+								{photo.flag === "pick" && (
+									<Flag
+										aria-label="Pick"
+										className="h-3 w-3 fill-green-400 text-green-400"
+									/>
+								)}
+								{photo.flag === "reject" && (
+									<X
+										aria-label="Rejected"
+										className="h-3 w-3 stroke-[3] text-red-500"
+									/>
+								)}
+							</div>
+						)}
+						{photo.mediaType === "video" && (
+							<DurationBadge durationMs={photo.durationMs} />
+						)}
+					</div>
 				</div>
 			);
 		});

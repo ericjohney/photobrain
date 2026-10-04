@@ -25,6 +25,7 @@ import type { OnThisDayResult } from "../services/on-this-day";
 import {
 	isValidCapturedDate,
 	isValidPhotoBounds,
+	PHOTO_TYPE_FILTERS,
 	type PhotoBounds,
 	type PhotoLocationsResult,
 } from "../services/photo-catalog";
@@ -145,7 +146,7 @@ const boundQueryParameterSchema = z
 	.optional();
 
 const photoFilterFieldsSchema = z.object({
-	filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
+	filterRaw: z.enum(PHOTO_TYPE_FILTERS).default("all"),
 	folder: z.string().optional(),
 	camera: z.string().optional(),
 	lens: z.string().optional(),
@@ -286,6 +287,12 @@ export const photoSchema = z.object({
 	width: z.number().int().nullable(),
 	height: z.number().int().nullable(),
 	mimeType: z.string().nullable(),
+	/** Still or video; videos stream from `/api/photos/:id/file` with Range. */
+	mediaType: z.enum(["photo", "video"]),
+	/** Video duration in milliseconds; null for stills or when unknown. */
+	durationMs: z.number().int().nonnegative().nullable(),
+	/** ffprobe codec name of a video's first video stream (`h264`, `hevc`); null for stills. */
+	videoCodec: z.string().nullable(),
 	isRaw: z.boolean().nullable(),
 	rawFormat: z.string().nullable(),
 	rawStatus: z.string().nullable(),
@@ -300,6 +307,8 @@ export const photoSchema = z.object({
 	pairedPhotoId: z.number().int().positive().nullable(),
 	/** Partner's `rawFormat` (RAW partner) or upper-cased extension, or null. */
 	pairedFormat: z.string().nullable(),
+	/** The Live Photo motion clip's ID for the moment's visible still, or null. */
+	motionVideoId: z.number().int().positive().nullable(),
 	exif: photoExifSchema.nullable(),
 });
 
@@ -590,7 +599,7 @@ const smartAlbumQuerySchema = z
  */
 export const smartAlbumFiltersRequestSchema = z
 	.object({
-		filterRaw: z.enum(["all", "raw", "standard"]).optional(),
+		filterRaw: z.enum(PHOTO_TYPE_FILTERS).optional(),
 		folder: z.string().optional(),
 		camera: z.string().optional(),
 		lens: z.string().optional(),
@@ -627,7 +636,7 @@ export const smartAlbumSchema = z.object({
 	name: z.string().min(1).max(MAX_SMART_ALBUM_NAME_LENGTH),
 	filters: z
 		.object({
-			filterRaw: z.enum(["raw", "standard"]).optional(),
+			filterRaw: z.enum(["raw", "standard", "video"]).optional(),
 			folder: z.string().min(1).optional(),
 			camera: z.string().min(1).optional(),
 			lens: z.string().min(1).optional(),

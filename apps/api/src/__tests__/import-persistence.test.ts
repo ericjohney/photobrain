@@ -49,6 +49,9 @@ function result(
 		isRaw: false,
 		exif: { ...exif },
 		phash: "YWJjZA==",
+		mediaType: "photo",
+		durationMs: null,
+		videoCodec: null,
 		...overrides,
 	};
 }

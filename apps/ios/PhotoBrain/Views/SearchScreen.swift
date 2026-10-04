@@ -217,11 +217,17 @@ struct PhotoResultsGrid: View {
                         .aspectRatio(1, contentMode: .fit)
                         .clipped()
                         .opacity(photo.isRejected ? 0.35 : 1)
-                        .overlay(alignment: .bottomTrailing) { CurationBadge(rating: photo.rating, flag: photo.flag) }
+                        .overlay(alignment: .bottomTrailing) {
+                            VStack(alignment: .trailing, spacing: 0) {
+                                CurationBadge(rating: photo.rating, flag: photo.flag)
+                                photo.mediaBadge.map(MediaBadgeView.init)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
                         "Open \(photo.filename)"
+                            + (photo.mediaBadge.map { ", \($0.accessibilityText)" } ?? "")
                             + CurationBadgeText.accessibilitySuffix(rating: photo.rating, flag: photo.flag)
                     )
                 }
@@ -262,5 +268,24 @@ struct CurationBadge: View {
             .padding(4)
             .accessibilityHidden(true)
         }
+    }
+}
+
+/// Duration or LIVE overlay for SwiftUI thumbnails; matches the library grid badge.
+struct MediaBadgeView: View {
+    let badge: MediaBadge
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: badge.systemImage)
+            Text(badge.text).monospacedDigit()
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 1)
+        .background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.72)))
+        .padding(4)
+        .accessibilityHidden(true)
     }
 }

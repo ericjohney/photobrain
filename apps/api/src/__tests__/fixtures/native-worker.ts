@@ -17,6 +17,9 @@ function photoResult(path: string, name = path): PhotoProcessingResult {
 		modifiedAt: 0,
 		isRaw: path.endsWith(".arw"),
 		success: true,
+		mediaType: "photo",
+		durationMs: null,
+		videoCodec: null,
 	};
 }
 

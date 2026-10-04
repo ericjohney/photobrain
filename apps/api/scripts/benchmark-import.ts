@@ -180,6 +180,9 @@ const results: PhotoProcessingResult[] = Array.from(
 			phash: Buffer.from(
 				Array.from({ length: 16 }, (_, j) => (i * 17 + j * 31) % 256),
 			).toString("base64"),
+			mediaType: "photo",
+			durationMs: null,
+			videoCodec: null,
 		};
 	},
 );

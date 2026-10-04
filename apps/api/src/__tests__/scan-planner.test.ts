@@ -121,6 +121,9 @@ if (process.env.PHOTOBRAIN_PLANNER_TEST_CHILD !== "1") {
 			isRaw: false,
 			exif: { cameraMake: "Planner fixture" },
 			phash: "YWJjZA==",
+			mediaType: "photo",
+			durationMs: null,
+			videoCodec: null,
 		};
 	}
 

@@ -46,6 +46,7 @@ import {
 	listFolders,
 	listPhotoLocations,
 	listPhotos,
+	PHOTO_TYPE_FILTERS,
 } from "../services/photo-catalog";
 import {
 	MAX_CURATION_IDS,
@@ -111,7 +112,7 @@ const sharedFilterShape = {
 // Input of photos and photoLocations.
 const photoFiltersInput = z
 	.object({
-		filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
+		filterRaw: z.enum(PHOTO_TYPE_FILTERS).default("all"),
 		folder: z.string().optional(),
 		camera: z.string().optional(),
 		lens: z.string().optional(),
@@ -166,7 +167,7 @@ const smartAlbumQuerySchema = z
 // `YYYY-MM`.
 const smartAlbumFiltersSchema = z
 	.object({
-		filterRaw: z.enum(["all", "raw", "standard"]).optional(),
+		filterRaw: z.enum(PHOTO_TYPE_FILTERS).optional(),
 		folder: z.string().optional(),
 		camera: z.string().optional(),
 		lens: z.string().optional(),
@@ -288,7 +289,7 @@ export const appRouter = router({
 			z.object({
 				query: z.string().min(1),
 				limit: z.number().min(1).max(100).default(20),
-				filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
+				filterRaw: z.enum(PHOTO_TYPE_FILTERS).default("all"),
 				folder: z.string().optional(),
 				camera: z.string().optional(),
 				lens: z.string().optional(),

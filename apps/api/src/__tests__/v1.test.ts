@@ -8,6 +8,7 @@ import { createV1Router } from "../routes/v1";
 import {
 	curationFlagFilterSchema,
 	filterOptionsResponseSchema,
+	junkReviewResponseSchema,
 	photoCurationPatchSchema,
 	photoFlagSchema,
 	photoSchema,
@@ -16,7 +17,11 @@ import {
 	scanStatusSchema,
 	searchRequestSchema,
 } from "../routes/v1-schemas";
-import { type ApiDatabase, pairedPhotoExtras } from "../services/photo-catalog";
+import {
+	type ApiDatabase,
+	PHOTO_TYPE_FILTERS,
+	pairedPhotoExtras,
+} from "../services/photo-catalog";
 import type { ScanRequestedEvent } from "../services/scan-jobs";
 import {
 	MAX_TAG_SLUG_LENGTH,
@@ -541,6 +546,10 @@ describe("API v1 contract", () => {
 						required: string[];
 						properties: Record<string, OpenApiSchema>;
 					};
+					JunkReviewPhoto: {
+						required: string[];
+						properties: Record<string, OpenApiSchema>;
+					};
 					PhotoCurationPatch: {
 						additionalProperties: boolean;
 						minProperties: number;
@@ -648,6 +657,23 @@ describe("API v1 contract", () => {
 		);
 		expect(photo.properties.pairedPhotoId.type).toEqual(["integer", "null"]);
 		expect(photo.properties.pairedFormat.type).toEqual(["string", "null"]);
+		expect(photo.properties.mediaType).toMatchObject({
+			type: "string",
+			enum: ["photo", "video"],
+		});
+		expect(photo.properties.durationMs.type).toEqual(["integer", "null"]);
+		expect(photo.properties.videoCodec.type).toEqual(["string", "null"]);
+		expect(photo.properties.motionVideoId).toMatchObject({
+			type: ["integer", "null"],
+			minimum: 1,
+		});
+		// The junk-review DTO is the photo DTO plus its reasons.
+		const junkPhoto = document.components.schemas.JunkReviewPhoto;
+		const junkShape = Object.keys(
+			junkReviewResponseSchema.shape.photos.element.shape,
+		).sort();
+		expect([...junkPhoto.required].sort()).toEqual(junkShape);
+		expect(Object.keys(junkPhoto.properties).sort()).toEqual(junkShape);
 		expect(photo.properties.rating).toMatchObject({
 			type: "integer",
 			minimum: 0,
@@ -692,6 +718,14 @@ describe("API v1 contract", () => {
 				pattern: TAG_SLUG_PATTERN.source,
 				maxLength: MAX_TAG_SLUG_LENGTH,
 			});
+		}
+		for (const filters of [
+			queryParameters("/api/v1/photos"),
+			queryParameters("/api/v1/locations"),
+			queryParameters("/api/v1/gear-stats"),
+			document.components.schemas.SearchRequest.properties,
+		]) {
+			expect(filters.filterRaw?.enum).toEqual([...PHOTO_TYPE_FILTERS]);
 		}
 		const schemas = document.components.schemas as unknown as Record<
 			string,

@@ -15,8 +15,11 @@ import {
  * RAW+JPEG pair stem: the lower-cased relative path without its final
  * extension (`2024/DSC_0001.ARW` -> `2024/dsc_0001`). The path includes the
  * folder, so only same-folder siblings share a stem. `idx_photos_pair_stem`
- * indexes exactly this expression; queries must build it with this function
- * (on any alias of `photos.path`) for SQLite to match the index.
+ * indexes exactly this expression, followed by the `media_type`, `is_raw`,
+ * `duration_ms` and `path` columns the RAW pair and Live Photo lookups (and
+ * the motion-clip-excluding folder scan) read, so none of them touches the
+ * table. Queries must build the expression with this function (on any alias
+ * of `photos.path`) for SQLite to match it.
  */
 export function pairStem(path: SQL | AnyColumn): SQL {
 	return sql`lower(substr(${path}, 1, length(rtrim(${path}, replace(${path}, '.', ''))) - 1))`;
@@ -55,6 +58,12 @@ export const photos = sqliteTable(
 		width: integer("width"),
 		height: integer("height"),
 		mimeType: text("mime_type"),
+		// Media kind: stills and videos share this table and the thumbnail path.
+		mediaType: text("media_type", { enum: ["photo", "video"] })
+			.notNull()
+			.default("photo"),
+		durationMs: integer("duration_ms"), // videos only
+		videoCodec: text("video_codec"), // ffprobe codec_name ("h264", "hevc"); videos only
 		// RAW file support
 		isRaw: integer("is_raw", { mode: "boolean" }).default(false),
 		rawFormat: text("raw_format"), // "CR2", "NEF", "ARW", etc.
@@ -90,8 +99,17 @@ export const photos = sqliteTable(
 			table.flag,
 			table.rating,
 		),
-		// Query-time RAW+JPEG pairing looks partners up by stem.
-		index("idx_photos_pair_stem").on(pairStem(table.path)),
+		index("idx_photos_media_type").on(table.mediaType),
+		// Query-time RAW+JPEG pairing and Live Photo stacking look partners up by
+		// stem; the trailing columns make those lookups and folder counts
+		// index-only.
+		index("idx_photos_pair_stem").on(
+			pairStem(table.path),
+			table.mediaType,
+			table.isRaw,
+			table.durationMs,
+			table.path,
+		),
 		check("photos_rating_range", sql`${table.rating} BETWEEN 0 AND 5`),
 		check(
 			"photos_flag_values",

@@ -1,5 +1,25 @@
 import Foundation
 
+/// One loupe Share menu item. Videos offer only their original file (the export route streams
+/// it unchanged for every size); stills offer a 2,048 px JPEG and the original.
+struct PhotoShareOption: Equatable, Identifiable, Sendable {
+    let title: String
+    let systemImage: String
+    let size: ExportSize
+
+    var id: ExportSize { size }
+
+    static func options(for photo: PhotoRecord) -> [PhotoShareOption] {
+        if photo.isVideo {
+            return [PhotoShareOption(title: "Share Video", systemImage: "video", size: .original)]
+        }
+        return [
+            PhotoShareOption(title: "Share Photo", systemImage: "photo", size: .jpeg2048),
+            PhotoShareOption(title: "Share Original", systemImage: "doc", size: .original),
+        ]
+    }
+}
+
 /// Downloads one export at a time for the share sheet and owns its temporary file until the
 /// sheet finishes: `idle -> downloading -> ready(file) -> idle`, or `downloading -> failed`.
 /// Cancelling or failing leaves no file; a file that finishes after a cancel, or after the store

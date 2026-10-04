@@ -929,7 +929,7 @@ if (process.env.PHOTOBRAIN_GEAR_STATS_TEST_CHILD !== "1") {
 				/SEARCH gear_exif USING INDEX photo_exif_photo_id_unique \(photo_id=\?\)/,
 			);
 			expect(plan).toMatch(
-				/SEARCH pair_member USING INDEX idx_photos_pair_stem \(<expr>=\?\)/,
+				/SEARCH pair_member USING COVERING INDEX idx_photos_pair_stem \(<expr>=\? AND media_type=\?\)/,
 			);
 			expect(plan).not.toMatch(/SCAN (gear_exif|photo_exif|pair_member)\b/);
 			expect(plan.match(/SCAN photos\b/g) ?? []).toHaveLength(1);

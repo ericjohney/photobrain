@@ -32,6 +32,11 @@ export interface PhotoProcessingResult {
 	rawError?: string;
 	exif?: ExifData;
 	phash?: string;
+	mediaType: "photo" | "video";
+	/** Video duration in milliseconds; `null` for photos or unknown durations. */
+	durationMs: number | null;
+	/** ffprobe `codec_name` of the first video stream (e.g. `h264`, `hevc`); `null` for photos. */
+	videoCodec: string | null;
 }
 
 export interface PhotoDiscoveryResult {
@@ -41,7 +46,7 @@ export interface PhotoDiscoveryResult {
 }
 
 export function discoverPhotos(directory: string): PhotoDiscoveryResult;
-export function isSupportedImage(path: string): boolean;
+export function isSupportedMedia(path: string): boolean;
 export function getSupportedExtensions(): string[];
 export function processPhoto(
 	path: string,

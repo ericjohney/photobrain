@@ -47,6 +47,10 @@ export function saveScanBatch(
 				width: result.width ?? null,
 				height: result.height ?? null,
 				mimeType: result.mimeType ?? null,
+				mediaType: result.mediaType,
+				durationMs:
+					result.durationMs == null ? null : Math.round(result.durationMs),
+				videoCodec: result.videoCodec ?? null,
 				isRaw: result.isRaw,
 				rawFormat: result.rawFormat ?? null,
 				rawStatus: result.rawStatus ?? null,

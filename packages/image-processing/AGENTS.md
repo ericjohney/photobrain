@@ -19,9 +19,9 @@ The package contains template metadata and scripts from the N-API starter (`pack
 Exports are re-exported from `src/lib.rs` and consumed by the API:
 
 - `discoverPhotos(directory)`: returns `{ filePaths, relativePaths, totalCount }`.
-- `isSupportedImage(path)`: case-insensitive suffix check.
+- `isSupportedMedia(path)`: case-insensitive suffix check for stills and videos (renamed from `isSupportedImage`).
 - `getSupportedExtensions()`: extensions include the leading dot.
-- `processPhoto(path, relativePath, thumbnailsDir)`: synchronous single-file processing.
+- `processPhoto(path, relativePath, thumbnailsDir)`: synchronous single-file processing. Every `PhotoProcessingResult` carries `mediaType: "photo" | "video"`, `durationMs: number | null`, and `videoCodec: string | null` (always present, `null` rather than absent); photos report `"photo"` with both nulls and are otherwise unchanged.
 - `processPhotosBatch(paths, relativePaths, thumbnailsDir)`: parallel processing with result order matching input paths.
 - `startPhotoProcessing(paths, relativePaths, thumbnailsDir, thumbnailPaths?)`: returns a single-consumer `PhotoProcessingStream`; `next(): Promise<{ index, result } | null>` yields completion order with original input indices, and `close(): Promise<void>` cancels dispatch and waits for active metadata/writers. Optional aligned thumbnail-relative output keys affect only thumbnail writes; results retain the original source path and name.
 - `extractExif(path)`: returns `ExifData` or `null`.
@@ -41,7 +41,7 @@ The API uses a persistent worker thread for discovery, thumbnail validation, str
 
 ## Scan Processing Pipeline
 
-`src/batch.rs` handles standard, RAW, and HEIF files:
+`src/batch.rs` handles standard, RAW, HEIF, and video files. `process_photo_internal` routes `.mp4`/`.mov`/`.m4v` to `src/video.rs` by extension after reading filesystem metadata and the (prefetched) EXIF, so streaming, cancellation, and the result envelope are shared. Stills:
 
 1. Read filesystem metadata and timestamps.
 2. Detect RAW by extension.
@@ -53,6 +53,14 @@ The API uses a persistent worker thread for discovery, thumbnail validation, str
 8. Apply EXIF orientation except for HEIF, because libheif applies container transforms.
 9. Generate a double-gradient pHash from the full decoded, orientation-corrected image, not a thumbnail.
 10. Generate four WebP thumbnails; thumbnail failure makes the photo result unsuccessful.
+
+Videos (`src/video.rs`):
+
+1. `ffprobe -v error -print_format json -show_format -show_streams file:<path>` selects the first video stream that is not an attached picture. Duration comes from `format.duration`, falling back to the stream duration; non-positive or missing durations are `null`. Width/height are display dimensions: swapped when the rotation (`side_data_list` Display Matrix `rotation`, else `tags.rotate`, normalized to 0-359) is 90 or 270. `videoCodec` is the stream's `codec_name` (`h264`, `hevc`, ...). No video stream or no dimensions fails the result.
+2. `ffmpeg -nostdin -v error [-ss t] -i file:<path> -map 0:<stream> -frames:v 1 -pix_fmt rgb24 -compression_level 1 -f image2pipe -vcodec png -` decodes one poster frame with ffmpeg's default autorotation at `t = min(1 s, duration / 2)` (first frame for unknown duration). If the seek yields no decodable frame (for example a corrupt tail), it retries once at 0; a missing binary, timeout, or overflow is not retried. A complete PNG is accepted even when ffmpeg exits nonzero after it.
+3. The poster goes through the same pHash and four-WebP thumbnail path as a decoded still; EXIF orientation is never applied to it. `mimeType` is `video/mp4`, `video/quicktime`, or `video/x-m4v`; `isRaw` is false.
+
+Both executables are spawned directly (no shell; paths are passed as `file:` URLs so names with `:` are not protocols) through `run_with_timeout(command, timeout, stdout_cap)`: stdout/stderr are read on helper threads, the child is polled, and on the 30 s timeout or when stdout exceeds its cap (8 MiB probe JSON, 64 MiB poster PNG) it is killed and reaped. Stderr keeps 64 KiB of diagnostics. Failures return `success: false` with an error naming the tool (e.g. "ffprobe executable `…` not found; install ffmpeg or set FFPROBE_BIN", "ffmpeg timed out after 30 s", "File has no video stream") while preserving identity, size, timestamps, EXIF, and `mediaType: "video"`; the scan records a failed receipt as for any decode failure.
 
 Media calls reuse one lazily initialized Rayon pool sized by `std::thread::available_parallelism()` or a positive `PHOTO_PROCESSING_THREADS` override. Initialization/configuration errors become JavaScript exceptions. Single-photo processing also enters this pool; nested thumbnail work shares it. A successful photo requires all four thumbnail writes; failures return `success: false`, and partial files may remain.
 
@@ -71,6 +79,12 @@ The synchronous batch helper logs aggregate EXIF and processing wall time. Strea
 CLIP embeddings are intentionally not generated in this pipeline. The API's Inngest embedding function later reads generated `large` thumbnails and calls `batchGenerateClipEmbeddings` in groups of 16.
 
 ## Supported Files
+
+Video extensions (posters via ffmpeg):
+
+```text
+.mp4 .mov .m4v
+```
 
 Standard extensions:
 
@@ -94,7 +108,7 @@ Magic-byte detection recognizes common HEIF/AVIF brands, including `heic`, `heix
 
 RAW support here means preview extraction, not RAW demosaicing. `exiftool` must be installed and the file must contain a usable `PreviewImage` or `JpgFromRaw`. `rawStatus` is normally `converted` or `failed`; the documented `no_converter` value is not emitted by this code.
 
-EXIF extraction returns camera, lens, exposure, date, GPS, and orientation fields. Date strings come from `DateTimeOriginal` and are not normalized by Rust despite the type comment.
+EXIF extraction returns camera, lens, exposure, date, GPS, and orientation fields. The batched command also requests `CreationDate` and `CreateDate`. Still-image `dateTaken` is the raw `DateTimeOriginal` string (not normalized by Rust despite the type comment); `CreationDate`/`CreateDate` never override it. For videos (by extension of `SourceFile`), `dateTaken` is the QuickTime `CreationDate` wall clock with subseconds and any offset stripped (Apple devices write local time + offset), else `CreateDate` as stored, which by the QuickTime spec is UTC (a documented limitation for clips without `CreationDate`). All-zero placeholder dates count as absent. Make/model and composite GPS parse as for stills.
 
 ## Thumbnails
 
@@ -132,7 +146,9 @@ This thumbnail optimization does not modify original files, EXIF extraction, ori
 
 ## Native Dependencies and Tests
 
-Local builds require Bun, Rust/Cargo, C build tools, `pkg-config`, OpenSSL headers, `libheif-dev`, and usually `libclang-dev`. Runtime execution also requires `libheif` and `exiftool` (`libimage-exiftool-perl` on Debian/Ubuntu). Docker installs these in the builder/runtime stages. The thumbnail encoder builds bundled libwebp through the Rust dependency; it adds no external codec executable to the runtime setup.
+Local builds require Bun, Rust/Cargo, C build tools, `pkg-config`, OpenSSL headers, `libheif-dev`, and usually `libclang-dev`. Runtime execution also requires `libheif`, `exiftool` (`libimage-exiftool-perl` on Debian/Ubuntu), and `ffmpeg`/`ffprobe` for videos (the Debian `ffmpeg` package; the API Docker stage installs it). `FFPROBE_BIN` and `FFMPEG_BIN` override the executable names/paths (default `ffprobe`/`ffmpeg` on `PATH`); empty values fall back to the defaults. Without them, stills still process and videos fail with a clear error. The thumbnail encoder builds bundled libwebp through the Rust dependency; it adds no external codec executable to the runtime setup.
+
+Video tests (`cargo test video`, plus the video cases in `batch::tests`, `stream::tests`, and `exif::tests`) generate clips at test time with `ffmpeg` (`testsrc2`/`color` sources, libx264, libx265, AAC) and fail loudly, never skip, when ffmpeg/ffprobe/exiftool are missing; CI does not run cargo tests. They cover h264 MP4 and hevc MOV duration/dims/codec, 90° rotation swapping dims with a portrait poster, rotation sources/angles in probe JSON, poster time `min(1 s, duration/2)` verified by frame luma (a 0.5 s clip's poster is the 0.25 s frame), corrupt-tail fallback to the first frame, frameless and audio-only failures, missing binaries including a `FFPROBE_BIN=/nonexistent` child process, `run_with_timeout` killing `sleep 5` within a 200 ms timeout, the inclusive stdout cap, bounded stderr, video date precedence (CreationDate with offset over CreateDate; DateTimeOriginal still wins for photos), and a discovered mixed JPEG/PNG/MP4/MOV streaming run with media types and four poster WebPs per video.
 
 Rust tests cover HEIF extension/magic-byte detection, pure EXIF parsing and formatting (including orientations 1-8), command-level metadata batching through an injected runner, full-path alignment, reordered/duplicate/error records, argv bounds, fallback launch counts, and shared pool reuse/cap. Thumbnail tests now check decoded dimensions and fit rounding, no upscaling, constant/varying alpha and grayscale-alpha conversion, image structure within lossy tolerances, and unwritable destinations rather than byte identity with the old encoder. Batch tests check that success requires readable thumbnails at every size and that pHash still comes from the original decoded image. Fake metadata tests inspect the actual `Command` program/arguments and supply stdout/status without requiring ExifTool. Real RAW/EXIF/CLIP coverage still requires external camera files, `exiftool`, and potentially model downloads, so avoid making those implicit test prerequisites.
 

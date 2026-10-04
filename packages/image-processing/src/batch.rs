@@ -1,3 +1,4 @@
+use napi::bindgen_prelude::{Either, Null};
 use napi_derive::napi;
 use rayon::prelude::*;
 use std::fs;
@@ -10,6 +11,7 @@ use crate::exif::{ExifData, METADATA_CHUNK_SIZE, extract_exif_batch, extract_exi
 use crate::phash::generate_phash_from_image;
 use crate::preview::get_raw_format;
 use crate::thumbnails::generate_all_thumbnails_internal;
+use crate::video::{is_video_file, load_video, video_mime_type};
 
 fn processing_threads(available: usize, configured: Option<&str>) -> Result<usize, String> {
   match configured {
@@ -51,12 +53,13 @@ const ALL_EXTENSIONS: &[&str] = &[
   ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", // RAW
   ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw", ".x3f", ".3fr",
   ".iiq", ".rwl", // HEIF
-  ".heic", ".heif",
+  ".heic", ".heif", // Video
+  ".mp4", ".mov", ".m4v",
 ];
 
-/// Check if file is supported
+/// Check if a still image or video file is supported (case-insensitive suffix)
 #[napi]
-pub fn is_supported_image(file_path: String) -> bool {
+pub fn is_supported_media(file_path: String) -> bool {
   let lower = file_path.to_lowercase();
   ALL_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
 }
@@ -67,7 +70,10 @@ pub fn get_supported_extensions() -> Vec<String> {
   ALL_EXTENSIONS.iter().map(|s| s.to_string()).collect()
 }
 
-/// Unified result for any photo type
+const PHOTO: &str = "photo";
+const VIDEO: &str = "video";
+
+/// Unified result for any photo or video
 #[napi(object)]
 pub struct PhotoProcessingResult {
   pub path: String,
@@ -86,6 +92,16 @@ pub struct PhotoProcessingResult {
   pub raw_error: Option<String>,
   pub success: bool,
   pub error: Option<String>,
+  #[napi(ts_type = "'photo' | 'video'")]
+  pub media_type: String,
+  /// Video duration in milliseconds; `null` for photos or unknown durations.
+  pub duration_ms: Either<i64, Null>,
+  /// ffprobe `codec_name` of the first video stream (e.g. `h264`, `hevc`); `null` for photos.
+  pub video_codec: Either<String, Null>,
+}
+
+fn nullable<T>(value: Option<T>) -> Either<T, Null> {
+  value.map_or(Either::B(Null), Either::A)
 }
 
 /// Check if file is a standard image (directly decodable)
@@ -130,7 +146,40 @@ fn error_result(path: &str, name: String, error: String) -> PhotoProcessingResul
     raw_error: None,
     success: false,
     error: Some(error),
+    media_type: if is_video_file(path) { VIDEO } else { PHOTO }.to_string(),
+    duration_ms: Either::B(Null),
+    video_codec: Either::B(Null),
   }
+}
+
+/// Probe a video, decode its poster frame through ffmpeg, then hash and thumbnail the
+/// poster exactly like a decoded still. ffmpeg has already applied rotation metadata.
+/// `result` carries the file identity, timestamps, and EXIF; failures keep them.
+fn process_video(
+  file_path: &str,
+  thumbnails_dir: &str,
+  thumbnail_path: &str,
+  mut result: PhotoProcessingResult,
+) -> PhotoProcessingResult {
+  result.media_type = VIDEO.to_string();
+  result.mime_type = video_mime_type(file_path).map(str::to_string);
+  let video = match load_video(file_path) {
+    Ok(video) => video,
+    Err(error) => {
+      result.error = Some(error);
+      return result;
+    }
+  };
+  result.width = Some(video.probe.width);
+  result.height = Some(video.probe.height);
+  result.duration_ms = nullable(video.duration_ms());
+  result.phash = Some(generate_phash_from_image(&video.image));
+  result.error = generate_all_thumbnails_internal(&video.image, thumbnail_path, thumbnails_dir)
+    .err()
+    .map(|error| format!("Failed to generate thumbnails: {}", error));
+  result.success = result.error.is_none();
+  result.video_codec = nullable(video.probe.codec);
+  result
 }
 
 /// Process a single photo (any type)
@@ -168,15 +217,30 @@ pub(crate) fn process_photo_internal(
     .map(|d| d.as_millis() as f64)
     .unwrap_or(0.0);
 
+  // Extract EXIF (works for all formats via exiftool)
+  let exif = load_exif();
+
+  if is_video_file(file_path) {
+    return process_video(
+      file_path,
+      thumbnails_dir,
+      thumbnail_path,
+      PhotoProcessingResult {
+        size,
+        created_at,
+        modified_at,
+        exif,
+        ..error_result(relative_path, name, String::new())
+      },
+    );
+  }
+
   // Determine if this is a RAW file
   let raw_format = get_raw_format(file_path);
   let is_raw = raw_format.is_some();
 
   // Check for HEIF files - by extension or magic bytes (handles mislabeled iOS files)
   let is_heif = is_heif_source(file_path);
-
-  // Extract EXIF (works for all formats via exiftool)
-  let exif = load_exif();
   let orientation = exif.as_ref().and_then(|e| e.orientation);
 
   // Decode (HEIF, RAW preview, or standard) and apply orientation; HEIF is never rotated
@@ -234,6 +298,9 @@ pub(crate) fn process_photo_internal(
         raw_error: None,
         success: thumbnail_error.is_none(),
         error: thumbnail_error,
+        media_type: PHOTO.to_string(),
+        duration_ms: Either::B(Null),
+        video_codec: Either::B(Null),
       }
     }
     Err(e) => {
@@ -260,6 +327,9 @@ pub(crate) fn process_photo_internal(
         raw_error: if is_raw { Some(e.clone()) } else { None },
         success: false,
         error: Some(e),
+        media_type: PHOTO.to_string(),
+        duration_ms: Either::B(Null),
+        video_codec: Either::B(Null),
       }
     }
   }
@@ -401,6 +471,10 @@ mod tests {
 
     assert!(result.success, "{:?}", result.error);
     assert_eq!(result.phash, Some(generate_phash_from_image(&img)));
+    assert_eq!(result.media_type, "photo");
+    assert_eq!(result.mime_type.as_deref(), Some("image/png"));
+    assert_eq!(Option::from(result.duration_ms), None::<i64>);
+    assert_eq!(Option::from(result.video_codec), None::<String>);
     for (size, dimensions) in [
       ("tiny", (150, 75)),
       ("small", (400, 200)),
@@ -410,5 +484,128 @@ mod tests {
       let thumbnail = image::open(thumbnails.join(size).join("photo.webp")).unwrap();
       assert_eq!((thumbnail.width(), thumbnail.height()), dimensions);
     }
+  }
+
+  #[test]
+  fn supported_media_includes_videos_case_insensitively() {
+    for path in [
+      "a/clip.mp4",
+      "IMG_0001.MOV",
+      "x.M4v",
+      "photo.JPG",
+      "raw.cr3",
+      "live.heic",
+    ] {
+      assert!(is_supported_media(path.into()), "{path}");
+    }
+    for path in ["clip.avi", "clip.mkv", "clip.mp4.txt", "mov", "notes.txt"] {
+      assert!(!is_supported_media(path.into()), "{path}");
+    }
+    let extensions = get_supported_extensions();
+    for video in [".mp4", ".mov", ".m4v"] {
+      assert!(extensions.iter().any(|ext| ext == video));
+    }
+  }
+
+  #[test]
+  fn video_goes_through_poster_thumbnails_and_keeps_prefetched_metadata() {
+    let temp = tempfile::tempdir().unwrap();
+    let thumbnails = temp.path().join("thumbnails");
+    let clip = crate::video::tests::h264_clip(temp.path(), "clip.M4V", "1920x1080", 2.0);
+    let exif = ExifData {
+      camera_make: Some("Apple".into()),
+      camera_model: None,
+      lens_make: None,
+      lens_model: None,
+      focal_length: None,
+      iso: None,
+      aperture: None,
+      shutter_speed: None,
+      exposure_bias: None,
+      date_taken: Some("2024:05:06 12:34:56".into()),
+      gps_latitude: None,
+      gps_longitude: None,
+      gps_altitude: None,
+      // Orientation must never be applied to posters; ffmpeg already autorotates.
+      orientation: Some(6),
+    };
+    let result = processing_pool().unwrap().install(|| {
+      process_photo_internal(
+        clip.to_str().unwrap(),
+        "trip/clip.M4V",
+        thumbnails.to_str().unwrap(),
+        ".versions/attempt/clip.M4V",
+        || Some(exif),
+      )
+    });
+    assert!(result.success, "{:?}", result.error);
+    assert_eq!(result.path, "trip/clip.M4V");
+    assert_eq!(result.name, "clip.M4V");
+    assert_eq!(result.size, fs::metadata(&clip).unwrap().len() as i64);
+    assert!(result.modified_at > 0.0);
+    assert_eq!(result.media_type, "video");
+    assert_eq!(result.mime_type.as_deref(), Some("video/x-m4v"));
+    assert_eq!((result.width, result.height), (Some(1920), Some(1080)));
+    assert_eq!(Option::from(result.duration_ms), Some(2000_i64));
+    assert_eq!(
+      Option::<String>::from(result.video_codec).as_deref(),
+      Some("h264")
+    );
+    assert!(!result.is_raw && result.raw_status.is_none());
+    assert!(result.phash.is_some());
+    assert_eq!(
+      result.exif.and_then(|exif| exif.date_taken).as_deref(),
+      Some("2024:05:06 12:34:56")
+    );
+    // Existing fit rounding (1920x1080 -> 149x84 at the 150 px bound).
+    for (size, dimensions) in [
+      ("tiny", (149, 84)),
+      ("small", (400, 225)),
+      ("medium", (800, 450)),
+      ("large", (1600, 900)),
+    ] {
+      let path = thumbnails.join(size).join(".versions/attempt/clip.webp");
+      let thumbnail = image::open(path).unwrap();
+      assert_eq!(
+        (thumbnail.width(), thumbnail.height()),
+        dimensions,
+        "{size}"
+      );
+    }
+  }
+
+  #[test]
+  fn failed_video_is_unsuccessful_but_keeps_identity_and_media_type() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("broken.mov");
+    fs::write(&source, b"not a movie").unwrap();
+    let result = processing_pool().unwrap().install(|| {
+      process_photo_internal(
+        source.to_str().unwrap(),
+        "broken.mov",
+        temp.path().join("thumbnails").to_str().unwrap(),
+        "broken.mov",
+        || None,
+      )
+    });
+    assert!(!result.success);
+    assert!(result.error.unwrap().starts_with("ffprobe failed"));
+    assert_eq!(result.media_type, "video");
+    assert_eq!(result.mime_type.as_deref(), Some("video/quicktime"));
+    assert_eq!(result.size, 11);
+    assert_eq!((result.width, result.height), (None, None));
+    assert!(!temp.path().join("thumbnails").exists());
+
+    let missing = processing_pool().unwrap().install(|| {
+      process_photo_internal(
+        "/nonexistent/clip.mp4",
+        "clip.mp4",
+        "unused",
+        "clip.mp4",
+        || None,
+      )
+    });
+    assert!(!missing.success);
+    assert_eq!(missing.media_type, "video");
   }
 }

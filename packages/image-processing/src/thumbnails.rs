@@ -100,7 +100,7 @@ pub fn validate_thumbnails(
   }))
 }
 
-fn thumbnail_dimensions((width, height): (u32, u32), max_dim: u32) -> (u32, u32) {
+pub(crate) fn thumbnail_dimensions((width, height): (u32, u32), max_dim: u32) -> (u32, u32) {
   let (new_width, new_height) = if width > height {
     let ratio = width as f32 / height as f32;
     (max_dim, (max_dim as f32 / ratio) as u32)

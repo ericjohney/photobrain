@@ -2,10 +2,13 @@ import Foundation
 import SwiftUI
 
 struct LibraryFilters: Hashable, Sendable {
+    /// `filterRaw` wire value: RAW stills, non-RAW stills, or videos (Live Photo motion clips
+    /// excluded by the server); `.all` is everything.
     enum MediaKind: String, CaseIterable, Identifiable, Sendable {
         case all
         case raw
         case standard
+        case video
 
         var id: Self { self }
         var title: String {
@@ -13,6 +16,7 @@ struct LibraryFilters: Hashable, Sendable {
             case .all: "All Items"
             case .raw: "RAW"
             case .standard: "Standard"
+            case .video: "Video"
             }
         }
     }

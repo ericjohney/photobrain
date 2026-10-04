@@ -367,6 +367,7 @@ export type CollectionMember = {
 	path: string;
 	sourceRoot: string | null;
 	mimeType: string | null;
+	mediaType: "photo" | "video";
 	modifiedAt: Date;
 };
 
@@ -406,14 +407,16 @@ type CollectionMemberRow = {
 	path: string;
 	source_root: string | null;
 	mime_type: string | null;
+	media_type: "photo" | "video";
 	modified_at: number;
 };
 
 /**
  * Every member of a collection, oldest first in the grid's default captured
- * order with the ID tiebreak. RAW+JPEG pairs are not stacked: both files are
- * listed when both are members. Rows orphaned on connections without
- * foreign-key enforcement are excluded, as in the member counts.
+ * order with the ID tiebreak. RAW+JPEG pairs and Live Photos are not stacked:
+ * every member file is listed, including a motion clip added on its own.
+ * Rows orphaned on connections without foreign-key enforcement are excluded,
+ * as in the member counts.
  * @throws CollectionError `NOT_FOUND` when the collection does not exist.
  */
 export function listCollectionMembers(
@@ -429,7 +432,7 @@ export function listCollectionMembers(
 		if (!collection) throw notFound();
 		const rows = tx.all<CollectionMemberRow>(sql`
 			SELECT p.id AS id, p.name AS name, p.path AS path,
-				p.source_root AS source_root, p.mime_type AS mime_type,
+				p.source_root AS source_root, p.mime_type AS mime_type, p.media_type AS media_type,
 				p.modified_at AS modified_at
 			FROM collection_photos cp
 			INNER JOIN photos p ON p.id = cp.photo_id
@@ -445,6 +448,7 @@ export function listCollectionMembers(
 				path: row.path,
 				sourceRoot: row.source_root,
 				mimeType: row.mime_type,
+				mediaType: row.media_type,
 				// Drizzle timestamp columns store whole seconds.
 				modifiedAt: new Date(row.modified_at * 1000),
 			})),

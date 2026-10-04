@@ -43,7 +43,7 @@ interface FolderNode {
 	children: FolderNode[];
 }
 
-export type RawFilter = "all" | "raw" | "standard";
+export type RawFilter = "all" | "raw" | "standard" | "video";
 
 export interface LibraryFilters {
 	filterRaw: RawFilter;
@@ -94,6 +94,7 @@ const RAW_FILTER_OPTIONS: { value: RawFilter; label: string }[] = [
 	{ value: "all", label: "All" },
 	{ value: "raw", label: "RAW" },
 	{ value: "standard", label: "Standard" },
+	{ value: "video", label: "Video" },
 ];
 
 /** Compact label for a minimum-rating filter: ★5 or ★n+. */

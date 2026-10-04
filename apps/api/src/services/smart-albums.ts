@@ -10,6 +10,7 @@ import {
 	type ApiDatabase,
 	type PhotoCatalogRepresentation,
 	type PhotoFilters,
+	type PhotoTypeFilter,
 	photoFilterConditions,
 } from "./photo-catalog";
 import { PHOTO_FLAGS } from "./photo-curation";
@@ -39,8 +40,15 @@ export type SmartAlbumFiltersInput = Omit<
  * `dateMonth` as `YYYY-MM` in storage (transport representation on output).
  */
 export type SmartAlbumFilters = Omit<SmartAlbumFiltersInput, "filterRaw"> & {
-	filterRaw?: "raw" | "standard";
+	filterRaw?: Exclude<PhotoTypeFilter, "all">;
 };
+
+/** The `filterRaw` values a smart album stores. */
+const SAVED_TYPE_FILTERS: readonly string[] = [
+	"raw",
+	"standard",
+	"video",
+] satisfies Exclude<PhotoTypeFilter, "all">[];
 
 export type SmartAlbum = {
 	id: number;
@@ -88,8 +96,11 @@ export function canonicalizeSmartAlbumFilters(
 	input: SmartAlbumFiltersInput,
 ): SmartAlbumFilters {
 	const filters: SmartAlbumFilters = {};
-	if (input.filterRaw === "raw" || input.filterRaw === "standard") {
-		filters.filterRaw = input.filterRaw;
+	if (
+		input.filterRaw !== undefined &&
+		SAVED_TYPE_FILTERS.includes(input.filterRaw)
+	) {
+		filters.filterRaw = input.filterRaw as Exclude<PhotoTypeFilter, "all">;
 	} else if (input.filterRaw !== undefined && input.filterRaw !== "all") {
 		invalidFilter("filterRaw");
 	}

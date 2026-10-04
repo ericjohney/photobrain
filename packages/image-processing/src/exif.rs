@@ -4,6 +4,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use crate::video::is_video_file;
+
 #[napi(object)]
 #[derive(Debug, Clone)]
 pub struct ExifData {
@@ -49,6 +51,8 @@ const METADATA_ARGS: &[&str] = &[
   "-ExposureTime",
   "-ExposureCompensation",
   "-DateTimeOriginal",
+  "-CreationDate", // QuickTime local wall clock with offset (Apple devices).
+  "-CreateDate",   // QuickTime UTC per spec; EXIF digitized time for stills (unused).
   "-GPSLatitude",
   "-GPSLongitude",
   "-GPSAltitude",
@@ -79,7 +83,7 @@ fn parse_records(stdout: &[u8]) -> Vec<(String, ExifData)> {
     let Some(path) = obj.get("SourceFile").and_then(|v| v.as_str()) else {
       continue;
     };
-    records.push((path.to_string(), parse_metadata(obj)));
+    records.push((path.to_string(), parse_metadata(obj, is_video_file(path))));
   }
   records
 }
@@ -164,7 +168,29 @@ pub fn extract_exif_internal(file_path: &str) -> Option<ExifData> {
   extract_exif_batch(&[file_path.to_string()]).pop().flatten()
 }
 
-fn parse_metadata(obj: &serde_json::Map<String, serde_json::Value>) -> ExifData {
+/// `YYYY:MM:DD HH:MM:SS` prefix of an ExifTool date, without subseconds or offset.
+/// All-zero placeholder dates written by some encoders count as absent.
+fn wall_clock(value: &str) -> Option<&str> {
+  let value = value.trim();
+  let prefix = value.get(..19)?;
+  let shape = prefix.bytes().enumerate().all(|(i, byte)| match i {
+    4 | 7 | 13 | 16 => byte == b':',
+    10 => byte == b' ',
+    _ => byte.is_ascii_digit(),
+  });
+  (shape && !prefix.starts_with("0000")).then_some(prefix)
+}
+
+/// Videos: QuickTime `CreationDate` as local wall clock (offset stripped), else
+/// `CreateDate` as stored (UTC by the QuickTime spec).
+fn video_date_taken(obj: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+  ["CreationDate", "CreateDate"]
+    .iter()
+    .find_map(|key| obj.get(*key)?.as_str().and_then(wall_clock))
+    .map(str::to_string)
+}
+
+fn parse_metadata(obj: &serde_json::Map<String, serde_json::Value>, is_video: bool) -> ExifData {
   // Helper to get string value
   let get_str = |key: &str| -> Option<String> {
     obj.get(key).and_then(|v| {
@@ -219,8 +245,12 @@ fn parse_metadata(obj: &serde_json::Map<String, serde_json::Value>) -> ExifData 
     }
   });
 
-  // Date taken
-  let date_taken = get_str("DateTimeOriginal");
+  // Date taken: stills keep the raw DateTimeOriginal string.
+  let date_taken = if is_video {
+    video_date_taken(obj)
+  } else {
+    get_str("DateTimeOriginal")
+  };
 
   // GPS coordinates (already in decimal with -n flag)
   let gps_latitude = get_f64("GPSLatitude");
@@ -292,6 +322,8 @@ mod tests {
         "-ExposureTime",
         "-ExposureCompensation",
         "-DateTimeOriginal",
+        "-CreationDate",
+        "-CreateDate",
         "-GPSLatitude",
         "-GPSLongitude",
         "-GPSAltitude",
@@ -340,15 +372,87 @@ mod tests {
     for orientation in 1..=8 {
       let value =
         json!({"Orientation": orientation, "ExposureTime": 2, "ExposureCompensation": -0.7});
-      let exif = parse_metadata(value.as_object().unwrap());
+      let exif = parse_metadata(value.as_object().unwrap(), false);
       assert_eq!(exif.orientation, Some(orientation));
       assert_eq!(exif.shutter_speed.as_deref(), Some("2.0s"));
       assert_eq!(exif.exposure_bias.as_deref(), Some("-0.7 EV"));
     }
     let value = json!({"Orientation": "6", "ExposureCompensation": 0});
-    let exif = parse_metadata(value.as_object().unwrap());
+    let exif = parse_metadata(value.as_object().unwrap(), false);
     assert_eq!(exif.orientation, None); // Do not change numeric parsing semantics.
     assert_eq!(exif.exposure_bias.as_deref(), Some("0 EV"));
+  }
+
+  #[test]
+  fn video_dates_prefer_local_creation_date_and_photos_keep_date_time_original() {
+    let records = parse_records(
+      &serde_json::to_vec(&json!([
+        // Apple: local wall clock + offset beats the UTC CreateDate and any EXIF date.
+        {"SourceFile": "a/IMG_1.MOV", "CreationDate": "2024:05:06 12:34:56-07:00",
+          "CreateDate": "2024:05:06 19:34:56", "DateTimeOriginal": "2001:01:01 00:00:00",
+          "Make": "Apple", "GPSLatitude": 37.5, "GPSLongitude": -122.25},
+        {"SourceFile": "b/clip.mp4", "CreationDate": "2024:12:31 23:59:59.123+05:30"},
+        {"SourceFile": "c/clip.M4V", "CreateDate": "2023:02:03 04:05:06"},
+        // Placeholder/malformed CreationDate falls through to CreateDate.
+        {"SourceFile": "d/clip.mov", "CreationDate": "0000:00:00 00:00:00",
+          "CreateDate": "2022:01:02 03:04:05"},
+        {"SourceFile": "e/clip.mov", "CreationDate": "yesterday", "CreateDate": "0000:00:00 00:00:00",
+          "DateTimeOriginal": "2020:01:01 00:00:00"},
+        // Stills ignore both QuickTime tags, even when DateTimeOriginal is missing.
+        {"SourceFile": "f/photo.jpg", "DateTimeOriginal": "2024:05:06 08:00:00",
+          "CreationDate": "2030:01:01 00:00:00+00:00", "CreateDate": "2031:01:01 00:00:00"},
+        {"SourceFile": "g/photo.heic", "CreationDate": "2030:01:01 00:00:00+00:00",
+          "CreateDate": "2031:01:01 00:00:00"},
+        {"SourceFile": "h/photo.jpg", "DateTimeOriginal": "2024:05:06 08:00:00+02:00"}
+      ]))
+      .unwrap(),
+    );
+    let dates: Vec<_> = records
+      .iter()
+      .map(|(_, exif)| exif.date_taken.as_deref())
+      .collect();
+    assert_eq!(
+      dates,
+      [
+        Some("2024:05:06 12:34:56"),
+        Some("2024:12:31 23:59:59"),
+        Some("2023:02:03 04:05:06"),
+        Some("2022:01:02 03:04:05"),
+        None,
+        Some("2024:05:06 08:00:00"),
+        None,
+        Some("2024:05:06 08:00:00+02:00"),
+      ]
+    );
+    let apple = &records[0].1;
+    assert_eq!(apple.camera_make.as_deref(), Some("Apple"));
+    assert_eq!(
+      (apple.gps_latitude, apple.gps_longitude),
+      (Some(37.5), Some(-122.25))
+    );
+  }
+
+  #[test]
+  fn exiftool_reports_quicktime_dates_for_a_generated_video() {
+    let temp = tempfile::tempdir().unwrap();
+    let clip = temp.path().join("IMG_0001.MOV");
+    crate::video::tests::ffmpeg(&[
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=64x64:rate=30:duration=0.2",
+      "-c:v",
+      "libx264",
+      "-movflags",
+      "+use_metadata_tags",
+      "-metadata",
+      "com.apple.quicktime.creationdate=2024-05-06T12:34:56-0700",
+      "-metadata",
+      "creation_time=2024-05-06T19:34:56Z",
+      clip.to_str().unwrap(),
+    ]);
+    let exif = extract_exif_internal(clip.to_str().unwrap()).expect("exiftool must be installed");
+    assert_eq!(exif.date_taken.as_deref(), Some("2024:05:06 12:34:56"));
   }
 
   #[test]

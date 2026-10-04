@@ -14,6 +14,7 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { DuplicateGroupList } from "@/components/DuplicateGroupList";
@@ -424,15 +425,26 @@ export function Dashboard() {
 		}
 	}, [activePhotoId, toggleLastUsedCollection]);
 
-	// `Shift+D`: download the active photo as JPEG 2048.
+	// `Shift+D`: download the active photo as JPEG 2048, or a video's original.
 	const activePhotoName = library.activePhoto?.name;
+	const activeIsVideo = library.activePhoto?.mediaType === "video";
 	const downloadActivePhoto = useCallback(() => {
 		if (activePhotoId === undefined || activePhotoName === undefined) return;
+		const size = activeIsVideo ? "original" : "2048";
 		downloadUrl(
-			exportPhotoUrl(activePhotoId, "2048"),
-			exportFileName(activePhotoName, "2048"),
+			exportPhotoUrl(activePhotoId, size),
+			exportFileName(activePhotoName, size),
 		);
-	}, [activePhotoId, activePhotoName]);
+	}, [activePhotoId, activePhotoName, activeIsVideo]);
+
+	// `Space` in the loupe: play/pause the shown video (set by LoupeView).
+	const loupeVideoRef = useRef<HTMLVideoElement | null>(null);
+	const toggleVideoPlayback = useCallback(() => {
+		const video = loupeVideoRef.current;
+		if (!video) return;
+		if (video.paused) void video.play().catch(() => {});
+		else video.pause();
+	}, []);
 
 	// Keyboard shortcuts
 	useKeyboardShortcuts({
@@ -449,6 +461,10 @@ export function Dashboard() {
 			lastUsedCollectionId === null ? null : toggleActiveInLastUsed,
 		resolveReviewPhoto: reviewActive ? resolveActiveReviewPhoto : null,
 		downloadActivePhoto,
+		toggleVideoPlayback:
+			library.viewMode === "loupe" && activeIsVideo
+				? toggleVideoPlayback
+				: null,
 	});
 
 	const handlePhotoClick = useCallback(
@@ -732,6 +748,7 @@ export function Dashboard() {
 					onNavigate={library.navigatePhoto}
 					hasPrev={hasPrev}
 					hasNext={hasNext}
+					videoRef={loupeVideoRef}
 				/>
 			);
 		}
@@ -846,7 +863,9 @@ export function Dashboard() {
 			? "RAW only"
 			: filters.filterRaw === "standard"
 				? "Standard only"
-				: null,
+				: filters.filterRaw === "video"
+					? "Videos only"
+					: null,
 		filters.camera,
 		filters.lens,
 		filters.iso !== null ? `ISO ${filters.iso}` : null,

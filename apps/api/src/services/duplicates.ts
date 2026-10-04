@@ -95,11 +95,12 @@ type ComputedGroup = {
 };
 
 /**
- * Every grouping input (a pHash row and a flag other than `reject`) with the
- * keeper and burst attributes, in one statement. Sharpness counts only for a
- * current-version measurement of the committed thumbnail generation. A RAW
- * whose pair partner is itself a candidate is not a candidate: the pair is one
- * photo, represented by its standard file.
+ * Every grouping input (a still with a pHash row and a flag other than
+ * `reject`) with the keeper and burst attributes, in one statement. Videos are
+ * never inputs: similar poster frames do not make two clips duplicates.
+ * Sharpness counts only for a current-version measurement of the committed
+ * thumbnail generation. A RAW whose pair partner is itself a candidate is not a
+ * candidate: the pair is one photo, represented by its standard file.
  */
 function loadCandidates(database: Pick<ApiDatabase, "all">): CandidateRow[] {
 	return database.all<CandidateRow>(sql`
@@ -123,6 +124,7 @@ function loadCandidates(database: Pick<ApiDatabase, "all">): CandidateRow[] {
 			AND photo_quality.thumbnail_key = photos.thumbnail_key
 			AND photo_quality.quality_version = ${QUALITY_VERSION}
 		WHERE photos.flag IS NOT 'reject'
+			AND photos.media_type = 'photo'
 			AND NOT (
 				ifnull(photos.is_raw, 0) = 1
 				AND ifnull(${pairedPhotoIdSql()} IN (

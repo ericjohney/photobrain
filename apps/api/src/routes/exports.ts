@@ -71,14 +71,22 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 
 	router.get("/photos/:id/export", async (context) => {
 		const id = photoIdSchema.safeParse(context.req.param("id"));
-		const size = parseSize(context.req.query("size"), "2048");
-		if (!id.success || size === null)
+		const requestedSize = parseSize(context.req.query("size"), "2048");
+		if (!id.success || requestedSize === null)
 			return errorResponse("INVALID_REQUEST", "Request validation failed", 400);
 		const photo = await database.query.photos.findFirst({
-			columns: { name: true, path: true, sourceRoot: true, mimeType: true },
+			columns: {
+				name: true,
+				path: true,
+				sourceRoot: true,
+				mimeType: true,
+				mediaType: true,
+			},
 			where: (photos, { eq }) => eq(photos.id, id.data),
 		});
 		if (!photo) return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+		// Videos are never rendered: every size streams the original.
+		const size = photo.mediaType === "video" ? "original" : requestedSize;
 		const path = originalFilePath(photo, photoDirectory);
 		const file = Bun.file(path);
 		if (!(await file.exists())) {

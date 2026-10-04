@@ -589,6 +589,9 @@ if (process.env.PHOTOBRAIN_JUNK_TEST_CHILD !== "1") {
 				createdAt: 0,
 				modifiedAt: 0,
 				isRaw: false,
+				mediaType: "photo" as const,
+				durationMs: null,
+				videoCodec: null,
 			};
 			const [id] = saveScanBatch(db, [result]);
 			resolveJunk(db, [id], "keep");
@@ -1144,7 +1147,10 @@ if (process.env.PHOTOBRAIN_JUNK_TEST_CHILD !== "1") {
 				migrate(legacyDb, { migrationsFolder: MIGRATIONS_FOLDER });
 
 				expect(snapshot()).toEqual(before);
-				expect(legacy.query("SELECT * FROM photos ORDER BY id").all()).toEqual(
+				// Later migrations may add columns; every existing value is kept.
+				expect(
+					legacy.query("SELECT * FROM photos ORDER BY id").all(),
+				).toMatchObject(
 					photosBefore.map((row) => ({ ...row, junk_dismissed: 0 })),
 				);
 				expect(tables()).toContain("photo_quality");

@@ -23,9 +23,10 @@ export type MeasureQuality = (
 ) => Promise<(ImageQuality | null)[]>;
 
 /**
- * Photos needing a measurement: completed thumbnails with a committed key whose
- * quality row is missing, from another generation, or from another
- * QUALITY_VERSION. Keyset-paginated by photo ID.
+ * Photos needing a measurement: completed still thumbnails with a committed
+ * key whose quality row is missing, from another generation, or from another
+ * QUALITY_VERSION. Videos are never measured (only junk review reads quality,
+ * and it excludes them). Keyset-paginated by photo ID.
  */
 export function readQualityBackfillBatch(
 	database: ApiDatabase,
@@ -37,6 +38,7 @@ export function readQualityBackfillBatch(
 		FROM photos p
 		LEFT JOIN photo_quality q ON q.photo_id = p.id
 		WHERE p.id > ${afterPhotoId}
+			AND p.media_type = 'photo'
 			AND p.thumbnail_status = 'completed'
 			AND p.thumbnail_key IS NOT NULL
 			AND (

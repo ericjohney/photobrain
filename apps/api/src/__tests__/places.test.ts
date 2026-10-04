@@ -1057,7 +1057,8 @@ if (process.env.PHOTOBRAIN_PLACES_TEST_CHILD !== "1") {
 				writeFileSync(journalPath, JSON.stringify(journal));
 				migrate(legacyDb, { migrationsFolder: partial });
 
-				expect(snapshot()).toEqual(before);
+				// Later migrations may add columns; every existing value is kept.
+				expect(snapshot()).toMatchObject(before);
 				expect(tables()).toContain("photo_places");
 				expect(
 					legacy

@@ -1,5 +1,6 @@
 import { Camera } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
+import { DurationBadge } from "@/components/MediaBadges";
 import { rawBadge } from "@/lib/raw-badge";
 import { getThumbnailUrl } from "@/lib/thumbnails";
 import type { PhotoMetadata } from "@/lib/types";
@@ -80,7 +81,8 @@ export function Filmstrip({
 							"transition-all duration-75",
 							"ring-inset focus:outline-none",
 							isActive && "ring-2 ring-selection brightness-110",
-							!isActive && "opacity-70 hover:opacity-100 hover:ring-1 hover:ring-thumbnail-border",
+							!isActive &&
+								"opacity-70 hover:opacity-100 hover:ring-1 hover:ring-thumbnail-border",
 							isRejected && "opacity-30 hover:opacity-50",
 						)}
 					>
@@ -90,7 +92,11 @@ export function Filmstrip({
 							</div>
 						) : (
 							<img
-								src={getThumbnailUrl(photo.id, "tiny", photo.thumbnailUpdatedAt)}
+								src={getThumbnailUrl(
+									photo.id,
+									"tiny",
+									photo.thumbnailUpdatedAt,
+								)}
 								alt={photo.name}
 								className="h-full w-full object-cover"
 								loading="lazy"
@@ -107,6 +113,14 @@ export function Filmstrip({
 							>
 								{formatBadge.compact}
 							</div>
+						)}
+
+						{photo.mediaType === "video" && (
+							<DurationBadge
+								data-testid="filmstrip-duration-badge"
+								durationMs={photo.durationMs}
+								className="absolute bottom-0.5 right-0.5 gap-px px-0.5 py-0 text-[8px]"
+							/>
 						)}
 					</button>
 				);

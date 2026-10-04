@@ -20,8 +20,10 @@ interface KeyboardShortcutsOptions {
 	toggleLastUsedCollection: (() => void) | null;
 	/** In Review: resolve the active photo (`X` reject, `K` keep); null outside Review. */
 	resolveReviewPhoto: ((action: JunkAction) => void) | null;
-	/** Download the active photo as JPEG 2048 (`Shift+D`). */
+	/** Download the active photo (`Shift+D`): JPEG 2048, or the original video. */
 	downloadActivePhoto: () => void;
+	/** Play/pause the loupe's video (`Space`); null unless the loupe shows a video. */
+	toggleVideoPlayback: (() => void) | null;
 	enabled?: boolean;
 }
 
@@ -38,6 +40,7 @@ export function useKeyboardShortcuts({
 	toggleLastUsedCollection,
 	resolveReviewPhoto,
 	downloadActivePhoto,
+	toggleVideoPlayback,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
 	useEffect(() => {
@@ -137,6 +140,15 @@ export function useKeyboardShortcuts({
 					if (e.shiftKey) {
 						e.preventDefault();
 						toggleFilmstrip();
+					} else if (
+						toggleVideoPlayback &&
+						!isCtrlOrCmd &&
+						!e.altKey &&
+						// A focused player handles Space natively; toggling too would cancel it.
+						!(e.target instanceof HTMLMediaElement)
+					) {
+						e.preventDefault();
+						toggleVideoPlayback();
 					}
 					break;
 
@@ -183,5 +195,6 @@ export function useKeyboardShortcuts({
 		toggleLastUsedCollection,
 		resolveReviewPhoto,
 		downloadActivePhoto,
+		toggleVideoPlayback,
 	]);
 }

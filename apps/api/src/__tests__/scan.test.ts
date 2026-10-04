@@ -141,6 +141,9 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 			isRaw: false,
 			exif: { cameraMake: "Scan fixture" },
 			phash: "YWJjZA==",
+			mediaType: "photo",
+			durationMs: null,
+			videoCodec: null,
 		};
 	}
 
@@ -796,6 +799,62 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 				.all()
 				.map((photo) => photo.path),
 		).toEqual(["a.jpg"]);
+	});
+
+	test("commits video media type, duration and codec beside a still", async () => {
+		paths = ["clip.mov", "still.jpg"];
+		await initialize();
+		const [clip, still] = pendingScanWork(db, jobId);
+		thumbnails(clip);
+		thumbnails(still);
+		await commitScanResult(
+			db,
+			jobId,
+			clip.id,
+			{
+				...result("clip.mov"),
+				mimeType: "video/quicktime",
+				mediaType: "video",
+				durationMs: 2_967,
+				videoCodec: "hevc",
+			},
+			clip.thumbnailKey,
+		);
+		await commitScanResult(
+			db,
+			jobId,
+			still.id,
+			result("still.jpg"),
+			still.thumbnailKey,
+		);
+		expect(
+			db
+				.select({
+					path: photos.path,
+					mimeType: photos.mimeType,
+					mediaType: photos.mediaType,
+					durationMs: photos.durationMs,
+					videoCodec: photos.videoCodec,
+				})
+				.from(photos)
+				.orderBy(photos.path)
+				.all(),
+		).toEqual([
+			{
+				path: "clip.mov",
+				mimeType: "video/quicktime",
+				mediaType: "video",
+				durationMs: 2_967,
+				videoCodec: "hevc",
+			},
+			{
+				path: "still.jpg",
+				mimeType: "image/jpeg",
+				mediaType: "photo",
+				durationMs: null,
+				videoCodec: null,
+			},
+		]);
 	});
 
 	test.each([

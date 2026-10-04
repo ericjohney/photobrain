@@ -10,7 +10,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 - Four derived WebP preview sizes: `tiny`, `small`, `medium`, and `large`. Preview color is lossy; original photo files are untouched.
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
-- Standard image, HEIF/HEIC, and common RAW file discovery.
+- Standard image, HEIF/HEIC, common RAW, and video (`.mp4`, `.mov`, `.m4v`) discovery; videos get `ffmpeg` poster thumbnails, duration/codec metadata, Range-streamed playback, and Live Photo pairing.
 - RAW display through embedded JPEG previews extracted with `exiftool`; this checkout does not demosaic RAW files.
 - Perceptual hashes stored for future duplicate-detection features.
 - Incremental scans reuse unchanged media and recover embeddings separately. Confirmed **Reprocess all photos** controls in the web and mobile clients deliberately rebuild the library's derived media.
@@ -54,7 +54,7 @@ Detailed implementation guidance is in:
 - [Bun](https://bun.sh/)
 - Rust and Cargo
 - A C toolchain, `pkg-config`, OpenSSL development headers, `libheif-dev`, and `libclang-dev` for the native addon
-- The `exiftool` executable for EXIF and RAW preview extraction
+- The `exiftool` executable for EXIF and RAW preview extraction, and `ffmpeg`/`ffprobe` for video posters and metadata
 - Docker only if you want to run the documented runtime dependencies or build images
 - An Inngest development/runtime service for executing scan and embedding events
 - Xcode 26.6 when building/testing the native iOS app
@@ -65,7 +65,7 @@ On Debian/Ubuntu, the native build dependencies are typically:
 apt-get install -y build-essential pkg-config libssl-dev libheif-dev libclang-dev
 ```
 
-Install `exiftool` separately, for example with the distribution's `libimage-exiftool-perl` package. The API runtime also needs `libheif1`.
+Install `exiftool` separately, for example with the distribution's `libimage-exiftool-perl` package. The API runtime also needs `libheif1` and `ffmpeg`.
 
 ## Quick Start
 

@@ -18,8 +18,23 @@ export type FolderNode = {
 	children: FolderNode[];
 };
 
+/** Library type filter; `all` stacks RAW+JPEG pairs and hides Live Photo motion clips. */
+export const PHOTO_TYPE_FILTERS = ["all", "raw", "standard", "video"] as const;
+export type PhotoTypeFilter = (typeof PHOTO_TYPE_FILTERS)[number];
+
+/**
+ * A video at most this long is a Live Photo motion clip when it is the only
+ * video of its pair stem and the stem's stills stack into one visible still
+ * (see `livePhotoSql`).
+ */
+export const LIVE_PHOTO_MAX_DURATION_MS = 4000;
+
 export type PhotoFilters = {
-	filterRaw?: "all" | "raw" | "standard";
+	/**
+	 * `raw`: RAW stills; `standard`: non-RAW stills; `video`: videos except Live
+	 * Photo motion clips; `all` (default): everything with stacking.
+	 */
+	filterRaw?: PhotoTypeFilter;
 	folder?: string;
 	camera?: string;
 	lens?: string;
@@ -199,10 +214,12 @@ export type PhotoCatalogRepresentation = {
 /**
  * RAW+JPEG pairing, evaluated at query time over `idx_photos_pair_stem`.
  *
- * Two photos are a pair iff their pair stem (lower-cased relative path minus
- * the final extension, so same folder) has exactly two rows, exactly one of
- * them RAW, and their `photo_exif.date_taken` values are equal whenever both
- * are present (guards reused camera counters). Three or more rows pair nothing.
+ * Two stills (`media_type = 'photo'`) are a pair iff their pair stem
+ * (lower-cased relative path minus the final extension, so same folder) has
+ * exactly two stills, exactly one of them RAW, and their `photo_exif.date_taken`
+ * values are equal whenever both are present (guards reused camera counters).
+ * Three or more stills pair nothing; videos never pair and are not counted, so
+ * a RAW+JPEG+MOV triple still pairs its two stills.
  *
  * The partner's ID for the row visible as `photo` in the enclosing query, or
  * NULL: one aggregate over the stem's index range (the row itself included)
@@ -219,11 +236,86 @@ export function pairedPhotoIdSql(photo = "photos"): SQL {
 			END AS id
 			FROM photos pair_member
 			WHERE ${pairStem(sql`pair_member.path`)} = ${pairStem(sql`${own}.path`)}
+				AND pair_member.media_type = 'photo'
 		) pair_candidate
 		WHERE pair_candidate.id IS NOT NULL
+			AND ${own}.media_type = 'photo'
 			AND NOT EXISTS (SELECT 1 FROM photo_exif own_exif
 				JOIN photo_exif partner_exif ON partner_exif.photo_id = pair_candidate.id
 				WHERE own_exif.photo_id = ${own}.id AND own_exif.date_taken <> partner_exif.date_taken))`;
+}
+
+/**
+ * Live Photo pairing over the same stem index: a video is a *motion clip* iff
+ * it lasts at most `LIVE_PHOTO_MAX_DURATION_MS`, it is the only video of its
+ * pair stem, and the stem's stills are exactly one still or exactly a RAW pair
+ * (two stills, one RAW, which stack into one visible still). The clip belongs
+ * to the still visible after RAW stacking: the standard still when there is
+ * one, else the single RAW. Two non-RAW stills (`IMG_1.HEIC` + `IMG_1.JPG`)
+ * or two videos make the moment ambiguous, so nothing stacks.
+ *
+ * For the row visible as `photo`: with `role: "still"`, its motion clip's ID
+ * when it is the moment's still; with `role: "clip"`, the still's ID when it
+ * is the motion clip. NULL otherwise. One aggregate over the stem's index range.
+ */
+function livePhotoSql(photo: string, role: "still" | "clip"): SQL {
+	const own = sql.identifier(photo);
+	const isStill = sql`live_member.media_type = 'photo'`;
+	const isVideo = sql`live_member.media_type = 'video'`;
+	const [ownMatches, picked] =
+		role === "still"
+			? [sql`live.still_id = ${own}.id`, sql`live.video_id`]
+			: [sql`live.video_id = ${own}.id`, sql`live.still_id`];
+	return sql`(SELECT CASE
+			WHEN live.videos = 1
+				AND live.video_ms <= ${LIVE_PHOTO_MAX_DURATION_MS}
+				AND (live.stills = 1 OR (live.stills = 2 AND live.raw_stills = 1))
+				AND ${ownMatches}
+			THEN ${picked}
+		END FROM (
+			SELECT
+				total(${isVideo}) AS videos,
+				total(${isStill}) AS stills,
+				total(${isStill} AND ifnull(live_member.is_raw, 0) = 1) AS raw_stills,
+				max(CASE WHEN ${isVideo} THEN live_member.id END) AS video_id,
+				max(CASE WHEN ${isVideo} THEN live_member.duration_ms END) AS video_ms,
+				coalesce(
+					max(CASE WHEN ${isStill} AND ifnull(live_member.is_raw, 0) = 0 THEN live_member.id END),
+					max(CASE WHEN ${isStill} THEN live_member.id END)
+				) AS still_id
+			FROM photos live_member
+			WHERE ${pairStem(sql`live_member.path`)} = ${pairStem(sql`${own}.path`)}
+		) live)`;
+}
+
+/**
+ * The Live Photo motion clip's ID for the still visible as `photo`, or NULL.
+ * The gate is uncorrelated: SQLite builds the set of stills that own a clip
+ * once per statement, probing the stem index only for short videos (index
+ * search on `media_type`), so a listing pays one hash lookup per row and the
+ * per-row aggregate runs only for the moment's still.
+ */
+export function motionVideoIdSql(photo = "photos"): SQL {
+	const own = sql.identifier(photo);
+	return sql`CASE WHEN ${own}.media_type = 'photo' AND ${own}.id IN (
+			SELECT live_owner.still_id FROM (
+				SELECT ${livePhotoSql("live_clip", "clip")} AS still_id
+				FROM photos live_clip
+				WHERE live_clip.media_type = 'video'
+					AND live_clip.duration_ms <= ${LIVE_PHOTO_MAX_DURATION_MS}
+			) live_owner WHERE live_owner.still_id IS NOT NULL)
+		THEN ${livePhotoSql(photo, "still")} END`;
+}
+
+/**
+ * The row visible as `photos` is not a Live Photo motion clip. Only short
+ * videos reach the stem lookup. Part of every stacking condition and of the
+ * `video` type filter; folder counts use it directly.
+ */
+export function notMotionClipCondition(): SQL {
+	return sql`NOT (photos.media_type = 'video'
+		AND ifnull(photos.duration_ms <= ${LIVE_PHOTO_MAX_DURATION_MS}, 0)
+		AND ${livePhotoSql("photos", "clip")} IS NOT NULL)`;
 }
 
 /**
@@ -237,12 +329,18 @@ export function pairedFormatSql(photo = "photos"): SQL {
 		FROM photos partner WHERE partner.id = ${pairedPhotoIdSql(photo)})`;
 }
 
-/** Relational-query `extras` adding the pair fields to every public photo. */
+/**
+ * Relational-query `extras` adding the RAW pair and Live Photo fields to every
+ * public photo.
+ */
 export const pairedPhotoExtras = {
 	pairedPhotoId: sql<number | null>`${pairedPhotoIdSql()}`.as(
 		"paired_photo_id",
 	),
 	pairedFormat: sql<string | null>`${pairedFormatSql()}`.as("paired_format"),
+	motionVideoId: sql<number | null>`${motionVideoIdSql()}`.as(
+		"motion_video_id",
+	),
 };
 
 /**
@@ -261,32 +359,46 @@ export function photoIdsWithPartnersSql(ids: readonly number[]): SQL {
 }
 
 /**
- * Pair stacking over the row visible as `photos`: a RAW row is omitted iff its
+ * Stacking over the row visible as `photos`: Live Photo motion clips are
+ * always omitted (`notMotionClipCondition`), and a RAW row is omitted iff its
  * partner also satisfies every `scope` condition (with no scope, iff it has a
- * partner). Only RAW rows reach the partner lookup. The derived table resolves
- * the partner ID against the outer row; the joined `photos` then shadows it, so
- * the unchanged scope conditions test the single partner row by primary key.
- * `photoFilterConditions` appends it; `onThisDay` uses it directly because its
- * scope (the row's own capture date) is correlated rather than one value.
+ * partner). Only RAW rows reach the partner lookup and only short videos the
+ * clip lookup. The derived table resolves the partner ID against the outer
+ * row; the joined `photos` then shadows it, so the unchanged scope conditions
+ * test the single partner row by primary key. `photoFilterConditions` appends
+ * it; `onThisDay` and event detection use it directly because their scopes
+ * are correlated rather than one value.
  */
 export function pairStackingCondition(scope: readonly SQL[]): SQL {
 	const partner = pairedPhotoIdSql();
-	return scope.length === 0
-		? sql`NOT (ifnull(photos.is_raw, 0) = 1 AND ${partner} IS NOT NULL)`
-		: sql`NOT (ifnull(photos.is_raw, 0) = 1 AND EXISTS (SELECT 1 FROM (SELECT ${partner} AS id) pair_partner INNER JOIN photos ON photos.id = pair_partner.id WHERE ${sql.join([...scope], sql` AND `)}))`;
+	const raw =
+		scope.length === 0
+			? sql`NOT (ifnull(photos.is_raw, 0) = 1 AND ${partner} IS NOT NULL)`
+			: sql`NOT (ifnull(photos.is_raw, 0) = 1 AND EXISTS (SELECT 1 FROM (SELECT ${partner} AS id) pair_partner INNER JOIN photos ON photos.id = pair_partner.id WHERE ${sql.join([...scope], sql` AND `)}))`;
+	return sql`(${raw} AND ${notMotionClipCondition()})`;
 }
 
+/**
+ * Folder tree with direct-child counts. Live Photo motion clips are not
+ * counted (they never appear in the grid); RAW+JPEG pairs count as two files.
+ * Paths are tallied per folder first, so the tree walk runs once per folder
+ * rather than once per photo.
+ */
 export async function listFolders(database: ApiDatabase) {
 	const results = await database
 		.select({ path: photosTable.path })
-		.from(photosTable);
-	const folderMap = new Map<string, FolderNode>();
-
+		.from(photosTable)
+		.where(notMotionClipCondition());
+	const directCounts = new Map<string, number>();
 	for (const { path } of results) {
 		const lastSlash = path.lastIndexOf("/");
-		const folderPath = lastSlash > 0 ? path.substring(0, lastSlash) : "";
-		if (!folderPath) continue;
+		if (lastSlash <= 0) continue;
+		const folderPath = path.substring(0, lastSlash);
+		directCounts.set(folderPath, (directCounts.get(folderPath) ?? 0) + 1);
+	}
 
+	const folderMap = new Map<string, FolderNode>();
+	for (const [folderPath, count] of directCounts) {
 		const parts = folderPath.split("/");
 		let currentPath = "";
 		for (let index = 0; index < parts.length; index++) {
@@ -300,11 +412,9 @@ export async function listFolders(database: ApiDatabase) {
 					children: [],
 				});
 			}
-			if (index === parts.length - 1) {
-				const folder = folderMap.get(currentPath);
-				if (folder) folder.photoCount++;
-			}
 		}
+		const folder = folderMap.get(folderPath);
+		if (folder) folder.photoCount = count;
 	}
 
 	const rootFolders: FolderNode[] = [];
@@ -419,9 +529,11 @@ export async function listFilterOptions(
  * SQL conditions over `photos` (and correlated `photo_exif` lookups) shared by the
  * library listing, vector search, similarity, and smart-album counts so filter
  * meaning cannot drift between them. `folder` matches direct children only.
- * The last condition stacks RAW+JPEG pairs: a RAW row is dropped when its
- * partner also satisfies every other condition, so the set never shows both
- * files of a pair (omitted under `filterRaw` raw/standard, which already does).
+ * The last condition stacks: Live Photo motion clips are dropped, and a RAW row
+ * is dropped when its partner also satisfies every other condition, so the set
+ * never shows both files of a pair. Under `filterRaw` raw/standard the type
+ * filter already excludes partners and clips; under `video` only the clip rule
+ * applies.
  */
 export function photoFilterConditions(
 	input: PhotoFilters,
@@ -432,9 +544,15 @@ export function photoFilterConditions(
 		? sql`replace(substr(photo_exif.date_taken, 1, 7), ':', '-')`
 		: sql`substr(photo_exif.date_taken, 1, 7)`;
 	if (input.filterRaw === "raw") {
-		conditions.push(eq(photosTable.isRaw, true));
+		conditions.push(
+			sql`(${photosTable.mediaType} = 'photo' AND ${photosTable.isRaw} = 1)`,
+		);
 	} else if (input.filterRaw === "standard") {
-		conditions.push(eq(photosTable.isRaw, false));
+		conditions.push(
+			sql`(${photosTable.mediaType} = 'photo' AND ${photosTable.isRaw} = 0)`,
+		);
+	} else if (input.filterRaw === "video") {
+		conditions.push(eq(photosTable.mediaType, "video"));
 	}
 	if (input.folder) {
 		const folderPrefix = folderSubtreePattern(input.folder);
@@ -506,8 +624,9 @@ export function photoFilterConditions(
 	if (input.bounds) {
 		conditions.push(locationCondition(input.bounds));
 	}
-	// A type filter already excludes the partner of every row it admits.
-	if (input.filterRaw !== "raw" && input.filterRaw !== "standard") {
+	if (input.filterRaw === "video") {
+		conditions.push(notMotionClipCondition());
+	} else if (input.filterRaw !== "raw" && input.filterRaw !== "standard") {
 		conditions.push(pairStackingCondition(conditions));
 	}
 	return conditions;

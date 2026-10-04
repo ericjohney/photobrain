@@ -260,7 +260,7 @@ if (process.env.PHOTOBRAIN_PAIRS_TEST_CHILD !== "1") {
 	/** Every pair lookup is an index search on the stem, never a scan. */
 	function expectStemIndexPlan(plan: string) {
 		expect(plan).toMatch(
-			/SEARCH pair_member USING INDEX idx_photos_pair_stem \(<expr>=\?\)/,
+			/SEARCH pair_member USING COVERING INDEX idx_photos_pair_stem \(<expr>=\? AND media_type=\?\)/,
 		);
 		expect(plan).not.toMatch(/SCAN pair_member(\s|$)/m);
 		expect(plan).not.toMatch(/SCAN pair_member_exif(\s|$)/m);
@@ -770,7 +770,8 @@ if (process.env.PHOTOBRAIN_PAIRS_TEST_CHILD !== "1") {
 				const before = snapshot();
 
 				migrate(legacyDb, { migrationsFolder: MIGRATIONS_FOLDER });
-				expect(snapshot()).toEqual(before);
+				// Later migrations may add columns; every existing value is kept.
+				expect(snapshot()).toMatchObject(before);
 				expect(indexes()).toContain("idx_photos_pair_stem");
 				expect(
 					legacy

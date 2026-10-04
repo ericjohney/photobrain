@@ -1,9 +1,15 @@
+import AVKit
+import Combine
 import SwiftUI
 import UIKit
 
 struct PagedLoupe: UIViewControllerRepresentable {
     let records: [PhotoRecord]
     @Binding var activeID: Int
+    /// Drives the open page's video or Live Photo player; the loupe owns its lifetime.
+    let playback: LoupePlaybackController
+    /// Insets the video controls so the loupe chrome does not cover them.
+    let chromeVisible: Bool
     let onTap: () -> Void
     let onEmpty: () -> Void
 
@@ -12,6 +18,8 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.onActiveIDChanged = { activeID = $0 }
         controller.onEmpty = onEmpty
         controller.onTap = onTap
+        controller.attach(playback: playback)
+        controller.chromeVisible = chromeVisible
         controller.update(records: records, activeID: activeID)
         return controller
     }
@@ -20,6 +28,8 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.onActiveIDChanged = { activeID = $0 }
         controller.onEmpty = onEmpty
         controller.onTap = onTap
+        controller.attach(playback: playback)
+        controller.chromeVisible = chromeVisible
         controller.update(records: records, activeID: activeID)
     }
 }
@@ -36,6 +46,18 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
     var onTap: (() -> Void)?
     var onEmpty: (() -> Void)?
     private var lastLayoutSize = CGSize.zero
+    private var playback: LoupePlaybackController?
+    private var playbackSubscription: AnyCancellable?
+    /// The single on-screen player, hosted by the cell of the playing page.
+    private var playerController: AVPlayerViewController?
+    private var readyObservation: NSKeyValueObservation?
+    private var playbackState: LoupePlaybackController.State = .inactive
+    var chromeVisible = true {
+        didSet {
+            guard chromeVisible != oldValue else { return }
+            applyChromeInsets()
+        }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -67,6 +89,21 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    func attach(playback next: LoupePlaybackController) {
+        guard playback !== next else { return }
+        playback = next
+        // `@Published` emits before the new value is stored; hopping to the next main-queue turn
+        // lets `apply` read the controller's current state and player together.
+        playbackSubscription = next.$state
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let playback = self.playback else { return }
+                    self.apply(playbackState: playback.state)
+                }
+            }
     }
 
     override func viewDidLayoutSubviews() {
@@ -139,6 +176,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             onZoomChanged: { [weak self] _ in self?.updatePagingAvailability() }
         )
         knownCells.add(cell)
+        syncPlayerHost()
         return cell
     }
 
@@ -148,6 +186,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         forItemAt indexPath: IndexPath
     ) {
         (cell as? ZoomPageCell)?.reloadDecodedImageIfNeeded()
+        syncPlayerHost()
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -211,6 +250,89 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             .contains { $0.zoomView.zoomScale > 1.001 }
         collectionView.isScrollEnabled = !zoomed
     }
+
+    // MARK: Playback
+
+    private func apply(playbackState state: LoupePlaybackController.State) {
+        playbackState = state
+        switch state {
+        case .inactive, .still:
+            detachPlayer()
+        case let .video(_, ready), let .live(_, ready):
+            guard let avPlayer = playback?.player?.avPlayer else {
+                detachPlayer()
+                return
+            }
+            let isVideo = if case .video = state { true } else { false }
+            let host = playerController ?? makePlayerController()
+            if host.player !== avPlayer {
+                host.player = avPlayer
+                observeReadiness(of: host, photoID: state.photoID)
+            }
+            host.showsPlaybackControls = isVideo
+            // A motion clip is display-only: taps fall through to the still's zoom view.
+            host.view.isUserInteractionEnabled = isVideo
+            host.view.alpha = ready ? 1 : 0
+            syncPlayerHost()
+        }
+    }
+
+    private func makePlayerController() -> AVPlayerViewController {
+        let host = AVPlayerViewController()
+        host.allowsPictureInPicturePlayback = false
+        host.updatesNowPlayingInfoCenter = false
+        host.view.backgroundColor = .clear
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(host)
+        host.didMove(toParent: self)
+        playerController = host
+        applyChromeInsets()
+        return host
+    }
+
+    /// Until the first frame is ready the page keeps showing its large thumbnail.
+    private func observeReadiness(of host: AVPlayerViewController, photoID: Int?) {
+        readyObservation?.invalidate()
+        guard let photoID else { return }
+        readyObservation = host.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] host, _ in
+            let ready = host.isReadyForDisplay
+            DispatchQueue.main.async {
+                guard ready else { return }
+                MainActor.assumeIsolated { self?.playback?.playerReadyForDisplay(photoID: photoID) }
+            }
+        }
+    }
+
+    /// Moves the player view into the cell showing the playing page, or out of every cell when
+    /// no page plays or that page is not on screen.
+    private func syncPlayerHost() {
+        guard let playerController else { return }
+        let target = playbackState.photoID.flatMap { id in
+            knownCells.allObjects.first { $0.representedID == id }
+        }
+        guard let target else {
+            playerController.view.removeFromSuperview()
+            return
+        }
+        target.host(playerView: playerController.view)
+    }
+
+    private func detachPlayer() {
+        readyObservation?.invalidate()
+        readyObservation = nil
+        guard let playerController else { return }
+        playerController.player = nil
+        playerController.willMove(toParent: nil)
+        playerController.view.removeFromSuperview()
+        playerController.removeFromParent()
+        self.playerController = nil
+    }
+
+    private func applyChromeInsets() {
+        playerController?.additionalSafeAreaInsets = chromeVisible
+            ? UIEdgeInsets(top: 52, left: 0, bottom: 140, right: 0)
+            : .zero
+    }
 }
 
 @MainActor
@@ -269,6 +391,23 @@ final class ZoomPageCell: UICollectionViewCell {
         zoomView.setImage(nil)
         zoomView.onSingleTap = nil
         zoomView.onZoomStateChanged = nil
+        hostedPlayerView?.removeFromSuperview()
+    }
+
+    private weak var hostedPlayerView: UIView?
+
+    /// Shows the loupe's player above this page's image, filling the cell.
+    func host(playerView: UIView) {
+        guard playerView.superview !== contentView else { return }
+        playerView.removeFromSuperview()
+        contentView.insertSubview(playerView, belowSubview: failureStack)
+        NSLayoutConstraint.activate([
+            playerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            playerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            playerView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            playerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+        hostedPlayerView = playerView
     }
 
     func configure(
@@ -279,6 +418,9 @@ final class ZoomPageCell: UICollectionViewCell {
     ) {
         loadTask?.cancel()
         retry = nil
+        if representedID != photo.id {
+            hostedPlayerView?.removeFromSuperview()
+        }
         representedID = photo.id
         decodedImageWasEvicted = false
         failureStack.isHidden = true

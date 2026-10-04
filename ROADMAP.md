@@ -483,19 +483,19 @@ Lens corrections compensate for optical imperfections in camera lenses:
 
 ## Phase 8: Advanced Features ⏳ **NOT STARTED**
 
-### 8.1 Video Support ⏳ **NOT STARTED**
-Video files are not currently discovered or processed by the image pipeline.
+### 8.1 Video Support 🔄 **PARTIALLY COMPLETED**
+`.mp4`, `.mov`, and `.m4v` files are discovered, probed, and given poster thumbnails; web and native iOS play originals over HTTP Range.
 
 - [ ] **Video transcoding**
   - Convert to web-friendly formats (H.264/VP9)
-  - Generate video thumbnails
+  - [x] Generate video thumbnails (poster frame)
   - Multiple quality options
-- [ ] **Video metadata**
-  - Duration, codec, resolution extraction
-  - Video preview generation (animated thumbnails)
-- [ ] **Video player**
-  - In-browser playback
-  - Timeline scrubbing
+- [x] **Video metadata**
+  - [x] Duration, codec, resolution extraction
+  - [ ] Video preview generation (animated thumbnails)
+- [x] **Video player** (web `<video>`, iOS AVKit)
+  - [x] In-browser playback with native scrubbing
+  - [x] Live Photo motion clips paired with their stills
   - Playback speed controls
 
 ### 8.2 Photo Editing ⏳ **NOT STARTED**

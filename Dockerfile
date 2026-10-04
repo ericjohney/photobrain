@@ -49,10 +49,11 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # =============================================================================
 FROM oven/bun:1.3.14-slim AS api
 
-# Install CA certificates (for HTTPS model downloads), exiftool and native module dependencies
+# Install CA certificates (for HTTPS model downloads), exiftool, ffmpeg/ffprobe (video posters) and native module dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libimage-exiftool-perl \
+    ffmpeg \
     libssl3 \
     libzstd1 \
     libheif1 \

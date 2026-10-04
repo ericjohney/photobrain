@@ -345,6 +345,9 @@ mod tests {
       raw_error: None,
       success: index != 7,
       error: (index == 7).then(|| "deliberate failure".into()),
+      media_type: "photo".into(),
+      duration_ms: napi::bindgen_prelude::Either::B(napi::bindgen_prelude::Null),
+      video_codec: napi::bindgen_prelude::Either::B(napi::bindgen_prelude::Null),
     }
   }
 
@@ -620,5 +623,91 @@ mod tests {
     assert_eq!(photo.result.path, "album/missing.jpg");
     assert_eq!(photo.result.name, "missing.jpg");
     assert!(stream.state.next_result().unwrap().is_none());
+  }
+
+  #[test]
+  fn discovered_mixed_stills_and_videos_stream_with_media_types_and_posters() {
+    let temp = tempfile::tempdir().unwrap();
+    let library = temp.path().join("library");
+    let thumbnails = temp.path().join("thumbnails");
+    std::fs::create_dir_all(library.join("trip")).unwrap();
+    let still = image::DynamicImage::ImageRgb8(image::RgbImage::from_fn(640, 480, |x, y| {
+      image::Rgb([x as u8, y as u8, 90])
+    }));
+    still.save(library.join("trip/photo.jpg")).unwrap();
+    still.save(library.join("graphic.PNG")).unwrap();
+    crate::video::tests::h264_clip(&library, "trip/clip.mp4", "640x360", 1.0);
+    crate::video::tests::ffmpeg(&[
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x240:rate=30:duration=1",
+      "-c:v",
+      "libx265",
+      "-x265-params",
+      "log-level=error",
+      "-tag:v",
+      "hvc1",
+      library.join("IMG_0001.MOV").to_str().unwrap(),
+    ]);
+    std::fs::write(library.join("notes.txt"), b"ignored").unwrap();
+
+    let discovered = crate::discovery::discover_photos(library.to_string_lossy().into_owned());
+    assert_eq!(discovered.total_count, 4);
+    let stream = start_photo_processing(
+      discovered.file_paths,
+      discovered.relative_paths.clone(),
+      thumbnails.to_string_lossy().into_owned(),
+      None,
+    )
+    .unwrap();
+    let mut results = Vec::new();
+    while let Some(photo) = stream.state.next_result().unwrap() {
+      assert_eq!(
+        photo.result.path,
+        discovered.relative_paths[photo.index as usize]
+      );
+      results.push(photo.result);
+    }
+    results.sort_by(|a, b| a.path.cmp(&b.path));
+    let summary: Vec<_> = results
+      .iter()
+      .map(|result| {
+        assert!(result.success, "{}: {:?}", result.path, result.error);
+        (
+          result.path.as_str(),
+          result.media_type.as_str(),
+          result.mime_type.as_deref().unwrap(),
+          result.width.zip(result.height).unwrap(),
+        )
+      })
+      .collect();
+    assert_eq!(
+      summary,
+      [
+        ("IMG_0001.MOV", "video", "video/quicktime", (320, 240)),
+        ("graphic.PNG", "photo", "image/png", (640, 480)),
+        ("trip/clip.mp4", "video", "video/mp4", (640, 360)),
+        ("trip/photo.jpg", "photo", "image/jpeg", (640, 480)),
+      ]
+    );
+    // Four poster WebPs per video at the shared no-upscale fit dimensions.
+    let sizes = crate::thumbnails::ThumbnailSizes::default();
+    for (stem, dimensions) in [("IMG_0001", (320, 240)), ("trip/clip", (640, 360))] {
+      for (size, max_dimension) in [
+        ("tiny", sizes.tiny.max_dimension),
+        ("small", sizes.small.max_dimension),
+        ("medium", sizes.medium.max_dimension),
+        ("large", sizes.large.max_dimension),
+      ] {
+        let path = thumbnails.join(size).join(format!("{stem}.webp"));
+        let thumbnail = image::open(&path).unwrap();
+        assert_eq!(
+          (thumbnail.width(), thumbnail.height()),
+          crate::thumbnails::thumbnail_dimensions(dimensions, max_dimension),
+          "{path:?}"
+        );
+      }
+    }
   }
 }

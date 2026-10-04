@@ -85,7 +85,9 @@ function failureReason(error: unknown): string {
 
 /**
  * A STORE ZIP of `members` in order, one entry per member named by
- * `exportFilename`. Originals are read whole and rendered sizes are rendered
+ * `exportFilename`. Videos are never rendered: every size exports a video's
+ * original file under its original name.
+ * Originals are read whole and rendered sizes are rendered
  * on the native executor, waiting for admission rather than failing. Members
  * whose source is missing or fails are skipped and listed in a final
  * `export-errors.txt`. The stream is pull-based: at most `ZIP_LOOKAHEAD`
@@ -115,11 +117,12 @@ export function collectionZipStream(
 	let finished = false;
 
 	async function load(member: CollectionMember): Promise<Loaded> {
-		const name = exportFilename(member.name, size);
+		const memberSize = member.mediaType === "video" ? "original" : size;
+		const name = exportFilename(member.name, memberSize);
 		const path = originalFilePath(member, photoDirectory);
 		try {
 			let data: Uint8Array;
-			if (size === "original") {
+			if (memberSize === "original") {
 				data = await Bun.file(path).bytes();
 			} else {
 				if (!(await Bun.file(path).exists()))
@@ -128,7 +131,7 @@ export function collectionZipStream(
 					abort.signal,
 					"renderExportJpeg",
 					path,
-					Number(size),
+					Number(memberSize),
 					EXPORT_JPEG_QUALITY,
 				);
 			}

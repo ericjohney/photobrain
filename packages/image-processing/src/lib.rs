@@ -14,10 +14,11 @@ mod preview;
 mod quality;
 mod stream;
 mod thumbnails;
+mod video;
 
 // Re-export public functions and types
 pub use batch::{
-  PhotoProcessingResult, get_supported_extensions, is_supported_image, process_photo,
+  PhotoProcessingResult, get_supported_extensions, is_supported_media, process_photo,
   process_photos_batch,
 };
 pub use clip::{batch_generate_clip_embeddings, clip_text_embedding};

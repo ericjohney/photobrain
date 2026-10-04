@@ -68,7 +68,7 @@
 						"required": false,
 						"schema": {
 							"type": "string",
-							"enum": ["all", "raw", "standard"],
+							"enum": ["all", "raw", "standard", "video"],
 							"default": "all"
 						}
 					},
@@ -270,7 +270,7 @@
 						"required": false,
 						"schema": {
 							"type": "string",
-							"enum": ["all", "raw", "standard"],
+							"enum": ["all", "raw", "standard", "video"],
 							"default": "all"
 						}
 					},
@@ -472,7 +472,7 @@
 						"required": false,
 						"schema": {
 							"type": "string",
-							"enum": ["all", "raw", "standard"],
+							"enum": ["all", "raw", "standard", "video"],
 							"default": "all"
 						}
 					},
@@ -2098,6 +2098,9 @@
 					"width",
 					"height",
 					"mimeType",
+					"mediaType",
+					"durationMs",
+					"videoCodec",
 					"isRaw",
 					"rawFormat",
 					"rawStatus",
@@ -2110,6 +2113,7 @@
 					"flag",
 					"pairedPhotoId",
 					"pairedFormat",
+					"motionVideoId",
 					"exif"
 				],
 				"properties": {
@@ -2143,6 +2147,20 @@
 					},
 					"mimeType": {
 						"type": ["string", "null"]
+					},
+					"mediaType": {
+						"type": "string",
+						"enum": ["photo", "video"],
+						"description": "Still or video. Videos have a poster-frame thumbnail; GET /api/photos/{id}/file streams the original with HTTP Range support."
+					},
+					"durationMs": {
+						"type": ["integer", "null"],
+						"minimum": 0,
+						"description": "Video duration in milliseconds; null for stills or when unknown."
+					},
+					"videoCodec": {
+						"type": ["string", "null"],
+						"description": "ffprobe codec name of a video's first video stream (e.g. h264, hevc); null for stills."
 					},
 					"isRaw": {
 						"type": ["boolean", "null"]
@@ -2194,6 +2212,11 @@
 					"pairedFormat": {
 						"type": ["string", "null"],
 						"description": "The pair partner's format: its rawFormat when the partner is RAW, otherwise its upper-cased file extension (e.g. JPG, HEIC); null when unpaired."
+					},
+					"motionVideoId": {
+						"type": ["integer", "null"],
+						"minimum": 1,
+						"description": "ID of this still's Live Photo motion clip (a video of at most 4000 ms sharing the folder and file stem), or null. Motion clips are hidden from lists but remain fetchable by ID."
 					},
 					"exif": {
 						"oneOf": [
@@ -2463,7 +2486,7 @@
 					},
 					"filterRaw": {
 						"type": "string",
-						"enum": ["all", "raw", "standard"],
+						"enum": ["all", "raw", "standard", "video"],
 						"default": "all"
 					},
 					"folder": {
@@ -2997,7 +3020,7 @@
 				"properties": {
 					"filterRaw": {
 						"type": "string",
-						"enum": ["raw", "standard"]
+						"enum": ["raw", "standard", "video"]
 					},
 					"folder": {
 						"type": "string",
@@ -3050,7 +3073,7 @@
 				"properties": {
 					"filterRaw": {
 						"type": "string",
-						"enum": ["all", "raw", "standard"]
+						"enum": ["all", "raw", "standard", "video"]
 					},
 					"folder": {
 						"type": "string",
@@ -3345,6 +3368,9 @@
 					"width",
 					"height",
 					"mimeType",
+					"mediaType",
+					"durationMs",
+					"videoCodec",
 					"isRaw",
 					"rawFormat",
 					"rawStatus",
@@ -3355,6 +3381,9 @@
 					"phashStatus",
 					"rating",
 					"flag",
+					"pairedPhotoId",
+					"pairedFormat",
+					"motionVideoId",
 					"exif",
 					"junkReasons"
 				],
@@ -3388,6 +3417,18 @@
 						"type": ["integer", "null"]
 					},
 					"mimeType": {
+						"type": ["string", "null"]
+					},
+					"mediaType": {
+						"type": "string",
+						"enum": ["photo", "video"],
+						"description": "Always photo: videos are never junk candidates."
+					},
+					"durationMs": {
+						"type": ["integer", "null"],
+						"minimum": 0
+					},
+					"videoCodec": {
 						"type": ["string", "null"]
 					},
 					"isRaw": {
@@ -3431,6 +3472,17 @@
 					"flag": {
 						"type": ["string", "null"],
 						"enum": ["pick", "reject", null]
+					},
+					"pairedPhotoId": {
+						"type": ["integer", "null"],
+						"minimum": 1
+					},
+					"pairedFormat": {
+						"type": ["string", "null"]
+					},
+					"motionVideoId": {
+						"type": ["integer", "null"],
+						"minimum": 1
 					},
 					"exif": {
 						"oneOf": [

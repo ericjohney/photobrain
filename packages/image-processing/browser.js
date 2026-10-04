@@ -19,7 +19,7 @@ module.exports.generateThumbnailsFromFile = notAvailable(
 );
 module.exports.getSupportedExtensions = notAvailable("getSupportedExtensions");
 module.exports.groupNearDuplicates = notAvailable("groupNearDuplicates");
-module.exports.isSupportedImage = notAvailable("isSupportedImage");
+module.exports.isSupportedMedia = notAvailable("isSupportedMedia");
 module.exports.perceptualHash = notAvailable("perceptualHash");
 module.exports.processPhoto = notAvailable("processPhoto");
 module.exports.processPhotosBatch = notAvailable("processPhotosBatch");

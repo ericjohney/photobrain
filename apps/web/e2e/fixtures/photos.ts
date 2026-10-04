@@ -16,6 +16,13 @@ export type FixturePhoto = {
 	pairedPhotoId: number | null;
 	/** Partner's RAW format, or its upper-cased extension when it is standard. */
 	pairedFormat: string | null;
+	mediaType: "photo" | "video";
+	/** Video duration; null for stills (and videos ffprobe could not time). */
+	durationMs: number | null;
+	/** ffprobe codec name of a video's first stream, e.g. `h264`, `hevc`. */
+	videoCodec: string | null;
+	/** A still's Live Photo motion clip (a hidden video), like the API. */
+	motionVideoId: number | null;
 	thumbnailStatus: string;
 	embeddingStatus: string;
 	phashStatus: string;
@@ -62,6 +69,10 @@ function makePhoto(
 		rawError: null,
 		pairedPhotoId: null,
 		pairedFormat: null,
+		mediaType: "photo",
+		durationMs: null,
+		videoCodec: null,
+		motionVideoId: null,
 		thumbnailStatus: "completed",
 		embeddingStatus: "completed",
 		phashStatus: "completed",
@@ -217,6 +228,59 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 			dateTaken: "2025:06:15 18:30:00",
 		},
 	}),
+];
+
+/** `makePhoto(id)`'s EXIF with another capture date. */
+function exifTakenAt(id: number, dateTaken: string): FixturePhoto["exif"] {
+	const exif = makePhoto(id).exif;
+	return exif && { ...exif, dateTaken };
+}
+
+/** A video fixture in `photos/clips`, captured on day `day` of January 2026. */
+function makeVideo(
+	id: number,
+	name: string,
+	day: number,
+	overrides: Partial<FixturePhoto> = {},
+): FixturePhoto {
+	return makePhoto(id, {
+		name,
+		path: `photos/clips/${name}`,
+		width: 1920,
+		height: 1080,
+		mimeType: name.endsWith(".mov") ? "video/quicktime" : "video/mp4",
+		mediaType: "video",
+		videoCodec: "h264",
+		exif: exifTakenAt(id, `2026:01:${String(day).padStart(2, "0")} 10:00:00`),
+		...overrides,
+	});
+}
+
+/**
+ * A separate video library (not part of FIXTURE_PHOTOS, so existing specs keep
+ * their counts): `formatDuration` boundaries 0, 59.9 s, 60 s, 1 h, 65 s and
+ * null, plus a Live Photo — the still `live.heic` (36) whose 2.5 s motion clip
+ * `live.mov` (37) is hidden from listings like the API does.
+ */
+export const FIXTURE_VIDEOS: FixturePhoto[] = [
+	makeVideo(30, "zero.mp4", 1, { durationMs: 0 }),
+	makeVideo(31, "almost-minute.mp4", 2, { durationMs: 59_900 }),
+	makeVideo(32, "minute.mp4", 3, { durationMs: 60_000 }),
+	makeVideo(33, "hour.mov", 4, {
+		durationMs: 3_600_000,
+		videoCodec: "hevc",
+		thumbnailUpdatedAt: new Date("2026-01-05T00:00:00.000Z"),
+	}),
+	makeVideo(34, "clip.mp4", 5, { durationMs: 65_000 }),
+	makeVideo(35, "unknown.mp4", 6, { durationMs: null, videoCodec: null }),
+	makePhoto(36, {
+		name: "live.heic",
+		path: "photos/clips/live.heic",
+		mimeType: "image/heic",
+		motionVideoId: 37,
+		exif: exifTakenAt(36, "2026:01:07 10:00:00"),
+	}),
+	makeVideo(37, "live.mov", 7, { durationMs: 2_500, videoCodec: "hevc" }),
 ];
 
 /** Folder counts are per file (not stacked), like the API's folder tree. */
@@ -469,7 +533,7 @@ export type FixturePhotoBounds = {
 
 export type FixturePhotoFilters = {
 	folder?: string;
-	filterRaw?: "all" | "raw" | "standard";
+	filterRaw?: "all" | "raw" | "standard" | "video";
 	camera?: string;
 	lens?: string;
 	iso?: number;
@@ -563,21 +627,29 @@ function cameraLabel(exif: NonNullable<FixturePhoto["exif"]>) {
  * Mirrors the API's shared library/search filter semantics (folder = direct
  * children only), including RAW+standard stacking: a RAW is omitted when its
  * pair partner also matches, so `all` shows a pair as its standard file while
- * `raw` (or a collection holding only the RAW) shows the RAW.
+ * `raw` (or a collection holding only the RAW) shows the RAW. Live Photo
+ * motion clips (a still's `motionVideoId`) are never listed. `raw` and
+ * `standard` are stills only; `video` is videos only.
  */
 export function filterFixturePhotos(
 	photos: FixturePhoto[],
 	filters: FixturePhotoFilters = {},
 ): FixturePhoto[] {
+	const motionClipIds = new Set(
+		photos.flatMap((p) => (p.motionVideoId === null ? [] : [p.motionVideoId])),
+	);
 	const matching = photos.filter((p) => {
+		if (motionClipIds.has(p.id)) return false;
 		if (
 			filters.folder !== undefined &&
 			p.path.slice(0, p.path.lastIndexOf("/")) !== filters.folder
 		) {
 			return false;
 		}
+		const isVideo = p.mediaType === "video";
 		if (filters.filterRaw === "raw" && !p.isRaw) return false;
-		if (filters.filterRaw === "standard" && p.isRaw) return false;
+		if (filters.filterRaw === "standard" && (p.isRaw || isVideo)) return false;
+		if (filters.filterRaw === "video" && !isVideo) return false;
 		const exif = p.exif;
 		if (filters.camera !== undefined) {
 			if (!exif || cameraLabel(exif) !== filters.camera) return false;

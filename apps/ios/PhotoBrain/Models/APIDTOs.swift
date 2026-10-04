@@ -205,6 +205,12 @@ enum PhotoFlag: String, Codable, CaseIterable, Hashable, Sendable {
     case reject
 }
 
+/// `photos.mediaType`. Servers that predate video support omit it; it then decodes as `.photo`.
+enum PhotoMediaType: String, Codable, Hashable, Sendable {
+    case photo
+    case video
+}
+
 /// Flag filter accepted by `GET /photos` and `POST /search`.
 enum PhotoFlagFilter: String, CaseIterable, Identifiable, Hashable, Sendable {
     case pick
@@ -251,6 +257,14 @@ struct PhotoDTO: Codable, Hashable, Identifiable, Sendable {
     let pairedFormat: String?
     /// Junk-review reasons (only populated by `GET /review/junk`); unknown values are dropped.
     var junkReasons: [JunkReason] = []
+    /// Missing (older servers) or unknown values decode as `.photo`.
+    var mediaType: PhotoMediaType = .photo
+    /// Video length; nil for stills and videos whose duration could not be probed.
+    var durationMs: Int?
+    /// ffprobe codec name of the first video stream, e.g. `hevc`; nil for stills.
+    var videoCodec: String?
+    /// Live Photo motion clip of this still (a short same-stem video, hidden from listings).
+    var motionVideoId: Int?
 }
 
 extension PhotoDTO {
@@ -280,6 +294,11 @@ extension PhotoDTO {
         pairedFormat = try container.decodeIfPresent(String.self, forKey: .pairedFormat)
         junkReasons = (try container.decodeIfPresent([String].self, forKey: .junkReasons) ?? [])
             .compactMap(JunkReason.init(rawValue:))
+        mediaType = try container.decodeIfPresent(String.self, forKey: .mediaType)
+            .flatMap(PhotoMediaType.init(rawValue:)) ?? .photo
+        durationMs = try container.decodeIfPresent(Int.self, forKey: .durationMs)
+        videoCodec = try container.decodeIfPresent(String.self, forKey: .videoCodec)
+        motionVideoId = try container.decodeIfPresent(Int.self, forKey: .motionVideoId)
     }
 }
 
@@ -873,7 +892,7 @@ enum CollectionNameError: Error, Equatable, LocalizedError, Sendable {
 /// means no media filter, unknown flag values are dropped, and `dateMonth` is normalized to
 /// `YYYY-MM` (the `/api/v1` representation used by filter options). Encoding omits nil keys.
 struct SmartAlbumFilters: Codable, Hashable, Sendable {
-    /// `.raw` or `.standard`; `nil` means every media kind.
+    /// `.raw`, `.standard`, or `.video`; `nil` means every media kind.
     var filterRaw: LibraryFilters.MediaKind?
     var folder: String?
     var camera: String?

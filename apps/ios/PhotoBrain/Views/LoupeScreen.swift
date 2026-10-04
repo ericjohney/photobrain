@@ -17,6 +17,8 @@ struct LoupeScreen: View {
     @State private var similarSource: PhotoRecord?
     @State private var collectionSheetPhotoID: CollectionSheetTarget?
     @StateObject private var exports: ExportStore
+    /// The open page's video or Live Photo player; released on page change and dismissal.
+    @StateObject private var playback = LoupePlaybackController()
     @Environment(\.showInLibrary) private var showInLibrary
 
     init(
@@ -62,6 +64,8 @@ struct LoupeScreen: View {
             PagedLoupe(
                 records: records,
                 activeID: $activeID,
+                playback: playback,
+                chromeVisible: chromeVisible,
                 onTap: {
                     if reduceMotion {
                         chromeVisible.toggle()
@@ -89,6 +93,9 @@ struct LoupeScreen: View {
                     } else if let message = curation.errorMessage {
                         curationError(message)
                     }
+                    if activeRecord?.motionVideoURL != nil {
+                        liveButton
+                    }
                     Spacer()
                     if let activeRecord {
                         if let review {
@@ -103,6 +110,9 @@ struct LoupeScreen: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear { playback.show(activeRecord) }
+        .onChange(of: activeID) { _, _ in playback.show(activeRecord) }
+        .onDisappear { playback.release() }
         .statusBarHidden(!chromeVisible)
         .exportPresentation(exports)
         .sheet(isPresented: $showingInfo) {
@@ -184,15 +194,14 @@ struct LoupeScreen: View {
 
     private var shareMenu: some View {
         Menu {
-            Button {
-                activeRecord.map { exports.start(.photo(id: $0.id, size: .jpeg2048)) }
-            } label: {
-                Label("Share Photo", systemImage: "photo")
-            }
-            Button {
-                activeRecord.map { exports.start(.photo(id: $0.id, size: .original)) }
-            } label: {
-                Label("Share Original", systemImage: "doc")
+            if let activeRecord {
+                ForEach(PhotoShareOption.options(for: activeRecord)) { option in
+                    Button {
+                        exports.start(.photo(id: activeRecord.id, size: option.size))
+                    } label: {
+                        Label(option.title, systemImage: option.systemImage)
+                    }
+                }
             }
         } label: {
             Image(systemName: "square.and.arrow.up")
@@ -372,6 +381,30 @@ struct LoupeScreen: View {
         }
     }
 
+    /// Plays the still's motion clip once, muted, over the still; disabled while it plays.
+    private var liveButton: some View {
+        let playing = playback.isPlayingLive
+        return HStack {
+            Button {
+                playback.playLive()
+            } label: {
+                Label("LIVE", systemImage: "livephoto")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(Color.black.opacity(playing ? 0.72 : 0.5)))
+                    .foregroundStyle(playing ? Color.yellow : Color.white)
+            }
+            .buttonStyle(.plain)
+            .disabled(playing)
+            .accessibilityLabel("Play Live Photo")
+            .accessibilityValue(playing ? "Playing" : "")
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+    }
+
     @ViewBuilder
     private var chromeBackground: some View {
         if reduceTransparency {
@@ -441,6 +474,10 @@ private struct PhotoMetadataView: View {
                         row("Dimensions", "\(photo.pixelWidth) × \(photo.pixelHeight)")
                     }
                     row("Type", photo.mimeType)
+                    if photo.isVideo {
+                        row("Duration", VideoDuration.text(milliseconds: photo.durationMs))
+                        row("Codec", photo.videoCodec?.uppercased())
+                    }
                     row("Created", formatted(photo.createdDate))
                     row("Modified", formatted(photo.modifiedDate))
                     row("Thumbnail", photo.thumbnailStatus)
@@ -502,7 +539,7 @@ private struct PhotoMetadataView: View {
                 await place.load()
             }
             .task { await pair.load() }
-            .navigationTitle("Photo Info")
+            .navigationTitle(photo.isVideo ? "Video Info" : "Photo Info")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

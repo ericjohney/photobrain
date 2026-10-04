@@ -4,6 +4,7 @@ import {
 	THUMBNAIL_CONFIG,
 	type ThumbnailSize,
 } from "@photobrain/utils";
+import type { BunFile } from "bun";
 import { like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { config } from "../config";
@@ -11,6 +12,7 @@ import { db } from "../db";
 import { photos, scanJobs } from "../db/schema";
 import { inngest } from "../inngest/client";
 import { failJob, updateJobProgress } from "../inngest/progress";
+import { parseByteRange } from "../services/byte-range";
 import { nativeExecutor } from "../services/native-executor";
 import { originalFilePath } from "../services/photo-files";
 import { createScanPlan } from "../services/scan-planner";
@@ -25,7 +27,44 @@ import {
 
 const router = new Hono();
 
-// Serve actual image file by ID
+/**
+ * `file` as a 200, or as the single byte range `rangeHeader` selects: 206 with
+ * `Content-Range`, or 416 with `Content-Range: bytes *\/size`. Every response
+ * advertises `Accept-Ranges: bytes` so players can seek. Hono answers HEAD
+ * through this GET handler without a body.
+ */
+function fileResponse(
+	file: BunFile,
+	rangeHeader: string | undefined,
+	headers: Record<string, string>,
+): Response {
+	const size = file.size;
+	const range = parseByteRange(rangeHeader, size);
+	const common = { ...headers, "Accept-Ranges": "bytes" };
+	if (range.kind === "unsatisfiable") {
+		return new Response(null, {
+			status: 416,
+			headers: { ...common, "Content-Range": `bytes */${size}` },
+		});
+	}
+	if (range.kind === "partial") {
+		return new Response(file.slice(range.start, range.end + 1), {
+			status: 206,
+			headers: {
+				...common,
+				"Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+				"Content-Length": String(range.end - range.start + 1),
+			},
+		});
+	}
+	return new Response(file, {
+		status: 200,
+		headers: { ...common, "Content-Length": String(size) },
+	});
+}
+
+// Serve the original file (videos and standard stills) or a RAW's large WebP
+// by ID, with single-range support for video seeking.
 // This remains a REST endpoint as tRPC is not ideal for file streaming
 router.get("/:id/file", async (c) => {
 	const id = Number.parseInt(c.req.param("id"), 10);
@@ -71,38 +110,21 @@ router.get("/:id/file", async (c) => {
 				return c.json({ error: "Converted image not found" }, 404);
 			}
 
-			return new Response(thumbnailFile.stream(), {
-				status: 200,
-				headers: {
-					"Content-Type": "image/webp",
-					"Cache-Control": "public, max-age=3600",
-					"Content-Length": thumbnailFile.size.toString(),
-					"X-Original-Format": photo.rawFormat || "RAW",
-				},
+			return fileResponse(thumbnailFile, c.req.header("Range"), {
+				"Content-Type": "image/webp",
+				"Cache-Control": "public, max-age=3600",
+				"X-Original-Format": photo.rawFormat || "RAW",
 			});
 		}
 
-		// Standard image: serve the original file
-		const absolutePath = originalFilePath(photo, config.PHOTO_DIRECTORY);
-
-		// Read the file using Bun.file
-		const file = Bun.file(absolutePath);
-
-		// Check if file exists
+		// Standard image or video: serve the original file
+		const file = Bun.file(originalFilePath(photo, config.PHOTO_DIRECTORY));
 		if (!(await file.exists())) {
 			return c.json({ error: "Image file not found" }, 404);
 		}
-
-		// Stream the file
-		const stream = file.stream();
-
-		return new Response(stream, {
-			status: 200,
-			headers: {
-				"Content-Type": photo.mimeType || "application/octet-stream",
-				"Cache-Control": "public, max-age=3600",
-				"Content-Length": file.size.toString(),
-			},
+		return fileResponse(file, c.req.header("Range"), {
+			"Content-Type": photo.mimeType || "application/octet-stream",
+			"Cache-Control": "public, max-age=3600",
 		});
 	} catch (error) {
 		console.error("Error serving image:", error);

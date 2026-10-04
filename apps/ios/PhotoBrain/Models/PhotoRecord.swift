@@ -30,19 +30,39 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
     let pairedFormat: String?
     /// Why the photo is in the junk review; empty outside it.
     var junkReasons: [JunkReason] = []
+    let mediaType: PhotoMediaType
+    /// Video length; nil for stills and unprobed videos.
+    let durationMs: Int?
+    /// ffprobe codec name, e.g. `hevc`; nil for stills.
+    let videoCodec: String?
+    /// Live Photo motion clip id of a still; nil otherwise.
+    let motionVideoId: Int?
+    /// `GET /api/photos/{id}/file`: the original (or a converted RAW's large preview), Range-capable.
+    let fileURL: URL
+    /// The motion clip's file route; nil when the still has no motion clip.
+    let motionVideoURL: URL?
 
     var isConvertedRAW: Bool {
         isRaw && rawStatus == "converted"
     }
+
+    var isVideo: Bool { mediaType == .video }
 
     /// Grid badge, e.g. `ARW`, `RAW`, or `ARW+JPG`; nil for an unpaired standard photo.
     var formatBadge: String? {
         Self.formatBadge(filename: filename, isRaw: isRaw, rawFormat: rawFormat, pairedPhotoID: pairedPhotoId, pairedFormat: pairedFormat)
     }
 
-    /// VoiceOver name for grid cells, e.g. "DSC_0001.JPG, ARW plus JPG pair" or "DSC_0002.ARW, RAW photo".
+    /// Grid duration (videos) or LIVE (stills with a motion clip) badge; nil otherwise.
+    var mediaBadge: MediaBadge? {
+        MediaBadge(mediaType: mediaType, durationMs: durationMs, motionVideoID: motionVideoId)
+    }
+
+    /// VoiceOver name for grid cells, e.g. "DSC_0001.JPG, ARW plus JPG pair", "DSC_0002.ARW, RAW
+    /// photo", or "IMG_0003.MOV, Video, 1 minute 5 seconds".
     var accessibilityName: String {
-        Self.accessibilityName(filename: filename, isRaw: isRaw, pairedPhotoID: pairedPhotoId, badge: formatBadge)
+        let name = Self.accessibilityName(filename: filename, isRaw: isRaw, pairedPhotoID: pairedPhotoId, badge: formatBadge)
+        return mediaBadge.map { "\(name), \($0.accessibilityText)" } ?? name
     }
 
     /// Paired: `rawPart+stdPart`, where the RAW side is the RAW file's format (falling back to
@@ -113,6 +133,12 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
         self.lensModel = lensModel
         pairedPhotoId = nil
         pairedFormat = nil
+        mediaType = .photo
+        durationMs = nil
+        videoCodec = nil
+        motionVideoId = nil
+        fileURL = thumbnailURL
+        motionVideoURL = nil
     }
 
     init(dto: PhotoDTO, apiBaseURL: URL) {
@@ -154,6 +180,12 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
         pairedFormat = dto.pairedFormat
         cameraModel = dto.exif?.cameraDescription
         lensModel = dto.exif?.lensDescription
+        mediaType = dto.mediaType
+        durationMs = dto.durationMs
+        videoCodec = dto.videoCodec
+        motionVideoId = dto.motionVideoId
+        fileURL = Self.fileURL(baseURL: apiBaseURL, id: dto.id)
+        motionVideoURL = dto.motionVideoId.map { Self.fileURL(baseURL: apiBaseURL, id: $0) }
     }
 
     // Retained as denormalized display values for the privacy-safe feasibility fixture.
@@ -178,6 +210,15 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
             ])
         }
         return url
+    }
+
+    /// `GET /api/photos/{id}/file`, a binary route outside `/api/v1`.
+    static func fileURL(baseURL: URL, id: Int) -> URL {
+        baseURL
+            .appendingPathComponent("api")
+            .appendingPathComponent("photos")
+            .appendingPathComponent(String(id))
+            .appendingPathComponent("file")
     }
 }
 

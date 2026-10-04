@@ -91,7 +91,7 @@ type FixtureCollection = {
 };
 
 type FixtureSmartAlbumFilters = Omit<FixturePhotoFilters, "filterRaw"> & {
-	filterRaw?: "raw" | "standard";
+	filterRaw?: "raw" | "standard" | "video";
 };
 
 type FixtureSmartAlbum = {
@@ -104,12 +104,14 @@ type FixtureSmartAlbum = {
 };
 
 /**
- * Builds handlers over a private copy of the fixture library and an empty
- * collection store, so writes (`setPhotoCuration`, collection mutations) are
- * visible to later reads on the same page.
+ * Builds handlers over a private copy of the fixture library (FIXTURE_PHOTOS
+ * unless given) and an empty collection store, so writes (`setPhotoCuration`,
+ * collection mutations) are visible to later reads on the same page.
  */
-function createDefaultHandlers(): Record<string, Handler> {
-	const library = FIXTURE_PHOTOS.map((photo) => ({ ...photo }));
+function createDefaultHandlers(
+	photos: readonly FixturePhoto[],
+): Record<string, Handler> {
+	const library = photos.map((photo) => ({ ...photo }));
 	const collections = new Map<number, FixtureCollection>();
 	let nextCollectionId = 1;
 	// Photos kept from junk review (the API's photos.junk_dismissed).
@@ -767,8 +769,9 @@ export type TrpcCallLog = Record<string, unknown[]>;
 export async function installTrpcHandlers(
 	page: Page,
 	overrides: HandlerOverrides = {},
+	photos: readonly FixturePhoto[] = FIXTURE_PHOTOS,
 ): Promise<TrpcCallLog> {
-	const defaults = createDefaultHandlers();
+	const defaults = createDefaultHandlers(photos);
 	const handlers = { ...defaults, ...overrides };
 	const calls: TrpcCallLog = {};
 

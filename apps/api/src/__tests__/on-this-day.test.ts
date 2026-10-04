@@ -845,7 +845,8 @@ if (process.env.PHOTOBRAIN_ON_THIS_DAY_TEST_CHILD !== "1") {
 				writeFileSync(journalPath, JSON.stringify(journal));
 				migrate(legacyDb, { migrationsFolder: partial });
 
-				expect(snapshot()).toEqual(before);
+				// Later migrations may add columns; every existing value is kept.
+				expect(snapshot()).toMatchObject(before);
 				expect(indexes()).toEqual(
 					expect.arrayContaining([
 						"idx_exif_captured_date",

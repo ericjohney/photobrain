@@ -342,6 +342,7 @@ describe("export routes", () => {
 		path?: string;
 		contents?: string | null;
 		mimeType?: string | null;
+		mediaType?: "photo" | "video";
 		sourceRoot?: string;
 		modifiedAt?: Date;
 		dateTaken?: string;
@@ -363,6 +364,7 @@ describe("export routes", () => {
 				modifiedAt: fields.modifiedAt ?? new Date(Date.UTC(2024, 5, 1)),
 				mimeType:
 					fields.mimeType === undefined ? "image/jpeg" : fields.mimeType,
+				mediaType: fields.mediaType ?? "photo",
 				sourceRoot: fields.sourceRoot ?? null,
 			})
 			.returning()
@@ -396,6 +398,31 @@ describe("export routes", () => {
 	}
 
 	describe("single photo", () => {
+		test.each([
+			"2048",
+			"1024",
+			"original",
+		])("a video at size %p streams its original bytes under its original name without rendering", async (size) => {
+			const fake = fakeRenderer();
+			const id = addPhoto({
+				name: "Clip.MOV",
+				contents: "quicktime bytes",
+				mimeType: "video/quicktime",
+				mediaType: "video",
+			});
+			const response = await app(fake.renderer).request(
+				`/api/photos/${id}/export?size=${size}`,
+			);
+			expect(response.status).toBe(200);
+			expect(Object.fromEntries(response.headers)).toMatchObject({
+				"content-type": "video/quicktime",
+				"content-length": "15",
+				"content-disposition": `attachment; filename="Clip.MOV"; filename*=UTF-8''Clip.MOV`,
+			});
+			expect(await response.text()).toBe("quicktime bytes");
+			expect(fake.calls).toEqual([]);
+		});
+
 		test("original streams the exact bytes with its MIME type and RFC 6266 filename", async () => {
 			const id = addPhoto({
 				name: 'Été "best".heic',
@@ -574,6 +601,33 @@ describe("export routes", () => {
 			);
 		});
 
+		test("rendered ZIPs keep videos as originals under their original names", async () => {
+			const fake = fakeRenderer();
+			const still = addPhoto({
+				name: "beach.jpg",
+				dateTaken: "2024:01:01 00:00:01",
+			});
+			const video = addPhoto({
+				name: "beach.mp4",
+				contents: "mp4 bytes",
+				mimeType: "video/mp4",
+				mediaType: "video",
+				dateTaken: "2024:01:01 00:00:02",
+			});
+			const id = collect("Mixed", [still, video]);
+			const archive = await zipOf(
+				await app(fake.renderer).request(
+					`/api/collections/${id}/export?size=2048`,
+				),
+			);
+			expectValidZip(archive);
+			expect(entryNames(archive)).toEqual(["beach_2048.jpg", "beach.mp4"]);
+			expect(entryText(archive, "beach.mp4")).toBe("mp4 bytes");
+			expect(fake.calls.map((call) => basename(call.path))).toEqual([
+				"beach.jpg",
+			]);
+		});
+
 		test("rendered sizes use per-photo JPEG names, disambiguated case-insensitively", async () => {
 			const ids = [
 				addPhoto({
@@ -705,6 +759,7 @@ describe("collection ZIP stream", () => {
 				path,
 				sourceRoot: null,
 				mimeType: "image/jpeg",
+				mediaType: "photo",
 				modifiedAt: new Date(Date.UTC(2024, 0, 1)),
 			};
 		});

@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use std::path::Path;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::batch::is_supported_image;
+use crate::batch::is_supported_media;
 
 /// Result of directory discovery
 #[napi(object)]
@@ -40,7 +40,7 @@ pub fn discover_photos(directory: String) -> DiscoveryResult {
 			let path = entry.path();
 			let path_str = path.to_string_lossy().to_string();
 
-			if is_supported_image(path_str.clone()) {
+			if is_supported_media(path_str.clone()) {
 				let relative = path
 					.strip_prefix(base_path)
 					.map(|p: &Path| p.to_string_lossy().to_string())

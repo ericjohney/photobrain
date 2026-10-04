@@ -26,6 +26,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { CurationPatch } from "@/hooks/use-photo-curation";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
+import { formatDuration } from "@/lib/media";
 import { rawBadge } from "@/lib/raw-badge";
 import { trpc } from "@/lib/trpc";
 import type {
@@ -323,6 +324,18 @@ export function MetadataPanel({
 								label="Dimensions"
 								value={`${photo.width} x ${photo.height}`}
 							/>
+						)}
+						{photo.mediaType === "video" && (
+							<>
+								<MetadataRow
+									label="Duration"
+									value={formatDuration(photo.durationMs)}
+								/>
+								<MetadataRow
+									label="Codec"
+									value={photo.videoCodec?.toUpperCase()}
+								/>
+							</>
 						)}
 						<MetadataRow label="Type" value={photo.mimeType} />
 						<MetadataRow

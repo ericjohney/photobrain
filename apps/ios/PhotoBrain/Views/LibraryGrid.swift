@@ -393,6 +393,11 @@ private final class PhotoGridCell: UICollectionViewCell {
     private let checkmark = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
     private let rawBadge = UILabel()
     private let curationBadge = UIStackView()
+    /// Duration (video) or LIVE badge, stacked under the curation badge at the bottom right.
+    private let mediaBadge = UIStackView()
+    private let mediaBadgeIcon = UIImageView()
+    private let mediaBadgeLabel = UILabel()
+    private let trailingBadges = UIStackView()
     private let ratingLabel = UILabel()
     private let flagView = UIImageView()
     private var loadTask: Task<Void, Never>?
@@ -434,10 +439,36 @@ private final class PhotoGridCell: UICollectionViewCell {
         curationBadge.translatesAutoresizingMaskIntoConstraints = false
         curationBadge.addArrangedSubview(ratingLabel)
         curationBadge.addArrangedSubview(flagView)
+        mediaBadgeLabel.font = .monospacedDigitSystemFont(
+            ofSize: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
+            weight: .semibold
+        )
+        mediaBadgeLabel.adjustsFontForContentSizeCategory = true
+        mediaBadgeLabel.textColor = .white
+        mediaBadgeIcon.tintColor = .white
+        mediaBadgeIcon.contentMode = .scaleAspectFit
+        mediaBadgeIcon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .caption2)
+        mediaBadge.axis = .horizontal
+        mediaBadge.spacing = 2
+        mediaBadge.alignment = .center
+        mediaBadge.isLayoutMarginsRelativeArrangement = true
+        mediaBadge.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4)
+        mediaBadge.backgroundColor = UIColor.black.withAlphaComponent(0.72)
+        mediaBadge.layer.cornerRadius = 4
+        mediaBadge.clipsToBounds = true
+        mediaBadge.addArrangedSubview(mediaBadgeIcon)
+        mediaBadge.addArrangedSubview(mediaBadgeLabel)
+        mediaBadge.isHidden = true
+        trailingBadges.axis = .vertical
+        trailingBadges.alignment = .trailing
+        trailingBadges.spacing = 2
+        trailingBadges.translatesAutoresizingMaskIntoConstraints = false
+        trailingBadges.addArrangedSubview(curationBadge)
+        trailingBadges.addArrangedSubview(mediaBadge)
         contentView.addSubview(imageView)
         contentView.addSubview(checkmark)
         contentView.addSubview(rawBadge)
-        contentView.addSubview(curationBadge)
+        contentView.addSubview(trailingBadges)
         NSLayoutConstraint.activate([
             imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
@@ -451,9 +482,9 @@ private final class PhotoGridCell: UICollectionViewCell {
             rawBadge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -5),
             rawBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 34),
             rawBadge.heightAnchor.constraint(greaterThanOrEqualToConstant: 20),
-            curationBadge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
-            curationBadge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            curationBadge.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 4),
+            trailingBadges.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            trailingBadges.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            trailingBadges.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 4),
         ])
         isAccessibilityElement = true
     }
@@ -473,6 +504,7 @@ private final class PhotoGridCell: UICollectionViewCell {
         checkmark.isHidden = true
         rawBadge.isHidden = true
         curationBadge.isHidden = true
+        mediaBadge.isHidden = true
     }
 
     func configure(photo: PhotoRecord, selected: Bool, loader: RedirectAwareImageLoader) {
@@ -484,6 +516,7 @@ private final class PhotoGridCell: UICollectionViewCell {
         rawBadge.text = badge
         rawBadge.isHidden = badge == nil
         configureCurationBadge(rating: photo.rating, flag: photo.flag)
+        configureMediaBadge(photo.mediaBadge)
         let base = photo.accessibilityName
         accessibilityLabel = base + CurationBadgeText.accessibilitySuffix(rating: photo.rating, flag: photo.flag)
         accessibilityTraits = selected ? [.button, .selected] : [.button]
@@ -505,6 +538,16 @@ private final class PhotoGridCell: UICollectionViewCell {
             self?.imageView.image = image
             self?.displayedURL = photo.thumbnailURL
         }
+    }
+
+    private func configureMediaBadge(_ badge: MediaBadge?) {
+        guard let badge else {
+            mediaBadge.isHidden = true
+            return
+        }
+        mediaBadgeIcon.image = UIImage(systemName: badge.systemImage)
+        mediaBadgeLabel.text = badge.text
+        mediaBadge.isHidden = false
     }
 
     private func configureCurationBadge(rating: Int, flag: PhotoFlag?) {

@@ -95,6 +95,7 @@ The 7,961-file corpus needs at most 399 media completion windows and 498 embeddi
 4. Detect HEIF by extension or magic bytes and decode it with `libheif-rs`.
 5. For RAW files, extract an embedded JPEG preview with `exiftool -b -PreviewImage`, falling back to `-JpgFromRaw`.
 6. Decode standard images with the Rust `image` crate.
+6a. For videos (`.mp4`, `.mov`, `.m4v`), probe the first non-cover video stream with `ffprobe` (duration, codec, rotation-corrected display dimensions) and decode one poster frame at `min(1 s, duration/2)` with `ffmpeg` (retrying at 0 s when no frame decodes); both run under a 30 s timeout with bounded output. `FFPROBE_BIN`/`FFMPEG_BIN` override the executables. The poster then follows the normal pHash/thumbnail path without EXIF orientation. Video `dateTaken` prefers QuickTime `CreationDate` wall clock, then `CreateDate`.
 7. Apply EXIF orientation except for HEIF, whose decoder applies container transforms.
 8. Generate a double-gradient perceptual hash from the oriented source, then resize once to a `large` preview bounded at 1,600 pixels and derive smaller thumbnails from that preview using original-derived target dimensions. Bundled libwebp now applies lossy color quality 80/85/85/90 for tiny/small/medium/large, with lossless alpha encoding. Derived pixels are not lossless; originals, orientation handling, pHash input, and EXIF extraction are unchanged. Thumbnail errors fail the photo result rather than marking it ready.
 9. Defer CLIP image embeddings to the Inngest embedding function.
@@ -136,7 +137,7 @@ bun install
 cd packages/image-processing && bun run build
 ```
 
-Native development also requires Rust/Cargo, a C toolchain, `pkg-config`, OpenSSL development headers, `libheif-dev`, `libclang-dev`, and the `exiftool` executable. Debian/Ubuntu runtime images need `libheif1` and `libimage-exiftool-perl`.
+Native development also requires Rust/Cargo, a C toolchain, `pkg-config`, OpenSSL development headers, `libheif-dev`, `libclang-dev`, and the `exiftool`, `ffmpeg`, and `ffprobe` executables. Debian/Ubuntu runtime images need `libheif1`, `libimage-exiftool-perl`, and `ffmpeg`.
 
 The first CLIP operation may download the FastEmbed model. Set `FASTEMBED_CACHE_DIR` to control the cache location.
 
@@ -284,7 +285,7 @@ RAW+JPEG pairs are derived at query time, with no scan changes: two photos pair 
 
 REST routes under `/api/photos`:
 
-- `GET /api/photos/:id/file`: streams the original standard image; serves the `large` WebP for converted RAW files.
+- `GET /api/photos/:id/file`: streams the original standard image or video (stored MIME type); serves the `large` WebP for converted RAW files. Always sends `Accept-Ranges: bytes`; one satisfiable `Range` returns 206 with `Content-Range`, an unsatisfiable one 416 (`bytes */size`), and multi-range or malformed headers the full 200. HEAD is supported.
 - `GET /api/photos/:id/thumbnail/:size`: serves `tiny`, `small`, `medium`, or `large` WebP and falls back to the file route when missing.
 - `POST /api/photos/reprocess-heic`: one-off maintenance route; still present and should be removed after its operational use.
 - `POST /api/photos/backfill-thumbnail-timestamps`: one-off maintenance route for missing `thumbnailUpdatedAt` values.
@@ -293,6 +294,9 @@ Export routes (`apps/api/src/routes/exports.ts`, mounted at `/api`; binary, not 
 
 - `GET /api/photos/:id/export?size=original|2048|1024` (default `2048`): `original` streams the source bytes unchanged; `2048`/`1024` render a metadata-free (no EXIF/GPS) sRGB JPEG at quality 90 through native `renderExportJpeg` (shared HEIF/RAW-preview decode, orientation applied, long edge fit, never upscaled) on the native executor. Filename `{stem}_{size}.jpg`; RFC 6266 `Content-Disposition` with an ASCII fallback; `Cache-Control: private, no-store`. Errors: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `EXPORT_FAILED`, 503 `EXPORT_BUSY` with `Retry-After` when executor admission is full.
 - `GET /api/collections/:id/export?size=original|2048|1024` (default `original`): streaming STORE ZIP (UTF-8 names, CRC-32, ZIP64 when needed) of every member, unstacked, in captured order (`listCollectionMembers`); duplicate names become `stem (2).ext` case-insensitively; missing/failed members are skipped and listed in a final `export-errors.txt`. Pull-based with at most two renders in flight; ZIP renders wait for executor capacity, and client abort stops further reads/renders. 404 `COLLECTION_NOT_FOUND` before any bytes.
+- Videos export as their unchanged original file for every `size`, including inside collection ZIPs.
+
+Videos and Live Photos: photos carry `mediaType` (`photo`|`video`), `durationMs`, `videoCodec`, and `motionVideoId`. `filterRaw` accepts `all|raw|standard|video` (`standard` = non-RAW stills; `video` excludes motion clips). A video ≤4,000 ms that is the only video on a pair stem holding one still or a RAW pair is a motion clip (`livePhotoSql`): it is hidden from listings, counts, search, similar, map, events, gear stats, on-this-day, and smart albums, and exposed as the still's `motionVideoId`, but remains fetchable by ID. Videos are excluded from junk, quality backfill, and duplicate/burst candidates.
 
 Managed scans write `{thumbnailRoot}/{size}/.versions/{uuid}/photo.webp` and publish the committed root/key with the photo. Legacy adopted files retain mirrored paths such as `large/2024/trip/photo.webp`; direct native helpers retain that default layout. REST resolves the committed root/key, with configured-root/path fallbacks for legacy rows. Immutable responses include generation/mtime/size ETags; `thumbnailUpdatedAt` advances monotonically even for same-second commits or backwards clocks. Clients use it for thumbnail cache busting, and web full-image URLs also include it. Old and abandoned generations are retained; garbage collection is not implemented.
 
@@ -317,6 +321,8 @@ Events on web: a Filter By **Events** section (newest first, first 12 then **Sho
 Gear stats on web: a toolbar **Gear stats** toggle (library grid only) replaces the grid with stats for the current filters: header "N photos · M with camera data", camera/lens bars (top 10, **Show all**; clicking applies that filter and returns to the grid), focal/aperture/shutter/ISO histograms, and shots per year segmented by the top 5 cameras plus Other.
 
 Export on web: the metadata panel's **Export** menu (grid or loupe with an active photo) downloads Original / JPEG 2048 / JPEG 1024 through `download` anchors (streamed by the browser, no blob); `Shift+D` downloads the active photo as JPEG 2048. A collection's actions menu has **Download as ZIP** (Originals / JPEG 2048 / JPEG 1024).
+
+Videos on web: grid and filmstrip tiles show a duration badge (floored `m:ss`/`h:mm:ss`, label "Video, 1 minute 5 seconds"); stills with a motion clip show **LIVE**. The loupe renders a paused `<video controls preload=metadata>` with the large thumbnail as poster; `Space` toggles playback (`Shift+Space` still toggles the filmstrip). The LIVE button plays the clip muted once over the still. The Type filter has a Video option; videos export as Original only, including `Shift+D`.
 
 Catalog **Review** (badge = candidate count) replaces the grid with junk candidates, each badged with its first reason; a reason radiogroup with counts, **Reject all (N)** (confirmation above 50) and **Keep all (N)** act on the shown photos. In Review, `X` rejects and `K` keeps the active photo and advance; the metadata panel shows "Why it's here" with Reject/Keep. Resolutions remove photos optimistically and roll back on error. Choosing a folder, collection, tag, search, or Find similar leaves Review and restores the library filters.
 
@@ -362,6 +368,8 @@ Events on iOS: an Events section in the Collections tab (cover cards with the sa
 Gear stats on iOS: the Library header's **Gear Stats** button opens a sheet with the same sections for the current filters; tapping a camera or lens applies that filter and dismisses.
 
 Export on iOS: the loupe's Share menu (**Share Photo** = JPEG 2048, **Share Original**) and a collection detail **Export** menu (Originals or JPEGs 2048 px as ZIP) download to a per-export temp directory with progress/cancel, then present the share sheet; temp files are deleted after sharing, on cancel, or on failure. `EXPORT_BUSY` offers a manual retry.
+
+Videos on iOS: library, search, and similar grids show the same floored duration and LIVE badges. The loupe hosts an AVKit player (prepared paused; poster until ready; released on page change or dismissal); LIVE plays the motion clip muted once and returns to the still. The info sheet adds duration and codec; the Media Type picker has Video; videos offer only **Share Video** (original).
 
 Smart albums on iOS: a Smart Albums section in the Collections tab (cards with count or a magnifier for query albums, rename/delete with rollback); **Save as Smart Album…** in the Library filter sheet and Search. Detail screens reuse the collection grid/loupe through `LibraryStore` scope `.smartAlbum(filters, query)`.
 

@@ -5,7 +5,13 @@ import {
 	Maximize,
 	Minimize,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+	type MutableRefObject,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
@@ -25,7 +31,90 @@ interface LoupeViewProps {
 	onNavigate?: (direction: "prev" | "next") => void;
 	hasPrev?: boolean;
 	hasNext?: boolean;
+	/** Receives the shown video's element (null otherwise), for `Space` play/pause. */
+	videoRef?: MutableRefObject<HTMLVideoElement | null>;
 	className?: string;
+}
+
+/**
+ * Ref callback for a loupe `<video>`: publishes the element to `targetRef`
+ * and, when it unmounts (another photo, grid, or leaving the loupe), pauses
+ * it and drops its source so the browser releases the media resource.
+ */
+function useReleasingVideoRef(
+	targetRef?: MutableRefObject<HTMLVideoElement | null>,
+) {
+	const elementRef = useRef<HTMLVideoElement | null>(null);
+	return useCallback(
+		(element: HTMLVideoElement | null) => {
+			const previous = elementRef.current;
+			if (previous && previous !== element) {
+				previous.pause();
+				previous.removeAttribute("src");
+				previous.load();
+			}
+			elementRef.current = element;
+			if (targetRef) targetRef.current = element;
+		},
+		[targetRef],
+	);
+}
+
+/** The loupe's video player: native controls, paused until the user plays it. */
+function LoupeVideo({
+	photo,
+	videoRef,
+}: {
+	photo: PhotoMetadata;
+	videoRef?: MutableRefObject<HTMLVideoElement | null>;
+}) {
+	const ref = useReleasingVideoRef(videoRef);
+	return (
+		// biome-ignore lint/a11y/useMediaCaption: personal library videos carry no caption tracks.
+		<video
+			ref={ref}
+			data-testid="loupe-video"
+			src={getFullImageUrl(photo.id, photo.thumbnailUpdatedAt)}
+			poster={getThumbnailUrl(photo.id, "large", photo.thumbnailUpdatedAt)}
+			aria-label={photo.name}
+			controls
+			playsInline
+			preload="metadata"
+			className="max-h-full max-w-full object-contain"
+		/>
+	);
+}
+
+/** A Live Photo's motion clip, played once (muted, inline) over the still. */
+function LiveMotionVideo({
+	motionVideoId,
+	onDone,
+}: {
+	motionVideoId: number;
+	onDone: () => void;
+}) {
+	const releasingRef = useReleasingVideoRef();
+	const ref = useCallback(
+		(element: HTMLVideoElement | null) => {
+			releasingRef(element);
+			// A rejected play (e.g. unsupported codec) returns to the still.
+			element?.play().catch(onDone);
+		},
+		[releasingRef, onDone],
+	);
+	return (
+		<video
+			ref={ref}
+			data-testid="live-video"
+			src={getFullImageUrl(motionVideoId)}
+			muted
+			playsInline
+			preload="auto"
+			onEnded={onDone}
+			onError={onDone}
+			className="absolute inset-0 h-full w-full object-contain"
+		/>
+	);
 }
 
 export function LoupeView({
@@ -33,14 +122,18 @@ export function LoupeView({
 	onNavigate,
 	hasPrev = false,
 	hasNext = false,
+	videoRef,
 	className,
 }: LoupeViewProps) {
 	const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("fit");
 	const [imageLoaded, setImageLoaded] = useState(false);
+	const [livePlaying, setLivePlaying] = useState(false);
+	const stopLive = useCallback(() => setLivePlaying(false), []);
 
-	// Reset image loaded state when photo changes
+	// Reset image loaded and Live playback state when photo changes
 	useEffect(() => {
 		setImageLoaded(false);
+		setLivePlaying(false);
 	}, [photo?.id]);
 
 	const handleZoomChange = useCallback(() => {
@@ -73,6 +166,7 @@ export function LoupeView({
 	}
 
 	const isFailedRaw = photo.isRaw && photo.rawStatus !== "converted";
+	const isVideo = photo.mediaType === "video";
 	const formatBadge = rawBadge(photo);
 
 	const getImageSrc = () => {
@@ -104,7 +198,9 @@ export function LoupeView({
 			)}
 		>
 			{/* Main image */}
-			{isFailedRaw ? (
+			{isVideo ? (
+				<LoupeVideo key={photo.id} photo={photo} videoRef={videoRef} />
+			) : isFailedRaw ? (
 				<div className="flex flex-col items-center justify-center text-muted-foreground">
 					<Camera className="h-24 w-24 mb-4 opacity-30" />
 					<p className="text-lg mb-2">RAW Conversion Failed</p>
@@ -145,6 +241,13 @@ export function LoupeView({
 						onLoad={() => setImageLoaded(true)}
 						draggable={false}
 					/>
+					{livePlaying && photo.motionVideoId !== null && (
+						<LiveMotionVideo
+							key={photo.motionVideoId}
+							motionVideoId={photo.motionVideoId}
+							onDone={stopLive}
+						/>
+					)}
 				</div>
 			)}
 
@@ -156,6 +259,22 @@ export function LoupeView({
 				>
 					{formatBadge.label}
 				</div>
+			)}
+
+			{/* Live Photo: play the motion clip over the still */}
+			{!isVideo && !isFailedRaw && photo.motionVideoId !== null && (
+				<button
+					type="button"
+					aria-pressed={livePlaying}
+					aria-label="Play Live Photo"
+					onClick={() => setLivePlaying(true)}
+					className={cn(
+						"absolute right-3 top-3 rounded bg-black/50 px-1.5 py-0.5 text-2xs font-semibold tracking-wide text-white shadow-sm hover:bg-black/70",
+						livePlaying && "bg-primary/80 hover:bg-primary/80",
+					)}
+				>
+					LIVE
+				</button>
 			)}
 
 			{/* Navigation arrows */}
