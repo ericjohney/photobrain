@@ -16,6 +16,7 @@ import {
 	resolveDuplicateGroup,
 } from "../services/duplicates";
 import { junkReview, resolveJunk } from "../services/junk-review";
+import { onThisDay } from "../services/on-this-day";
 import type { ApiDatabase } from "../services/photo-catalog";
 import {
 	getPhoto,
@@ -56,6 +57,8 @@ import {
 	foldersResponseSchema,
 	junkReviewQuerySchema,
 	junkReviewResponseSchema,
+	onThisDayQuerySchema,
+	onThisDayResponseSchema,
 	PUBLIC_SCAN_START_ERROR,
 	photoCollectionsResponseSchema,
 	photoCurationPatchSchema,
@@ -79,6 +82,7 @@ import {
 	serializeCollection,
 	serializeDuplicateGroupsResponse,
 	serializeJunkReviewResponse,
+	serializeOnThisDay,
 	serializePhoto,
 	serializePhotosResponse,
 	serializeScan,
@@ -265,6 +269,19 @@ export function createV1Router(dependencies: V1Dependencies) {
 				listPhotoLocations(dependencies.database, input.data, {
 					normalizeDateMonths: true,
 				}),
+			);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/on-this-day", (context) => {
+		const input = onThisDayQuerySchema.safeParse(context.req.query());
+		if (!input.success) return invalidRequest();
+		try {
+			return jsonResponse(
+				onThisDayResponseSchema,
+				serializeOnThisDay(onThisDay(dependencies.database, input.data.date)),
 			);
 		} catch (error) {
 			return internalError(error);

@@ -17,6 +17,7 @@ struct PhotoBrainApp: App {
 final class AppBootstrap: ObservableObject {
     @Published private(set) var environment: AppEnvironment?
     @Published private(set) var library: LibraryStore?
+    @Published private(set) var onThisDay: OnThisDayStore?
     @Published private(set) var search: SearchStore?
     @Published private(set) var collections: CollectionsStore?
     @Published private(set) var smartAlbums: SmartAlbumsStore?
@@ -39,14 +40,16 @@ final class AppBootstrap: ObservableObject {
             let theme = ThemeController(preference: imported.theme, migration: migration)
             let curation = PhotoCurationCenter(api: environment.api)
             let library = LibraryStore(api: environment.api, curation: curation)
+            let onThisDay = OnThisDayStore(api: environment.api)
             let search = SearchStore(api: environment.api, curation: curation)
             let collections = CollectionsStore(api: environment.api)
             let smartAlbums = SmartAlbumsStore(api: environment.api)
             let review = ReviewStore(api: environment.api, curation: curation)
             let duplicates = DuplicatesStore(api: environment.api, curation: curation)
             let scans = ScanCoordinator(api: environment.api, migration: migration)
-            scans.invalidateLibrary = { [weak library, weak review, weak duplicates] in
+            scans.invalidateLibrary = { [weak library, weak onThisDay, weak review, weak duplicates] in
                 await library?.load()
+                await onThisDay?.load()
                 await review?.refreshCounts()
                 await duplicates?.refreshCounts()
             }
@@ -59,6 +62,7 @@ final class AppBootstrap: ObservableObject {
             self.environment = environment
             self.theme = theme
             self.library = library
+            self.onThisDay = onThisDay
             self.search = search
             self.collections = collections
             self.smartAlbums = smartAlbums
@@ -77,6 +81,7 @@ private struct BootstrapView: View {
     var body: some View {
         if let environment = bootstrap.environment,
            let library = bootstrap.library,
+           let onThisDay = bootstrap.onThisDay,
            let search = bootstrap.search,
            let collections = bootstrap.collections,
            let smartAlbums = bootstrap.smartAlbums,
@@ -87,6 +92,7 @@ private struct BootstrapView: View {
             RootTabView(
                 environment: environment,
                 library: library,
+                onThisDay: onThisDay,
                 search: search,
                 collections: collections,
                 smartAlbums: smartAlbums,
@@ -111,6 +117,7 @@ private struct BootstrapView: View {
 private struct RootTabView: View {
     let environment: AppEnvironment
     @ObservedObject var library: LibraryStore
+    let onThisDay: OnThisDayStore
     @ObservedObject var search: SearchStore
     let collections: CollectionsStore
     let smartAlbums: SmartAlbumsStore
@@ -126,6 +133,7 @@ private struct RootTabView: View {
         TabView(selection: $navigation.selectedTab) {
             LibraryScreen(
                 store: library,
+                onThisDay: onThisDay,
                 collections: collections,
                 smartAlbums: smartAlbums,
                 review: review,
@@ -182,6 +190,7 @@ private struct RootTabView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await scans.applicationBecameActive() }
+            Task { await onThisDay.applicationBecameActive() }
         }
     }
 

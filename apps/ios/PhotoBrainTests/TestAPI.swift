@@ -43,6 +43,10 @@ actor TestAPI: PhotoBrainAPI {
     /// Server-side places by photo id; photos without an entry are unknown (404).
     var photoPlaceResults: [Int: Result<PhotoPlaceResponseDTO, PhotoBrainAPIError>] = [:]
     var photoPlaceRequests: [Int] = []
+    var onThisDayResult: Result<OnThisDayResponseDTO, PhotoBrainAPIError> = .success(
+        OnThisDayResponseDTO(date: "2000-01-01", years: [])
+    )
+    var onThisDayRequests: [Date] = []
     /// Server-side junk candidates, newest first; `junkReview` filters and pages over them.
     var junkCandidates: [PhotoDTO] = []
     /// Scripted responses returned (in order) before falling back to `junkCandidates`.
@@ -249,6 +253,14 @@ actor TestAPI: PhotoBrainAPI {
         photoPlaceRequests
     }
 
+    func setOnThisDay(_ result: Result<OnThisDayResponseDTO, PhotoBrainAPIError>) {
+        onThisDayResult = result
+    }
+
+    func recordedOnThisDayRequests() -> [Date] {
+        onThisDayRequests
+    }
+
     struct SearchKey: Hashable, Sendable {
         let query: String
         let filters: PhotoQuery
@@ -427,6 +439,11 @@ actor TestAPI: PhotoBrainAPI {
             throw PhotoBrainAPIError.server(status: 404, code: "PHOTO_NOT_FOUND", message: "Photo not found")
         }
         return try result.get()
+    }
+
+    func onThisDay(date: Date) async throws -> OnThisDayResponseDTO {
+        onThisDayRequests.append(date)
+        return try onThisDayResult.get()
     }
 
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {

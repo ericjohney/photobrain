@@ -20,6 +20,8 @@ struct PhotoQuery: Hashable, Sendable {
     var place: Int?
     /// Only photos with a valid location inside this map region. Never saved in smart albums.
     var bounds: PhotoBounds?
+    /// Exact capture date `YYYY-MM-DD` (EXIF wall-clock date). Never saved in smart albums.
+    var capturedDate: String?
 
     /// `GET /photos` and `GET /locations` query items. `filterRaw` is always sent; the other
     /// filters only when set, and the four bounds edges together or not at all.
@@ -42,6 +44,7 @@ struct PhotoQuery: Hashable, Sendable {
             items.append(URLQueryItem(name: "east", value: String(bounds.east)))
             items.append(URLQueryItem(name: "west", value: String(bounds.west)))
         }
+        if let capturedDate { items.append(URLQueryItem(name: "capturedDate", value: capturedDate)) }
         return items
     }
 }
@@ -60,6 +63,9 @@ protocol PhotoBrainAPI: Sendable {
     func photoTags(id: Int) async throws -> PhotoTagsResponseDTO
     /// `GET /photos/{id}/place`: the photo's current place, or `nil` when it has none.
     func photoPlace(id: Int) async throws -> PhotoPlaceResponseDTO
+    /// `GET /on-this-day?date=YYYY-MM-DD`: earlier years' photos captured on `date`'s month and
+    /// day, where `date` is the device's local calendar date.
+    func onThisDay(date: Date) async throws -> OnThisDayResponseDTO
     /// `PATCH /photos/{id}`. `rating: nil` and `flag: nil` leave a field unchanged;
     /// `flag: .some(nil)` clears the flag. At least one field must be provided.
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO
@@ -170,6 +176,13 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
     func photoPlace(id: Int) async throws -> PhotoPlaceResponseDTO {
         guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
         return try await get(path: ["photos", String(id), "place"])
+    }
+
+    func onThisDay(date: Date) async throws -> OnThisDayResponseDTO {
+        try await get(
+            path: ["on-this-day"],
+            queryItems: [URLQueryItem(name: "date", value: OnThisDayDate.localDayString(date))]
+        )
     }
 
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {

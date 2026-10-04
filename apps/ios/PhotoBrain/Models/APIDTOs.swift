@@ -344,6 +344,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let country: String?
     let place: Int?
     let bounds: PhotoBounds?
+    let capturedDate: String?
 
     init(query: String, limit: Int, filters: PhotoQuery) {
         self.query = query
@@ -361,6 +362,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
         country = filters.country
         place = filters.place
         bounds = filters.bounds
+        capturedDate = filters.capturedDate
     }
 }
 
@@ -702,6 +704,35 @@ struct CollectionDTO: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// One earlier year's photos captured on the requested month and day.
+struct OnThisDayYearDTO: Codable, Hashable, Identifiable, Sendable {
+    var id: Int { year }
+    let year: Int
+    let yearsAgo: Int
+    /// `YYYY-MM-DD` to apply as the `capturedDate` filter (Feb 29 when a non-leap Feb 28
+    /// request matched only that year's leap-day photos).
+    let capturedDate: String
+    let count: Int
+    let cover: CollectionCoverDTO
+
+    /// Small cover thumbnail, versioned by the cover photo's `thumbnailUpdatedAt`.
+    func coverURL(apiBaseURL: URL) -> URL {
+        PhotoRecord.thumbnailURL(
+            baseURL: apiBaseURL,
+            id: cover.photoId,
+            size: "small",
+            updatedAt: cover.thumbnailUpdatedAt
+        )
+    }
+}
+
+/// `GET /api/v1/on-this-day`: years strictly before `date`'s year with matching photos, most
+/// recent first (at most 20).
+struct OnThisDayResponseDTO: Codable, Equatable, Sendable {
+    let date: String
+    let years: [OnThisDayYearDTO]
+}
+
 struct CollectionsResponseDTO: Codable, Equatable, Sendable {
     let collections: [CollectionDTO]
 }
@@ -812,7 +843,8 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
     }
 
     /// The Library/Search filter set as saved criteria (those screens have no folder filter).
-    /// A map region (`bounds`) is a view scope, never saved criteria, so it is dropped.
+    /// View scopes (map `bounds`, On this day `capturedDate`) are never saved criteria, so they
+    /// are dropped.
     init(_ filters: LibraryFilters) {
         self.init(
             filterRaw: filters.mediaKind,

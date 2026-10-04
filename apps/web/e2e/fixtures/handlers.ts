@@ -14,6 +14,7 @@ import {
 	type FixturePhotoFilters,
 	filterFixturePhotos,
 	fixtureLocation,
+	fixtureOnThisDay,
 	fixturePlaceOptions,
 	fixtureTagCounts,
 	searchPhotosByQuery,
@@ -354,13 +355,14 @@ function createDefaultHandlers(): Record<string, Handler> {
 			return photo;
 		},
 		similarPhotos: (input) => {
-			const { photoId, collectionId, tag, country, place } = (input ??
-				{}) as CollectionScope & {
-				photoId?: number;
-				tag?: string;
-				country?: string;
-				place?: number;
-			};
+			const { photoId, collectionId, tag, country, place, capturedDate } =
+				(input ?? {}) as CollectionScope & {
+					photoId?: number;
+					tag?: string;
+					country?: string;
+					place?: number;
+					capturedDate?: string;
+				};
 			const source = library.find((p) => p.id === photoId);
 			if (!source) {
 				throw new Error(`Photo ${photoId} not found`);
@@ -370,6 +372,7 @@ function createDefaultHandlers(): Record<string, Handler> {
 				tag,
 				country,
 				place,
+				capturedDate,
 			})
 				.filter((p) => p.id !== photoId && p.id !== source.pairedPhotoId)
 				.reverse();
@@ -379,6 +382,19 @@ function createDefaultHandlers(): Record<string, Handler> {
 				sourcePhotoId: photoId,
 				indexed: true,
 			};
+		},
+		onThisDay: (input) => {
+			const { date } = (input ?? {}) as { date?: string };
+			// A real calendar date, like the API's validation.
+			const parsed = date ? new Date(`${date}T00:00:00Z`) : null;
+			if (
+				!date ||
+				!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+				parsed?.toISOString().slice(0, 10) !== date
+			) {
+				throw new TrpcFixtureError("BAD_REQUEST", "Invalid date");
+			}
+			return fixtureOnThisDay(library, date);
 		},
 		setPhotoCuration: (input) => {
 			const { photoIds, rating, flag } = input as CurationInput;

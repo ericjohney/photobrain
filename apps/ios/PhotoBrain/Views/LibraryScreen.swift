@@ -21,6 +21,7 @@ extension LibraryFilters {
 
 struct LibraryScreen: View {
     @ObservedObject var store: LibraryStore
+    @ObservedObject var onThisDay: OnThisDayStore
     let collections: CollectionsStore
     let smartAlbums: SmartAlbumsStore
     @ObservedObject var review: ReviewStore
@@ -134,6 +135,9 @@ struct LibraryScreen: View {
         .task {
             if store.loadState == .idle { await store.load() }
         }
+        .task {
+            if onThisDay.state == .idle { await onThisDay.load() }
+        }
         .task { await review.refreshCounts() }
         .task { await duplicates.refreshCounts() }
     }
@@ -160,23 +164,31 @@ struct LibraryScreen: View {
                 description: Text(store.filters.isActive ? "Try clearing one or more filters." : "Scan your library to add photos.")
             )
         default:
-            LibraryGrid(
-                sections: store.sections,
-                selectedID: $store.activePhotoID,
-                selectedIDs: $store.selectedPhotoIDs,
-                isSelecting: store.isSelecting,
-                resetVersion: store.browsingResetVersion,
-                contentRevision: store.presentationRevision,
-                onLongPress: store.selectFromLongPress,
-                onVisibleChange: store.observeVisible,
-                onRefresh: {
-                    await scans.manualLibraryRefresh()
-                    await store.load()
-                    await review.refreshCounts()
-                    await duplicates.refreshCounts()
+            VStack(spacing: 0) {
+                if !store.isSelecting, onThisDay.isVisible(scope: store.scope, filters: store.filters) {
+                    OnThisDaySection(cards: onThisDay.cards(apiBaseURL: environment.api.baseURL)) { card in
+                        store.showCapturedDate(card.capturedDate)
+                    }
                 }
-            )
-            .ignoresSafeArea(edges: .horizontal)
+                LibraryGrid(
+                    sections: store.sections,
+                    selectedID: $store.activePhotoID,
+                    selectedIDs: $store.selectedPhotoIDs,
+                    isSelecting: store.isSelecting,
+                    resetVersion: store.browsingResetVersion,
+                    contentRevision: store.presentationRevision,
+                    onLongPress: store.selectFromLongPress,
+                    onVisibleChange: store.observeVisible,
+                    onRefresh: {
+                        await scans.manualLibraryRefresh()
+                        await store.load()
+                        await onThisDay.load()
+                        await review.refreshCounts()
+                        await duplicates.refreshCounts()
+                    }
+                )
+                .ignoresSafeArea(edges: .horizontal)
+            }
         }
     }
 
@@ -497,7 +509,16 @@ struct FilterView<Store: FilterEditingStore>: View {
                     } label: {
                         Label("Save as Smart Album…", systemImage: "rectangle.stack.badge.plus")
                     }
-                    .disabled(!store.filters.isActive && smartAlbumQuery == nil)
+                    .disabled(!store.filters.savableCriteria.isActive && smartAlbumQuery == nil)
+                }
+            }
+
+            if let capturedDate = store.filters.capturedDate {
+                Section("On This Day") {
+                    LabeledContent("Captured", value: LibraryFilters.formatCapturedDate(capturedDate))
+                    Button("Show All Dates", role: .destructive) {
+                        store.applyFilters(store.filters.removing(.capturedDate))
+                    }
                 }
             }
 

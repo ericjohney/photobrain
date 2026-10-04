@@ -35,8 +35,10 @@ import {
 	MAX_JUNK_RESOLVE_IDS,
 	resolveJunk,
 } from "../services/junk-review";
+import { onThisDay } from "../services/on-this-day";
 import {
 	getPhoto,
+	isValidCapturedDate,
 	isValidPhotoBounds,
 	listFilterOptions,
 	listFolders,
@@ -83,6 +85,12 @@ const sharedFilterShape = {
 	tag: z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN).optional(),
 	country: z.string().regex(COUNTRY_CODE_PATTERN).optional(),
 	place: z.number().int().positive().optional(),
+	capturedDate: z
+		.string()
+		.refine(isValidCapturedDate, {
+			message: "capturedDate must be a real YYYY-MM-DD date",
+		})
+		.optional(),
 	bounds: z
 		.object({
 			north: z.number(),
@@ -149,9 +157,10 @@ const smartAlbumQuerySchema = z
 	.min(1)
 	.max(MAX_SMART_ALBUM_QUERY_LENGTH)
 	.nullable();
-// Photo filters minus collectionId and bounds (strict, so both are rejected).
-// Empty strings and filterRaw "all" mean "no filter"; dateMonth accepts
-// `YYYY:MM` (what filterOptions emits) or `YYYY-MM`.
+// Photo filters minus collectionId, bounds, and capturedDate (strict, so all are
+// rejected: the latter two are view scopes). Empty strings and filterRaw "all"
+// mean "no filter"; dateMonth accepts `YYYY:MM` (what filterOptions emits) or
+// `YYYY-MM`.
 const smartAlbumFiltersSchema = z
 	.object({
 		filterRaw: z.enum(["all", "raw", "standard"]).optional(),
@@ -218,6 +227,16 @@ export const appRouter = router({
 	photoLocations: publicProcedure
 		.input(photoFiltersInput)
 		.query(({ ctx, input }) => listPhotoLocations(ctx.db, input ?? {})),
+
+	onThisDay: publicProcedure
+		.input(
+			z.object({
+				date: z.string().refine(isValidCapturedDate, {
+					message: "date must be a real YYYY-MM-DD date",
+				}),
+			}),
+		)
+		.query(({ ctx, input }) => onThisDay(ctx.db, input.date)),
 
 	photo: publicProcedure
 		.input(z.object({ id: z.number() }))

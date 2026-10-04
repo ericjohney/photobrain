@@ -22,6 +22,27 @@ export function pairStem(path: SQL | AnyColumn): SQL {
 	return sql`lower(substr(${path}, 1, length(rtrim(${path}, replace(${path}, '.', ''))) - 1))`;
 }
 
+/**
+ * Capture date of an EXIF `date_taken` wall-clock text: its first 10
+ * characters with `:` replaced by `-` (`2023:10:03 14:22:01` -> `2023-10-03`).
+ * `idx_exif_captured_date` indexes exactly this expression; build it only
+ * with this function (on any alias of `photo_exif.date_taken`) so SQLite
+ * matches the index. Validity (`YYYY-MM-DD` digits, year >= 1900) is the
+ * API's rule; the expression itself does not validate.
+ */
+export function capturedDateSql(dateTaken: SQL | AnyColumn): SQL {
+	return sql`replace(substr(${dateTaken}, 1, 10), ':', '-')`;
+}
+
+/**
+ * Capture month-day of an EXIF `date_taken` text (`2023:10:03 ...` ->
+ * `10-03`), indexed by `idx_exif_month_day` for "On this day". Build it
+ * only with this function so SQLite matches the index.
+ */
+export function capturedMonthDaySql(dateTaken: SQL | AnyColumn): SQL {
+	return sql`replace(substr(${dateTaken}, 6, 5), ':', '-')`;
+}
+
 export const photos = sqliteTable(
 	"photos",
 	{
@@ -117,6 +138,9 @@ export const photoExif = sqliteTable(
 		index("idx_exif_lens_model").on(table.lensModel),
 		index("idx_exif_iso").on(table.iso),
 		index("idx_exif_date_taken").on(table.dateTaken),
+		// Exact capture-date filter and "On this day" month-day lookups.
+		index("idx_exif_captured_date").on(capturedDateSql(table.dateTaken)),
+		index("idx_exif_month_day").on(capturedMonthDaySql(table.dateTaken)),
 	],
 );
 

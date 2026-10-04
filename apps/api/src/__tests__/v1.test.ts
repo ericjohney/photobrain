@@ -569,6 +569,7 @@ describe("API v1 contract", () => {
 			"/api/v1/filter-options",
 			"/api/v1/folders",
 			"/api/v1/locations",
+			"/api/v1/on-this-day",
 			"/api/v1/photos",
 			"/api/v1/photos/{id}",
 			"/api/v1/photos/{id}/collections",

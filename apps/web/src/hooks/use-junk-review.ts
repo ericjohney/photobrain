@@ -147,6 +147,7 @@ export function useJunkReview({
 						void utils.searchPhotos.invalidate();
 						void utils.similarPhotos.invalidate();
 						void utils.smartAlbums.invalidate();
+						void utils.onThisDay.invalidate();
 						// Rejected photos leave duplicate and burst groups.
 						void utils.duplicateGroups.invalidate();
 					}

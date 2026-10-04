@@ -53,3 +53,6 @@ export type PhotoLocation = PhotoLocationsResponse["points"][number];
 export type PhotoBounds = NonNullable<
 	Extract<RouterInputs["photos"], object>["bounds"]
 >;
+
+// On this day types
+export type OnThisDayYear = RouterOutputs["onThisDay"]["years"][number];

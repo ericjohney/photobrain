@@ -509,11 +509,11 @@ Video files are not currently discovered or processed by the image pipeline.
   - Integration with external editors
   - Layer support
 
-### 8.3 Memories & Rediscovery ⏳ **NOT STARTED**
+### 8.3 Memories & Rediscovery 🟡 **PARTIALLY COMPLETED**
 **Inspired by Google Photos and Immich**
 
-- [ ] **"On This Day" feature**
-  - Show photos from same day in previous years
+- [x] **"On This Day" feature** (web and native iOS)
+  - Cards per earlier year for today's date open the grid filtered to that capture date
 - [ ] **Automatic highlights**
   - AI-selected best photos from trips/events
   - Auto-generated slideshows

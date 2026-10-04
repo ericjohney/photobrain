@@ -187,9 +187,17 @@ export function useJobProgress(jobId: string | null) {
 		void utils.photos.invalidate();
 		void utils.folders.invalidate();
 		void utils.filterOptions.invalidate();
-		// Smart album counts/covers are evaluated live over the library.
+		// Smart album counts/covers and "On this day" are evaluated live over
+		// the library.
 		void utils.smartAlbums.invalidate();
-	}, [utils.photos, utils.folders, utils.filterOptions, utils.smartAlbums]);
+		void utils.onThisDay.invalidate();
+	}, [
+		utils.photos,
+		utils.folders,
+		utils.filterOptions,
+		utils.smartAlbums,
+		utils.onThisDay,
+	]);
 	const refreshState = useRef({
 		jobId: null as string | null,
 		current: 0,

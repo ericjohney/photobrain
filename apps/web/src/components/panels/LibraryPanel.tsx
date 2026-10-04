@@ -1,5 +1,6 @@
 import {
 	Calendar,
+	CalendarClock,
 	Camera,
 	ChevronRight,
 	Clock,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatCapturedDate } from "@/lib/on-this-day";
 import type {
 	Collection,
 	CountryOption,
@@ -54,6 +56,8 @@ export interface LibraryFilters {
 	country: string | null;
 	/** City (GeoNames id) of the photo's place; set together with `country`. */
 	place: number | null;
+	/** "On this day" capture date (`YYYY-MM-DD`); never saved in smart albums. */
+	capturedDate: string | null;
 	/** "Map area" from the map view; never saved in smart albums. */
 	bounds: PhotoBounds | null;
 }
@@ -69,6 +73,7 @@ export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
 	tag: null,
 	country: null,
 	place: null,
+	capturedDate: null,
 	bounds: null,
 };
 
@@ -885,6 +890,7 @@ export function LibraryPanel({
 						activeFilters.tag !== null ||
 						activeFilters.country !== null ||
 						activeFilters.place !== null ||
+						activeFilters.capturedDate !== null ||
 						activeFilters.bounds !== null) && (
 						<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary">
 							<div className="flex items-center justify-between">
@@ -928,6 +934,17 @@ export function LibraryPanel({
 									clearLabel="Clear place"
 									onClear={() =>
 										onFilterChange({ ...activeFilters, place: null })
+									}
+								/>
+							)}
+							{activeFilters.capturedDate !== null && (
+								<FilterChip
+									testId="captured-date-chip"
+									icon={<CalendarClock className="h-3 w-3" />}
+									label={formatCapturedDate(activeFilters.capturedDate)}
+									clearLabel="Clear capture date"
+									onClear={() =>
+										onFilterChange({ ...activeFilters, capturedDate: null })
 									}
 								/>
 							)}

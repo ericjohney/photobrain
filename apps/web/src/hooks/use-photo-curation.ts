@@ -23,6 +23,8 @@ const PHOTO_LIST_KEYS = [
 ];
 const CURATION_MUTATION_KEY = getMutationKey(trpc.setPhotoCuration);
 const SMART_ALBUMS_KEY = getQueryKey(trpc.smartAlbums);
+// Rejects leave "On this day" counts; ratings change its covers.
+const ON_THIS_DAY_KEY = getQueryKey(trpc.onThisDay);
 // Ratings and picks change suggested keepers; rejects leave groups.
 const DUPLICATE_GROUPS_KEY = getQueryKey(trpc.duplicateGroups);
 
@@ -107,6 +109,7 @@ export function usePhotoCuration(onPatch: (patcher: PhotoPatcher) => void) {
 						void queryClient.invalidateQueries({
 							queryKey: SMART_ALBUMS_KEY,
 						});
+						void queryClient.invalidateQueries({ queryKey: ON_THIS_DAY_KEY });
 						void queryClient.invalidateQueries({
 							queryKey: DUPLICATE_GROUPS_KEY,
 						});

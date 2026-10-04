@@ -34,6 +34,9 @@ struct LibraryFilters: Hashable, Sendable {
     /// Map region the photos must lie in (Map's "Show N Photos"). A view scope, not saved
     /// criteria: smart albums never store it.
     var bounds: PhotoBounds?
+    /// Exact capture date `YYYY-MM-DD` (an On this day card). A view scope, not saved
+    /// criteria: smart albums never store it.
+    var capturedDate: String?
 
     enum Field: Hashable, Sendable {
         case mediaKind
@@ -47,11 +50,13 @@ struct LibraryFilters: Hashable, Sendable {
         case country
         case place
         case bounds
+        case capturedDate
     }
 
     var isActive: Bool {
         mediaKind != .all || camera != nil || lens != nil || iso != nil || dateMonth != nil
             || minRating != nil || flag != nil || tag != nil || country != nil || place != nil || bounds != nil
+            || capturedDate != nil
     }
 
     struct ActiveFilter: Identifiable, Equatable, Sendable {
@@ -74,6 +79,9 @@ struct LibraryFilters: Hashable, Sendable {
         if let country { fields.append(ActiveFilter(field: .country, title: country.name)) }
         if let place { fields.append(ActiveFilter(field: .place, title: place.name)) }
         if bounds != nil { fields.append(ActiveFilter(field: .bounds, title: "Map Area")) }
+        if let capturedDate {
+            fields.append(ActiveFilter(field: .capturedDate, title: Self.formatCapturedDate(capturedDate)))
+        }
         return fields
     }
 
@@ -96,7 +104,8 @@ struct LibraryFilters: Hashable, Sendable {
             tag: tag,
             country: country?.code,
             place: place?.id,
-            bounds: bounds
+            bounds: bounds,
+            capturedDate: capturedDate
         )
     }
 
@@ -116,12 +125,22 @@ struct LibraryFilters: Hashable, Sendable {
             updated.place = nil
         case .place: updated.place = nil
         case .bounds: updated.bounds = nil
+        case .capturedDate: updated.capturedDate = nil
         }
         return updated
     }
 
     mutating func clear() {
         self = LibraryFilters()
+    }
+
+    /// The filters a smart album can save: everything except the view scopes `bounds` and
+    /// `capturedDate`.
+    var savableCriteria: Self {
+        var criteria = self
+        criteria.bounds = nil
+        criteria.capturedDate = nil
+        return criteria
     }
 
     /// Selects a country (or anywhere, for `nil`). A city outside the new country is cleared.
@@ -155,6 +174,18 @@ struct LibraryFilters: Hashable, Sendable {
               let month = Int(parts[1]),
               (1...12).contains(month) else { return value }
         return "\(PhotoDateResolver.calendar.monthSymbols[month - 1]) \(year)"
+    }
+
+    /// `2023-10-03` as `Oct 3, 2023` in `locale`; malformed values are returned unchanged.
+    static func formatCapturedDate(_ value: String, locale: Locale = .autoupdatingCurrent) -> String {
+        guard let date = OnThisDayDate.date(from: value) else { return value }
+        return date.formatted(Date.FormatStyle(
+            date: .abbreviated,
+            time: .omitted,
+            locale: locale,
+            calendar: OnThisDayDate.utcCalendar,
+            timeZone: OnThisDayDate.utcCalendar.timeZone
+        ))
     }
 
     static func formatMinRating(_ stars: Int) -> String {
@@ -498,6 +529,13 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
 
     func clearFilters() {
         applyFilters(LibraryFilters())
+    }
+
+    /// On this day card action: narrows the library to one capture date, then reloads.
+    func showCapturedDate(_ capturedDate: String) {
+        var updated = filters
+        updated.capturedDate = capturedDate
+        applyFilters(updated)
     }
 
     /// Loupe tag-chip action: closes this store's loupe and narrows the library to `tag`,

@@ -21,6 +21,7 @@ import { DuplicatesHeader } from "@/components/DuplicatesHeader";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
 import type { MapFocus } from "@/components/MapView";
+import { OnThisDayStrip } from "@/components/OnThisDayStrip";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { ActivityPanel } from "@/components/panels/ActivityPanel";
 import {
@@ -42,6 +43,7 @@ import { useJobProgress } from "@/hooks/use-job-progress";
 import { useJunkReview } from "@/hooks/use-junk-review";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useLibraryState, type ViewMode } from "@/hooks/use-library-state";
+import { useOnThisDay } from "@/hooks/use-on-this-day";
 import { usePanelState } from "@/hooks/use-panel-state";
 import {
 	type CurationPatch,
@@ -55,6 +57,7 @@ import {
 } from "@/hooks/use-smart-albums";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
 import { photoLocation } from "@/lib/map";
+import { formatCapturedDate } from "@/lib/on-this-day";
 import { trpc } from "@/lib/trpc";
 import type {
 	DuplicateKind,
@@ -116,8 +119,10 @@ export function Dashboard() {
 		selectedCollectionId === null &&
 		catalogView === null &&
 		similarSource === null &&
-		// A map area narrows the album, so it no longer shows exactly the album.
+		// A map area or capture date narrows the album, so it no longer shows
+		// exactly the album.
 		filters.bounds === null &&
+		filters.capturedDate === null &&
 		smartAlbumMatches(
 			appliedSmartAlbum,
 			currentSmartAlbumFilters,
@@ -133,8 +138,8 @@ export function Dashboard() {
 			setAppliedSmartAlbumId(null);
 		}
 	}, [appliedSmartAlbumId, albumsLoaded, selectedSmartAlbum]);
-	// Collection scope and map area are never saved, so either alone (or
-	// together) is not savable; with other filters they are left out.
+	// Collection scope, map area, and capture date are never saved, so any of
+	// them alone is not savable; with other filters they are left out.
 	const canSaveSmartAlbum =
 		Object.keys(currentSmartAlbumFilters).length > 0 ||
 		currentSmartAlbumQuery !== null;
@@ -160,6 +165,7 @@ export function Dashboard() {
 		tag: filters.tag ?? undefined,
 		country: filters.country ?? undefined,
 		place: filters.place ?? undefined,
+		capturedDate: filters.capturedDate ?? undefined,
 	};
 	const bounds = filters.bounds ?? undefined;
 
@@ -253,6 +259,18 @@ export function Dashboard() {
 	const photoLocationsQuery = trpc.photoLocations.useQuery(libraryScope, {
 		enabled: mapActive,
 	});
+
+	// "On this day" shows only over the whole, unscoped library grid.
+	const wholeLibraryShown =
+		Object.keys(currentSmartAlbumFilters).length === 0 &&
+		filters.capturedDate === null &&
+		filters.bounds === null &&
+		!searchQuery &&
+		selectedCollectionId === null &&
+		catalogView === null &&
+		similarSource === null &&
+		library.viewMode === "grid";
+	const onThisDay = useOnThisDay(wholeLibraryShown);
 	const mapFitKey = JSON.stringify(libraryScope);
 	// "Show on map": center on this photo instead of fitting all points.
 	const [mapFocus, setMapFocus] = useState<MapFocus | null>(null);
@@ -532,6 +550,15 @@ export function Dashboard() {
 		[setViewMode],
 	);
 
+	// "On this day" card: filter the library to that capture date.
+	const handleCapturedDateSelect = useCallback(
+		(capturedDate: string) => {
+			setFilters((current) => ({ ...current, capturedDate }));
+			setActivePhoto(null);
+		},
+		[setActivePhoto],
+	);
+
 	// Navigation helpers for loupe - memoized to avoid recalculation on every render
 	const { hasPrev, hasNext } = useMemo(() => {
 		const currentIndex = library.activePhoto
@@ -671,7 +698,7 @@ export function Dashboard() {
 			);
 		}
 
-		return (
+		const grid = (
 			<PhotoGrid
 				photos={photos}
 				activePhotoId={library.activePhoto?.id}
@@ -679,6 +706,16 @@ export function Dashboard() {
 				onPhotoClick={handlePhotoClick}
 				onPhotoDoubleClick={handlePhotoDoubleClick}
 			/>
+		);
+		if (onThisDay.years.length === 0) return grid;
+		return (
+			<div className="flex h-full flex-col">
+				<OnThisDayStrip
+					years={onThisDay.years}
+					onSelect={handleCapturedDateSelect}
+				/>
+				<div className="min-h-0 flex-1">{grid}</div>
+			</div>
 		);
 	};
 
@@ -725,8 +762,8 @@ export function Dashboard() {
 					)?.name ?? filters.country)
 				: null,
 	].filter((part): part is string => part !== null);
-	// What "Save as Smart Album" stores (collection scope and map area are
-	// never saved).
+	// What "Save as Smart Album" stores (collection scope, map area, and
+	// capture date are never saved).
 	const smartAlbumSummary = [
 		currentSmartAlbumQuery !== null ? `“${currentSmartAlbumQuery}”` : null,
 		selectedFolder,
@@ -748,6 +785,9 @@ export function Dashboard() {
 				for “{searchQuery}”{selectedFolder ? ` in ${selectedFolder}` : ""}
 				{selectedCollection ? ` in ${selectedCollection.name}` : ""}
 				{searchScope.length > 0 ? ` · ${searchScope.join(" · ")}` : ""}
+				{filters.capturedDate
+					? ` · ${formatCapturedDate(filters.capturedDate)}`
+					: ""}
 				{filters.bounds ? " · Map area" : ""}
 			</span>
 			<button

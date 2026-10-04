@@ -1,0 +1,2 @@
+CREATE INDEX `idx_exif_captured_date` ON `photo_exif` (replace(substr("date_taken", 1, 10), ':', '-'));--> statement-breakpoint
+CREATE INDEX `idx_exif_month_day` ON `photo_exif` (replace(substr("date_taken", 6, 5), ':', '-'));

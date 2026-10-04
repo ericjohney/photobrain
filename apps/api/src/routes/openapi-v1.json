@@ -174,6 +174,17 @@
 						}
 					},
 					{
+						"name": "capturedDate",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose EXIF capture date (wall clock, no timezone conversion) is this real calendar date, `YYYY-MM-DD`, year 1900 or later. Photos without a valid `dateTaken` never match. Invalid dates are rejected with 400.",
+						"schema": {
+							"type": "string",
+							"format": "date",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+						}
+					},
+					{
 						"name": "north",
 						"in": "query",
 						"required": false,
@@ -355,6 +366,17 @@
 						}
 					},
 					{
+						"name": "capturedDate",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose EXIF capture date (wall clock, no timezone conversion) is this real calendar date, `YYYY-MM-DD`, year 1900 or later. Photos without a valid `dateTaken` never match. Invalid dates are rejected with 400.",
+						"schema": {
+							"type": "string",
+							"format": "date",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+						}
+					},
+					{
 						"name": "north",
 						"in": "query",
 						"required": false,
@@ -406,6 +428,43 @@
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/PhotoLocationsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/on-this-day": {
+			"get": {
+				"operationId": "onThisDay",
+				"description": "Photos captured on `date`'s month and day in earlier years, one group per year, most recent first, at most 20 groups, only years with a photo. The capture date is the EXIF `dateTaken` wall-clock date; photos without a valid one never appear. Counts stack RAW+JPEG pairs like `GET /photos?capturedDate=` and exclude rejected photos; the cover is the highest rating, then latest capture time, then highest id among them. On Feb 28 of a non-leap year, Feb 29 photos of earlier years join those years' groups; such a group's `capturedDate` is its Feb 28 when it has any Feb 28 photo (the count then includes both days), else its Feb 29. A Feb 29 request matches only Feb 29.",
+				"parameters": [
+					{
+						"name": "date",
+						"in": "query",
+						"required": true,
+						"description": "The client's local today, a real calendar date `YYYY-MM-DD`, year 1900 or later",
+						"schema": {
+							"type": "string",
+							"format": "date",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Year groups for this day",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OnThisDayResponse"
 								}
 							}
 						}
@@ -619,6 +678,17 @@
 						"schema": {
 							"type": "integer",
 							"minimum": 1
+						}
+					},
+					{
+						"name": "capturedDate",
+						"in": "query",
+						"required": false,
+						"description": "Only candidates whose EXIF capture date (wall clock) is this real calendar date, `YYYY-MM-DD`, year 1900 or later",
+						"schema": {
+							"type": "string",
+							"format": "date",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
 						}
 					}
 				],
@@ -2041,6 +2111,12 @@
 						"minimum": 1,
 						"description": "Only photos whose current offline place is this city (GeoNames geonameid from `filter-options` `places`)"
 					},
+					"capturedDate": {
+						"type": "string",
+						"format": "date",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+						"description": "Only photos whose EXIF capture date (wall clock) is this real calendar date, `YYYY-MM-DD`, year 1900 or later"
+					},
 					"bounds": {
 						"$ref": "#/components/schemas/PhotoBounds"
 					}
@@ -2275,6 +2351,51 @@
 								"type": "null"
 							}
 						]
+					}
+				}
+			},
+			"OnThisDayResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["date", "years"],
+				"properties": {
+					"date": {
+						"type": "string",
+						"format": "date"
+					},
+					"years": {
+						"type": "array",
+						"maxItems": 20,
+						"items": {
+							"$ref": "#/components/schemas/OnThisDayYear"
+						}
+					}
+				}
+			},
+			"OnThisDayYear": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["year", "yearsAgo", "capturedDate", "count", "cover"],
+				"properties": {
+					"year": {
+						"type": "integer",
+						"minimum": 1900
+					},
+					"yearsAgo": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"capturedDate": {
+						"type": "string",
+						"format": "date",
+						"description": "The `capturedDate` filter value that opens this group in the grid"
+					},
+					"count": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"cover": {
+						"$ref": "#/components/schemas/CollectionCover"
 					}
 				}
 			},

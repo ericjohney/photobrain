@@ -30,6 +30,8 @@ Scan and embedding saves never write these columns, so a rescan or generation up
 
 `idx_photos_pair_stem` is an expression index on the RAW+JPEG pair stem: `lower(substr(path, 1, length(rtrim(path, replace(path, '.', ''))) - 1))`, the lower-cased relative path without its final extension (`2024/DSC_0001.ARW` → `2024/dsc_0001`; the folder is part of the path, so only same-folder files share a stem). There is no stored column; pairing is evaluated at query time by the API (`pairedPhotoIdSql` in `apps/api/src/services/photo-catalog.ts`). Build the expression only with the exported `pairStem(column)` helper from `src/schema.ts` (on any alias of `photos.path`) so SQLite matches the index; a hand-written variant silently falls back to a scan.
 
+`photo_exif` has two expression indexes over the EXIF `date_taken` wall-clock text (normally `YYYY:MM:DD HH:MM:SS`, possibly `YYYY-MM-DD...`): `idx_exif_captured_date` on `replace(substr(date_taken, 1, 10), ':', '-')` (the capture date, `YYYY-MM-DD`) serves the API's exact `capturedDate` filter, and `idx_exif_month_day` on `replace(substr(date_taken, 6, 5), ':', '-')` (`MM-DD`) serves "On this day". Neither validates; the API applies the validity rule (`YYYY-MM-DD` digits, year >= 1900). Build the expressions only with the exported `capturedDateSql(column)` / `capturedMonthDaySql(column)` helpers (on any alias of `photo_exif.date_taken`) so SQLite matches the indexes.
+
 Six nullable internal identity fields describe committed media:
 
 - `sourceRoot`: canonical `realpath` of the scanned source directory.
@@ -88,6 +90,7 @@ Current migrations:
 13. `0012_duplicate_dismissals.sql`: pure `CREATE TABLE duplicate_dismissals`; no table is rebuilt or altered. `bun run db:generate` reports no drift afterward.
 14. `0013_pair_stem.sql`: pure `CREATE INDEX idx_photos_pair_stem` on the pair-stem expression; no table is rebuilt or altered, so existing rows are untouched. `bun run db:generate` reports no drift afterward.
 15. `0014_photo_places.sql`: pure `CREATE TABLE photo_places` plus its two indexes; no table is rebuilt or altered, so existing photos and EXIF are untouched and every valid location becomes eligible for the `place-photos-v1` backfill. `bun run db:generate` reports no drift afterward.
+16. `0015_on_this_day.sql`: pure `CREATE INDEX idx_exif_captured_date` and `CREATE INDEX idx_exif_month_day` on the capture-date and month-day expressions; no table is rebuilt or altered, so existing rows are untouched and indexed immediately. `bun run db:generate` reports no drift afterward.
 
 Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006` after preceding migrations. New function IDs do not protect against old code still publishing unfenced writes.
 

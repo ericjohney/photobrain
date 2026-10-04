@@ -19,7 +19,9 @@ import {
 	JUNK_REVIEW_MAX_LIMIT,
 	MAX_JUNK_RESOLVE_IDS,
 } from "../services/junk-review";
+import type { OnThisDayResult } from "../services/on-this-day";
 import {
+	isValidCapturedDate,
 	isValidPhotoBounds,
 	type PhotoBounds,
 	type PhotoLocationsResult,
@@ -115,6 +117,9 @@ export const countryFilterSchema = z
 	.regex(COUNTRY_CODE_PATTERN)
 	.optional();
 export const placeFilterSchema = z.coerce.number().int().positive().optional();
+/** A real `YYYY-MM-DD` calendar date (`capturedDate` filter, `onThisDay` `date`). */
+export const calendarDateSchema = z.string().refine(isValidCapturedDate);
+export const capturedDateFilterSchema = calendarDateSchema.optional();
 
 /** `bounds` in JSON bodies; the same rule as tRPC and `isValidPhotoBounds`. */
 export const photoBoundsSchema: z.ZodType<PhotoBounds> = z
@@ -151,6 +156,7 @@ const photoFilterFieldsSchema = z.object({
 	tag: tagFilterSchema,
 	country: countryFilterSchema,
 	place: placeFilterSchema,
+	capturedDate: capturedDateFilterSchema,
 });
 
 /**
@@ -283,6 +289,7 @@ export const searchRequestSchema = z
 		tag: tagFilterSchema,
 		country: countryFilterSchema,
 		place: z.number().int().positive().optional(),
+		capturedDate: capturedDateFilterSchema,
 		bounds: photoBoundsSchema.optional(),
 	})
 	.strict();
@@ -301,6 +308,7 @@ export const similarPhotosQuerySchema = z.object({
 	tag: tagFilterSchema,
 	country: countryFilterSchema,
 	place: placeFilterSchema,
+	capturedDate: capturedDateFilterSchema,
 });
 
 export const photoTagsResponseSchema = z.object({
@@ -462,6 +470,21 @@ export const collectionSchema = z.object({
 
 export const collectionsResponseSchema = z.object({
 	collections: z.array(collectionSchema),
+});
+
+export const onThisDayQuerySchema = z.object({ date: calendarDateSchema });
+
+export const onThisDayResponseSchema = z.object({
+	date: calendarDateSchema,
+	years: z.array(
+		z.object({
+			year: z.number().int().min(1900),
+			yearsAgo: z.number().int().positive(),
+			capturedDate: calendarDateSchema,
+			count: z.number().int().positive(),
+			cover: collectionSchema.shape.cover.unwrap(),
+		}),
+	),
 });
 
 export const addCollectionPhotosResponseSchema = z.object({
@@ -783,5 +806,20 @@ export function serializeSmartAlbum(value: SmartAlbum) {
 		},
 		createdAt: toIsoTimestamp(value.createdAt),
 		updatedAt: toIsoTimestamp(value.updatedAt),
+	};
+}
+
+export function serializeOnThisDay(value: OnThisDayResult) {
+	return {
+		date: value.date,
+		years: value.years.map((group) => ({
+			...group,
+			cover: {
+				photoId: group.cover.photoId,
+				thumbnailUpdatedAt: toNullableIsoTimestamp(
+					group.cover.thumbnailUpdatedAt,
+				),
+			},
+		})),
 	};
 }

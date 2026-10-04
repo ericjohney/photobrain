@@ -21,6 +21,8 @@ export type FixturePhoto = {
 	phashStatus: string;
 	rating: number;
 	flag: "pick" | "reject" | null;
+	/** Thumbnail cache token; unset (undefined) on most fixtures. */
+	thumbnailUpdatedAt?: Date | null;
 	exif: {
 		id: number;
 		photoId: number;
@@ -127,11 +129,13 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		rating: 1,
 		flag: "reject",
 	}),
+	// "On this day" (June 15): one year ago in EXIF's colon format.
 	makePhoto(5, {
 		name: "street.jpg",
 		path: "photos/2024/street.jpg",
 		width: 4000,
 		height: 6000,
+		exif: { ...makePhoto(5).exif!, dateTaken: "2025:06:15 08:00:00" },
 	}),
 	makePhoto(6, {
 		name: "beach.jpg",
@@ -144,7 +148,11 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		name: "mountain.heic",
 		path: "photos/2024/mountain.heic",
 		mimeType: "image/heic",
-		exif: { ...makePhoto(7).exif!, ...gps("-17.7134", "178.065") },
+		exif: {
+			...makePhoto(7).exif!,
+			...gps("-17.7134", "178.065"),
+			dateTaken: "2019:06:15 10:00:00",
+		},
 	}),
 	makePhoto(8, {
 		name: "forest.jpg",
@@ -153,7 +161,12 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		flag: "pick",
 		pairedPhotoId: 13,
 		pairedFormat: "ARW",
-		exif: { ...makePhoto(8).exif!, ...gps("47.6062", "-122.3321") },
+		thumbnailUpdatedAt: new Date("2025-06-16T08:00:00.000Z"),
+		exif: {
+			...makePhoto(8).exif!,
+			...gps("47.6062", "-122.3321"),
+			dateTaken: "2025:06:15 18:30:00",
+		},
 	}),
 	makePhoto(9, {
 		name: "city.jpg",
@@ -161,10 +174,15 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		exif: { ...makePhoto(9).exif!, ...gps("-13.8333", "-171.7667") },
 	}),
 	// Invalid locations the map ignores: non-numeric text and the 0,0 default.
+	// Flower is the evening before "On this day" (June 14).
 	makePhoto(10, {
 		name: "flower.jpg",
 		path: "photos/2024/flower.jpg",
-		exif: { ...makePhoto(10).exif!, ...gps("unknown", "12.5") },
+		exif: {
+			...makePhoto(10).exif!,
+			...gps("unknown", "12.5"),
+			dateTaken: "2024:06:14 23:59:59",
+		},
 	}),
 	makePhoto(11, { name: "cat.jpg", path: "photos/2024/cat.jpg", exif: null }),
 	makePhoto(12, {
@@ -185,7 +203,11 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		flag: "pick",
 		pairedPhotoId: 8,
 		pairedFormat: "JPG",
-		exif: { ...makePhoto(13).exif!, ...gps("47.6062", "-122.3321") },
+		exif: {
+			...makePhoto(13).exif!,
+			...gps("47.6062", "-122.3321"),
+			dateTaken: "2025:06:15 18:30:00",
+		},
 	}),
 ];
 
@@ -449,6 +471,8 @@ export type FixturePhotoFilters = {
 	tag?: string;
 	country?: string;
 	place?: number;
+	/** "On this day" capture date, `YYYY-MM-DD`. */
+	capturedDate?: string;
 	bounds?: FixturePhotoBounds;
 };
 
@@ -480,6 +504,17 @@ function inBounds(photo: FixturePhoto, bounds: FixturePhotoBounds) {
 	return bounds.west <= bounds.east
 		? longitude >= bounds.west && longitude <= bounds.east
 		: longitude >= bounds.west || longitude <= bounds.east;
+}
+
+/**
+ * The API's capture date: the first 10 characters of EXIF `dateTaken` with
+ * `:` as `-`, valid only as `YYYY-MM-DD` with year >= 1900 (wall clock, no
+ * time zone conversion).
+ */
+export function fixtureCapturedDate(photo: FixturePhoto): string | null {
+	const date = photo.exif?.dateTaken?.slice(0, 10).replaceAll(":", "-");
+	if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+	return Number(date.slice(0, 4)) >= 1900 ? date : null;
 }
 
 /** Camera label as the API composes it: model alone when it already starts with the make. */
@@ -547,6 +582,12 @@ export function filterFixturePhotos(
 		if (filters.place !== undefined && place?.id !== filters.place) {
 			return false;
 		}
+		if (
+			filters.capturedDate !== undefined &&
+			fixtureCapturedDate(p) !== filters.capturedDate
+		) {
+			return false;
+		}
 		if (filters.bounds !== undefined && !inBounds(p, filters.bounds)) {
 			return false;
 		}
@@ -565,3 +606,51 @@ export function filterFixturePhotos(
 
 /** The unfiltered library grid: every fixture photo with pairs stacked. */
 export const FIXTURE_LIBRARY = filterFixturePhotos(FIXTURE_PHOTOS);
+
+/**
+ * The API's `onThisDay({ date })`: per earlier year (newest first, at most
+ * 20), the non-rejected stacked photos captured on `date`'s month-day. On
+ * Feb 28 of a non-leap year, Feb 29 photos join their year's group, whose
+ * `capturedDate` is Feb 29 only when that year has no Feb 28 photos. The
+ * cover is the highest rating, then latest capture time, then highest id.
+ */
+export function fixtureOnThisDay(photos: FixturePhoto[], date: string) {
+	const year = Number(date.slice(0, 4));
+	const monthDay = date.slice(5);
+	const leapYear = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+	const monthDays =
+		monthDay === "02-28" && !leapYear ? ["02-28", "02-29"] : [monthDay];
+	const groups = new Map<number, FixturePhoto[]>();
+	for (const photo of filterFixturePhotos(photos)) {
+		const captured = fixtureCapturedDate(photo);
+		if (photo.flag === "reject" || !captured) continue;
+		const photoYear = Number(captured.slice(0, 4));
+		if (photoYear >= year || !monthDays.includes(captured.slice(5))) continue;
+		groups.set(photoYear, [...(groups.get(photoYear) ?? []), photo]);
+	}
+	const years = [...groups.entries()]
+		.sort(([a], [b]) => b - a)
+		.slice(0, 20)
+		.map(([groupYear, members]) => {
+			const capturedDates = members.map((p) => fixtureCapturedDate(p));
+			const cover = [...members].sort(
+				(a, b) =>
+					b.rating - a.rating ||
+					(b.exif?.dateTaken ?? "").localeCompare(a.exif?.dateTaken ?? "") ||
+					b.id - a.id,
+			)[0];
+			return {
+				year: groupYear,
+				yearsAgo: year - groupYear,
+				capturedDate: capturedDates.includes(`${groupYear}-${monthDays[0]}`)
+					? `${groupYear}-${monthDays[0]}`
+					: `${groupYear}-${monthDays[1]}`,
+				count: members.length,
+				cover: {
+					photoId: cover.id,
+					thumbnailUpdatedAt: cover.thumbnailUpdatedAt ?? null,
+				},
+			};
+		});
+	return { date, years };
+}

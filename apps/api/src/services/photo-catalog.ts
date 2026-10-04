@@ -1,6 +1,7 @@
 import { eq, gte, isNull, type SQL, sql } from "drizzle-orm";
 import type { db as productionDb } from "../db";
 import {
+	capturedDateSql,
 	pairStem,
 	photoExif,
 	photos as photosTable,
@@ -35,6 +36,11 @@ export type PhotoFilters = {
 	country?: string;
 	/** Only photos whose current place is this GeoNames city (geonameid). */
 	place?: number;
+	/**
+	 * Only photos captured on this `YYYY-MM-DD` wall-clock date (validated by
+	 * `isValidCapturedDate`). A view scope like `bounds`: never saved in smart albums.
+	 */
+	capturedDate?: string;
 	/** Only photos with a valid location inside this box (edges inclusive). */
 	bounds?: PhotoBounds;
 };
@@ -68,6 +74,33 @@ export function isValidPhotoBounds(bounds: PhotoBounds): boolean {
 		east >= -180 &&
 		east <= 180
 	);
+}
+
+/** Shape of a capture date (`capturedDate` filter, `onThisDay` `date`). */
+export const CAPTURED_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A real `YYYY-MM-DD` calendar date in year 1900 or later: the only values a
+ * photo's capture date can take, so the transports reject anything else.
+ */
+export function isValidCapturedDate(value: string): boolean {
+	if (!CAPTURED_DATE_PATTERN.test(value)) return false;
+	const year = Number(value.slice(0, 4));
+	const month = Number(value.slice(5, 7));
+	const day = Number(value.slice(8, 10));
+	if (year < 1900 || month < 1 || month > 12 || day < 1) return false;
+	// Day 0 of the next month is the last day of this one.
+	return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * The row visible as `photos` was captured on `date`: its EXIF `date_taken`
+ * normalizes (`capturedDateSql`) to it. Resolved through the
+ * `idx_exif_captured_date` expression index, never a `photo_exif` scan.
+ * `date` is a validated `YYYY-MM-DD` value or a correlated SQL expression.
+ */
+export function capturedDateCondition(date: string | SQL): SQL {
+	return sql`${photosTable.id} IN (SELECT photo_id FROM photo_exif WHERE ${capturedDateSql(sql`photo_exif.date_taken`)} = ${date})`;
 }
 
 /**
@@ -206,8 +239,10 @@ export function photoIdsWithPartnersSql(ids: readonly number[]): SQL {
  * partner). Only RAW rows reach the partner lookup. The derived table resolves
  * the partner ID against the outer row; the joined `photos` then shadows it, so
  * the unchanged scope conditions test the single partner row by primary key.
+ * `photoFilterConditions` appends it; `onThisDay` uses it directly because its
+ * scope (the row's own capture date) is correlated rather than one value.
  */
-function pairStackingCondition(scope: readonly SQL[]): SQL {
+export function pairStackingCondition(scope: readonly SQL[]): SQL {
 	const partner = pairedPhotoIdSql();
 	return scope.length === 0
 		? sql`NOT (ifnull(photos.is_raw, 0) = 1 AND ${partner} IS NOT NULL)`
@@ -439,6 +474,9 @@ export function photoFilterConditions(
 		conditions.push(
 			sql`${photosTable.id} IN (SELECT photo_id FROM photo_places WHERE geoname_id = ${input.place} AND ${currentPlaceSql()})`,
 		);
+	}
+	if (input.capturedDate !== undefined) {
+		conditions.push(capturedDateCondition(input.capturedDate));
 	}
 	if (input.bounds) {
 		conditions.push(locationCondition(input.bounds));

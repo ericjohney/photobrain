@@ -265,6 +265,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `GET /api/v1/photos/:id/similar`
 - `GET /api/v1/photos/:id/tags` (404 `PHOTO_NOT_FOUND`)
 - `GET /api/v1/photos/:id/place` (`{ place: { id, city, region, country, countryCode } | null }`; 404 `PHOTO_NOT_FOUND`). `country` (ISO2) and `place` (geoname ID) filter `/photos`, `/locations`, search, similar, and smart albums; `filter-options` adds folder-scoped `countries` and `places` with counts.
+- `GET /api/v1/on-this-day?date=YYYY-MM-DD` (required client-local date; `{ date, years: [{ year, yearsAgo, capturedDate, count, cover }] }`, earlier years newest first, at most 20; rejects excluded, RAW+JPEG stacked; on a non-leap Feb 28, earlier Feb 29 photos join their year). `capturedDate` (`YYYY-MM-DD`, wall-clock EXIF date, no time-zone conversion) filters `/photos`, `/locations`, search, and similar; it is a view scope and smart albums reject it. Expression indexes `idx_exif_month_day`/`idx_exif_captured_date` (migration 0015) back both.
 - `GET|POST /api/v1/collections`, `PATCH|DELETE /api/v1/collections/:id`, `POST /api/v1/collections/:id/photos`, `POST /api/v1/collections/:id/photos/remove`, `GET /api/v1/photos/:id/collections` (409 `COLLECTION_NAME_TAKEN`, 404 `COLLECTION_NOT_FOUND`)
 - `GET|POST /api/v1/smart-albums`, `PATCH|DELETE /api/v1/smart-albums/:id` (`dateMonth` emitted as `YYYY-MM`; 409 `SMART_ALBUM_NAME_TAKEN`, 404 `SMART_ALBUM_NOT_FOUND`); clients open an album through `photos` or, with a query, `search` (limit 100)
 - `GET /api/v1/review/junk`, `POST /api/v1/review/junk/resolve` (same shapes as `junkReview`/`resolveJunk`; 400 `INVALID_REQUEST`)
@@ -334,6 +335,8 @@ Duplicates on iOS: the Library header's **Duplicates** button (combined count) p
 Map on iOS: the Library header's **Map** button pushes an `MKMapView` with clustered markers for the Library's current filters. Tapping a marker opens the loupe and tapping a cluster zooms in. **Show N Photos** opens a grid scoped to the visible region (`LibraryScope.mapArea`). The loupe info sheet shows a mini-map when the photo's GPS is valid.
 
 Places on iOS: the Library filter sheet's Places category lists countries with counts and, under the selected country, its cities. The loupe info sheet shows a tappable Place row ("Kyoto, Japan") that applies the place filter. Smart albums save `country`/`place`.
+
+On this day on iOS: over the unfiltered Library grid, a horizontal "On this day" row shows one card per earlier year (cover, "N years ago", date, count) for the device's local date, reloading when the app becomes active on a new day. Tapping a card applies the `capturedDate` filter (date chip); smart-album saves omit it.
 
 Smart albums on iOS: a Smart Albums section in the Collections tab (cards with count or a magnifier for query albums, rename/delete with rollback); **Save as Smart Album…** in the Library filter sheet and Search. Detail screens reuse the collection grid/loupe through `LibraryStore` scope `.smartAlbum(filters, query)`.
 

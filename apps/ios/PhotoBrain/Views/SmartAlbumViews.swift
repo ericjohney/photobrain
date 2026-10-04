@@ -105,9 +105,17 @@ struct SmartAlbumDetailScreen: View {
 /// Validation and server errors such as a taken name are shown inline; the sheet stays open.
 struct SaveSmartAlbumSheet: View {
     @ObservedObject var store: SmartAlbumsStore
+    /// The savable part of the current filters; view scopes are never saved.
     let filters: LibraryFilters
     /// Trimmed search text, or `nil` to save filters only.
     let query: String?
+
+    init(store: SmartAlbumsStore, filters: LibraryFilters, query: String?) {
+        self.store = store
+        self.filters = filters.savableCriteria
+        self.query = query
+    }
+
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var errorMessage: String?
