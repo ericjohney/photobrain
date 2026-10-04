@@ -107,7 +107,7 @@ export function scoreTags(
 }
 
 /** Views a stored Float32 embedding BLOB, copying only when misaligned. */
-function embeddingFromBlob(blob: Uint8Array): Float32Array {
+export function embeddingFromBlob(blob: Uint8Array): Float32Array {
 	const length = Math.floor(blob.byteLength / 4);
 	return blob.byteOffset % 4 === 0
 		? new Float32Array(blob.buffer, blob.byteOffset, length)

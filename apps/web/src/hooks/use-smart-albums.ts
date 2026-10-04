@@ -19,9 +19,9 @@ export function smartAlbumErrorMessage(error: unknown, name?: string) {
 
 /**
  * Saved form of the dashboard's folder + library filters. The collection, the
- * map-area `bounds`, and the "On this day" `capturedDate` are view scopes the
- * API rejects in smart albums, so they are never saved: none of them alone is
- * savable, and alongside other filters they are left out.
+ * map-area `bounds`, the "On this day" `capturedDate`, and the auto `event`
+ * are view scopes the API rejects in smart albums, so they are never saved:
+ * none of them alone is savable, and alongside other filters they are left out.
  */
 export function toSmartAlbumFilters(
 	folder: string | null,

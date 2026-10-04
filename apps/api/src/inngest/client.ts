@@ -26,6 +26,9 @@ type PhotoEvents = {
 	"photos/places.requested": {
 		data: Record<string, never>;
 	};
+	"photos/events.requested": {
+		data: Record<string, never>;
+	};
 };
 
 export const inngest = new Inngest({

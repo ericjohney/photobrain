@@ -26,6 +26,7 @@ import {
 	MAX_DUPLICATE_KEY_LENGTH,
 	resolveDuplicateGroup,
 } from "../services/duplicates";
+import { listEvents } from "../services/events";
 import {
 	JUNK_ACTIONS,
 	JUNK_REASONS,
@@ -85,6 +86,7 @@ const sharedFilterShape = {
 	tag: z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN).optional(),
 	country: z.string().regex(COUNTRY_CODE_PATTERN).optional(),
 	place: z.number().int().positive().optional(),
+	event: z.number().int().positive().optional(),
 	capturedDate: z
 		.string()
 		.refine(isValidCapturedDate, {
@@ -157,8 +159,8 @@ const smartAlbumQuerySchema = z
 	.min(1)
 	.max(MAX_SMART_ALBUM_QUERY_LENGTH)
 	.nullable();
-// Photo filters minus collectionId, bounds, and capturedDate (strict, so all are
-// rejected: the latter two are view scopes). Empty strings and filterRaw "all"
+// Photo filters minus collectionId, bounds, capturedDate, and event (strict, so
+// all are rejected: the latter three are view scopes). Empty strings and filterRaw "all"
 // mean "no filter"; dateMonth accepts `YYYY:MM` (what filterOptions emits) or
 // `YYYY-MM`.
 const smartAlbumFiltersSchema = z
@@ -227,6 +229,16 @@ export const appRouter = router({
 	photoLocations: publicProcedure
 		.input(photoFiltersInput)
 		.query(({ ctx, input }) => listPhotoLocations(ctx.db, input ?? {})),
+
+	events: publicProcedure
+		.input(
+			z
+				.object({
+					folder: z.string().optional(),
+				})
+				.optional(),
+		)
+		.query(({ ctx, input }) => listEvents(ctx.db, input ?? {})),
 
 	onThisDay: publicProcedure
 		.input(

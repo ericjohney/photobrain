@@ -37,6 +37,9 @@ struct LibraryFilters: Hashable, Sendable {
     /// Exact capture date `YYYY-MM-DD` (an On this day card). A view scope, not saved
     /// criteria: smart albums never store it.
     var capturedDate: String?
+    /// One auto event (an Events card). A view scope, not saved criteria: smart albums never
+    /// store it.
+    var event: EventFilter?
 
     enum Field: Hashable, Sendable {
         case mediaKind
@@ -51,12 +54,13 @@ struct LibraryFilters: Hashable, Sendable {
         case place
         case bounds
         case capturedDate
+        case event
     }
 
     var isActive: Bool {
         mediaKind != .all || camera != nil || lens != nil || iso != nil || dateMonth != nil
             || minRating != nil || flag != nil || tag != nil || country != nil || place != nil || bounds != nil
-            || capturedDate != nil
+            || capturedDate != nil || event != nil
     }
 
     struct ActiveFilter: Identifiable, Equatable, Sendable {
@@ -82,6 +86,7 @@ struct LibraryFilters: Hashable, Sendable {
         if let capturedDate {
             fields.append(ActiveFilter(field: .capturedDate, title: Self.formatCapturedDate(capturedDate)))
         }
+        if let event { fields.append(ActiveFilter(field: .event, title: event.title)) }
         return fields
     }
 
@@ -105,7 +110,8 @@ struct LibraryFilters: Hashable, Sendable {
             country: country?.code,
             place: place?.id,
             bounds: bounds,
-            capturedDate: capturedDate
+            capturedDate: capturedDate,
+            event: event?.id
         )
     }
 
@@ -126,6 +132,7 @@ struct LibraryFilters: Hashable, Sendable {
         case .place: updated.place = nil
         case .bounds: updated.bounds = nil
         case .capturedDate: updated.capturedDate = nil
+        case .event: updated.event = nil
         }
         return updated
     }
@@ -134,12 +141,13 @@ struct LibraryFilters: Hashable, Sendable {
         self = LibraryFilters()
     }
 
-    /// The filters a smart album can save: everything except the view scopes `bounds` and
-    /// `capturedDate`.
+    /// The filters a smart album can save: everything except the view scopes `bounds`,
+    /// `capturedDate`, and `event`.
     var savableCriteria: Self {
         var criteria = self
         criteria.bounds = nil
         criteria.capturedDate = nil
+        criteria.event = nil
         return criteria
     }
 
@@ -202,6 +210,9 @@ enum LibraryScope: Equatable, Sendable {
     /// Map "Show N Photos": the user's filters including their map region (`bounds`).
     /// Like other scoped screens it has no filter UI, so it loads no filter options.
     case mapArea
+    /// One auto event's members (`filters.event`). Like other scoped screens it has no filter
+    /// UI, so it loads no filter options.
+    case event
     /// A smart album's saved criteria, evaluated live. The user's filters are not applied.
     case smartAlbum(filters: SmartAlbumFilters, query: String?)
 }
@@ -218,7 +229,7 @@ enum PhotoListingSource: Equatable, Sendable {
     /// search with the query and the same filters.
     init(scope: LibraryScope, filters: LibraryFilters) {
         switch scope {
-        case .library, .mapArea:
+        case .library, .mapArea, .event:
             self = .photos(filters.photoQuery)
         case let .collection(id):
             var query = filters.photoQuery
@@ -920,7 +931,7 @@ final class SimilarPhotosStore: ObservableObject, CurationApplying {
         state = .loading
         let task = Task { [api] in
             do {
-                let response = try await api.similarPhotos(id: sourceID, limit: Self.resultLimit)
+                let response = try await api.similarPhotos(id: sourceID, limit: Self.resultLimit, event: nil)
                 guard !Task.isCancelled, currentGeneration == generation else { return }
                 guard response.indexed else {
                     records = []

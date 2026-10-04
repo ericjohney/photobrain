@@ -239,12 +239,13 @@ export function useJobProgress(jobId: string | null) {
 			refresh.terminal = true;
 			flush();
 			void utils.searchPhotos.invalidate();
-			// Tags, places, quality, and hashes are written after media, so
-			// review and duplicate groups settle at the end.
+			// Tags, places, quality, hashes, and events are written after media,
+			// so review, duplicate groups, and events settle at the end.
 			void utils.photoTags.invalidate();
 			void utils.photoPlace.invalidate();
 			void utils.junkReview.invalidate();
 			void utils.duplicateGroups.invalidate();
+			void utils.events.invalidate();
 			return;
 		}
 		if (
@@ -276,6 +277,7 @@ export function useJobProgress(jobId: string | null) {
 		utils.photoPlace,
 		utils.junkReview,
 		utils.duplicateGroups,
+		utils.events,
 	]);
 
 	return {

@@ -15,6 +15,7 @@ import {
 	duplicateGroups,
 	resolveDuplicateGroup,
 } from "../services/duplicates";
+import { listEvents } from "../services/events";
 import { junkReview, resolveJunk } from "../services/junk-review";
 import { onThisDay } from "../services/on-this-day";
 import type { ApiDatabase } from "../services/photo-catalog";
@@ -52,6 +53,8 @@ import {
 	duplicateGroupsQuerySchema,
 	duplicateGroupsResponseSchema,
 	errorResponseSchema,
+	eventsQuerySchema,
+	eventsResponseSchema,
 	filterOptionsQuerySchema,
 	filterOptionsResponseSchema,
 	foldersResponseSchema,
@@ -81,6 +84,7 @@ import {
 	searchResponseSchema,
 	serializeCollection,
 	serializeDuplicateGroupsResponse,
+	serializeEvents,
 	serializeJunkReviewResponse,
 	serializeOnThisDay,
 	serializePhoto,
@@ -282,6 +286,19 @@ export function createV1Router(dependencies: V1Dependencies) {
 			return jsonResponse(
 				onThisDayResponseSchema,
 				serializeOnThisDay(onThisDay(dependencies.database, input.data.date)),
+			);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/events", (context) => {
+		const input = eventsQuerySchema.safeParse(context.req.query());
+		if (!input.success) return invalidRequest();
+		try {
+			return jsonResponse(
+				eventsResponseSchema,
+				serializeEvents(listEvents(dependencies.database, input.data)),
 			);
 		} catch (error) {
 			return internalError(error);

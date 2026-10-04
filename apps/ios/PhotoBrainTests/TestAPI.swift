@@ -20,7 +20,7 @@ actor TestAPI: PhotoBrainAPI {
     var startForces: [Bool] = []
     var similarResponses: [Int: Result<SimilarPhotosResponseDTO, PhotoBrainAPIError>] = [:]
     var similarDelays: [Int: Duration] = [:]
-    var similarRequests: [(id: Int, limit: Int)] = []
+    var similarRequests: [(id: Int, limit: Int, event: Int?)] = []
     var curationRequests: [CurationRequest] = []
     var curationDelay: Duration = .zero
     var curationFailure: PhotoBrainAPIError?
@@ -47,6 +47,8 @@ actor TestAPI: PhotoBrainAPI {
         OnThisDayResponseDTO(date: "2000-01-01", years: [])
     )
     var onThisDayRequests: [Date] = []
+    var eventsResult: Result<EventsResponseDTO, PhotoBrainAPIError> = .success(EventsResponseDTO(events: []))
+    var eventsRequests: [String?] = []
     /// Server-side junk candidates, newest first; `junkReview` filters and pages over them.
     var junkCandidates: [PhotoDTO] = []
     /// Scripted responses returned (in order) before falling back to `junkCandidates`.
@@ -261,6 +263,15 @@ actor TestAPI: PhotoBrainAPI {
         onThisDayRequests
     }
 
+    func setEvents(_ result: Result<EventsResponseDTO, PhotoBrainAPIError>) {
+        eventsResult = result
+    }
+
+    /// The `folder` argument of each `events` request.
+    func recordedEventsRequests() -> [String?] {
+        eventsRequests
+    }
+
     struct SearchKey: Hashable, Sendable {
         let query: String
         let filters: PhotoQuery
@@ -290,7 +301,7 @@ actor TestAPI: PhotoBrainAPI {
         similarResponses[id] = result
     }
 
-    func recordedSimilarRequests() -> [(id: Int, limit: Int)] {
+    func recordedSimilarRequests() -> [(id: Int, limit: Int, event: Int?)] {
         similarRequests
     }
 
@@ -416,8 +427,8 @@ actor TestAPI: PhotoBrainAPI {
         return searchResponses[key] ?? SearchResponseDTO(photos: [], total: 0, query: query)
     }
 
-    func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO {
-        similarRequests.append((id, limit))
+    func similarPhotos(id: Int, limit: Int, event: Int?) async throws -> SimilarPhotosResponseDTO {
+        similarRequests.append((id, limit, event))
         if let delay = similarDelays[id], delay > .zero { try await Task.sleep(for: delay) }
         guard let result = similarResponses[id] else {
             throw PhotoBrainAPIError.server(status: 404, code: "PHOTO_NOT_FOUND", message: "Photo not found")
@@ -444,6 +455,11 @@ actor TestAPI: PhotoBrainAPI {
     func onThisDay(date: Date) async throws -> OnThisDayResponseDTO {
         onThisDayRequests.append(date)
         return try onThisDayResult.get()
+    }
+
+    func events(folder: String?) async throws -> EventsResponseDTO {
+        eventsRequests.append(folder)
+        return try eventsResult.get()
     }
 
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {

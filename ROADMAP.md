@@ -415,8 +415,8 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [x] **GPS reverse geocoding** (offline GeoNames cities, nearest within 100 km)
   - Country and city filters, place row in photo metadata (web and native iOS)
   - Landmark detection remains open
+- [x] **Automatic events** (time gaps plus place and CLIP scene changes; web Events section, iOS Events in Collections)
 - [ ] **Location-based albums**
-  - Auto-group photos by location
   - Travel timeline
 - [ ] **3D Earth view** (advanced)
   - Globe visualization of photo locations

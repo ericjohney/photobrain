@@ -59,6 +59,7 @@ import {
 	toSmartAlbumFilters,
 	useSmartAlbums,
 } from "@/hooks/use-smart-albums";
+import { eventTitle } from "@/lib/events";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
 import { photoLocation } from "@/lib/map";
 import { formatCapturedDate } from "@/lib/on-this-day";
@@ -66,6 +67,7 @@ import { countCapturedDays, groupPhotos } from "@/lib/timeline";
 import { trpc } from "@/lib/trpc";
 import type {
 	DuplicateKind,
+	EventSummary,
 	JunkAction,
 	JunkReason,
 	PhotoBounds,
@@ -124,10 +126,11 @@ export function Dashboard() {
 		selectedCollectionId === null &&
 		catalogView === null &&
 		similarSource === null &&
-		// A map area or capture date narrows the album, so it no longer shows
-		// exactly the album.
+		// A map area, capture date, or event narrows the album, so it no longer
+		// shows exactly the album.
 		filters.bounds === null &&
 		filters.capturedDate === null &&
+		filters.event === null &&
 		smartAlbumMatches(
 			appliedSmartAlbum,
 			currentSmartAlbumFilters,
@@ -143,8 +146,8 @@ export function Dashboard() {
 			setAppliedSmartAlbumId(null);
 		}
 	}, [appliedSmartAlbumId, albumsLoaded, selectedSmartAlbum]);
-	// Collection scope, map area, and capture date are never saved, so any of
-	// them alone is not savable; with other filters they are left out.
+	// Collection scope, map area, capture date, and event are never saved, so
+	// any of them alone is not savable; with other filters they are left out.
 	const canSaveSmartAlbum =
 		Object.keys(currentSmartAlbumFilters).length > 0 ||
 		currentSmartAlbumQuery !== null;
@@ -153,6 +156,10 @@ export function Dashboard() {
 	const foldersQuery = trpc.folders.useQuery();
 
 	const filterOptionsQuery = trpc.filterOptions.useQuery({
+		folder: selectedFolder ?? undefined,
+	});
+	// Events are listed for the folder scope, like the filter options.
+	const eventsQuery = trpc.events.useQuery({
 		folder: selectedFolder ?? undefined,
 	});
 
@@ -171,6 +178,7 @@ export function Dashboard() {
 		country: filters.country ?? undefined,
 		place: filters.place ?? undefined,
 		capturedDate: filters.capturedDate ?? undefined,
+		event: filters.event?.id,
 	};
 	const bounds = filters.bounds ?? undefined;
 
@@ -194,7 +202,7 @@ export function Dashboard() {
 	);
 
 	const similarPhotosQuery = trpc.similarPhotos.useQuery(
-		{ photoId: similarSource?.id ?? 0, limit: 60 },
+		{ photoId: similarSource?.id ?? 0, limit: 60, event: filters.event?.id },
 		{ enabled: similarSource !== null },
 	);
 
@@ -298,6 +306,7 @@ export function Dashboard() {
 	const wholeLibraryShown =
 		Object.keys(currentSmartAlbumFilters).length === 0 &&
 		filters.capturedDate === null &&
+		filters.event === null &&
 		filters.bounds === null &&
 		!searchQuery &&
 		selectedCollectionId === null &&
@@ -593,6 +602,19 @@ export function Dashboard() {
 		[setActivePhoto],
 	);
 
+	// Library panel event: filter to its photos (null clears). Like choosing a
+	// folder, it leaves Find similar, Review, and Duplicates.
+	const handleEventSelect = useCallback(
+		(event: EventSummary | null) => {
+			setFilters((current) => ({ ...current, event }));
+			setSimilarSource(null);
+			setCatalogView(null);
+			setActivePhoto(null);
+			if (library.viewMode === "loupe") setViewMode("grid");
+		},
+		[setActivePhoto, library.viewMode, setViewMode],
+	);
+
 	// Navigation helpers for loupe - memoized to avoid recalculation on every render
 	const { hasPrev, hasNext } = useMemo(() => {
 		const currentIndex = library.activePhoto
@@ -823,6 +845,7 @@ export function Dashboard() {
 				{filters.capturedDate
 					? ` · ${formatCapturedDate(filters.capturedDate)}`
 					: ""}
+				{filters.event ? ` · ${eventTitle(filters.event)}` : ""}
 				{filters.bounds ? " · Map area" : ""}
 			</span>
 			<button
@@ -990,6 +1013,8 @@ export function Dashboard() {
 							filterOptions={filterOptionsQuery.data}
 							activeFilters={filters}
 							onFilterChange={setFilters}
+							events={eventsQuery.data?.events}
+							onEventSelect={handleEventSelect}
 							reviewCount={review.counts?.all}
 							reviewActive={reviewActive}
 							onReviewSelect={handleReviewSelect}

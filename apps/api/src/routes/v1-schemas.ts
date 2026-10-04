@@ -12,6 +12,7 @@ import {
 	DUPLICATE_KINDS,
 	MAX_DUPLICATE_KEY_LENGTH,
 } from "../services/duplicates";
+import type { EventsResult } from "../services/events";
 import {
 	JUNK_ACTIONS,
 	JUNK_REASONS,
@@ -117,6 +118,8 @@ export const countryFilterSchema = z
 	.regex(COUNTRY_CODE_PATTERN)
 	.optional();
 export const placeFilterSchema = z.coerce.number().int().positive().optional();
+/** An `events` id (`event` filter); an unknown id matches nothing. */
+export const eventFilterSchema = z.coerce.number().int().positive().optional();
 /** A real `YYYY-MM-DD` calendar date (`capturedDate` filter, `onThisDay` `date`). */
 export const calendarDateSchema = z.string().refine(isValidCapturedDate);
 export const capturedDateFilterSchema = calendarDateSchema.optional();
@@ -156,6 +159,7 @@ const photoFilterFieldsSchema = z.object({
 	tag: tagFilterSchema,
 	country: countryFilterSchema,
 	place: placeFilterSchema,
+	event: eventFilterSchema,
 	capturedDate: capturedDateFilterSchema,
 });
 
@@ -289,6 +293,7 @@ export const searchRequestSchema = z
 		tag: tagFilterSchema,
 		country: countryFilterSchema,
 		place: z.number().int().positive().optional(),
+		event: z.number().int().positive().optional(),
 		capturedDate: capturedDateFilterSchema,
 		bounds: photoBoundsSchema.optional(),
 	})
@@ -308,6 +313,7 @@ export const similarPhotosQuerySchema = z.object({
 	tag: tagFilterSchema,
 	country: countryFilterSchema,
 	place: placeFilterSchema,
+	event: eventFilterSchema,
 	capturedDate: capturedDateFilterSchema,
 });
 
@@ -487,6 +493,33 @@ export const onThisDayResponseSchema = z.object({
 	),
 });
 
+export const eventsQuerySchema = z.object({ folder: z.string().optional() });
+
+/** Capture wall clock without zone, `YYYY-MM-DDTHH:MM:SS`. */
+const wallClockSchema = z
+	.string()
+	.regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+
+export const eventsResponseSchema = z.object({
+	events: z.array(
+		z.object({
+			id: z.number().int().positive(),
+			startAt: wallClockSchema,
+			endAt: wallClockSchema,
+			photoCount: z.number().int().positive(),
+			cover: collectionSchema.shape.cover.unwrap(),
+			place: z
+				.object({
+					city: z.string().nullable(),
+					region: z.string().nullable(),
+					country: z.string(),
+					countryCode: z.string().regex(COUNTRY_CODE_PATTERN),
+				})
+				.nullable(),
+		}),
+	),
+});
+
 export const addCollectionPhotosResponseSchema = z.object({
 	added: z.number().int().nonnegative(),
 	photoCount: z.number().int().nonnegative(),
@@ -518,7 +551,8 @@ const smartAlbumQuerySchema = z
 
 /**
  * Saved filters as accepted from clients: the photo filters minus
- * `collectionId` and `bounds` (strict, so either is a 400).
+ * `collectionId` and the view scopes `bounds`, `capturedDate`, and `event`
+ * (strict, so each is a 400).
  * Empty strings and `filterRaw: "all"` mean "no filter"; `dateMonth` accepts
  * `YYYY-MM` or the stored-EXIF `YYYY:MM`.
  */
@@ -818,6 +852,20 @@ export function serializeOnThisDay(value: OnThisDayResult) {
 				photoId: group.cover.photoId,
 				thumbnailUpdatedAt: toNullableIsoTimestamp(
 					group.cover.thumbnailUpdatedAt,
+				),
+			},
+		})),
+	};
+}
+
+export function serializeEvents(value: EventsResult) {
+	return {
+		events: value.events.map((event) => ({
+			...event,
+			cover: {
+				photoId: event.cover.photoId,
+				thumbnailUpdatedAt: toNullableIsoTimestamp(
+					event.cover.thumbnailUpdatedAt,
 				),
 			},
 		})),

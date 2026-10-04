@@ -481,6 +481,8 @@ export type FixturePhotoFilters = {
 	place?: number;
 	/** "On this day" capture date, `YYYY-MM-DD`. */
 	capturedDate?: string;
+	/** Auto event id (see FIXTURE_EVENTS); an unknown id matches nothing. */
+	event?: number;
 	bounds?: FixturePhotoBounds;
 };
 
@@ -620,6 +622,17 @@ export function filterFixturePhotos(
 		) {
 			return false;
 		}
+		if (filters.event !== undefined) {
+			// A stacked pair is one member: its RAW belongs with its partner.
+			const members =
+				FIXTURE_EVENTS.find((e) => e.id === filters.event)?.memberIds ?? [];
+			if (
+				!members.includes(p.id) &&
+				!(p.pairedPhotoId !== null && members.includes(p.pairedPhotoId))
+			) {
+				return false;
+			}
+		}
 		if (filters.bounds !== undefined && !inBounds(p, filters.bounds)) {
 			return false;
 		}
@@ -685,4 +698,140 @@ export function fixtureOnThisDay(photos: FixturePhoto[], date: string) {
 			};
 		});
 	return { date, years };
+}
+
+export type FixtureEventPlace = {
+	city: string | null;
+	region: string | null;
+	country: string;
+	countryCode: string;
+};
+
+/**
+ * Auto events (the API's `events`/`event_photos`): disjoint stacked members
+ * of the fixture library, one per display variant. They are smaller than the
+ * API's six-photo minimum because the fixture library is.
+ */
+export const FIXTURE_EVENTS: {
+	id: number;
+	startAt: string;
+	endAt: string;
+	memberIds: number[];
+	coverId: number;
+	place: FixtureEventPlace | null;
+}[] = [
+	// City place, same day.
+	{
+		id: 1,
+		startAt: "2024-06-15T09:00:00",
+		endAt: "2024-06-15T17:30:00",
+		memberIds: [1, 3],
+		coverId: 1,
+		place: {
+			city: "San Francisco",
+			region: "California",
+			country: "United States",
+			countryCode: "US",
+		},
+	},
+	// Country-only place, same month; the cover has a thumbnail cache token.
+	{
+		id: 6,
+		startAt: "2024-06-14T10:00:00",
+		endAt: "2024-06-16T20:00:00",
+		memberIds: [6, 8],
+		coverId: 8,
+		place: {
+			city: null,
+			region: null,
+			country: "United States",
+			countryCode: "US",
+		},
+	},
+	// A city named like its country, same year across months.
+	{
+		id: 7,
+		startAt: "2019-09-30T08:00:00",
+		endAt: "2019-10-02T19:00:00",
+		memberIds: [7],
+		coverId: 7,
+		place: {
+			city: "Singapore",
+			region: null,
+			country: "Singapore",
+			countryCode: "SG",
+		},
+	},
+	// No place, across years.
+	{
+		id: 9,
+		startAt: "2023-12-30T22:00:00",
+		endAt: "2024-01-02T01:00:00",
+		memberIds: [9],
+		coverId: 9,
+		place: null,
+	},
+	// No place, same day.
+	{
+		id: 2,
+		startAt: "2025-06-15T08:00:00",
+		endAt: "2025-06-15T08:30:00",
+		memberIds: [2, 5],
+		coverId: 5,
+		place: null,
+	},
+	// No place, across months of one year.
+	{
+		id: 10,
+		startAt: "2024-05-30T12:00:00",
+		endAt: "2024-06-14T23:59:59",
+		memberIds: [10, 12],
+		coverId: 10,
+		place: null,
+	},
+];
+
+/** One `events` row as the API returns it. */
+export type FixtureEventDto = {
+	id: number;
+	startAt: string;
+	endAt: string;
+	photoCount: number;
+	cover: { photoId: number; thumbnailUpdatedAt: Date | null };
+	place: FixtureEventPlace | null;
+};
+
+/**
+ * The API's `events({ folder })`: newest first (startAt desc, then id desc);
+ * with a folder, events with any member file in its subtree, still counting
+ * every member.
+ */
+export function fixtureEvents(
+	photos: FixturePhoto[],
+	folder?: string,
+): { events: FixtureEventDto[] } {
+	const inFolder = (photo: FixturePhoto) =>
+		folder === undefined || photo.path.startsWith(`${folder}/`);
+	const events = FIXTURE_EVENTS.filter(({ memberIds }) =>
+		photos.some(
+			(p) =>
+				(memberIds.includes(p.id) ||
+					(p.pairedPhotoId !== null && memberIds.includes(p.pairedPhotoId))) &&
+				inFolder(p),
+		),
+	)
+		.sort((a, b) => b.startAt.localeCompare(a.startAt) || b.id - a.id)
+		.map(({ id, startAt, endAt, memberIds, coverId, place }) => ({
+			id,
+			startAt,
+			endAt,
+			photoCount: memberIds.length,
+			cover: {
+				photoId: coverId,
+				thumbnailUpdatedAt:
+					photos.find((p) => p.id === coverId)?.thumbnailUpdatedAt ?? null,
+			},
+			place,
+		}));
+	return { events };
 }

@@ -345,6 +345,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let place: Int?
     let bounds: PhotoBounds?
     let capturedDate: String?
+    let event: Int?
 
     init(query: String, limit: Int, filters: PhotoQuery) {
         self.query = query
@@ -363,6 +364,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
         place = filters.place
         bounds = filters.bounds
         capturedDate = filters.capturedDate
+        event = filters.event
     }
 }
 
@@ -733,6 +735,42 @@ struct OnThisDayResponseDTO: Codable, Equatable, Sendable {
     let years: [OnThisDayYearDTO]
 }
 
+/// An auto event's place: a city (with its country) when most located members share it, or
+/// only a country (`city`/`region` nil) when most share that.
+struct EventPlaceDTO: Codable, Hashable, Sendable {
+    let city: String?
+    let region: String?
+    let country: String
+    let countryCode: String
+}
+
+/// One auto event: a run of photos captured close together. `startAt`/`endAt` are EXIF
+/// wall-clock capture times `YYYY-MM-DDTHH:MM:SS` with no zone; `id` is applied as the `event`
+/// filter.
+struct EventDTO: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    let startAt: String
+    let endAt: String
+    let photoCount: Int
+    let cover: CollectionCoverDTO
+    let place: EventPlaceDTO?
+
+    /// Medium cover thumbnail, versioned by the cover photo's `thumbnailUpdatedAt`.
+    func coverURL(apiBaseURL: URL) -> URL {
+        PhotoRecord.thumbnailURL(
+            baseURL: apiBaseURL,
+            id: cover.photoId,
+            size: "medium",
+            updatedAt: cover.thumbnailUpdatedAt
+        )
+    }
+}
+
+/// `GET /api/v1/events`: auto events newest first (by `startAt`, then `id`, descending).
+struct EventsResponseDTO: Codable, Equatable, Sendable {
+    let events: [EventDTO]
+}
+
 struct CollectionsResponseDTO: Codable, Equatable, Sendable {
     let collections: [CollectionDTO]
 }
@@ -843,8 +881,8 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
     }
 
     /// The Library/Search filter set as saved criteria (those screens have no folder filter).
-    /// View scopes (map `bounds`, On this day `capturedDate`) are never saved criteria, so they
-    /// are dropped.
+    /// View scopes (map `bounds`, On this day `capturedDate`, auto `event`) are never saved
+    /// criteria, so they are dropped.
     init(_ filters: LibraryFilters) {
         self.init(
             filterRaw: filters.mediaKind,

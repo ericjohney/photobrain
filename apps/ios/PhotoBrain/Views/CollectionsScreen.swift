@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Collections tab: a two-column grid of collection cards followed by a Smart Albums section,
-/// with create, rename, and delete for collections and rename/delete for smart albums.
+/// Collections tab: a two-column grid of collection cards followed by auto Events and Smart
+/// Albums sections, with create, rename, and delete for collections and rename/delete for
+/// smart albums.
 struct CollectionsScreen: View {
     @ObservedObject var store: CollectionsStore
     @ObservedObject var smartAlbums: SmartAlbumsStore
+    @ObservedObject var events: EventsStore
     let curation: PhotoCurationCenter
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
@@ -32,6 +34,8 @@ struct CollectionsScreen: View {
                         ErrorBanner(message: message, dismiss: { store.dismissError() })
                     } else if let message = smartAlbums.errorMessage {
                         ErrorBanner(message: message, dismiss: { smartAlbums.dismissError() })
+                    } else if let message = events.errorMessage {
+                        ErrorBanner(message: message, dismiss: { events.dismissError() })
                     }
                 }
                 .toolbar {
@@ -69,9 +73,19 @@ struct CollectionsScreen: View {
                         api: environment.api
                     )
                 }
+                .navigationDestination(for: EventRoute.self) { route in
+                    EventDetailScreen(
+                        card: route.card,
+                        events: events,
+                        collections: store,
+                        curation: curation,
+                        api: environment.api
+                    )
+                }
         }
         .task { await store.loadIfNeeded() }
         .task { await smartAlbums.loadIfNeeded() }
+        .task { await events.loadIfNeeded() }
         .alert("New Collection", isPresented: $newNamePresented) {
             TextField("Name", text: $newName)
             Button("Cancel", role: .cancel) {}
@@ -177,6 +191,9 @@ struct CollectionsScreen: View {
                             }
                         }
                     }
+                    EventsSection(store: events, apiBaseURL: environment.api.baseURL) {
+                        sectionHeader("Events")
+                    }
                     smartAlbumsSection
                 }
                 .padding(16)
@@ -184,7 +201,8 @@ struct CollectionsScreen: View {
             .refreshable {
                 async let collections: Void = store.load()
                 async let albums: Void = smartAlbums.load()
-                _ = await (collections, albums)
+                async let eventList: Void = events.load()
+                _ = await (collections, albums, eventList)
             }
         }
     }
@@ -372,7 +390,7 @@ struct CollectionDetailScreen: View {
 }
 
 /// Grid, refresh error, empty/failed states, and loupe for a scoped `LibraryStore`
-/// (a collection or a smart album). Loads the store the first time it appears.
+/// (a collection, a smart album, or an event). Loads the store the first time it appears.
 struct ScopedPhotoGrid: View {
     @ObservedObject var store: LibraryStore
     let collections: CollectionsStore

@@ -41,6 +41,11 @@ export type PhotoFilters = {
 	 * `isValidCapturedDate`). A view scope like `bounds`: never saved in smart albums.
 	 */
 	capturedDate?: string;
+	/**
+	 * Only members of this detected event (`events` id). A view scope like
+	 * `capturedDate`: never saved in smart albums. An unknown id matches nothing.
+	 */
+	event?: number;
 	/** Only photos with a valid location inside this box (edges inclusive). */
 	bounds?: PhotoBounds;
 };
@@ -91,6 +96,14 @@ export function isValidCapturedDate(value: string): boolean {
 	if (year < 1900 || month < 1 || month > 12 || day < 1) return false;
 	// Day 0 of the next month is the last day of this one.
 	return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * `LIKE ... ESCAPE '\'` pattern matching every path below `folder` (any
+ * depth), with `_`, `%`, and `\` in folder names matching literally.
+ */
+export function folderSubtreePattern(folder: string): string {
+	return `${folder.replace(/[\\%_]/g, "\\$&")}/%`;
 }
 
 /**
@@ -414,8 +427,7 @@ export function photoFilterConditions(
 		conditions.push(eq(photosTable.isRaw, false));
 	}
 	if (input.folder) {
-		// Escape LIKE wildcards so `_`, `%`, and `\` in folder names match literally.
-		const folderPrefix = `${input.folder.replace(/[\\%_]/g, "\\$&")}/%`;
+		const folderPrefix = folderSubtreePattern(input.folder);
 		conditions.push(
 			sql`(${photosTable.path} LIKE ${folderPrefix} ESCAPE '\\' AND instr(substr(${photosTable.path}, length(${input.folder}) + 2), '/') = 0)`,
 		);
@@ -477,6 +489,12 @@ export function photoFilterConditions(
 	}
 	if (input.capturedDate !== undefined) {
 		conditions.push(capturedDateCondition(input.capturedDate));
+	}
+	if (input.event !== undefined) {
+		// Resolved through the (event_id, photo_id) primary key.
+		conditions.push(
+			sql`${photosTable.id} IN (SELECT photo_id FROM event_photos WHERE event_id = ${input.event})`,
+		);
 	}
 	if (input.bounds) {
 		conditions.push(locationCondition(input.bounds));

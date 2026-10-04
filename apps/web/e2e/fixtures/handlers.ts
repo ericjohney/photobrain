@@ -355,14 +355,22 @@ function createDefaultHandlers(): Record<string, Handler> {
 			return photo;
 		},
 		similarPhotos: (input) => {
-			const { photoId, collectionId, tag, country, place, capturedDate } =
-				(input ?? {}) as CollectionScope & {
-					photoId?: number;
-					tag?: string;
-					country?: string;
-					place?: number;
-					capturedDate?: string;
-				};
+			const {
+				photoId,
+				collectionId,
+				tag,
+				country,
+				place,
+				capturedDate,
+				event,
+			} = (input ?? {}) as CollectionScope & {
+				photoId?: number;
+				tag?: string;
+				country?: string;
+				place?: number;
+				capturedDate?: string;
+				event?: number;
+			};
 			const source = library.find((p) => p.id === photoId);
 			if (!source) {
 				throw new Error(`Photo ${photoId} not found`);
@@ -373,6 +381,7 @@ function createDefaultHandlers(): Record<string, Handler> {
 				country,
 				place,
 				capturedDate,
+				event,
 			})
 				.filter((p) => p.id !== photoId && p.id !== source.pairedPhotoId)
 				.reverse();
@@ -396,6 +405,9 @@ function createDefaultHandlers(): Record<string, Handler> {
 			}
 			return fixtureOnThisDay(library, date);
 		},
+		// The fixture library is below the API's six-photo event minimum, so by
+		// default no event is detected; events.spec installs fixtureEvents.
+		events: () => ({ events: [] }),
 		setPhotoCuration: (input) => {
 			const { photoIds, rating, flag } = input as CurationInput;
 			const updated = withPartners(photoIds).map((p) => {

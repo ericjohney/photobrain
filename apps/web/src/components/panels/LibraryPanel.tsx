@@ -1,6 +1,7 @@
 import {
 	Calendar,
 	CalendarClock,
+	CalendarRange,
 	Camera,
 	ChevronRight,
 	Clock,
@@ -18,10 +19,13 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { eventSubtitle, eventTitle } from "@/lib/events";
 import { formatCapturedDate } from "@/lib/on-this-day";
+import { getThumbnailUrl } from "@/lib/thumbnails";
 import type {
 	Collection,
 	CountryOption,
+	EventSummary,
 	FilterOptions,
 	FlagFilter,
 	PhotoBounds,
@@ -58,6 +62,11 @@ export interface LibraryFilters {
 	place: number | null;
 	/** "On this day" capture date (`YYYY-MM-DD`); never saved in smart albums. */
 	capturedDate: string | null;
+	/**
+	 * Auto event (the whole summary, so its title survives folder changes);
+	 * a view scope never saved in smart albums.
+	 */
+	event: EventSummary | null;
 	/** "Map area" from the map view; never saved in smart albums. */
 	bounds: PhotoBounds | null;
 }
@@ -74,10 +83,11 @@ export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
 	country: null,
 	place: null,
 	capturedDate: null,
+	event: null,
 	bounds: null,
 };
 
-/** Tags, countries, and cities listed before "Show all" expands the full list. */
+/** Tags, countries, cities, and events listed before "Show all" expands the full list. */
 const FILTER_PREVIEW_LIMIT = 12;
 
 const RAW_FILTER_OPTIONS: { value: RawFilter; label: string }[] = [
@@ -175,6 +185,10 @@ interface LibraryPanelProps {
 	filterOptions?: FilterOptions;
 	activeFilters: LibraryFilters;
 	onFilterChange: (filters: LibraryFilters) => void;
+	/** Auto events in the folder scope, newest first; undefined until loaded. */
+	events: EventSummary[] | undefined;
+	/** Applies an event as the `event` filter, or null to clear it. */
+	onEventSelect: (event: EventSummary | null) => void;
 	/** Junk review candidates; undefined until loaded. */
 	reviewCount: number | undefined;
 	/** Review is shown instead of the library (folder/collection/filters ignored). */
@@ -462,6 +476,80 @@ function PlaceFilterList({
 	);
 }
 
+/**
+ * Auto events (newest first from the API) with their cover, title, and
+ * subtitle: the first FILTER_PREVIEW_LIMIT plus the selected one, or every
+ * event after "Show all". Selection is single; clicking it again clears it.
+ */
+function EventList({
+	events,
+	selectedEvent,
+	onSelect,
+}: {
+	events: EventSummary[];
+	selectedEvent: EventSummary | null;
+	onSelect: (event: EventSummary | null) => void;
+}) {
+	const [showAll, setShowAll] = useState(false);
+	const preview = showAll ? events : events.slice(0, FILTER_PREVIEW_LIMIT);
+	// Keep the selection reachable when it is collapsed away or out of scope.
+	const visible =
+		selectedEvent !== null && !preview.some((e) => e.id === selectedEvent.id)
+			? [...preview, selectedEvent]
+			: preview;
+
+	return (
+		<div data-testid="event-list">
+			{visible.map((event) => {
+				const selected = selectedEvent?.id === event.id;
+				return (
+					<button
+						key={event.id}
+						type="button"
+						data-testid="event-row"
+						data-event-id={event.id}
+						aria-pressed={selected}
+						onClick={() => onSelect(selected ? null : event)}
+						className={cn(
+							"flex w-full items-center gap-2 rounded px-2 py-1 text-left transition-colors",
+							"hover:bg-secondary/50",
+							selected && "bg-primary/10 text-primary",
+						)}
+					>
+						<img
+							src={getThumbnailUrl(
+								event.cover.photoId,
+								"tiny",
+								event.cover.thumbnailUpdatedAt,
+							)}
+							alt=""
+							className="h-9 w-9 shrink-0 rounded bg-muted object-cover"
+							loading="lazy"
+							draggable={false}
+						/>
+						<span className="flex min-w-0 flex-1 flex-col">
+							<span data-testid="event-title" className="truncate text-sm">
+								{eventTitle(event)}
+							</span>
+							<span
+								data-testid="event-subtitle"
+								className="truncate text-2xs text-muted-foreground"
+							>
+								{eventSubtitle(event)}
+							</span>
+						</span>
+					</button>
+				);
+			})}
+			<ShowAllToggle
+				total={events.length}
+				showAll={showAll}
+				onToggle={() => setShowAll((current) => !current)}
+			/>
+		</div>
+	);
+}
+
 /** Removable chip in the "Filters active" box. */
 function FilterChip({
 	testId,
@@ -599,6 +687,8 @@ export function LibraryPanel({
 	filterOptions,
 	activeFilters,
 	onFilterChange,
+	events,
+	onEventSelect,
 	reviewCount,
 	reviewActive,
 	onReviewSelect,
@@ -746,6 +836,24 @@ export function LibraryPanel({
 					/>
 				</Section>
 
+				{/* Events Section — auto-detected events in the folder scope, newest first */}
+				<Section title="Events">
+					{events !== undefined &&
+					events.length === 0 &&
+					activeFilters.event === null ? (
+						<div className="px-2 py-2 text-xs text-muted-foreground">
+							No events yet
+						</div>
+					) : (
+						<EventList
+							events={events ?? []}
+							// Review/Duplicates show no selection, so any click applies.
+							selectedEvent={catalogViewActive ? null : activeFilters.event}
+							onSelect={onEventSelect}
+						/>
+					)}
+				</Section>
+
 				{/* Filter By Section — also scopes an active search; hidden in Review/Duplicates */}
 				{!catalogViewActive && (
 					<Section title="Filter By" defaultOpen={false}>
@@ -891,6 +999,7 @@ export function LibraryPanel({
 						activeFilters.country !== null ||
 						activeFilters.place !== null ||
 						activeFilters.capturedDate !== null ||
+						activeFilters.event !== null ||
 						activeFilters.bounds !== null) && (
 						<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary">
 							<div className="flex items-center justify-between">
@@ -946,6 +1055,15 @@ export function LibraryPanel({
 									onClear={() =>
 										onFilterChange({ ...activeFilters, capturedDate: null })
 									}
+								/>
+							)}
+							{activeFilters.event !== null && (
+								<FilterChip
+									testId="event-chip"
+									icon={<CalendarRange className="h-3 w-3" />}
+									label={eventTitle(activeFilters.event)}
+									clearLabel="Clear event"
+									onClear={() => onEventSelect(null)}
 								/>
 							)}
 							{activeFilters.bounds !== null && (

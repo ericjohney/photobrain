@@ -27,11 +27,11 @@ type SmartAlbumRow = typeof smartAlbums.$inferSelect;
 
 /**
  * Filters as accepted from clients: the photo filters minus `collectionId` and
- * the view scopes `bounds` and `capturedDate`.
+ * the view scopes `bounds`, `capturedDate`, and `event`.
  */
 export type SmartAlbumFiltersInput = Omit<
 	PhotoFilters,
-	"collectionId" | "bounds" | "capturedDate"
+	"collectionId" | "bounds" | "capturedDate" | "event"
 >;
 
 /**

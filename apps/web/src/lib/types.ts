@@ -56,3 +56,6 @@ export type PhotoBounds = NonNullable<
 
 // On this day types
 export type OnThisDayYear = RouterOutputs["onThisDay"]["years"][number];
+
+// Event types
+export type EventSummary = RouterOutputs["events"]["events"][number];

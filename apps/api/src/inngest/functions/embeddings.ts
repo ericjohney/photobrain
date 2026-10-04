@@ -176,12 +176,14 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 			}
 		});
 
-		// Appended after existing steps for replay safety: retag, re-measure, and
-		// re-place anything this run left stale (or from an older version).
+		// Appended after existing steps for replay safety: retag, re-measure,
+		// re-place, and regroup events for anything this run left stale (or from
+		// an older version).
 		await step.sendEvent("trigger-photo-tags-v1", [
 			{ name: "photos/tags.requested", data: {} },
 			{ name: "photos/quality.requested", data: {} },
 			{ name: "photos/places.requested", data: {} },
+			{ name: "photos/events.requested", data: {} },
 		]);
 
 		return { processed: processedCount, successful: successCount };

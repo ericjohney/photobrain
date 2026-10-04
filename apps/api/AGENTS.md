@@ -15,6 +15,7 @@ Scope: `apps/api`.
 - `src/inngest/functions/tags.ts`: `tag-photos-v1` backfill of vectors lacking current-vocabulary tags.
 - `src/inngest/functions/quality.ts`: `analyze-quality-v1` backfill measuring committed `medium` thumbnails lacking a current quality row.
 - `src/inngest/functions/places.ts`: `place-photos-v1` backfill geocoding valid locations lacking a current place and deleting places whose location became invalid or remote.
+- `src/inngest/functions/events.ts`: `detect-events-v1` single-step full recompute of automatic events.
 - `src/services/photo-quality.ts`: quality backfill eligibility, generation-fenced writes, and `analyzeQualityBatch`; native measurement is injected.
 - `src/services/junk-review.ts`: junk-review reasons, thresholds, candidate paging/counts, and `resolveJunk`, shared by tRPC and `/api/v1`.
 - `src/services/duplicates.ts`: perceptual-hash duplicate and EXIF burst groups, suggested keeper, dismissals, and `resolveDuplicateGroup`, shared by tRPC and `/api/v1`. Grouping calls the native `groupNearDuplicates` through an injectable `HashGrouper`.
@@ -24,6 +25,7 @@ Scope: `apps/api`.
 - `src/services/place-lookup.ts`: `PLACE_DATASET_VERSION`, the lazily loaded committed GeoNames dataset (`src/data/places.tsv.gz`), its 1° grid index, and `lookupPlace` (nearest city within 100 km).
 - `src/services/photo-places.ts`: `placePhotoBatch` backfill steps and `getPhotoPlace`; the "current place" rule lives in `photo-catalog.ts` (`currentPlaceSql`).
 - `src/services/on-this-day.ts`: `onThisDay` year groups for a calendar date (see [On This Day](#on-this-day)); the capture-date validity rule and `capturedDate` filter live in `photo-catalog.ts` (`isValidCapturedDate`, `capturedDateCondition`).
+- `src/services/events.ts`: `detectEvents` (streamed detection plus atomic replacement) and `listEvents` (see [Events](#events)); the `event` filter lives in `photo-catalog.ts`.
 - `src/services/vector-search.ts`: sqlite-vec text search and photo-to-photo similarity (`findSimilarToPhoto`), shared by both transports; every query takes an injectable `ApiDatabase`.
 - `src/services/photo-catalog.ts`: shared folder/filter/photo reads used by tRPC and `/api/v1`, the single RAW+JPEG pair SQL builders (`pairedPhotoIdSql`, `pairedFormatSql`, `pairedPhotoExtras`, `photoIdsWithPartnersSql`; see [RAW+JPEG Pairs](#rawjpeg-pairs)), the single location validity rule (`validLocationSql`), `bounds` filter, and `listPhotoLocations` (see [Locations](#locations)), and the single current-place rule (`currentPlaceSql`) behind the `country`/`place` filters and options (see [Places](#places)).
 - `src/services/photo-curation.ts`: shared single-statement star rating/flag updates (listed IDs plus their pair partners) used by tRPC `setPhotoCuration` and `PATCH /api/v1/photos/:id`.
@@ -102,6 +104,8 @@ Places: `GET /photos/:id/place` returns `{ place: { id, city, region, country, c
 
 On this day: `GET /on-this-day?date=YYYY-MM-DD` (required; the client's local today, a real calendar date in 1900 or later) returns `{ date, years: [{ year, yearsAgo, capturedDate, count, cover: { photoId, thumbnailUpdatedAt } }] }` with the collection-cover ISO/null cache token; a missing or invalid `date` is 400 `INVALID_REQUEST`. `capturedDate` (same rule) is accepted on `GET /photos` and `GET /locations` query strings, `POST /search` bodies, and `GET /photos/:id/similar` queries; invalid values are 400 `INVALID_REQUEST`. Smart-album filters reject it (strict bodies). See [On This Day](#on-this-day).
 
+Events: `GET /events?folder=` returns `{ events: [{ id, startAt, endAt, photoCount, cover: { photoId, thumbnailUpdatedAt }, place: { city, region, country, countryCode } | null }] }` newest first, with wall-clock `YYYY-MM-DDTHH:MM:SS` times and the collection-cover ISO/null cache token. `event` (positive integer) is accepted on `GET /photos` and `GET /locations` query strings, `POST /search` bodies, and `GET /photos/:id/similar` queries; invalid values are 400 `INVALID_REQUEST` and an unknown id is an empty result. Smart-album filters reject it (strict bodies). See [Events](#events).
+
 Locations: `GET /locations` takes exactly the `GET /photos` query (including the bounds parameters) and returns `{ points: [{ id, latitude, longitude }], total }` with numeric coordinates, ordered by ID; it shares `listPhotoLocations` with tRPC. `GET /photos` also accepts `north`, `south`, `east`, `west` (decimal degrees, all four or none) and `POST /search` accepts a strict `bounds: { north, south, east, west }` object; a partial set, non-numeric or empty value, non-finite value, latitude outside [-90, 90], longitude outside [-180, 180], or `south > north` is 400 `INVALID_REQUEST`. See [Locations](#locations).
 
 Junk review: `GET /review/junk?reason=&limit=&cursor=` (`reason` one of `screenshot`, `document`, `blurry`, `dark`; `limit` 1-500, default 200; `cursor` a positive photo ID) returns `{ photos, nextCursor, counts: { all, screenshot, document, blurry, dark } }` where each photo is the public Photo DTO plus `junkReasons`. `POST /review/junk/resolve` (`{ photoIds, action }`, 1-500 positive integers, `action` `reject` or `keep`, strict body) returns `{ updated }`. Invalid query/body is 400 `INVALID_REQUEST`. Both share `services/junk-review.ts` with tRPC.
@@ -129,6 +133,7 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `photoTags({ photoId })`: returns `{ tags: [{ tag, score }] }`, score descending then tag ascending, in one `LEFT JOIN` statement; `NOT_FOUND` for an unknown photo. `photos`, `searchPhotos`, and `similarPhotos` accept an optional `tag` slug, applied by `photoFilterConditions` as `photos.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)` (served by `idx_photo_tags_tag_photo_id`). `filterOptions` also returns `tags: [{ tag, count }]` under the same folder scope, count descending then tag ascending, only counts above zero.
 - `photoPlace({ photoId })`: returns `{ place: { id, city, region, country, countryCode } | null }`; `NOT_FOUND` for an unknown photo. `photos`, `photoLocations`, `searchPhotos`, `similarPhotos`, and smart-album filters accept `country` (`^[A-Z]{2}$`) and `place` (positive integer); invalid values are `BAD_REQUEST`. `filterOptions` also returns `countries` and `places`. See [Places](#places).
 - `onThisDay({ date })`: returns `{ date, years }` (cover `thumbnailUpdatedAt` is a `Date` or `null`); an invalid `date` is `BAD_REQUEST`. `photos`, `photoLocations`, `searchPhotos`, and `similarPhotos` accept `capturedDate` (`YYYY-MM-DD`, invalid → `BAD_REQUEST`); smart-album filters reject it like `bounds`. See [On This Day](#on-this-day).
+- `events({ folder? })`: returns `{ events }` newest first (cover `thumbnailUpdatedAt` is a `Date` or `null`). `photos`, `photoLocations`, `searchPhotos`, and `similarPhotos` accept `event` (positive integer, else `BAD_REQUEST`; unknown id → empty); smart-album filters reject it like `capturedDate`. See [Events](#events).
 - `junkReview({ reason?, limit?, cursor? })` and `resolveJunk({ photoIds, action })`: see [Junk Review](#junk-review).
 - `duplicateGroups({ kind?, limit?, cursor? })` and `resolveDuplicateGroup({ key, action, keepIds? })`: see [Duplicates and Bursts](#duplicates-and-bursts).
 - `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar and Expo Library Options expose a confirmed **Reprocess all photos** action for force mode; native iOS reaches the same shared scan service through gated `POST /api/v1/scans`.
@@ -155,6 +160,9 @@ photos/quality.requested
   {}
 
 photos/places.requested
+  {}
+
+photos/events.requested
   {}
 ```
 
@@ -190,7 +198,7 @@ Embedding function details:
 - Converts the Rust number array to a `Float32Array` buffer before storage.
 - Marks current-generation photos `completed` or `failed` and publishes progress. Search excludes noncompleted, wrong-model, and wrong-generation vectors.
 - Marks the scan job failed if no requested embedding can be generated; partial success still completes the job.
-- After its final progress publication it appends one `trigger-photo-tags-v1` `step.sendEvent` carrying `photos/tags.requested`, `photos/quality.requested`, and `photos/places.requested`; existing step IDs are unchanged for replay safety. `scan-photos-v5` likewise appends the same send only when a scan finishes without dispatching embeddings (for example after a vocabulary or quality-version bump), after its existing cleanup step.
+- After its final progress publication it appends one `trigger-photo-tags-v1` `step.sendEvent` carrying `photos/tags.requested`, `photos/quality.requested`, `photos/places.requested`, and `photos/events.requested`; existing step IDs are unchanged for replay safety. `scan-photos-v5` likewise appends the same send only when a scan finishes without dispatching embeddings (for example after a vocabulary or quality-version bump), after its existing cleanup step.
 
 ## Automatic Tags
 
@@ -271,6 +279,19 @@ Measured over 8,000 geotagged photos in a file database (20 folders, Europe/Japa
 - Feb 29: a request for Feb 28 of a non-leap year also matches Feb 29 photos (only real leap days). A year's `capturedDate` is the smallest capture date in its group: its Feb 28 when it has any Feb 28 photo (the count then includes both days while the grid opened by `capturedDate` shows only Feb 28), otherwise its Feb 29. A Feb 29 request matches only Feb 29; a leap-year Feb 28 request matches only Feb 28.
 
 Measured over 20,000 photos across 15 years in a file database (every 7th photo on June 15 plus a RAW sibling every 10th, mixed `:`/`-` formats, 3% rejects; `ANALYZE`, median of 5) on Apple M4 Pro (`src/__tests__/on-this-day.test.ts`, `[on-this-day-perf]`): `onThisDay` for June 15 (15 groups, 2,550 photos) 14.6 ms, non-leap Feb 28 0.4 ms; `photos` with `capturedDate` (175 rows with EXIF hydration) 1.7 ms. Most of the `onThisDay` time is per-candidate pair stacking. Budgets asserted: < 20 ms each, and EXPLAIN plans `SEARCH candidate USING INDEX idx_exif_month_day` / `SEARCH photo_exif USING INDEX idx_exif_captured_date` with no `SCAN photo_exif` or `SCAN photos`.
+
+## Events
+
+Photos are grouped into automatic events (a trip day, a party), materialized in `events`/`event_photos` by `detect-events-v1` on `photos/events.requested`.
+
+- Candidates: photos whose EXIF `date_taken` is a valid wall-clock datetime (`YYYY:MM:DD HH:MM:SS` or ISO-like `YYYY-MM-DD[T ]HH:MM:SS`, any suffix ignored, real date in 1900 or later, real time; no zone conversion), excluding `flag = 'reject'`, with RAW+JPEG stacking scoped to the candidate conditions (`pairStackingCondition([dated, notRejected])`), so a pair is one member and a RAW stands in when its JPEG is rejected.
+- Ordered by capture datetime then ID. A new event starts when the gap to the previous candidate is >= `EVENT_GAP_HOURS` (6), or >= `EVENT_SCENE_GAP_MINUTES` (60) and either both have current places (`currentPlaceSql`) with different `geoname_id`s or both have current-model, current-generation vectors with cosine similarity < `EVENT_SCENE_SIMILARITY` (0.6). Runs with >= `EVENT_MIN_PHOTOS` (6) members are events; `EVENTS_VERSION` is stored on each row.
+- `id` is the smallest member photo ID, so it is stable across recomputes while membership is unchanged. Cover: highest `rating`, then newest capture, then highest ID. Place: the most common city among located members if it covers >= 50% of them (first seen wins ties), else the most common country likewise with `city`/`region` null, else null.
+- `detectEvents` streams one candidate statement (`Statement.iterate`) inside one transaction that deletes and reinserts every row; only the previous vector and the current run's member IDs and tallies are held in memory. No per-photo queries.
+- `listEvents` reads `idx_events_start_at_id` backwards (no sort). `folder` keeps events with any member below the folder (any depth, `LIKE` wildcards escaped via `folderSubtreePattern`); `photoCount` stays the whole event's count.
+- `event` filter: `photos.id IN (SELECT photo_id FROM event_photos WHERE event_id = ?)` through the `(event_id, photo_id)` primary key, before stacking like every condition. A view scope: `SmartAlbumFiltersInput` omits it and every smart-album transport rejects it.
+
+Measured in a file database (512-d vectors, 20 photos per event 61 min apart so every pair is compared, `ANALYZE`) on Apple M4 Pro (`src/__tests__/events.test.ts`, `[events-perf]`): `detectEvents` over 10,000 photos 63 ms (20,000: 129 ms); `listEvents` over 1,000 events/20,000 photos 0.7 ms median (folder-scoped 1.4 ms); `photos` with `event` (20 rows with EXIF hydration) 0.4 ms. Budgets asserted: detection < 3 s, the reads < 20 ms; EXPLAIN asserts the backwards index scan without a temp B-tree and the `event_photos` primary-key search.
 
 ## Junk Review
 

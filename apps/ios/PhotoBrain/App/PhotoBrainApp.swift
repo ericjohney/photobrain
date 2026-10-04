@@ -21,6 +21,7 @@ final class AppBootstrap: ObservableObject {
     @Published private(set) var search: SearchStore?
     @Published private(set) var collections: CollectionsStore?
     @Published private(set) var smartAlbums: SmartAlbumsStore?
+    @Published private(set) var events: EventsStore?
     @Published private(set) var review: ReviewStore?
     @Published private(set) var duplicates: DuplicatesStore?
     @Published private(set) var scans: ScanCoordinator?
@@ -44,6 +45,7 @@ final class AppBootstrap: ObservableObject {
             let search = SearchStore(api: environment.api, curation: curation)
             let collections = CollectionsStore(api: environment.api)
             let smartAlbums = SmartAlbumsStore(api: environment.api)
+            let events = EventsStore(api: environment.api)
             let review = ReviewStore(api: environment.api, curation: curation)
             let duplicates = DuplicatesStore(api: environment.api, curation: curation)
             let scans = ScanCoordinator(api: environment.api, migration: migration)
@@ -66,6 +68,7 @@ final class AppBootstrap: ObservableObject {
             self.search = search
             self.collections = collections
             self.smartAlbums = smartAlbums
+            self.events = events
             self.review = review
             self.duplicates = duplicates
             self.scans = scans
@@ -85,6 +88,7 @@ private struct BootstrapView: View {
            let search = bootstrap.search,
            let collections = bootstrap.collections,
            let smartAlbums = bootstrap.smartAlbums,
+           let events = bootstrap.events,
            let review = bootstrap.review,
            let duplicates = bootstrap.duplicates,
            let scans = bootstrap.scans,
@@ -96,6 +100,7 @@ private struct BootstrapView: View {
                 search: search,
                 collections: collections,
                 smartAlbums: smartAlbums,
+                events: events,
                 review: review,
                 duplicates: duplicates,
                 scans: scans,
@@ -121,6 +126,7 @@ private struct RootTabView: View {
     @ObservedObject var search: SearchStore
     let collections: CollectionsStore
     let smartAlbums: SmartAlbumsStore
+    let events: EventsStore
     let review: ReviewStore
     let duplicates: DuplicatesStore
     @ObservedObject var scans: ScanCoordinator
@@ -149,6 +155,7 @@ private struct RootTabView: View {
             CollectionsScreen(
                 store: collections,
                 smartAlbums: smartAlbums,
+                events: events,
                 curation: library.curation,
                 environment: environment,
                 theme: theme

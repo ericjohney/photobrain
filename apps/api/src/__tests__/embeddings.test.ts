@@ -219,6 +219,7 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 			{ id: "trigger-photo-tags-v1", name: "photos/tags.requested" },
 			{ id: "trigger-photo-tags-v1", name: "photos/quality.requested" },
 			{ id: "trigger-photo-tags-v1", name: "photos/places.requested" },
+			{ id: "trigger-photo-tags-v1", name: "photos/events.requested" },
 		]);
 	});
 

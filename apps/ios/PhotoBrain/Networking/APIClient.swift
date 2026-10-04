@@ -22,6 +22,8 @@ struct PhotoQuery: Hashable, Sendable {
     var bounds: PhotoBounds?
     /// Exact capture date `YYYY-MM-DD` (EXIF wall-clock date). Never saved in smart albums.
     var capturedDate: String?
+    /// One auto event's members, by event id. Never saved in smart albums.
+    var event: Int?
 
     /// `GET /photos` and `GET /locations` query items. `filterRaw` is always sent; the other
     /// filters only when set, and the four bounds edges together or not at all.
@@ -45,6 +47,7 @@ struct PhotoQuery: Hashable, Sendable {
             items.append(URLQueryItem(name: "west", value: String(bounds.west)))
         }
         if let capturedDate { items.append(URLQueryItem(name: "capturedDate", value: capturedDate)) }
+        if let event { items.append(URLQueryItem(name: "event", value: String(event))) }
         return items
     }
 }
@@ -58,7 +61,9 @@ protocol PhotoBrainAPI: Sendable {
     func locations(query: PhotoQuery) async throws -> LocationsResponseDTO
     func photo(id: Int) async throws -> PhotoDTO
     func search(query: String, limit: Int, filters: PhotoQuery) async throws -> SearchResponseDTO
-    func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO
+    /// `GET /photos/{id}/similar`; `event` scopes neighbours to one auto event and is sent only
+    /// when set.
+    func similarPhotos(id: Int, limit: Int, event: Int?) async throws -> SimilarPhotosResponseDTO
     /// `GET /photos/{id}/tags`: the photo's auto tags, highest score first.
     func photoTags(id: Int) async throws -> PhotoTagsResponseDTO
     /// `GET /photos/{id}/place`: the photo's current place, or `nil` when it has none.
@@ -66,6 +71,8 @@ protocol PhotoBrainAPI: Sendable {
     /// `GET /on-this-day?date=YYYY-MM-DD`: earlier years' photos captured on `date`'s month and
     /// day, where `date` is the device's local calendar date.
     func onThisDay(date: Date) async throws -> OnThisDayResponseDTO
+    /// `GET /events?folder=`: auto events newest first; `folder` is sent only when set.
+    func events(folder: String?) async throws -> EventsResponseDTO
     /// `PATCH /photos/{id}`. `rating: nil` and `flag: nil` leave a field unchanged;
     /// `flag: .some(nil)` clears the flag. At least one field must be provided.
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO
@@ -160,12 +167,11 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         )
     }
 
-    func similarPhotos(id: Int, limit: Int = 30) async throws -> SimilarPhotosResponseDTO {
+    func similarPhotos(id: Int, limit: Int = 30, event: Int? = nil) async throws -> SimilarPhotosResponseDTO {
         guard id > 0, (1...100).contains(limit) else { throw PhotoBrainAPIError.invalidRequest }
-        return try await get(
-            path: ["photos", String(id), "similar"],
-            queryItems: [URLQueryItem(name: "limit", value: String(limit))]
-        )
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let event { items.append(URLQueryItem(name: "event", value: String(event))) }
+        return try await get(path: ["photos", String(id), "similar"], queryItems: items)
     }
 
     func photoTags(id: Int) async throws -> PhotoTagsResponseDTO {
@@ -182,6 +188,13 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         try await get(
             path: ["on-this-day"],
             queryItems: [URLQueryItem(name: "date", value: OnThisDayDate.localDayString(date))]
+        )
+    }
+
+    func events(folder: String?) async throws -> EventsResponseDTO {
+        try await get(
+            path: ["events"],
+            queryItems: folder.map { [URLQueryItem(name: "folder", value: $0)] } ?? []
         )
     }
 

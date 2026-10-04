@@ -335,6 +335,51 @@ export const photoPlaces = sqliteTable(
 	],
 );
 
+// Automatically detected events (a trip day, a party), fully recomputed by the
+// API's `detect-events-v1` function in one transaction. `id` is the smallest
+// member photo ID, so it is stable while membership is unchanged. Times are
+// EXIF wall-clock `YYYY-MM-DDTHH:MM:SS` texts (no zone), so they sort
+// chronologically. The place columns are all NULL (no majority place),
+// `country`/`country_code` only (country majority), or all set except an
+// optional `region` (city majority). `events_version` is the detection
+// algorithm version that produced the row.
+export const events = sqliteTable(
+	"events",
+	{
+		id: integer("id").primaryKey(),
+		startAt: text("start_at").notNull(),
+		endAt: text("end_at").notNull(),
+		photoCount: integer("photo_count").notNull(),
+		coverPhotoId: integer("cover_photo_id").notNull(),
+		city: text("city"),
+		region: text("region"),
+		country: text("country"),
+		countryCode: text("country_code"),
+		eventsVersion: integer("events_version").notNull(),
+	},
+	// Newest-first listing reads this index backwards without a sort.
+	(table) => [index("idx_events_start_at_id").on(table.startAt, table.id)],
+);
+
+// Event membership: the counted photos only (RAW+JPEG pairs stacked to one
+// member, rejects excluded). The primary key serves the `event` filter's
+// `event_id` lookups; a photo belongs to at most one event.
+export const eventPhotos = sqliteTable(
+	"event_photos",
+	{
+		eventId: integer("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		photoId: integer("photo_id")
+			.notNull()
+			.references(() => photos.id, { onDelete: "cascade" }),
+	},
+	(table) => [
+		primaryKey({ columns: [table.eventId, table.photoId] }),
+		uniqueIndex("idx_event_photos_photo_id").on(table.photoId),
+	],
+);
+
 // Saved live filter sets. `filters` is the API's canonical JSON; names are unique
 // case-insensitively (NOCASE unique index), independently of collection names.
 export const smartAlbums = sqliteTable(
@@ -401,6 +446,10 @@ export type PhotoQuality = typeof photoQuality.$inferSelect;
 export type NewPhotoQuality = typeof photoQuality.$inferInsert;
 export type PhotoPlace = typeof photoPlaces.$inferSelect;
 export type NewPhotoPlace = typeof photoPlaces.$inferInsert;
+export type EventRecord = typeof events.$inferSelect;
+export type NewEventRecord = typeof events.$inferInsert;
+export type EventPhoto = typeof eventPhotos.$inferSelect;
+export type NewEventPhoto = typeof eventPhotos.$inferInsert;
 export type SmartAlbum = typeof smartAlbums.$inferSelect;
 export type NewSmartAlbum = typeof smartAlbums.$inferInsert;
 export type DuplicateDismissal = typeof duplicateDismissals.$inferSelect;
