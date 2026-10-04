@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct PhotoBrainApp: App {
+    @UIApplicationDelegateAdaptor(PhotoBrainAppDelegate.self) private var appDelegate
     @StateObject private var bootstrap = AppBootstrap()
 
     var body: some Scene {
@@ -192,20 +193,31 @@ private struct RootTabView: View {
             }
         }
         .environment(\.peopleStore, people)
+        .environment(\.backupCoordinator, BackupRuntime.shared.coordinator)
         .environment(\.showInLibrary, ShowInLibraryAction { shortcut in
             navigation.selectedTab = .library
             library.show(shortcut)
         })
         .preferredColorScheme(theme.preference.colorScheme)
-        .onAppear { applyPendingLink() }
+        .onAppear {
+            applyPendingLink()
+            BackupRuntime.shared.coordinator?.applicationBecameActive()
+        }
         .onChange(of: links.pendingRoute) { _, route in
             guard route != nil else { return }
             applyPendingLink()
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task { await scans.applicationBecameActive() }
-            Task { await onThisDay.applicationBecameActive() }
+            switch phase {
+            case .active:
+                Task { await scans.applicationBecameActive() }
+                Task { await onThisDay.applicationBecameActive() }
+                BackupRuntime.shared.coordinator?.applicationBecameActive()
+            case .background:
+                BackupRuntime.shared.coordinator?.applicationEnteredBackground()
+            default:
+                break
+            }
         }
     }
 

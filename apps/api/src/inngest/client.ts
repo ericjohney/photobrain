@@ -32,6 +32,9 @@ type PhotoEvents = {
 	"photos/faces.requested": {
 		data: Record<string, never>;
 	};
+	"photos/uploaded": {
+		data: Record<string, never>;
+	};
 };
 
 export const inngest = new Inngest({

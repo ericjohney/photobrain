@@ -2196,6 +2196,290 @@
 					}
 				}
 			}
+		},
+		"/api/v1/uploads/config": {
+			"get": {
+				"operationId": "getUploadConfig",
+				"description": "Upload settings; readable even while uploads are disabled.",
+				"responses": {
+					"200": {
+						"description": "Upload settings",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UploadConfig"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/uploads": {
+			"post": {
+				"operationId": "uploadFile",
+				"description": "Stores one original under `Uploads/{deviceName}/{YYYY}/{MM}/` for the next incremental scan, which a created upload schedules (debounced 60 s). Encode `+` in query values as `%2B`. Idempotent on (`deviceId`, `assetId`, `resource`) and on content SHA-256.",
+				"parameters": [
+					{
+						"name": "deviceId",
+						"in": "query",
+						"required": true,
+						"description": "Device UUID (any case)",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "deviceName",
+						"in": "query",
+						"required": true,
+						"description": "Device folder name; trimmed, sanitized into one path segment",
+						"schema": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 64
+						}
+					},
+					{
+						"name": "filename",
+						"in": "query",
+						"required": true,
+						"description": "Original file name; its extension must be supported",
+						"schema": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 255
+						}
+					},
+					{
+						"name": "assetId",
+						"in": "query",
+						"required": false,
+						"description": "Opaque device asset ID (iOS PHAsset localIdentifier); requires `resource`",
+						"schema": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 256
+						}
+					},
+					{
+						"name": "resource",
+						"in": "query",
+						"required": false,
+						"description": "Resource of the asset; required iff `assetId` is present",
+						"schema": {
+							"$ref": "#/components/schemas/UploadResource"
+						}
+					},
+					{
+						"name": "capturedAt",
+						"in": "query",
+						"required": false,
+						"description": "ISO-8601 capture time with offset; picks the folder month in its own offset and sets the file mtime",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "Content-Length",
+						"in": "header",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/octet-stream": {
+							"schema": {
+								"type": "string",
+								"format": "binary"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Already stored (duplicate)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UploadResult"
+								}
+							}
+						}
+					},
+					"201": {
+						"description": "Stored",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UploadResult"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request or incomplete body",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"invalidRequest": {
+										"value": {
+											"error": {
+												"code": "INVALID_REQUEST",
+												"message": "Request validation failed"
+											}
+										}
+									},
+									"uploadIncomplete": {
+										"value": {
+											"error": {
+												"code": "UPLOAD_INCOMPLETE",
+												"message": "The upload body did not match Content-Length"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"411": {
+						"description": "Content-Length is missing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"lengthRequired": {
+										"value": {
+											"error": {
+												"code": "LENGTH_REQUIRED",
+												"message": "Content-Length is required"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Content-Length exceeds `maxBytes`; checked before reading the body",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"uploadTooLarge": {
+										"value": {
+											"error": {
+												"code": "UPLOAD_TOO_LARGE",
+												"message": "Uploads are limited to 10737418240 bytes"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "The file extension is not supported",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"unsupportedMedia": {
+										"value": {
+											"error": {
+												"code": "UNSUPPORTED_MEDIA",
+												"message": "Unsupported file type"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"503": {
+						"$ref": "#/components/responses/UploadsDisabled"
+					},
+					"507": {
+						"description": "Free space is below the upload size plus a 1 GiB margin",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"insufficientStorage": {
+										"value": {
+											"error": {
+												"code": "INSUFFICIENT_STORAGE",
+												"message": "Not enough free space for this upload"
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/uploads/known": {
+			"post": {
+				"operationId": "knownUploads",
+				"description": "Recorded resources of the given assets for one device; assets with none are omitted.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/KnownUploadsRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Known asset resources",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/KnownUploadsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"503": {
+						"$ref": "#/components/responses/UploadsDisabled"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -4262,6 +4546,99 @@
 						"description": "Trimmed, 1-80 characters"
 					}
 				}
+			},
+			"UploadConfig": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["enabled", "maxBytes", "extensions"],
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"maxBytes": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"extensions": {
+						"type": "array",
+						"description": "Lower-case supported extensions including the leading dot",
+						"items": {
+							"type": "string",
+							"pattern": "^\\.[a-z0-9]+$"
+						}
+					}
+				}
+			},
+			"UploadResource": {
+				"type": "string",
+				"enum": ["photo", "video", "pairedVideo", "alternatePhoto"]
+			},
+			"UploadResult": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["status", "path", "size"],
+				"properties": {
+					"status": {
+						"type": "string",
+						"enum": ["created", "duplicate"]
+					},
+					"path": {
+						"type": "string",
+						"description": "Library-relative path of the stored file, or of the existing file for a duplicate"
+					},
+					"size": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			},
+			"KnownUploadsRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["deviceId", "assetIds"],
+				"properties": {
+					"deviceId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"assetIds": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 1000,
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 256
+						}
+					}
+				}
+			},
+			"KnownUploadsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["assets"],
+				"properties": {
+					"assets": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["assetId", "resources"],
+							"properties": {
+								"assetId": {
+									"type": "string"
+								},
+								"resources": {
+									"type": "array",
+									"minItems": 1,
+									"items": {
+										"$ref": "#/components/schemas/UploadResource"
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		},
 		"responses": {
@@ -4438,6 +4815,26 @@
 									"error": {
 										"code": "FACE_NOT_FOUND",
 										"message": "Face not found"
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"UploadsDisabled": {
+				"description": "Uploads are disabled (`UPLOADS_ENABLED` is not set); checked before anything else",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"examples": {
+							"uploadsDisabled": {
+								"value": {
+									"error": {
+										"code": "UPLOADS_DISABLED",
+										"message": "Uploads are disabled"
 									}
 								}
 							}

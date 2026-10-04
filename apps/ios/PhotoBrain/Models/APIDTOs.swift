@@ -700,6 +700,48 @@ struct StartScanResponseDTO: Codable, Equatable, Sendable {
     }
 }
 
+/// The kind of original an upload carries; one per PhotoKit resource the backup sends.
+enum UploadResource: String, Codable, CaseIterable, Hashable, Sendable {
+    case photo
+    case video
+    case pairedVideo
+    case alternatePhoto
+}
+
+/// `GET /uploads/config`. `extensions` are lower-case with the leading dot.
+struct UploadConfigDTO: Codable, Equatable, Sendable {
+    let enabled: Bool
+    let maxBytes: Int64
+    let extensions: [String]
+}
+
+struct KnownUploadsRequestDTO: Codable, Equatable, Sendable {
+    let deviceId: String
+    let assetIds: [String]
+}
+
+/// `POST /uploads/known`: only assets with at least one recorded resource are listed.
+struct KnownUploadsResponseDTO: Codable, Equatable, Sendable {
+    struct Asset: Codable, Equatable, Sendable {
+        let assetId: String
+        let resources: [UploadResource]
+    }
+
+    let assets: [Asset]
+}
+
+/// `POST /uploads` success body: `201 created` or `200 duplicate`.
+struct UploadResultDTO: Codable, Equatable, Sendable {
+    enum Status: String, Codable, Sendable {
+        case created
+        case duplicate
+    }
+
+    let status: Status
+    let path: String
+    let size: Int64
+}
+
 struct CollectionCoverDTO: Codable, Hashable, Sendable {
     let photoId: Int
     let thumbnailUpdatedAt: Date?

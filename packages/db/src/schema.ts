@@ -496,6 +496,52 @@ export const photoFaceScan = sqliteTable(
 	],
 );
 
+// Files written by phone backup uploads under `{PHOTO_DIRECTORY}/Uploads/`.
+// `sha256` makes content dedupe exact; `relative_path` is the library-relative
+// path the scanner imports. `device_id` is the (lower-cased UUID) device that
+// placed the file. The API writes a row only after the file is in place.
+export const uploads = sqliteTable(
+	"uploads",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		sha256: text("sha256").notNull(),
+		size: integer("size").notNull(),
+		relativePath: text("relative_path").notNull(),
+		deviceId: text("device_id").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("uploads_sha256_unique").on(table.sha256),
+		uniqueIndex("uploads_relative_path_unique").on(table.relativePath),
+	],
+);
+
+// Device asset resources (iOS PHAsset localIdentifier + resource kind) known
+// to be stored, each pointing at the upload holding its bytes. Several keys
+// may share one upload when identical bytes arrive under different assets.
+// The earliest key of a (device, asset) fixes the stem its later resources use.
+export const uploadAssets = sqliteTable(
+	"upload_assets",
+	{
+		deviceId: text("device_id").notNull(),
+		assetId: text("asset_id").notNull(),
+		resource: text("resource", {
+			enum: ["photo", "video", "pairedVideo", "alternatePhoto"],
+		}).notNull(),
+		uploadId: integer("upload_id")
+			.notNull()
+			.references(() => uploads.id, { onDelete: "cascade" }),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.deviceId, table.assetId, table.resource] }),
+		check(
+			"upload_assets_resource_values",
+			sql`${table.resource} IN ('photo', 'video', 'pairedVideo', 'alternatePhoto')`,
+		),
+	],
+);
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -550,3 +596,7 @@ export type PhotoFace = typeof photoFaces.$inferSelect;
 export type NewPhotoFace = typeof photoFaces.$inferInsert;
 export type PhotoFaceScan = typeof photoFaceScan.$inferSelect;
 export type NewPhotoFaceScan = typeof photoFaceScan.$inferInsert;
+export type Upload = typeof uploads.$inferSelect;
+export type NewUpload = typeof uploads.$inferInsert;
+export type UploadAsset = typeof uploadAssets.$inferSelect;
+export type NewUploadAsset = typeof uploadAssets.$inferInsert;

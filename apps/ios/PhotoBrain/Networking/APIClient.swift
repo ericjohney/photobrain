@@ -740,6 +740,23 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
     }
 }
 
+extension APIClient: BackupServerAPI {
+    func uploadConfig() async throws -> UploadConfigDTO {
+        try await get(path: ["uploads", "config"])
+    }
+
+    func knownUploads(deviceId: String, assetIds: [String]) async throws -> KnownUploadsResponseDTO {
+        guard UUID(uuidString: deviceId) != nil,
+              (1...BackupReconciler.chunkSize).contains(assetIds.count) else {
+            throw PhotoBrainAPIError.invalidRequest
+        }
+        return try await post(
+            path: ["uploads", "known"],
+            body: KnownUploadsRequestDTO(deviceId: deviceId, assetIds: assetIds)
+        )
+    }
+}
+
 private final class APITransferMetricsDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let endpoint: String
 

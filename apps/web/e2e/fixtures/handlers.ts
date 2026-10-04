@@ -58,6 +58,13 @@ export type HandlerOverrides = Partial<Record<string, Handler>>;
 
 export const FIXTURE_JOB_ID = "11111111-1111-4111-8111-111111111111";
 
+/** `GET /api/v1/uploads/config` served by default (uploads disabled). */
+export const FIXTURE_UPLOAD_CONFIG = {
+	enabled: false,
+	maxBytes: 10_737_418_240,
+	extensions: [".jpg", ".jpeg", ".png", ".heic", ".dng", ".mov"],
+};
+
 const TRPC_ERROR_CODES = {
 	BAD_REQUEST: { code: -32600, httpStatus: 400 },
 	NOT_FOUND: { code: -32004, httpStatus: 404 },
@@ -973,6 +980,25 @@ export async function installTrpcHandlers(
 	// Block Inngest Realtime SSE
 	await page.route(/inngest\.com|\/api\/inngest/, (route) =>
 		route.fulfill({ status: 204, body: "" }),
+	);
+
+	// Uploads are disabled by default; specs route an enabled config over it.
+	await page.route(/\/api\/v1\/uploads\/config$/, (route) =>
+		route.fulfill({ json: FIXTURE_UPLOAD_CONFIG }),
+	);
+	await page.route(/\/api\/v1\/uploads(\?|$)/, (route) =>
+		route.fulfill({
+			status: 503,
+			json: {
+				error: {
+					code: "UPLOADS_DISABLED",
+					message: "Uploads are disabled",
+				},
+			},
+		}),
+	);
+	await page.route(/\/api\/v1\/scans\/active$/, (route) =>
+		route.fulfill({ json: { jobs: [] } }),
 	);
 
 	// Map: the default style URL gets a background-only style, so no tiles,

@@ -600,6 +600,9 @@ describe("API v1 contract", () => {
 			"/api/v1/search",
 			"/api/v1/smart-albums",
 			"/api/v1/smart-albums/{id}",
+			"/api/v1/uploads",
+			"/api/v1/uploads/config",
+			"/api/v1/uploads/known",
 		]);
 		expect(
 			Object.keys(document.paths["/api/v1/scans"].post?.responses ?? {}).sort(),

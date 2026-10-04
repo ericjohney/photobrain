@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
+    @Environment(\.backupCoordinator) private var backup
 
     var body: some View {
         Form {
@@ -24,6 +25,10 @@ struct SettingsView: View {
                 Toggle("Haptic Feedback", isOn: .constant(true))
                     .disabled(true)
                     .accessibilityHint("Uses the system default and cannot be changed")
+            }
+
+            if let backup {
+                BackupSettingsSection(backup: backup)
             }
 
             Section("PhotoBrain") {

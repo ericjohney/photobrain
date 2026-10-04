@@ -37,6 +37,16 @@
 	<string>$(PHOTO_BRAIN_API_URL)</string>
 	<key>PhotoBrainEnvironment</key>
 	<string>$(PHOTO_BRAIN_ENVIRONMENT)</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PhotoBrain backs up your camera roll's original photos and videos to your PhotoBrain server when Backup is turned on in Settings.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).backup</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

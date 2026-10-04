@@ -41,6 +41,7 @@ import { PanelLayout } from "@/components/panels/PanelLayout";
 import { ReviewHeader } from "@/components/ReviewHeader";
 import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
 import { Toolbar } from "@/components/Toolbar";
+import { UploadDropZone } from "@/components/UploadDropZone";
 import { Button } from "@/components/ui/button";
 import { useCollections } from "@/hooks/use-collections";
 import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
@@ -65,6 +66,7 @@ import {
 	toSmartAlbumFilters,
 	useSmartAlbums,
 } from "@/hooks/use-smart-albums";
+import { useUploads } from "@/hooks/use-uploads";
 import { eventTitle } from "@/lib/events";
 import { downloadUrl, exportFileName } from "@/lib/export";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
@@ -265,6 +267,11 @@ export function Dashboard() {
 	// Job progress tracking via Inngest Realtime
 	const jobProgress = useJobProgress(activeJobId);
 	const scanDisabled = scanMutation.isPending || jobProgress.isActive;
+	// The upload import scan is tracked like a manual one once it starts.
+	const uploads = useUploads({
+		currentJobId: activeJobId,
+		onImportJob: setActiveJobId,
+	});
 
 	// Determine which data to use
 	const activeQuery = reviewActive
@@ -1187,6 +1194,7 @@ export function Dashboard() {
 					onRefresh={() => handleScan()}
 					onReprocess={() => handleScan(true)}
 					isRefreshing={scanMutation.isPending}
+					uploads={uploads}
 					hasActiveJobs={jobProgress.isActive}
 					processingProgress={{
 						current: jobProgress.progress.current,
@@ -1277,14 +1285,16 @@ export function Dashboard() {
 			rightPanelVisible={panels.rightPanelVisible}
 			filmstripVisible={panels.filmstripVisible && library.viewMode === "loupe"}
 		>
-			{banner ? (
-				<div className="flex h-full flex-col">
-					{banner}
-					<div className="min-h-0 flex-1">{renderContent()}</div>
-				</div>
-			) : (
-				renderContent()
-			)}
+			<UploadDropZone enabled={uploads.enabled} onFiles={uploads.addFiles}>
+				{banner ? (
+					<div className="flex h-full flex-col">
+						{banner}
+						<div className="min-h-0 flex-1">{renderContent()}</div>
+					</div>
+				) : (
+					renderContent()
+				)}
+			</UploadDropZone>
 			<SaveSmartAlbumSheet
 				open={savingSmartAlbum}
 				onOpenChange={setSavingSmartAlbum}

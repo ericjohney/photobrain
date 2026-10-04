@@ -11,6 +11,7 @@ Scope: `apps/api`.
 - `src/routes/photos.ts`: binary file and thumbnail routes plus one-off maintenance routes. `/:id/file` answers single byte ranges through `services/byte-range.ts` (`parseByteRange`).
 - `src/routes/exports.ts`: binary export downloads (`/api/photos/:id/export`, `/api/collections/:id/export`) and the RFC 6266 `contentDisposition` helper; `services/exports.ts` (filenames, duplicate-name disambiguation, pull-based collection ZIP stream), `services/zip-writer.ts` (STORE/ZIP64 encoder), `services/photo-files.ts` (`originalFilePath`, shared with `/:id/file`).
 - `src/routes/faces.ts`: binary face crops (`/api/faces/:id/crop`) for people avatars; see [Faces and People](#faces-and-people).
+- `src/routes/uploads.ts`: phone backup uploads (`/api/v1/uploads`, `/config`, `/known`), mounted before the generic v1 router; binary bodies are unsuitable for tRPC. `services/uploads.ts` holds streaming receipt, SHA-256/asset-key dedupe, sanitization, placement, `knownUploads`, and `.incoming` cleanup; see [Uploads](#uploads).
 - `src/inngest/client.ts`: typed event definitions and Realtime middleware.
 - `src/inngest/functions/scan.ts`: durable incremental planning, continuous Rust processing, and completed-result checkpoints.
 - `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches; tags each saved vector in the same transaction and finally requests the tag backfill.
@@ -19,6 +20,7 @@ Scope: `apps/api`.
 - `src/inngest/functions/places.ts`: `place-photos-v1` backfill geocoding valid locations lacking a current place and deleting places whose location became invalid or remote.
 - `src/inngest/functions/events.ts`: `detect-events-v1` single-step full recompute of automatic events.
 - `src/inngest/functions/faces.ts`: `detect-faces-v1` face detection batches plus the final `cluster-faces-v1` grouping step.
+- `src/inngest/functions/uploads.ts`: `scan-after-upload-v1`, debounced (60 s) `photos/uploaded` handler calling the shared `startScan` with `force: false`.
 - `src/services/photo-quality.ts`: quality backfill eligibility, generation-fenced writes, and `analyzeQualityBatch`; native measurement is injected.
 - `src/services/junk-review.ts`: junk-review reasons, thresholds, candidate paging/counts, and `resolveJunk`, shared by tRPC and `/api/v1`.
 - `src/services/duplicates.ts`: perceptual-hash duplicate and EXIF burst groups, suggested keeper, dismissals, and `resolveDuplicateGroup`, shared by tRPC and `/api/v1`. Grouping calls the native `groupNearDuplicates` through an injectable `HashGrouper`.
@@ -90,6 +92,9 @@ The Hono server registers:
 - `POST /api/v1/scans`
 - `GET /api/v1/scans/active`
 - `GET /api/v1/scans/:jobId`
+- `GET /api/v1/uploads/config`
+- `POST /api/v1/uploads`
+- `POST /api/v1/uploads/known`
 - `GET /api/photos/:id/file`
 - `GET /api/photos/:id/thumbnail/:size`
 - `GET /api/faces/:id/crop`
@@ -183,6 +188,9 @@ photos/events.requested
   {}
 
 photos/faces.requested
+  {}
+
+photos/uploaded
   {}
 ```
 
@@ -439,6 +447,8 @@ Active API variables are parsed in `src/config.ts`:
 - `NODE_ENV=development`
 - `RUN_DB_INIT=false`
 - `V1_NATIVE_SCAN_MUTATIONS_ENABLED=false` (`true` or `1` enables `POST /api/v1/scans`; reads remain available)
+- `UPLOADS_ENABLED=false` (`true` or `1` enables `POST /api/v1/uploads` and `/known`; `GET /api/v1/uploads/config` is always readable)
+- `UPLOAD_MAX_BYTES=10737418240` (positive integer; also `Bun.serve` `maxRequestBodySize`)
 - `INNGEST_SERVE_ORIGIN` (optional validated URL, passed to the Hono handler as `serveHost`)
 - `INNGEST_REALTIME_BASE_URL` (optional validated URL, returned to clients)
 
@@ -467,6 +477,20 @@ Binary routes outside tRPC, `/api/v1`, and `openapi-v1.json`; every response sen
 - The ZIP stream is pull-based (`highWaterMark: 0`): at most `ZIP_LOOKAHEAD` (2) members are reading/rendering beyond the entry being written. Renders use `nativeExecutor.runWhenAdmitted`, which waits for admission instead of failing and, on abort, withdraws queued requests; only an already-running render outlives a cancelled download. Entries are fully read before their header, so local headers carry real CRC-32 (`Bun.hash.crc32`) and sizes; ZIP64 extras/end records are emitted only when a size/offset ≥ 0xFFFFFFFF or count ≥ 0xFFFF.
 - Renders run on the persistent worker without draining an idle scan stream (`renderExportJpeg` never uses the Rayon processing pool) and without resetting the executor's session job.
 
+## Uploads
+
+Phone backup uploads write originals into the library and leave importing to the existing incremental scan; there is no second ingest pipeline and no authentication. Errors are `{ error: { code, message } }`; the OpenAPI contract documents all three operations.
+
+- `GET /api/v1/uploads/config` → `{ enabled, maxBytes, extensions }` (native `getSupportedExtensions()`, lower-cased), even while disabled.
+- `POST /api/v1/uploads?deviceId=&deviceName=&filename=&assetId=&resource=&capturedAt=` with the raw file as the body. Checks in order, all before reading the body: 503 `UPLOADS_DISABLED`, 411 `LENGTH_REQUIRED`, 413 `UPLOAD_TOO_LARGE` (`Content-Length` > `UPLOAD_MAX_BYTES`), 400 `INVALID_REQUEST` (query or zero length), 415 `UNSUPPORTED_MEDIA` (native `isSupportedMedia` on the sanitized name), recorded (`deviceId`, `assetId`, `resource`) → 200 duplicate, 507 `INSUFFICIENT_STORAGE` (`fs.statfs` free bytes < length + 1 GiB, or `ENOSPC` while writing). `resource` (`photo|video|pairedVideo|alternatePhoto`) is required iff `assetId` is present. `capturedAt` is ISO-8601 with an offset; a `+` decoded to a space before the offset is restored, other values need `%2B`.
+- The body streams to `{PHOTO_DIRECTORY}/Uploads/.incoming/<uuid>` (hidden, so never scanned) through an incremental `Bun.CryptoHasher("sha256")`; memory is constant. Any byte count other than `Content-Length` or a client abort is 400 `UPLOAD_INCOMPLETE`. The temp is `fdatasync`ed before success and removed on every path. Identical bytes already recorded → 200 duplicate with the existing path; the request's asset key is recorded against that row.
+- Placement: `Uploads/{device}/{YYYY}/{MM}/{name}`. `sanitizePathSegment` makes one safe segment (NFC, control characters dropped, `/` `\` → `_`, trimmed, leading dots/space removed, ≤ 120 UTF-8 bytes keeping an extension ≤ 16 bytes); an empty device name becomes `Device`. The month is `capturedAt`'s own wall-clock date, else the server's local month; `capturedAt` also sets atime/mtime. The first stored resource of a (`deviceId`, `assetId`) fixes its folder and stem, so later resources (Live Photo clip, RAW/alternate) reuse them with their own extension and pair through the existing stem rule, including after a collision suffix. The file is placed by `fs.link(temp, dest)` trying `stem.ext`, `stem (2).ext`, … (`EEXIST` → next); nothing is overwritten.
+- After placement the `uploads` row and optional `upload_assets` key are inserted in one transaction. A unique conflict (concurrent identical bytes or asset key, or a recorded path whose file was deleted) unlinks the placed file; if another upload now holds the bytes/key it is returned as duplicate, otherwise the next suffix is tried.
+- 201 `created` sends `photos/uploaded` (dispatch failure is logged; the file stays); `scan-after-upload-v1` debounces 60 s and calls `startScan(force: false)` with the configured directories. Duplicates send nothing.
+- `POST /api/v1/uploads/known` `{ deviceId, assetIds }` (1-1000, strict) → `{ assets: [{ assetId, resources }] }` in request order, only assets with a recorded resource, resources in `photo, video, pairedVideo, alternatePhoto` order. 503 while disabled.
+- Startup (`cleanIncomingUploads`) deletes `.incoming` entries older than 24 h before `Bun.serve` starts.
+- Measured on Apple M4 Pro (throwaway script, `Bun.serve` + this router + in-process streaming client, 1 MiB chunks): 512 MiB at ~1.9 GiB/s (0.27 s) with peak RSS growth ~47 MiB; 64 MiB +36 MiB and 2 GiB +58 MiB, so memory does not scale with upload size.
+
 ## REST File Rules
 
 - Standard files are served from `join(photo.sourceRoot ?? PHOTO_DIRECTORY, photo.path)`.
@@ -489,6 +513,8 @@ The two POST maintenance routes are operational leftovers. HEIC reprocessing for
 `src/__tests__/duplicates.test.ts` runs in an isolated child process (`PHOTOBRAIN_DUPLICATES_TEST_CHILD=1`) with the database, native addon, and Inngest client mocked. The addon mock is a fixture grouper over test-chosen hexadecimal integer hashes; real base64 decoding, the multi-index search, transitivity, and invalid-hash skipping are covered by `cargo test duplicates`. It covers the distance boundary (`DUPLICATE_MAX_DISTANCE` grouped, +1 not), burst boundaries (2 s chains, a 3 s gap splits, another camera maker splits, pairs are not bursts, unparsable/placeholder dates ignored, midnight crossing), rejected-photo exclusion, every keeper tie-break, group order and cursor pagination, dismissal of exactly one key and reappearance with a new member, `keep` rejecting the others, stale/unknown-key `CONFLICT`/409 without writes, and v1 private-field stripping, ISO dates, and 400s.
 
 `src/__tests__/v1.test.ts` differentially checks `/api/v1` against tRPC/shared services, validates ISO DTOs and stable errors, proves the native scan mutation defaults off, verifies active-scan recovery ordering, and asserts that private source/artifact identities are absent from list/detail/search responses. OpenAPI parity tests keep the checked-in route contract synchronized.
+
+`src/__tests__/uploads.test.ts` uses temp library directories, `createTestDb()`, an injected `MediaSupport` fixture and free-space probe, and pull-counting body streams to prove which checks never read the body. It covers config parsing, `/config`, disabled 503 first, 411/413/415/507/400 validation and boundaries, the `capturedAt` offset month and mtime (including a `+` decoded as a space), hostile name sanitization, stem sharing across resources (also after a collision), never-overwriting collision suffixes and unreused recorded paths, asset-key and SHA-256 duplicates (temp removed, key recorded), concurrent identical uploads storing one file, truncated/oversized/aborted bodies leaving no file or row, `known`, `photos/uploaded` only on created, and 24 h `.incoming` cleanup. `scan-after-upload-v1` registration, debounce, and its incremental `startScan` event run in an isolated child (`PHOTOBRAIN_UPLOADS_TEST_CHILD=1`) with the database, config, and Inngest client mocked.
 
 `src/__tests__/pairs.test.ts` runs in an isolated child process (`PHOTOBRAIN_PAIRS_TEST_CHILD=1`) with the database, native addon (CLIP text embedding and a fixture duplicate grouper), and Inngest client mocked, over real sqlite-vec vectors. It covers the pair rule boundaries (case-insensitive stem, different folder, three-member group, two RAWs/two standard files, both dates differing vs one missing or equal, RAW partner without `rawFormat`), both nullable DTO fields on every tRPC and `/api/v1` photo surface, stacking per `filterRaw` value and when the partner fails a filter (collection or tag holding only the RAW), `rawCount`, smart-album counts/covers matching the listing, stacked text search and similarity (never the source's partner), partner-expanding curation on tRPC and v1 `PATCH`, duplicates (pair never grouped, `keep` rejects partners), junk exclusion of the companion RAW, and migration `0013` applied to a populated `0012` database. Over 8,000 photos with 2,000 pairs (logged with `[pairs-perf]`) it asserts stem-index plans for listing, curation, junk, and duplicate lookups, `listPhotos` all-filter < 50 ms, 20 smart-album counts < 50 ms, and a 500-ID curation with partners < 50 ms.
 

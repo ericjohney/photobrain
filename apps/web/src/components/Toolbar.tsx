@@ -36,7 +36,9 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { UploadMenu } from "@/components/UploadMenu";
 import type { ViewMode } from "@/hooks/use-library-state";
+import type { UploadsApi } from "@/hooks/use-uploads";
 import type { TimelineGrouping, TimelineSort } from "@/lib/timeline";
 import { cn } from "@/lib/utils";
 
@@ -162,6 +164,8 @@ interface ToolbarProps {
 	onRefresh: () => void;
 	onReprocess: () => void;
 	isRefreshing?: boolean;
+	/** Upload button and queue; omitted renders neither. */
+	uploads?: UploadsApi;
 
 	// Processing indicator
 	hasActiveJobs?: boolean;
@@ -190,6 +194,7 @@ export function Toolbar({
 	onRefresh,
 	onReprocess,
 	isRefreshing,
+	uploads,
 	hasActiveJobs,
 	processingProgress,
 	photoCount = 0,
@@ -402,6 +407,8 @@ export function Toolbar({
 						</span>
 					</div>
 				)}
+
+				{uploads && <UploadMenu uploads={uploads} />}
 
 				{/* Refresh */}
 				<Tooltip>

@@ -14,6 +14,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 - RAW display through embedded JPEG previews extracted with `exiftool`; this checkout does not demosaic RAW files.
 - Perceptual hashes for duplicate and burst grouping.
 - Automatic face grouping into people (offline YuNet detection and SFace embeddings), with naming, hiding, merging, per-face correction, a person filter, and loupe face boxes on web and native iOS.
+- Phone and browser backup: native iOS backs up the camera roll in the background, and the web app uploads by picker or drag-and-drop. Originals land in `Uploads/{device}/{YYYY}/{MM}/`, are deduplicated by content and asset, and are imported by a debounced incremental scan. Off unless `UPLOADS_ENABLED=true`.
 - Incremental scans reuse unchanged media and recover embeddings separately. Confirmed **Reprocess all photos** controls in the web and mobile clients deliberately rebuild the library's derived media.
 - SQLite/Drizzle persistence with runtime `sqlite-vec` vector search.
 
@@ -161,6 +162,8 @@ The native iOS command requires Xcode 26.6 and matches the unsigned Preview simu
 | `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false` | Enables native `POST /api/v1/scans`; compatibility reads remain available while disabled |
 | `FASTEMBED_CACHE_DIR` | unset | Optional FastEmbed model cache directory |
 | `FACE_MODEL_DIR` | `$FASTEMBED_CACHE_DIR/faces`, else `./.face_models` | Optional face-model cache directory; YuNet/SFace download on first face detection |
+| `UPLOADS_ENABLED` | `false` | `true` or `1` accepts uploads at `POST /api/v1/uploads`; leave off on a public server without authentication |
+| `UPLOAD_MAX_BYTES` | `10737418240` | Largest accepted upload in bytes |
 | `PHOTO_PROCESSING_THREADS` | available CPU capacity | Optional positive integer limiting concurrent media processing; read once by Rust when its pool initializes |
 | `INNGEST_DEV` | SDK default | Use `1` only for local development; `0` for production/self-hosting |
 | `INNGEST_BASE_URL` | SDK default | Server-to-server Inngest origin; set for self-hosting |

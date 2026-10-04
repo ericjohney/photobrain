@@ -8,8 +8,14 @@ import { functions, inngest } from "./inngest";
 import { createExportsRouter } from "./routes/exports";
 import { createFacesRouter } from "./routes/faces";
 import photosRouter from "./routes/photos";
+import { createUploadsRouter } from "./routes/uploads";
 import { createV1Router } from "./routes/v1";
 import { nativeExecutor } from "./services/native-executor";
+import {
+	cleanIncomingUploads,
+	nativeMediaSupport,
+	statfsFreeBytes,
+} from "./services/uploads";
 import { searchPhotosByText } from "./services/vector-search";
 import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
@@ -23,6 +29,20 @@ app.use("*", cors());
 app.get("/api/health", (c) => {
 	return c.json({ status: "ok", timestamp: new Date().toISOString() });
 });
+// Phone backup uploads (binary bodies; unsuitable for tRPC). Mounted before the
+// generic v1 router so its not-found handler never shadows these routes.
+app.route(
+	"/api/v1/uploads",
+	createUploadsRouter({
+		database: db,
+		photoDirectory: config.PHOTO_DIRECTORY,
+		enabled: config.UPLOADS_ENABLED,
+		maxBytes: config.UPLOAD_MAX_BYTES,
+		media: nativeMediaSupport,
+		freeBytes: statfsFreeBytes,
+		notifyUploaded: () => inngest.send({ name: "photos/uploaded", data: {} }),
+	}),
+);
 app.route(
 	"/api/v1",
 	createV1Router({
@@ -83,6 +103,14 @@ app.on(
 console.log(`🚀 PhotoBrain API starting on ${config.HOST}:${config.PORT}`);
 console.log(`📸 Photo directory: ${config.PHOTO_DIRECTORY}`);
 
+// Remove upload bodies abandoned by a crash before accepting new uploads.
+try {
+	const removed = await cleanIncomingUploads(config.PHOTO_DIRECTORY);
+	if (removed > 0) console.log(`🧹 Removed ${removed} stale incoming uploads`);
+} catch (error) {
+	console.error("Incoming upload cleanup failed:", error);
+}
+
 // Use Bun.serve for better performance
 Bun.serve({
 	hostname: config.HOST,
@@ -90,4 +118,6 @@ Bun.serve({
 	fetch: app.fetch,
 	// Increase idle timeout for SSE subscriptions (default is 10s)
 	idleTimeout: 120,
+	// Uploads stream bodies up to this size; the route checks Content-Length first.
+	maxRequestBodySize: config.UPLOAD_MAX_BYTES,
 });

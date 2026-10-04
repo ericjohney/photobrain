@@ -36,7 +36,7 @@ These are the next product and production-readiness priorities for the current c
 1. **Expo collections** - manual collections and saved-filter smart albums ship on web and native iOS; the Expo Android collections screen remains.
 2. **Duplicate follow-ups** - a larger pHash for a looser threshold, side-by-side comparison, and the Expo Android duplicates screen. Groups, suggested keeper, and reject-based resolution ship on web and native iOS.
 3. **Map follow-ups** - photo thumbnails as markers and the Expo Android map. Clustered maps, area filtering, "show on map", and offline place names with country/city filters ship on web and native iOS.
-4. **Mobile backup** - add camera-roll access, background upload, and offline thumbnail handling.
+4. **Mobile backup follow-ups** - the Expo Android backup client, physical-device verification of iOS background upload, and offline thumbnail handling. Camera-roll backup with background upload ships on native iOS, and browser upload ships on web.
 5. **Production hardening** - add authentication, database/file backups, deleted-file reconciliation, rate limiting, and REST/Inngest coverage.
 
 The older RAW, worker, and queue plans below are historical. Do not select them as current work unless the architecture is deliberately changed.
@@ -341,14 +341,14 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [ ] Collections screen
 - [ ] Functional share, favorite, delete, and overflow actions in the loupe
 - [ ] Functional display and behavior preferences beyond theme
-- [ ] Native camera roll access
-- [ ] Background photo upload
+- [x] Native camera roll access (native iOS)
+- [x] Background photo upload (native iOS; browser upload on web)
 - [ ] Push notifications for upload completion
-- [ ] **Automatic backup service**
-  - Periodic background sync
-  - Only upload new photos
-  - Configurable backup quality (original vs compressed)
-  - WiFi-only option
+- [x] **Automatic backup service** (native iOS)
+  - Foreground, library-change, and `BGProcessingTask` runs
+  - Only upload new photos (asset-key and SHA-256 dedupe)
+  - [ ] Configurable backup quality (originals only today)
+  - Cellular toggle (Wi-Fi only by default)
 - [ ] **Offline support**
   - [x] Basic thumbnail caching through `expo-image`
   - [ ] Offline browsing and cache management

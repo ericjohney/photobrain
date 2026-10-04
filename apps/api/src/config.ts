@@ -19,6 +19,16 @@ const configSchema = z.object({
 		.enum(["true", "false", "1", "0"])
 		.default("false")
 		.transform((value) => value === "true" || value === "1"),
+	UPLOADS_ENABLED: z
+		.enum(["true", "false", "1", "0"])
+		.default("false")
+		.transform((value) => value === "true" || value === "1"),
+	UPLOAD_MAX_BYTES: z.coerce
+		.number()
+		.int()
+		.positive()
+		.max(Number.MAX_SAFE_INTEGER)
+		.default(10 * 1024 ** 3),
 	// RAW conversion settings
 	DARKTABLE_CLI_PATH: z.string().default("darktable-cli"),
 	RAW_CONVERSION_TIMEOUT: z.coerce.number().default(120000), // 2 minutes

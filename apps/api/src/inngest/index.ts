@@ -6,6 +6,7 @@ import { placePhotosFunction } from "./functions/places";
 import { analyzeQualityFunction } from "./functions/quality";
 import { scanPhotosFunction } from "./functions/scan";
 import { tagPhotosFunction } from "./functions/tags";
+import { scanAfterUploadFunction } from "./functions/uploads";
 
 export { inngest };
 
@@ -17,4 +18,5 @@ export const functions = [
 	placePhotosFunction,
 	detectEventsFunction,
 	detectFacesFunction,
+	scanAfterUploadFunction,
 ];

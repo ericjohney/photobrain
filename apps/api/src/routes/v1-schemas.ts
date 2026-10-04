@@ -46,6 +46,13 @@ import {
 	MAX_TAG_SLUG_LENGTH,
 	TAG_SLUG_PATTERN,
 } from "../services/tag-vocabulary";
+import {
+	MAX_ASSET_ID_LENGTH,
+	MAX_DEVICE_NAME_LENGTH,
+	MAX_FILENAME_LENGTH,
+	MAX_KNOWN_ASSET_IDS,
+	UPLOAD_RESOURCES,
+} from "../services/uploads";
 
 export type FolderDto = {
 	name: string;
@@ -814,6 +821,60 @@ export const errorResponseSchema = z.object({
 		code: z.string().min(1),
 		message: z.string().min(1),
 	}),
+});
+
+/** `GET /uploads/config`: always readable, even while uploads are disabled. */
+export const uploadConfigResponseSchema = z.object({
+	enabled: z.boolean(),
+	maxBytes: z.number().int().positive(),
+	extensions: z.array(z.string().regex(/^\.[a-z0-9]+$/)),
+});
+
+/**
+ * `POST /uploads` query. A literal `+` in a query string decodes to a space,
+ * so `capturedAt` restores `+` before a space-separated offset; clients must
+ * still send `%2B` in other values.
+ */
+export const uploadQuerySchema = z
+	.object({
+		deviceId: z.string().uuid(),
+		deviceName: z.string().trim().min(1).max(MAX_DEVICE_NAME_LENGTH),
+		filename: z.string().min(1).max(MAX_FILENAME_LENGTH),
+		assetId: z.string().min(1).max(MAX_ASSET_ID_LENGTH).optional(),
+		resource: z.enum(UPLOAD_RESOURCES).optional(),
+		capturedAt: z
+			.string()
+			.transform((value) => value.replace(/ (\d{2}(?::?\d{2})?)$/, "+$1"))
+			.pipe(z.string().datetime({ offset: true }))
+			.optional(),
+	})
+	.refine(
+		(query) => (query.assetId === undefined) === (query.resource === undefined),
+	);
+
+export const uploadResultSchema = z.object({
+	status: z.enum(["created", "duplicate"]),
+	path: z.string().min(1),
+	size: z.number().int().nonnegative(),
+});
+
+export const knownUploadsRequestSchema = z
+	.object({
+		deviceId: z.string().uuid(),
+		assetIds: z
+			.array(z.string().min(1).max(MAX_ASSET_ID_LENGTH))
+			.min(1)
+			.max(MAX_KNOWN_ASSET_IDS),
+	})
+	.strict();
+
+export const knownUploadsResponseSchema = z.object({
+	assets: z.array(
+		z.object({
+			assetId: z.string().min(1),
+			resources: z.array(z.enum(UPLOAD_RESOURCES)).min(1),
+		}),
+	),
 });
 
 function asRecord(value: unknown): Record<string, unknown> {

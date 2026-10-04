@@ -91,6 +91,14 @@
 		A10000000000000000000033 /* PeopleViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000033 /* PeopleViews.swift */; };
 		A2000000000000000000001E /* VideoSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001E /* VideoSupportTests.swift */; };
 		A2000000000000000000001F /* PeopleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001F /* PeopleTests.swift */; };
+		A10000000000000000000034 /* Backup.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000034 /* Backup.swift */; };
+		A10000000000000000000035 /* BackupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000035 /* BackupCoordinator.swift */; };
+		A10000000000000000000036 /* BackupUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000036 /* BackupUpload.swift */; };
+		A10000000000000000000037 /* PhotoKitBackupLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000037 /* PhotoKitBackupLibrary.swift */; };
+		A10000000000000000000038 /* BackupRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000038 /* BackupRuntime.swift */; };
+		A10000000000000000000039 /* BackupSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000039 /* BackupSettingsSection.swift */; };
+		A20000000000000000000020 /* BackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000020 /* BackupTests.swift */; };
+		A20000000000000000000021 /* BackupCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000021 /* BackupCoordinatorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -195,6 +203,14 @@
 		B10000000000000000000033 /* PeopleViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleViews.swift; sourceTree = "<group>"; };
 		B2000000000000000000001E /* VideoSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoSupportTests.swift; sourceTree = "<group>"; };
 		B2000000000000000000001F /* PeopleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleTests.swift; sourceTree = "<group>"; };
+		B10000000000000000000034 /* Backup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backup.swift; sourceTree = "<group>"; };
+		B10000000000000000000035 /* BackupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupCoordinator.swift; sourceTree = "<group>"; };
+		B10000000000000000000036 /* BackupUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupUpload.swift; sourceTree = "<group>"; };
+		B10000000000000000000037 /* PhotoKitBackupLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoKitBackupLibrary.swift; sourceTree = "<group>"; };
+		B10000000000000000000038 /* BackupRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRuntime.swift; sourceTree = "<group>"; };
+		B10000000000000000000039 /* BackupSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupSettingsSection.swift; sourceTree = "<group>"; };
+		B20000000000000000000020 /* BackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000021 /* BackupCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupCoordinatorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -241,12 +257,12 @@
 			path = PhotoBrain;
 			sourceTree = "<group>";
 		};
-		C00000000000000000000004 /* App */ = {isa = PBXGroup; children = (B10000000000000000000001 /* PhotoBrainApp.swift */, B1000000000000000000000D /* AppEnvironment.swift */, B10000000000000000000015 /* AppLinkRouting.swift */,); path = App; sourceTree = "<group>"; };
+		C00000000000000000000004 /* App */ = {isa = PBXGroup; children = (B10000000000000000000001 /* PhotoBrainApp.swift */, B1000000000000000000000D /* AppEnvironment.swift */, B10000000000000000000015 /* AppLinkRouting.swift */, B10000000000000000000038 /* BackupRuntime.swift */,); path = App; sourceTree = "<group>"; };
 		C00000000000000000000005 /* Fixtures */ = {isa = PBXGroup; children = (B10000000000000000000002 /* RedactedFixture.swift */,); path = Fixtures; sourceTree = "<group>"; };
 		C00000000000000000000006 /* Instrumentation */ = {isa = PBXGroup; children = (B10000000000000000000003 /* SpikeSignposts.swift */,); path = Instrumentation; sourceTree = "<group>"; };
-		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */, B1000000000000000000001D /* SmartAlbumsState.swift */, B1000000000000000000001F /* DuplicatesState.swift */, B10000000000000000000021 /* PhotoPair.swift */, B10000000000000000000022 /* PhotoMap.swift */, B10000000000000000000024 /* PhotoPlaces.swift */, B10000000000000000000025 /* OnThisDay.swift */, B10000000000000000000027 /* CaptureCalendar.swift */, B10000000000000000000029 /* AutoEvents.swift */, B1000000000000000000002B /* GearStats.swift */, B1000000000000000000002E /* PhotoExport.swift */, B10000000000000000000030 /* VideoPlayback.swift */, B10000000000000000000031 /* PeopleState.swift */, B10000000000000000000032 /* FaceGeometry.swift */,); path = Library; sourceTree = "<group>"; };
+		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */, B1000000000000000000001D /* SmartAlbumsState.swift */, B1000000000000000000001F /* DuplicatesState.swift */, B10000000000000000000021 /* PhotoPair.swift */, B10000000000000000000022 /* PhotoMap.swift */, B10000000000000000000024 /* PhotoPlaces.swift */, B10000000000000000000025 /* OnThisDay.swift */, B10000000000000000000027 /* CaptureCalendar.swift */, B10000000000000000000029 /* AutoEvents.swift */, B1000000000000000000002B /* GearStats.swift */, B1000000000000000000002E /* PhotoExport.swift */, B10000000000000000000030 /* VideoPlayback.swift */, B10000000000000000000031 /* PeopleState.swift */, B10000000000000000000032 /* FaceGeometry.swift */, B10000000000000000000034 /* Backup.swift */, B10000000000000000000035 /* BackupCoordinator.swift */, B10000000000000000000037 /* PhotoKitBackupLibrary.swift */,); path = Library; sourceTree = "<group>"; };
 		C00000000000000000000008 /* Models */ = {isa = PBXGroup; children = (B10000000000000000000006 /* PhotoRecord.swift */, B1000000000000000000000B /* APIDTOs.swift */,); path = Models; sourceTree = "<group>"; };
-		C00000000000000000000009 /* Networking */ = {isa = PBXGroup; children = (B10000000000000000000007 /* RedirectAwareImageLoader.swift */, B1000000000000000000000C /* APIClient.swift */, B1000000000000000000002D /* ExportDownload.swift */,); path = Networking; sourceTree = "<group>"; };
+		C00000000000000000000009 /* Networking */ = {isa = PBXGroup; children = (B10000000000000000000007 /* RedirectAwareImageLoader.swift */, B1000000000000000000000C /* APIClient.swift */, B1000000000000000000002D /* ExportDownload.swift */, B10000000000000000000036 /* BackupUpload.swift */,); path = Networking; sourceTree = "<group>"; };
 		C0000000000000000000000A /* PhotoBrainTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -281,12 +297,14 @@
 				B2000000000000000000001D /* ExportTests.swift */,
 				B2000000000000000000001E /* VideoSupportTests.swift */,
 				B2000000000000000000001F /* PeopleTests.swift */,
+				B20000000000000000000020 /* BackupTests.swift */,
+				B20000000000000000000021 /* BackupCoordinatorTests.swift */,
 			);
 			path = PhotoBrainTests;
 			sourceTree = "<group>";
 		};
 		C0000000000000000000000B /* Products */ = {isa = PBXGroup; children = (B00000000000000000000001 /* PhotoBrain.app */, B00000000000000000000002 /* PhotoBrainTests.xctest */,); name = Products; sourceTree = "<group>"; };
-		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */, B1000000000000000000001E /* SmartAlbumViews.swift */, B10000000000000000000020 /* DuplicatesScreen.swift */, B10000000000000000000023 /* MapScreen.swift */, B10000000000000000000026 /* OnThisDaySection.swift */, B10000000000000000000028 /* CaptureCalendarView.swift */, B1000000000000000000002A /* EventViews.swift */, B1000000000000000000002C /* GearStatsScreen.swift */, B1000000000000000000002F /* ExportViews.swift */, B10000000000000000000033 /* PeopleViews.swift */,); path = Views; sourceTree = "<group>"; };
+		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */, B1000000000000000000001E /* SmartAlbumViews.swift */, B10000000000000000000020 /* DuplicatesScreen.swift */, B10000000000000000000023 /* MapScreen.swift */, B10000000000000000000026 /* OnThisDaySection.swift */, B10000000000000000000028 /* CaptureCalendarView.swift */, B1000000000000000000002A /* EventViews.swift */, B1000000000000000000002C /* GearStatsScreen.swift */, B1000000000000000000002F /* ExportViews.swift */, B10000000000000000000033 /* PeopleViews.swift */, B10000000000000000000039 /* BackupSettingsSection.swift */,); path = Views; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -400,6 +418,12 @@
 				A10000000000000000000031 /* PeopleState.swift in Sources */,
 				A10000000000000000000032 /* FaceGeometry.swift in Sources */,
 				A10000000000000000000033 /* PeopleViews.swift in Sources */,
+				A10000000000000000000034 /* Backup.swift in Sources */,
+				A10000000000000000000035 /* BackupCoordinator.swift in Sources */,
+				A10000000000000000000036 /* BackupUpload.swift in Sources */,
+				A10000000000000000000037 /* PhotoKitBackupLibrary.swift in Sources */,
+				A10000000000000000000038 /* BackupRuntime.swift in Sources */,
+				A10000000000000000000039 /* BackupSettingsSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -438,6 +462,8 @@
 				A2000000000000000000001D /* ExportTests.swift in Sources */,
 				A2000000000000000000001E /* VideoSupportTests.swift in Sources */,
 				A2000000000000000000001F /* PeopleTests.swift in Sources */,
+				A20000000000000000000020 /* BackupTests.swift in Sources */,
+				A20000000000000000000021 /* BackupCoordinatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
