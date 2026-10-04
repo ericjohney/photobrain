@@ -9,11 +9,18 @@ use crate::batch::processing_pool;
 
 /// Long-edge bound for quality measurement; larger luma planes are downscaled.
 const MAX_ANALYSIS_EDGE: u32 = 512;
+/// Sharpness is the highest Laplacian variance among up to `GRID` x `GRID`
+/// tiles of the interior, so a sharp subject surrounded by sky, fog, or shadow
+/// is not averaged into a blur score.
+const GRID: usize = 4;
+/// Tiles narrower than this (in Laplacian samples) merge, so tiny images are
+/// measured as one region instead of near-constant single-pixel tiles.
+const MIN_TILE: usize = 8;
 
 #[napi(object)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImageQuality {
-  /// Variance of the 4-neighbour 3x3 Laplacian over interior luma pixels.
+  /// Highest variance of the 4-neighbour 3x3 Laplacian among interior tiles.
   pub sharpness: f64,
   /// Mean luma, 0-255.
   pub brightness: f64,
@@ -58,11 +65,14 @@ fn measure(luma: &GrayImage) -> ImageQuality {
   };
 
   // Interior pixels only: images narrower than 3 pixels have no Laplacian.
-  let mut count = 0u64;
-  let mut sum = 0f64;
-  let mut sum_squares = 0f64;
+  let (inner_width, inner_height) = (width.saturating_sub(2), height.saturating_sub(2));
+  let columns = (inner_width / MIN_TILE).clamp(1, GRID);
+  let rows = (inner_height / MIN_TILE).clamp(1, GRID);
+  // Per tile: count, sum, sum of squares.
+  let mut tiles = [(0u64, 0f64, 0f64); GRID * GRID];
   for y in 1..height.saturating_sub(1) {
     let row = y * width;
+    let tile_row = (y - 1) * rows / inner_height * columns;
     for x in 1..width - 1 {
       let index = row + x;
       let laplacian = 4 * i32::from(pixels[index])
@@ -71,17 +81,20 @@ fn measure(luma: &GrayImage) -> ImageQuality {
         - i32::from(pixels[index - width])
         - i32::from(pixels[index + width]);
       let value = f64::from(laplacian);
-      sum += value;
-      sum_squares += value * value;
-      count += 1;
+      let tile = &mut tiles[tile_row + (x - 1) * columns / inner_width];
+      tile.0 += 1;
+      tile.1 += value;
+      tile.2 += value * value;
     }
   }
-  let sharpness = if count == 0 {
-    0.0
-  } else {
-    let mean = sum / count as f64;
-    (sum_squares / count as f64 - mean * mean).max(0.0)
-  };
+  let sharpness = tiles
+    .iter()
+    .filter(|(count, _, _)| *count > 0)
+    .map(|&(count, sum, sum_squares)| {
+      let mean = sum / count as f64;
+      (sum_squares / count as f64 - mean * mean).max(0.0)
+    })
+    .fold(0.0, f64::max);
   ImageQuality {
     sharpness,
     brightness,
@@ -147,6 +160,41 @@ mod tests {
     assert_eq!(white.brightness, 255.0);
     assert_eq!(black.sharpness, 0.0);
     assert_eq!(white.sharpness, 0.0);
+  }
+
+  #[test]
+  fn small_sharp_region_on_a_flat_background_is_not_blurry() {
+    // A sharp subject filling one tile of an otherwise flat frame (sky, fog):
+    // whole-frame variance would be ~1/16 of the subject's.
+    let full = checkerboard(256, 4);
+    let sparse = RgbImage::from_fn(256, 256, |x, y| {
+      if x < 64 && y < 64 {
+        *full.get_pixel(x, y)
+      } else {
+        Rgb([128, 128, 128])
+      }
+    });
+    let blurred = DynamicImage::ImageRgb8(full.clone()).blur(5.0).to_rgb8();
+    let dir = tempfile::tempdir().unwrap();
+    let results = analyze_image_quality(vec![
+      save_webp(dir.path(), "full.webp", full),
+      save_webp(dir.path(), "sparse.webp", sparse),
+      save_webp(dir.path(), "blurred.webp", blurred),
+    ])
+    .unwrap();
+    let (full, sparse, blurred) = (
+      results[0].unwrap(),
+      results[1].unwrap(),
+      results[2].unwrap(),
+    );
+    assert!(
+      sparse.sharpness > full.sharpness * 0.8,
+      "{sparse:?} vs {full:?}"
+    );
+    assert!(
+      sparse.sharpness > blurred.sharpness * 10.0,
+      "{sparse:?} vs {blurred:?}"
+    );
   }
 
   #[test]

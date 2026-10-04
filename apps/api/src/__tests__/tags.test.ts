@@ -333,7 +333,6 @@ if (process.env.PHOTOBRAIN_TAGS_TEST_CHILD !== "1") {
 					"pet",
 				]),
 			);
-			expect(TAG_VOCABULARY_VERSION).toBe(1);
 		});
 
 		test("label vectors are embedded lazily once per process and failures are retried", () => {
@@ -622,7 +621,7 @@ if (process.env.PHOTOBRAIN_TAGS_TEST_CHILD !== "1") {
 			expect(
 				sqlite
 					.query<{ count: number }, []>(
-						"SELECT count(*) AS count FROM photo_embedding WHERE tags_version = 1",
+						`SELECT count(*) AS count FROM photo_embedding WHERE tags_version = ${TAG_VOCABULARY_VERSION}`,
 					)
 					.get()?.count,
 			).toBe(COUNT);

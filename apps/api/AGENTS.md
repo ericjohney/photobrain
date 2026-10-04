@@ -263,6 +263,10 @@ Measured on Apple M4 Pro/macOS 26.5.1 with the darwin-arm64 addon and `FASTEMBED
 
 At 0.10 clearly wrong labels appear (dog .112 on the cats); at 0.20 correct secondary subjects are lost (street .157, flowers .190, insect .166). Wrong tags at 0.15 (motorcycle, baby) are top-2 confusions that no threshold removes without dropping correct primary tags. Diffuse vectors with more than six comparable labels tag nothing.
 
+Version 2 changed only the `baby` prompt, from "a photo of a human baby" to "a photo of a human baby lying down". The old prompt tagged 9 of 16 LFW adult news portraits (`Bill_Clinton_*`, `Renee_Zellweger_*`) as `baby` at p 0.15-0.24, always second to `person`. Measured on those 16 stored vectors plus 31 Wikimedia Commons photos (babies/infants/newborns, toddlers, kittens, adult portraits): the new prompt tags none of the adults, keeps every human baby (p 0.87-0.99 when sole subject; second to `child` when a baby is held by an older child), adds a missed baby on a blanket in a wide road scene, and drops `baby` from a toddler held by an adult. Kitten confusion remains a top-3 tie (one of two kittens at p 0.24 vs one at 0.16 before). "a photo of a baby", "an infant", and "a newborn baby" all tagged kittens at p 0.48-0.73.
+
+Version 3 changed only the `screenshot` prompt, from "a screenshot of a computer screen" to "a screenshot of a user interface". Junk review needs `screenshot >= 0.5`, and the old prompt reached it on 26 of 62 iOS Simulator app screenshots (1206x2622 PNGs, including the fixture `IMG_0001.PNG`, which instead tagged `receipt, document, screenshot` at p 0.32/0.23/0.18) and 5 of 11 desktop renders of public websites. The new prompt reaches 0.5 on 42/62 and 10/11. Over 902 non-screenshot photos (LFW, WIDER FACE val, Food-101, the fixture library) it never reaches 0.5 (max 0.37, a TV broadcast still with on-screen graphics) and tags `screenshot` at 0.15 on 2 instead of 5. Only 7 of 906 tag sets change: two LFW portraits and a Big Sur landscape lose a wrong `screenshot`, `IMG_0001.PNG` becomes `screenshot` alone, and three photos gain or lose a third-place tag. Mostly-photo app screens (a full-bleed photo grid or loupe) remain below 0.5. "a screenshot of a phone screen" reached 54/62 phone screenshots but tagged 15 photos at 0.15 and one at 0.93; "a screenshot of an app or website" tagged 18.
+
 ## RAW+JPEG Pairs
 
 A camera's `DSC_0001.ARW` + `DSC_0001.JPG` are one photo. Pairing is evaluated at query time (no scan or stored column) in `photo-catalog.ts`; every lookup goes through `pairedPhotoIdSql`, and nothing else may restate the rule.
@@ -383,28 +387,30 @@ Measured over 8,000 photos (three tags and a quality row each, 3,850 candidates)
 
 ### Calibration (`BLUR_THRESHOLD = 40`, `DARK_THRESHOLD = 40`)
 
-Measured with the release darwin-arm64 addon on Apple M4 Pro. The 16 real photos used for tag calibration were turned into `medium` WebPs by the real `generateThumbnailsFromFile` pipeline; Pillow then made Gaussian-blurred (sigma 4 and 6 at thumbnail scale) and darkened (brightness x0.10 and x0.15) variants, re-encoded as WebP q85. `analyzeImageQuality` measured all 96 files in 89.9 ms.
+Measured with the release darwin-arm64 addon on Apple M4 Pro. The 16 real photos used for tag calibration were turned into `medium` WebPs by the real `generateThumbnailsFromFile` pipeline; Pillow then made Gaussian-blurred (sigma 1, 2, 3, 4, and 6 at thumbnail scale) and darkened (brightness x0.10 and x0.15) variants, re-encoded as WebP q85. `analyzeImageQuality` measured all 144 files in 123.5 ms.
+
+Sharpness is the highest Laplacian variance of a 4x4 tile grid (`QUALITY_VERSION` 2). Version 1 used whole-frame variance, which averaged a sharp subject with flat sky, fog, or shadow: a crisp dusk aerial of Catalina (`anniversary/CATALINA_2.jpg`, two thirds sky and fog) scored 28.2 and was flagged `blurry`; it now scores 139.4. Whole-frame and tile scores of blurred images both stay low because no tile keeps detail.
 
 |Image|Original sharpness / brightness|Blur sigma 4 / 6 sharpness|Dark x0.10 / x0.15 brightness|
 |---|---|---|---|
-|beach|414.7 / 129.6|4.2 / 3.1|12.5 / 19.1|
-|car|659.6 / 131.4|7.7 / 4.4|12.6 / 19.2|
-|cat|500.9 / 166.4|5.7 / 4.1|16.3 / 24.6|
-|city-night|1778.1 / 72.8|5.8 / 3.7|6.9 / 10.6|
-|document|7389.2 / 212.5|11.2 / 4.2|20.9 / 31.5|
-|dog|487.7 / 140.4|6.3 / 3.9|13.7 / 20.7|
-|flowers|257.1 / 86.3|4.0 / 2.8|8.3 / 12.6|
-|food|173.2 / 118.8|7.0 / 4.9|11.5 / 17.4|
-|forest|3914.3 / 109.4|7.5 / 4.2|10.6 / 16.0|
-|kitten|667.9 / 69.3|4.0 / 3.1|6.6 / 10.1|
-|mountain-snow|1641.5 / 94.5|5.0 / 3.2|9.1 / 13.8|
-|receipt|3073.2 / 177.5|7.6 / 4.3|17.4 / 26.3|
-|screenshot|1611.6 / 236.7|4.1 / 2.2|23.1 / 34.9|
-|street|2086.5 / 105.1|7.6 / 4.3|10.1 / 15.3|
-|sunset|218.1 / 207.4|2.9 / 1.9|20.1 / 30.7|
-|sunset2|256.5 / 110.7|3.7 / 2.5|10.6 / 16.2|
+|beach|1151.5 / 129.6|9.4 / 6.0|12.5 / 19.1|
+|car|2010.5 / 131.4|17.3 / 9.7|12.6 / 19.2|
+|cat|1455.8 / 166.4|6.6 / 4.8|16.3 / 24.6|
+|city-night|3902.3 / 72.8|10.3 / 5.7|6.9 / 10.6|
+|document|15265.9 / 212.5|20.7 / 5.7|20.9 / 31.5|
+|dog|1118.6 / 140.4|9.2 / 5.3|13.7 / 20.7|
+|flowers|1192.1 / 86.3|10.3 / 5.5|8.3 / 12.6|
+|food|351.8 / 118.8|9.1 / 5.8|11.5 / 17.4|
+|forest|11356.0 / 109.4|10.9 / 5.7|10.6 / 16.0|
+|kitten|1592.3 / 69.3|8.5 / 5.4|6.6 / 10.1|
+|mountain-snow|3660.2 / 94.5|9.7 / 4.7|9.1 / 13.8|
+|receipt|5999.2 / 177.5|10.1 / 5.7|17.4 / 26.3|
+|screenshot|3420.8 / 236.7|7.6 / 3.7|23.1 / 34.9|
+|street|3894.5 / 105.1|11.0 / 5.9|10.1 / 15.3|
+|sunset|472.2 / 207.4|4.9 / 2.9|20.1 / 30.7|
+|sunset2|709.0 / 110.7|8.4 / 4.5|10.6 / 16.2|
 
-Blurred variants peak at 12.2 sharpness and originals bottom out at 173.2 (food), so 40 flags all 32 blurred variants and no original with wide margin on both sides. Darkened variants peak at 34.9 brightness (screenshot x0.15) and the darkest originals are kitten (69.3) and the city-at-night shot (72.8), so 40 flags all 32 darkened variants and no original; the night shot is the only genuinely dark scene in the set and is correctly kept. Milder blur shows the boundary: sigma 1 flags 0/16 (47-1174), sigma 2 flags 12/16 (10-111; high-contrast document, receipt, forest, street survive), sigma 3 flags 16/16 (max 26.8). Laplacian variance scales with contrast squared, so heavily darkened photos usually also score below the blur threshold and report both `blurry` and `dark`.
+Blurred variants peak at 20.7 sharpness and originals bottom out at 351.8 (food), so 40 flags all 32 blurred variants and no original with wide margin on both sides. Darkened variants peak at 34.9 brightness (screenshot x0.15) and the darkest originals are kitten (69.3) and the city-at-night shot (72.8), so 40 flags all 32 darkened variants and no original; the night shot is the only genuinely dark scene in the set and is correctly kept. Milder blur shows the boundary: sigma 1 flags 0/16 (114.7-2465.4), sigma 2 flags 7/16 (24.9-215.5; soft, low-texture scenes such as sunsets, food, and pets), sigma 3 flags 15/16 (only the document survives at 51.4). On the 44-photo simulator fixture library the lowest unblurred, normally exposed photos score 98.9 (a face portrait) and 139.4 (the Catalina aerial). Laplacian variance scales with contrast squared, so heavily darkened photos often also score below the blur threshold and report both `blurry` and `dark`; high-contrast documents and forests can stay above it when darkened.
 
 ## Duplicates and Bursts
 

@@ -5,7 +5,7 @@
  * threshold changes: every stored vector whose `photo_embedding.tags_version`
  * differs is retagged by the `tag-photos-v1` backfill.
  */
-export const TAG_VOCABULARY_VERSION = 1;
+export const TAG_VOCABULARY_VERSION = 3;
 
 /** Tag slug format accepted by the `tag` filter: lowercase, hyphenated. */
 export const TAG_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -66,7 +66,7 @@ export const TAG_VOCABULARY: readonly TagLabel[] = [
 	{ tag: "portrait", prompt: "a portrait photo of a person" },
 	{ tag: "selfie", prompt: "a selfie" },
 	{ tag: "child", prompt: "a photo of a child" },
-	{ tag: "baby", prompt: "a photo of a human baby" },
+	{ tag: "baby", prompt: "a photo of a human baby lying down" },
 	{ tag: "wedding", prompt: "a photo of a wedding" },
 	{ tag: "party", prompt: "a photo of a party" },
 	{ tag: "concert", prompt: "a photo of a concert" },
@@ -99,7 +99,7 @@ export const TAG_VOCABULARY: readonly TagLabel[] = [
 	// Documents and screens
 	{ tag: "document", prompt: "a photo of a paper document" },
 	{ tag: "receipt", prompt: "a photo of a receipt" },
-	{ tag: "screenshot", prompt: "a screenshot of a computer screen" },
+	{ tag: "screenshot", prompt: "a screenshot of a user interface" },
 	{ tag: "whiteboard", prompt: "a photo of a whiteboard" },
 	{ tag: "text", prompt: "a photo of a sign with text" },
 	{ tag: "book", prompt: "a photo of a book" },
