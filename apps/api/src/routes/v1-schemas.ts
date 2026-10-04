@@ -25,6 +25,7 @@ import {
 	type PhotoLocationsResult,
 } from "../services/photo-catalog";
 import { MAX_CURATION_IDS } from "../services/photo-curation";
+import { COUNTRY_CODE_PATTERN } from "../services/place-lookup";
 import {
 	MAX_SMART_ALBUM_NAME_LENGTH,
 	MAX_SMART_ALBUM_QUERY_LENGTH,
@@ -72,6 +73,22 @@ export const filterOptionsResponseSchema = z.object({
 			count: z.number().int().positive(),
 		}),
 	),
+	countries: z.array(
+		z.object({
+			code: z.string().regex(COUNTRY_CODE_PATTERN),
+			name: z.string(),
+			count: z.number().int().positive(),
+		}),
+	),
+	places: z.array(
+		z.object({
+			id: z.number().int().positive(),
+			name: z.string(),
+			region: z.string().nullable(),
+			countryCode: z.string().regex(COUNTRY_CODE_PATTERN),
+			count: z.number().int().positive(),
+		}),
+	),
 });
 
 export const minRatingFilterSchema = z.coerce
@@ -93,6 +110,11 @@ export const tagFilterSchema = z
 	.max(MAX_TAG_SLUG_LENGTH)
 	.regex(TAG_SLUG_PATTERN)
 	.optional();
+export const countryFilterSchema = z
+	.string()
+	.regex(COUNTRY_CODE_PATTERN)
+	.optional();
+export const placeFilterSchema = z.coerce.number().int().positive().optional();
 
 /** `bounds` in JSON bodies; the same rule as tRPC and `isValidPhotoBounds`. */
 export const photoBoundsSchema: z.ZodType<PhotoBounds> = z
@@ -127,6 +149,8 @@ const photoFilterFieldsSchema = z.object({
 	flag: curationFlagFilterSchema,
 	collectionId: collectionIdFilterSchema,
 	tag: tagFilterSchema,
+	country: countryFilterSchema,
+	place: placeFilterSchema,
 });
 
 /**
@@ -257,6 +281,8 @@ export const searchRequestSchema = z
 		flag: curationFlagFilterSchema,
 		collectionId: z.number().int().positive().optional(),
 		tag: tagFilterSchema,
+		country: countryFilterSchema,
+		place: z.number().int().positive().optional(),
 		bounds: photoBoundsSchema.optional(),
 	})
 	.strict();
@@ -273,6 +299,8 @@ export const similarPhotosQuerySchema = z.object({
 	flag: curationFlagFilterSchema,
 	collectionId: collectionIdFilterSchema,
 	tag: tagFilterSchema,
+	country: countryFilterSchema,
+	place: placeFilterSchema,
 });
 
 export const photoTagsResponseSchema = z.object({
@@ -282,6 +310,18 @@ export const photoTagsResponseSchema = z.object({
 			score: z.number().min(0).max(1),
 		}),
 	),
+});
+
+export const photoPlaceResponseSchema = z.object({
+	place: z
+		.object({
+			id: z.number().int().positive(),
+			city: z.string(),
+			region: z.string().nullable(),
+			country: z.string(),
+			countryCode: z.string().regex(COUNTRY_CODE_PATTERN),
+		})
+		.nullable(),
 });
 
 export const similarPhotosResponseSchema = z.object({
@@ -472,6 +512,8 @@ export const smartAlbumFiltersRequestSchema = z
 		minRating: z.number().int().min(1).max(5).optional(),
 		flag: curationFlagFilterSchema,
 		tag: z.union([z.literal(""), tagFilterSchema.unwrap()]).optional(),
+		country: z.union([z.literal(""), countryFilterSchema.unwrap()]).optional(),
+		place: z.number().int().positive().optional(),
 	})
 	.strict();
 
@@ -505,6 +547,8 @@ export const smartAlbumSchema = z.object({
 			minRating: z.number().int().min(1).max(5).optional(),
 			flag: curationFlagFilterSchema,
 			tag: tagFilterSchema,
+			country: countryFilterSchema,
+			place: z.number().int().positive().optional(),
 		})
 		.strict(),
 	query: z.string().min(1).max(MAX_SMART_ALBUM_QUERY_LENGTH).nullable(),

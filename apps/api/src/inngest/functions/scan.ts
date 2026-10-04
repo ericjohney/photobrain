@@ -289,13 +289,15 @@ export const scanPhotosFunction = inngest.createFunction(
 			await nativeExecutor.cancelPhotos(jobId);
 			clearScanWork(db, jobId);
 		});
-		// Appended for replay safety. Scans that dispatch embeddings are tagged and
-		// measured after that run; a finished scan without embeddings retags
-		// existing vectors and re-measures quality (e.g. after a version bump).
+		// Appended for replay safety. Scans that dispatch embeddings are tagged,
+		// measured, and placed after that run; a finished scan without embeddings
+		// retags existing vectors, re-measures quality, and refreshes places
+		// (e.g. after a version bump or GPS edit).
 		if (finished && photoIds.length === 0) {
 			await step.sendEvent("trigger-photo-tags-v1", [
 				{ name: "photos/tags.requested", data: {} },
 				{ name: "photos/quality.requested", data: {} },
+				{ name: "photos/places.requested", data: {} },
 			]);
 		}
 		return result;

@@ -62,6 +62,7 @@ import type {
 	JunkReason,
 	PhotoBounds,
 	PhotoMetadata,
+	PhotoPlace,
 	SmartAlbum,
 } from "@/lib/types";
 import { formatMonthLabel } from "@/lib/utils";
@@ -157,6 +158,8 @@ export function Dashboard() {
 		minRating: filters.minRating ?? undefined,
 		flag: filters.flag ?? undefined,
 		tag: filters.tag ?? undefined,
+		country: filters.country ?? undefined,
+		place: filters.place ?? undefined,
 	};
 	const bounds = filters.bounds ?? undefined;
 
@@ -514,6 +517,21 @@ export function Dashboard() {
 		[setViewMode],
 	);
 
+	// Metadata Place row: filter the library (or the active search) by that city.
+	const handlePlaceSelect = useCallback(
+		(place: PhotoPlace) => {
+			setFilters((current) => ({
+				...current,
+				country: place.countryCode,
+				place: place.id,
+			}));
+			setSimilarSource(null);
+			setCatalogView(null);
+			setViewMode("grid");
+		},
+		[setViewMode],
+	);
+
 	// Navigation helpers for loupe - memoized to avoid recalculation on every render
 	const { hasPrev, hasNext } = useMemo(() => {
 		const currentIndex = library.activePhoto
@@ -697,6 +715,15 @@ export function Dashboard() {
 		filters.minRating !== null ? minRatingLabel(filters.minRating) : null,
 		filters.flag !== null ? FLAG_FILTER_LABELS[filters.flag] : null,
 		filters.tag !== null ? `#${filters.tag}` : null,
+		// The city alone names the place filter; otherwise the country.
+		filters.place !== null
+			? (filterOptionsQuery.data?.places.find((p) => p.id === filters.place)
+					?.name ?? null)
+			: filters.country !== null
+				? (filterOptionsQuery.data?.countries.find(
+						(c) => c.code === filters.country,
+					)?.name ?? filters.country)
+				: null,
 	].filter((part): part is string => part !== null);
 	// What "Save as Smart Album" stores (collection scope and map area are
 	// never saved).
@@ -899,6 +926,7 @@ export function Dashboard() {
 					onFindSimilar={handleFindSimilar}
 					onCurate={curateActivePhoto}
 					onTagSelect={handleTagSelect}
+					onPlaceSelect={handlePlaceSelect}
 					onShowOnMap={activeLocation ? showActiveOnMap : undefined}
 					collections={{
 						collections: collectionsApi.collections,

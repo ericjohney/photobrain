@@ -169,9 +169,9 @@ private struct RootTabView: View {
                 }
             }
         }
-        .environment(\.showTagInLibrary, ShowTagInLibraryAction { tag in
+        .environment(\.showInLibrary, ShowInLibraryAction { shortcut in
             navigation.selectedTab = .library
-            library.showTag(tag)
+            library.show(shortcut)
         })
         .preferredColorScheme(theme.preference.colorScheme)
         .onAppear { applyPendingLink() }

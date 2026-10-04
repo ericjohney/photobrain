@@ -572,6 +572,7 @@ describe("API v1 contract", () => {
 			"/api/v1/photos",
 			"/api/v1/photos/{id}",
 			"/api/v1/photos/{id}/collections",
+			"/api/v1/photos/{id}/place",
 			"/api/v1/photos/{id}/similar",
 			"/api/v1/photos/{id}/tags",
 			"/api/v1/review/junk",

@@ -25,6 +25,7 @@ import {
 	listPhotos,
 } from "../services/photo-catalog";
 import { updatePhotoCuration } from "../services/photo-curation";
+import { getPhotoPlace } from "../services/photo-places";
 import type { PhotoSearchProvider } from "../services/photo-search";
 import { searchPhotoCatalog } from "../services/photo-search";
 import { getPhotoTags } from "../services/photo-tagging";
@@ -61,6 +62,7 @@ import {
 	photoFiltersSchema,
 	photoIdSchema,
 	photoLocationsResponseSchema,
+	photoPlaceResponseSchema,
 	photoSchema,
 	photosResponseSchema,
 	photoTagsResponseSchema,
@@ -330,6 +332,20 @@ export function createV1Router(dependencies: V1Dependencies) {
 				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
 			}
 			return jsonResponse(photoTagsResponseSchema, result);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/photos/:id/place", (context) => {
+		const id = photoIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		try {
+			const result = getPhotoPlace(dependencies.database, id.data);
+			if (!result) {
+				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+			}
+			return jsonResponse(photoPlaceResponseSchema, result);
 		} catch (error) {
 			return internalError(error);
 		}

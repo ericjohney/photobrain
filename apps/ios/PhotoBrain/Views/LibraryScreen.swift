@@ -36,7 +36,7 @@ struct LibraryScreen: View {
     @State private var reviewPresented = false
     @State private var duplicatesPresented = false
     @State private var mapPresented = false
-    @Environment(\.showTagInLibrary) private var showTagInLibrary
+    @Environment(\.showInLibrary) private var showInLibrary
 
     var body: some View {
         NavigationStack {
@@ -65,28 +65,28 @@ struct LibraryScreen: View {
             }
             .navigationDestination(isPresented: $reviewPresented) {
                 ReviewScreen(store: review, collections: collections)
-                    .environment(\.showTagInLibrary, showTagInLibrary.map { action in
-                        ShowTagInLibraryAction { tag in
+                    .environment(\.showInLibrary, showInLibrary.map { action in
+                        ShowInLibraryAction { shortcut in
                             reviewPresented = false
-                            action(tag)
+                            action(shortcut)
                         }
                     })
             }
             .navigationDestination(isPresented: $duplicatesPresented) {
                 DuplicatesScreen(store: duplicates, collections: collections)
-                    .environment(\.showTagInLibrary, showTagInLibrary.map { action in
-                        ShowTagInLibraryAction { tag in
+                    .environment(\.showInLibrary, showInLibrary.map { action in
+                        ShowInLibraryAction { shortcut in
                             duplicatesPresented = false
-                            action(tag)
+                            action(shortcut)
                         }
                     })
             }
             .navigationDestination(isPresented: $mapPresented) {
                 MapScreen(filters: store.filters, collections: collections, curation: store.curation, api: environment.api)
-                    .environment(\.showTagInLibrary, showTagInLibrary.map { action in
-                        ShowTagInLibraryAction { tag in
+                    .environment(\.showInLibrary, showInLibrary.map { action in
+                        ShowInLibraryAction { shortcut in
                             mapPresented = false
-                            action(tag)
+                            action(shortcut)
                         }
                     })
             }
@@ -543,6 +543,18 @@ struct FilterView<Store: FilterEditingStore>: View {
                         }
                     }
                 }
+                Section("Places") {
+                    if options.countries.isEmpty, store.filters.country == nil {
+                        Text("No places yet")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        NavigationLink {
+                            PlaceFilterCategoryView(store: store)
+                        } label: {
+                            LabeledContent("Place", value: placeSummary)
+                        }
+                    }
+                }
             }
 
             Section("Metadata") {
@@ -679,6 +691,11 @@ struct FilterView<Store: FilterEditingStore>: View {
                 store.applyFilters(filters)
             }
         )
+    }
+
+    /// `Kyoto` with a city, `Japan` with only a country, `Anywhere` otherwise.
+    private var placeSummary: String {
+        store.filters.place?.name ?? store.filters.country?.name ?? "Anywhere"
     }
 
     /// Server order (count desc); an active tag absent from the options stays selectable.
@@ -873,5 +890,171 @@ private struct TagFilterCategoryView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(count.map { "\(text), \($0) photos" } ?? text)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Places category: "Anywhere", then countries with counts. Choosing a country applies it and
+/// opens its cities; choosing a city (or "All of <country>") applies it and returns to Filter.
+private struct PlaceFilterCategoryView<Store: FilterEditingStore>: View {
+    @ObservedObject var store: Store
+    @State private var search = ""
+    @State private var openedCountry: PlaceCountryFilter?
+    @Environment(\.dismiss) private var dismiss
+
+    private var countries: [PlaceFilterOptions.Country] {
+        PlaceFilterOptions.countries(store.filterOptions?.countries ?? [], active: store.filters.country)
+    }
+
+    private var filtered: [PlaceFilterOptions.Country] {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return countries }
+        return countries.filter {
+            $0.filter.name.localizedCaseInsensitiveContains(query) || $0.filter.code.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    var body: some View {
+        List {
+            Button {
+                store.applyFilters(store.filters.selectingCountry(nil))
+                dismiss()
+            } label: {
+                PlaceFilterRow(text: "Anywhere", count: nil, selected: store.filters.country == nil, disclosure: false)
+            }
+            ForEach(filtered) { country in
+                Button {
+                    store.applyFilters(store.filters.selectingCountry(country.filter))
+                    openedCountry = country.filter
+                } label: {
+                    PlaceFilterRow(
+                        text: country.filter.name,
+                        count: country.count,
+                        selected: store.filters.country?.code == country.filter.code,
+                        disclosure: true
+                    )
+                }
+            }
+            if countries.isEmpty {
+                Text("No places yet")
+                    .foregroundStyle(.secondary)
+            } else if filtered.isEmpty {
+                Text("No matching countries")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .foregroundStyle(.primary)
+        .navigationTitle("Places")
+        .searchable(text: $search, prompt: "Search Countries")
+        .navigationDestination(item: $openedCountry) { country in
+            PlaceCityCategoryView(store: store, country: country) {
+                openedCountry = nil
+                dismiss()
+            }
+        }
+    }
+}
+
+private struct PlaceCityCategoryView<Store: FilterEditingStore>: View {
+    @ObservedObject var store: Store
+    let country: PlaceCountryFilter
+    /// Pops back to the Filter list once a choice is made.
+    let finish: () -> Void
+    @State private var search = ""
+
+    private var cities: [PlaceFilterOptions.City] {
+        PlaceFilterOptions.cities(
+            store.filterOptions?.places ?? [],
+            countryCode: country.code,
+            active: store.filters.place
+        )
+    }
+
+    private var filtered: [PlaceFilterOptions.City] {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return cities }
+        return cities.filter {
+            $0.filter.name.localizedCaseInsensitiveContains(query)
+                || ($0.filter.region?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    var body: some View {
+        List {
+            Button {
+                store.applyFilters(store.filters.selectingCountry(country).removing(.place))
+                finish()
+            } label: {
+                PlaceFilterRow(
+                    text: "All of \(country.name)",
+                    count: nil,
+                    selected: store.filters.country?.code == country.code && store.filters.place == nil,
+                    disclosure: false
+                )
+            }
+            ForEach(filtered) { city in
+                Button {
+                    store.applyFilters(store.filters.selectingCity(city.filter, in: country))
+                    finish()
+                } label: {
+                    PlaceFilterRow(
+                        text: city.filter.name,
+                        detail: city.filter.region.flatMap { $0 == city.filter.name ? nil : $0 },
+                        count: city.count,
+                        selected: store.filters.place?.id == city.filter.id,
+                        disclosure: false
+                    )
+                }
+            }
+            if cities.isEmpty {
+                Text("No cities yet")
+                    .foregroundStyle(.secondary)
+            } else if filtered.isEmpty {
+                Text("No matching cities")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .foregroundStyle(.primary)
+        .navigationTitle(country.name)
+        .searchable(text: $search, prompt: "Search Cities")
+    }
+}
+
+private struct PlaceFilterRow: View {
+    let text: String
+    var detail: String?
+    let count: Int?
+    let selected: Bool
+    let disclosure: Bool
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text)
+                if let detail {
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if let count {
+                Text(count.formatted())
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            if selected { Image(systemName: "checkmark") }
+            if disclosure {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var accessibilityText: String {
+        let name = detail.map { "\(text), \($0)" } ?? text
+        return count.map { "\(name), \($0) photos" } ?? name
     }
 }

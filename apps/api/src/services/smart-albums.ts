@@ -13,6 +13,7 @@ import {
 	photoFilterConditions,
 } from "./photo-catalog";
 import { PHOTO_FLAGS } from "./photo-curation";
+import { COUNTRY_CODE_PATTERN } from "./place-lookup";
 import { MAX_TAG_SLUG_LENGTH, TAG_SLUG_PATTERN } from "./tag-vocabulary";
 
 export const MAX_SMART_ALBUM_NAME_LENGTH = 100;
@@ -133,6 +134,21 @@ export function canonicalizeSmartAlbumFilters(
 			invalidFilter("tag");
 		}
 		filters.tag = input.tag;
+	}
+	if (input.country !== undefined && input.country !== "") {
+		if (
+			typeof input.country !== "string" ||
+			!COUNTRY_CODE_PATTERN.test(input.country)
+		) {
+			invalidFilter("country");
+		}
+		filters.country = input.country;
+	}
+	if (input.place !== undefined) {
+		if (!Number.isInteger(input.place) || input.place < 1) {
+			invalidFilter("place");
+		}
+		filters.place = input.place;
 	}
 	return filters;
 }

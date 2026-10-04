@@ -71,7 +71,8 @@ The scan flow is:
 6. `generate-embeddings-v3` reads committed `large` thumbnail roots/keys in batches of 16. Inference, generation-checked vector/status saves, and progress publication share one checkpoint per batch; stale results cannot overwrite a newer photo generation.
 7. Automatic tags: `saveEmbeddingBatch` scores each saved current-generation vector against the lazily embedded, memoized vocabulary in `tag-vocabulary.ts` (softmax over 100×cosine, ≥ `TAG_MIN_PROBABILITY` 0.15, at most 3) and replaces its `photo_tags` in the same transaction. A final appended step of `generate-embeddings-v3`, or of `scan-photos-v5` when no embeddings are dispatched, sends `photos/tags.requested` and `photos/quality.requested` together; `tag-photos-v1` (concurrency 1) backfills vectors whose `tags_version` is null or outdated, 1,000 per generation-checked step. Bump `TAG_VOCABULARY_VERSION` when labels or scoring change.
 8. Image quality: `analyze-quality-v1` (concurrency 1) measures the committed `medium` thumbnail of photos whose `photo_quality` row is missing, from another thumbnail generation, or from an older `QUALITY_VERSION`, 200 per step through the native executor's `analyzeImageQuality` (Laplacian-variance sharpness and mean luma on a ≤512 px luma downscale), with a generation-checked write.
-9. The scan and embedding functions persist progress to `scan_jobs` and publish it to the Inngest Realtime channel `job:{jobId}`. Exhausted failures become terminal failed rows.
+9. Place names: `place-photos-v1` (concurrency 1, on `photos/places.requested`, sent in the same trigger step as tags and quality) reverse-geocodes valid GPS offline against the committed GeoNames artifact `apps/api/src/data/places.tsv.gz` (cities ≥ 5,000 people, CC BY 4.0; regenerate with `cd apps/api && bun run build:places`): nearest city within 100 km through an in-memory 1° grid. Batches of 1,000 upsert or delete `photo_places`. A place is shown only while its `places_version` equals `PLACE_DATASET_VERSION` and its stored coordinate texts equal the photo's current EXIF texts, so changed or removed GPS never shows a stale place.
+10. The scan and embedding functions persist progress to `scan_jobs` and publish it to the Inngest Realtime channel `job:{jobId}`. Exhausted failures become terminal failed rows.
 
 Incremental identity uses the canonical source root, byte size, nanosecond mtime/ctime, `MEDIA_VERSION`, and stat fingerprints of all four thumbnail files. Legacy rows receive one-time conservative adoption: matching size/whole-second mtime, completed media metadata, unambiguous stems, source ctime older than every thumbnail, full WebP/dimension validation, and post-validation stat checks. Valid artifacts are not re-encoded. These checks are metadata-based, not content hashes or proof of historical source provenance. `MEDIA_VERSION` and `EMBEDDING_MODEL_VERSION` in `processing-versions.ts` must change when their respective output contracts change.
 
@@ -110,6 +111,7 @@ The tables are:
 - `photo_embedding`: one CLIP embedding blob per photo, with model version, thumbnail generation, and `tags_version` (vocabulary version used to tag that vector; null = untagged).
 - `photo_phash`: one perceptual hash per photo.
 - `photo_tags`: automatic CLIP zero-shot tags (`tag` slug, softmax `score`), at most 3 per photo; `(tag, photo_id)` index; cascades with the photo.
+- `photo_places`: offline reverse-geocoded city/region/country (`geoname_id`, ISO2 `country_code`) plus the exact GPS texts and `places_version` it was computed from; `(country_code, photo_id)` and `(geoname_id, photo_id)` indexes; cascades with the photo.
 - `photo_quality`: sharpness, brightness, the thumbnail key measured, and `quality_version`; cascades with the photo.
 - `collections`: manual albums; name unique case-insensitively (`COLLATE NOCASE` index).
 - `collection_photos`: collection membership with `added_at`; both foreign keys cascade, so deleting a collection never deletes photos.
@@ -262,6 +264,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `PATCH /api/v1/photos/:id` (`{ rating?, flag? }`; returns the Photo DTO; not gated by the scan flag)
 - `GET /api/v1/photos/:id/similar`
 - `GET /api/v1/photos/:id/tags` (404 `PHOTO_NOT_FOUND`)
+- `GET /api/v1/photos/:id/place` (`{ place: { id, city, region, country, countryCode } | null }`; 404 `PHOTO_NOT_FOUND`). `country` (ISO2) and `place` (geoname ID) filter `/photos`, `/locations`, search, similar, and smart albums; `filter-options` adds folder-scoped `countries` and `places` with counts.
 - `GET|POST /api/v1/collections`, `PATCH|DELETE /api/v1/collections/:id`, `POST /api/v1/collections/:id/photos`, `POST /api/v1/collections/:id/photos/remove`, `GET /api/v1/photos/:id/collections` (409 `COLLECTION_NAME_TAKEN`, 404 `COLLECTION_NOT_FOUND`)
 - `GET|POST /api/v1/smart-albums`, `PATCH|DELETE /api/v1/smart-albums/:id` (`dateMonth` emitted as `YYYY-MM`; 409 `SMART_ALBUM_NAME_TAKEN`, 404 `SMART_ALBUM_NOT_FOUND`); clients open an album through `photos` or, with a query, `search` (limit 100)
 - `GET /api/v1/review/junk`, `POST /api/v1/review/junk/resolve` (same shapes as `junkReview`/`resolveJunk`; 400 `INVALID_REQUEST`)
@@ -329,6 +332,8 @@ Junk review on iOS: the Library header's **Review** button (candidate count) pus
 Duplicates on iOS: the Library header's **Duplicates** button (combined count) pushes a screen with All/Duplicates/Bursts, group cards with the suggested keeper preselected, keep toggles (one photo always stays kept), a Compare loupe, **Keep N, reject M** and **Not duplicates**. Resolutions remove groups optimistically, roll back on failure, reload on a changed group, and propagate rejects through `PhotoCurationCenter`.
 
 Map on iOS: the Library header's **Map** button pushes an `MKMapView` with clustered markers for the Library's current filters. Tapping a marker opens the loupe and tapping a cluster zooms in. **Show N Photos** opens a grid scoped to the visible region (`LibraryScope.mapArea`). The loupe info sheet shows a mini-map when the photo's GPS is valid.
+
+Places on iOS: the Library filter sheet's Places category lists countries with counts and, under the selected country, its cities. The loupe info sheet shows a tappable Place row ("Kyoto, Japan") that applies the place filter. Smart albums save `country`/`place`.
 
 Smart albums on iOS: a Smart Albums section in the Collections tab (cards with count or a magnifier for query albums, rename/delete with rollback); **Save as Smart Album…** in the Library filter sheet and Search. Detail screens reuse the collection grid/loupe through `LibraryStore` scope `.smartAlbum(filters, query)`.
 

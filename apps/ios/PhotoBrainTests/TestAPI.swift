@@ -40,6 +40,9 @@ actor TestAPI: PhotoBrainAPI {
     /// Server-side auto tags by photo id; photos without an entry are unknown (404).
     var photoTagResults: [Int: Result<PhotoTagsResponseDTO, PhotoBrainAPIError>] = [:]
     var photoTagRequests: [Int] = []
+    /// Server-side places by photo id; photos without an entry are unknown (404).
+    var photoPlaceResults: [Int: Result<PhotoPlaceResponseDTO, PhotoBrainAPIError>] = [:]
+    var photoPlaceRequests: [Int] = []
     /// Server-side junk candidates, newest first; `junkReview` filters and pages over them.
     var junkCandidates: [PhotoDTO] = []
     /// Scripted responses returned (in order) before falling back to `junkCandidates`.
@@ -238,6 +241,14 @@ actor TestAPI: PhotoBrainAPI {
         photoTagRequests
     }
 
+    func setPhotoPlace(id: Int, _ result: Result<PhotoPlaceResponseDTO, PhotoBrainAPIError>) {
+        photoPlaceResults[id] = result
+    }
+
+    func recordedPhotoPlaceRequests() -> [Int] {
+        photoPlaceRequests
+    }
+
     struct SearchKey: Hashable, Sendable {
         let query: String
         let filters: PhotoQuery
@@ -405,6 +416,14 @@ actor TestAPI: PhotoBrainAPI {
     func photoTags(id: Int) async throws -> PhotoTagsResponseDTO {
         photoTagRequests.append(id)
         guard let result = photoTagResults[id] else {
+            throw PhotoBrainAPIError.server(status: 404, code: "PHOTO_NOT_FOUND", message: "Photo not found")
+        }
+        return try result.get()
+    }
+
+    func photoPlace(id: Int) async throws -> PhotoPlaceResponseDTO {
+        photoPlaceRequests.append(id)
+        guard let result = photoPlaceResults[id] else {
             throw PhotoBrainAPIError.server(status: 404, code: "PHOTO_NOT_FOUND", message: "Photo not found")
         }
         return try result.get()

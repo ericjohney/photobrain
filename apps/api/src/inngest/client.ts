@@ -23,6 +23,9 @@ type PhotoEvents = {
 	"photos/quality.requested": {
 		data: Record<string, never>;
 	};
+	"photos/places.requested": {
+		data: Record<string, never>;
+	};
 };
 
 export const inngest = new Inngest({

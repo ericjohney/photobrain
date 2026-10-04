@@ -6,6 +6,7 @@ import {
 	Copy,
 	Folder,
 	FolderOpen,
+	Globe,
 	Images,
 	MapPin,
 	Plus,
@@ -18,9 +19,11 @@ import { type ReactNode, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type {
 	Collection,
+	CountryOption,
 	FilterOptions,
 	FlagFilter,
 	PhotoBounds,
+	PlaceOption,
 	SmartAlbum,
 } from "@/lib/types";
 import { cn, formatMonthLabel, formatTagName } from "@/lib/utils";
@@ -47,6 +50,10 @@ export interface LibraryFilters {
 	flag: FlagFilter | null;
 	/** Tag slug; null matches any tag. */
 	tag: string | null;
+	/** ISO2 country code of the photo's place; null matches any. */
+	country: string | null;
+	/** City (GeoNames id) of the photo's place; set together with `country`. */
+	place: number | null;
 	/** "Map area" from the map view; never saved in smart albums. */
 	bounds: PhotoBounds | null;
 }
@@ -60,11 +67,13 @@ export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
 	minRating: null,
 	flag: null,
 	tag: null,
+	country: null,
+	place: null,
 	bounds: null,
 };
 
-/** Tags listed before "Show all" expands the full list. */
-const TAG_PREVIEW_LIMIT = 12;
+/** Tags, countries, and cities listed before "Show all" expands the full list. */
+const FILTER_PREVIEW_LIMIT = 12;
 
 const RAW_FILTER_OPTIONS: { value: RawFilter; label: string }[] = [
 	{ value: "all", label: "All" },
@@ -259,7 +268,7 @@ function Section({
 
 /**
  * Single-select tag list (sorted by count by the API): the first
- * TAG_PREVIEW_LIMIT tags plus the selected one, or every tag after "Show all".
+ * FILTER_PREVIEW_LIMIT tags plus the selected one, or every tag after "Show all".
  */
 function TagFilterList({
 	tags,
@@ -271,7 +280,7 @@ function TagFilterList({
 	onSelect: (tag: string | null) => void;
 }) {
 	const [showAll, setShowAll] = useState(false);
-	const preview = showAll ? tags : tags.slice(0, TAG_PREVIEW_LIMIT);
+	const preview = showAll ? tags : tags.slice(0, FILTER_PREVIEW_LIMIT);
 	// Keep the selection reachable when it is collapsed away or out of scope.
 	const visible: { tag: string; count?: number }[] =
 		selectedTag !== null && !preview.some((t) => t.tag === selectedTag)
@@ -294,16 +303,190 @@ function TagFilterList({
 					onClick={() => onSelect(selectedTag === tag ? null : tag)}
 				/>
 			))}
-			{tags.length > TAG_PREVIEW_LIMIT && (
-				<button
-					type="button"
-					onClick={() => setShowAll((current) => !current)}
-					className="w-full rounded px-2 py-1 text-left text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-				>
-					{showAll ? "Show fewer" : `Show all (${tags.length})`}
-				</button>
-			)}
+			<ShowAllToggle
+				total={tags.length}
+				showAll={showAll}
+				onToggle={() => setShowAll((current) => !current)}
+			/>
 		</div>
+	);
+}
+
+/** "Show all (N)" / "Show fewer" toggle below a previewed filter list. */
+function ShowAllToggle({
+	total,
+	showAll,
+	onToggle,
+}: {
+	total: number;
+	showAll: boolean;
+	onToggle: () => void;
+}) {
+	if (total <= FILTER_PREVIEW_LIMIT) return null;
+	return (
+		<button
+			type="button"
+			onClick={onToggle}
+			className="w-full rounded px-2 py-1 text-left text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+		>
+			{showAll ? "Show fewer" : `Show all (${total})`}
+		</button>
+	);
+}
+
+/**
+ * Cities of the selected country (count desc from the API), previewed like
+ * tags. Keyed by country by the caller, so "Show all" resets per country.
+ */
+function CityFilterList({
+	cities,
+	selectedPlace,
+	onSelect,
+}: {
+	cities: PlaceOption[];
+	selectedPlace: number | null;
+	onSelect: (place: number | null) => void;
+}) {
+	const [showAll, setShowAll] = useState(false);
+	const preview = showAll ? cities : cities.slice(0, FILTER_PREVIEW_LIMIT);
+	const visible: { id: number; name: string; count?: number }[] =
+		selectedPlace !== null && !preview.some((c) => c.id === selectedPlace)
+			? [
+					...preview,
+					cities.find((c) => c.id === selectedPlace) ?? {
+						id: selectedPlace,
+						name: "Selected place",
+					},
+				]
+			: preview;
+
+	return (
+		<div data-testid="city-filter-list">
+			{visible.map(({ id, name, count }) => (
+				<NavItem
+					key={id}
+					icon={<MapPin className="h-4 w-4" />}
+					label={name}
+					count={count}
+					active={selectedPlace === id}
+					toggle
+					indent={1}
+					onClick={() => onSelect(selectedPlace === id ? null : id)}
+				/>
+			))}
+			<ShowAllToggle
+				total={cities.length}
+				showAll={showAll}
+				onToggle={() => setShowAll((current) => !current)}
+			/>
+		</div>
+	);
+}
+
+/**
+ * Single-select countries (count desc from the API); the selected country
+ * lists its cities beneath it. Choosing a city keeps its country selected;
+ * clearing the country also clears the city.
+ */
+function PlaceFilterList({
+	countries,
+	places,
+	selectedCountry,
+	selectedPlace,
+	onChange,
+}: {
+	countries: CountryOption[];
+	places: PlaceOption[];
+	selectedCountry: string | null;
+	selectedPlace: number | null;
+	onChange: (selection: {
+		country: string | null;
+		place: number | null;
+	}) => void;
+}) {
+	const [showAll, setShowAll] = useState(false);
+	const preview = showAll
+		? countries
+		: countries.slice(0, FILTER_PREVIEW_LIMIT);
+	// Keep the selection reachable when it is collapsed away or out of scope.
+	const visible: { code: string; name: string; count?: number }[] =
+		selectedCountry !== null && !preview.some((c) => c.code === selectedCountry)
+			? [
+					...preview,
+					countries.find((c) => c.code === selectedCountry) ?? {
+						code: selectedCountry,
+						name: selectedCountry,
+					},
+				]
+			: preview;
+
+	return (
+		<div data-testid="place-filter-list">
+			{visible.map(({ code, name, count }) => (
+				<div key={code}>
+					<NavItem
+						icon={<Globe className="h-4 w-4" />}
+						label={name}
+						count={count}
+						active={selectedCountry === code}
+						toggle
+						onClick={() =>
+							onChange(
+								selectedCountry === code
+									? { country: null, place: null }
+									: { country: code, place: null },
+							)
+						}
+					/>
+					{selectedCountry === code && (
+						<CityFilterList
+							key={code}
+							cities={places.filter((p) => p.countryCode === code)}
+							selectedPlace={selectedPlace}
+							onSelect={(place) => onChange({ country: code, place })}
+						/>
+					)}
+				</div>
+			))}
+			<ShowAllToggle
+				total={countries.length}
+				showAll={showAll}
+				onToggle={() => setShowAll((current) => !current)}
+			/>
+		</div>
+	);
+}
+
+/** Removable chip in the "Filters active" box. */
+function FilterChip({
+	testId,
+	icon,
+	label,
+	clearLabel,
+	onClear,
+}: {
+	testId: string;
+	icon: ReactNode;
+	label: string;
+	clearLabel: string;
+	onClear: () => void;
+}) {
+	return (
+		<span
+			data-testid={testId}
+			className="mr-1 mt-1.5 inline-flex items-center gap-1 rounded-full bg-primary/15 py-0.5 pl-2 pr-0.5"
+		>
+			{icon}
+			{label}
+			<button
+				type="button"
+				aria-label={clearLabel}
+				onClick={onClear}
+				className="rounded-full p-0.5 hover:bg-primary/20"
+			>
+				<X className="h-3 w-3" />
+			</button>
+		</span>
 	);
 }
 
@@ -599,6 +782,22 @@ export function LibraryPanel({
 								/>
 							</Section>
 						)}
+						{((filterOptions?.countries &&
+							filterOptions.countries.length > 0) ||
+							activeFilters.country !== null ||
+							activeFilters.place !== null) && (
+							<Section title="Places">
+								<PlaceFilterList
+									countries={filterOptions?.countries ?? []}
+									places={filterOptions?.places ?? []}
+									selectedCountry={activeFilters.country}
+									selectedPlace={activeFilters.place}
+									onChange={(selection) =>
+										onFilterChange({ ...activeFilters, ...selection })
+									}
+								/>
+							</Section>
+						)}
 						{filterOptions?.cameras && filterOptions.cameras.length > 0 && (
 							<Section title="Camera" defaultOpen={false}>
 								{filterOptions.cameras.map((cam) => (
@@ -684,6 +883,8 @@ export function LibraryPanel({
 						activeFilters.minRating !== null ||
 						activeFilters.flag !== null ||
 						activeFilters.tag !== null ||
+						activeFilters.country !== null ||
+						activeFilters.place !== null ||
 						activeFilters.bounds !== null) && (
 						<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary">
 							<div className="flex items-center justify-between">
@@ -696,24 +897,50 @@ export function LibraryPanel({
 									Clear all
 								</button>
 							</div>
+							{activeFilters.country !== null && (
+								<FilterChip
+									testId="country-chip"
+									icon={<Globe className="h-3 w-3" />}
+									label={
+										filterOptions?.countries.find(
+											(c) => c.code === activeFilters.country,
+										)?.name ?? activeFilters.country
+									}
+									clearLabel="Clear country"
+									onClear={() =>
+										onFilterChange({
+											...activeFilters,
+											country: null,
+											place: null,
+										})
+									}
+								/>
+							)}
+							{activeFilters.place !== null && (
+								<FilterChip
+									testId="place-chip"
+									icon={<MapPin className="h-3 w-3" />}
+									label={
+										filterOptions?.places.find(
+											(p) => p.id === activeFilters.place,
+										)?.name ?? "Selected place"
+									}
+									clearLabel="Clear place"
+									onClear={() =>
+										onFilterChange({ ...activeFilters, place: null })
+									}
+								/>
+							)}
 							{activeFilters.bounds !== null && (
-								<span
-									data-testid="map-area-chip"
-									className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-primary/15 py-0.5 pl-2 pr-0.5"
-								>
-									<MapPin className="h-3 w-3" />
-									Map area
-									<button
-										type="button"
-										aria-label="Clear map area"
-										onClick={() =>
-											onFilterChange({ ...activeFilters, bounds: null })
-										}
-										className="rounded-full p-0.5 hover:bg-primary/20"
-									>
-										<X className="h-3 w-3" />
-									</button>
-								</span>
+								<FilterChip
+									testId="map-area-chip"
+									icon={<MapPin className="h-3 w-3" />}
+									label="Map area"
+									clearLabel="Clear map area"
+									onClear={() =>
+										onFilterChange({ ...activeFilters, bounds: null })
+									}
+								/>
 							)}
 						</div>
 					)}

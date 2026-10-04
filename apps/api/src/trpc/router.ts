@@ -48,8 +48,10 @@ import {
 	PHOTO_FLAGS,
 	updatePhotoCuration,
 } from "../services/photo-curation";
+import { getPhotoPlace } from "../services/photo-places";
 import { searchPhotoCatalog } from "../services/photo-search";
 import { getPhotoTags } from "../services/photo-tagging";
+import { COUNTRY_CODE_PATTERN } from "../services/place-lookup";
 import { getScan, startScan } from "../services/scan-jobs";
 import {
 	createSmartAlbum,
@@ -79,6 +81,8 @@ const sharedFilterShape = {
 	flag: z.enum(["pick", "reject", "unflagged"]).optional(),
 	collectionId: z.number().int().positive().optional(),
 	tag: z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN).optional(),
+	country: z.string().regex(COUNTRY_CODE_PATTERN).optional(),
+	place: z.number().int().positive().optional(),
 	bounds: z
 		.object({
 			north: z.number(),
@@ -166,6 +170,10 @@ const smartAlbumFiltersSchema = z
 				z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN),
 			])
 			.optional(),
+		country: z
+			.union([z.literal(""), z.string().regex(COUNTRY_CODE_PATTERN)])
+			.optional(),
+		place: sharedFilterShape.place,
 	})
 	.strict();
 
@@ -223,6 +231,16 @@ export const appRouter = router({
 		.input(z.object({ photoId: z.number().int().positive() }))
 		.query(({ ctx, input }) => {
 			const result = getPhotoTags(ctx.db, input.photoId);
+			if (!result) {
+				throw new TRPCError({ code: "NOT_FOUND", message: "Photo not found" });
+			}
+			return result;
+		}),
+
+	photoPlace: publicProcedure
+		.input(z.object({ photoId: z.number().int().positive() }))
+		.query(({ ctx, input }) => {
+			const result = getPhotoPlace(ctx.db, input.photoId);
 			if (!result) {
 				throw new TRPCError({ code: "NOT_FOUND", message: "Photo not found" });
 			}

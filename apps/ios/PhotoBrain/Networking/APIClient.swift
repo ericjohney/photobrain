@@ -14,6 +14,10 @@ struct PhotoQuery: Hashable, Sendable {
     var collectionId: Int?
     /// Auto tag slug, e.g. `night-sky`.
     var tag: String?
+    /// ISO 3166-1 alpha-2 country code of the photo's place, e.g. `JP`.
+    var country: String?
+    /// GeoNames city id of the photo's place.
+    var place: Int?
     /// Only photos with a valid location inside this map region. Never saved in smart albums.
     var bounds: PhotoBounds?
 
@@ -30,6 +34,8 @@ struct PhotoQuery: Hashable, Sendable {
         if let flag { items.append(URLQueryItem(name: "flag", value: flag.rawValue)) }
         if let collectionId { items.append(URLQueryItem(name: "collectionId", value: String(collectionId))) }
         if let tag { items.append(URLQueryItem(name: "tag", value: tag)) }
+        if let country { items.append(URLQueryItem(name: "country", value: country)) }
+        if let place { items.append(URLQueryItem(name: "place", value: String(place))) }
         if let bounds {
             items.append(URLQueryItem(name: "north", value: String(bounds.north)))
             items.append(URLQueryItem(name: "south", value: String(bounds.south)))
@@ -52,6 +58,8 @@ protocol PhotoBrainAPI: Sendable {
     func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO
     /// `GET /photos/{id}/tags`: the photo's auto tags, highest score first.
     func photoTags(id: Int) async throws -> PhotoTagsResponseDTO
+    /// `GET /photos/{id}/place`: the photo's current place, or `nil` when it has none.
+    func photoPlace(id: Int) async throws -> PhotoPlaceResponseDTO
     /// `PATCH /photos/{id}`. `rating: nil` and `flag: nil` leave a field unchanged;
     /// `flag: .some(nil)` clears the flag. At least one field must be provided.
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO
@@ -157,6 +165,11 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
     func photoTags(id: Int) async throws -> PhotoTagsResponseDTO {
         guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
         return try await get(path: ["photos", String(id), "tags"])
+    }
+
+    func photoPlace(id: Int) async throws -> PhotoPlaceResponseDTO {
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await get(path: ["photos", String(id), "place"])
     }
 
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {

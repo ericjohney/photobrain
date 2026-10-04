@@ -214,10 +214,11 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 			current: 2,
 			total: 2,
 		});
-		// One appended step (ID unchanged since F6) requests both backfills.
+		// One appended step (ID unchanged since F6) requests every backfill.
 		expect(run.sent).toEqual([
 			{ id: "trigger-photo-tags-v1", name: "photos/tags.requested" },
 			{ id: "trigger-photo-tags-v1", name: "photos/quality.requested" },
+			{ id: "trigger-photo-tags-v1", name: "photos/places.requested" },
 		]);
 	});
 

@@ -53,13 +53,29 @@ struct FilterOptionsDTO: Codable, Equatable, Sendable {
     /// Auto tags present in scope, sorted by count descending then tag. Servers that predate
     /// auto tagging omit the key, which decodes as no tags.
     let tags: [TagCountDTO]
+    /// Countries of photos with a current place, count descending then name. Absent (older
+    /// servers) or `null` decodes as none.
+    let countries: [CountryCountDTO]
+    /// Cities of photos with a current place, count descending then name. Absent or `null`
+    /// decodes as none.
+    let places: [PlaceCountDTO]
 
-    init(cameras: [String], lenses: [String], isos: [Int], dates: [String], tags: [TagCountDTO] = []) {
+    init(
+        cameras: [String],
+        lenses: [String],
+        isos: [Int],
+        dates: [String],
+        tags: [TagCountDTO] = [],
+        countries: [CountryCountDTO] = [],
+        places: [PlaceCountDTO] = []
+    ) {
         self.cameras = cameras
         self.lenses = lenses
         self.isos = isos
         self.dates = dates
         self.tags = tags
+        self.countries = countries
+        self.places = places
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +85,8 @@ struct FilterOptionsDTO: Codable, Equatable, Sendable {
         isos = try container.decode([Int].self, forKey: .isos)
         dates = try container.decode([String].self, forKey: .dates)
         tags = try container.decodeIfPresent([TagCountDTO].self, forKey: .tags) ?? []
+        countries = try container.decodeIfPresent([CountryCountDTO].self, forKey: .countries) ?? []
+        places = try container.decodeIfPresent([PlaceCountDTO].self, forKey: .places) ?? []
     }
 }
 
@@ -89,6 +107,39 @@ struct PhotoTagDTO: Codable, Hashable, Identifiable, Sendable {
 /// `GET /api/v1/photos/:id/tags`, highest score first.
 struct PhotoTagsResponseDTO: Codable, Equatable, Sendable {
     let tags: [PhotoTagDTO]
+}
+
+/// A country (ISO 3166-1 alpha-2 `code`, e.g. `JP`) and how many photos in scope were taken there.
+struct CountryCountDTO: Codable, Hashable, Identifiable, Sendable {
+    var id: String { code }
+    let code: String
+    let name: String
+    let count: Int
+}
+
+/// A city (GeoNames id) and how many photos in scope were taken there.
+struct PlaceCountDTO: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    let name: String
+    /// First-level administrative region (state, prefecture); `nil` when unknown.
+    let region: String?
+    let countryCode: String
+    let count: Int
+}
+
+/// The nearest city (within 100 km) to a photo's coordinates, from the offline GeoNames dataset.
+struct PhotoPlaceDTO: Codable, Hashable, Identifiable, Sendable {
+    /// GeoNames id; the `place` filter value.
+    let id: Int
+    let city: String
+    let region: String?
+    let country: String
+    let countryCode: String
+}
+
+/// `GET /api/v1/photos/:id/place`; `place` is `nil` when the photo has no current place.
+struct PhotoPlaceResponseDTO: Codable, Equatable, Sendable {
+    let place: PhotoPlaceDTO?
 }
 
 struct PhotoEXIFDTO: Codable, Hashable, Sendable {
@@ -290,6 +341,8 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let flag: String?
     let collectionId: Int?
     let tag: String?
+    let country: String?
+    let place: Int?
     let bounds: PhotoBounds?
 
     init(query: String, limit: Int, filters: PhotoQuery) {
@@ -305,6 +358,8 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
         flag = filters.flag?.rawValue
         collectionId = filters.collectionId
         tag = filters.tag
+        country = filters.country
+        place = filters.place
         bounds = filters.bounds
     }
 }
@@ -721,9 +776,13 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
     var minRating: Int?
     var flag: PhotoFlagFilter?
     var tag: String?
+    /// ISO 3166-1 alpha-2 country code of the photos' place.
+    var country: String?
+    /// GeoNames city id of the photos' place.
+    var place: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case filterRaw, folder, camera, lens, iso, dateMonth, minRating, flag, tag
+        case filterRaw, folder, camera, lens, iso, dateMonth, minRating, flag, tag, country, place
     }
 
     init(
@@ -735,7 +794,9 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
         dateMonth: String? = nil,
         minRating: Int? = nil,
         flag: PhotoFlagFilter? = nil,
-        tag: String? = nil
+        tag: String? = nil,
+        country: String? = nil,
+        place: Int? = nil
     ) {
         self.filterRaw = filterRaw == .all ? nil : filterRaw
         self.folder = folder
@@ -746,6 +807,8 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
         self.minRating = minRating
         self.flag = flag
         self.tag = tag
+        self.country = country
+        self.place = place
     }
 
     /// The Library/Search filter set as saved criteria (those screens have no folder filter).
@@ -759,7 +822,9 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
             dateMonth: filters.dateMonth,
             minRating: filters.minRating,
             flag: filters.flag,
-            tag: filters.tag
+            tag: filters.tag,
+            country: filters.country?.code,
+            place: filters.place?.id
         )
     }
 
@@ -775,7 +840,9 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
             dateMonth: try container.decodeIfPresent(String.self, forKey: .dateMonth),
             minRating: try container.decodeIfPresent(Int.self, forKey: .minRating),
             flag: try container.decodeIfPresent(String.self, forKey: .flag).flatMap(PhotoFlagFilter.init(rawValue:)),
-            tag: try container.decodeIfPresent(String.self, forKey: .tag)
+            tag: try container.decodeIfPresent(String.self, forKey: .tag),
+            country: try container.decodeIfPresent(String.self, forKey: .country),
+            place: try container.decodeIfPresent(Int.self, forKey: .place)
         )
     }
 
@@ -790,11 +857,13 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
         try container.encodeIfPresent(minRating, forKey: .minRating)
         try container.encodeIfPresent(flag?.rawValue, forKey: .flag)
         try container.encodeIfPresent(tag, forKey: .tag)
+        try container.encodeIfPresent(country, forKey: .country)
+        try container.encodeIfPresent(place, forKey: .place)
     }
 
     var isEmpty: Bool {
         filterRaw == nil && folder == nil && camera == nil && lens == nil && iso == nil
-            && dateMonth == nil && minRating == nil && flag == nil && tag == nil
+            && dateMonth == nil && minRating == nil && flag == nil && tag == nil && country == nil && place == nil
     }
 
     /// Wire filters for `GET /photos` and `POST /search`.
@@ -808,7 +877,9 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
             dateMonth: dateMonth,
             minRating: minRating,
             flag: flag,
-            tag: tag
+            tag: tag,
+            country: country,
+            place: place
         )
     }
 

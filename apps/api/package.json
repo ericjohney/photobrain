@@ -12,6 +12,7 @@
 		"test": "bun test",
 		"bench:import": "bun scripts/benchmark-import.ts",
 		"bench:exif": "bun scripts/benchmark-exif.ts",
+		"build:places": "bun scripts/build-places.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

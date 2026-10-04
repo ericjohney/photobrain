@@ -154,6 +154,26 @@
 						}
 					},
 					{
+						"name": "country",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose current offline place is in this country (ISO 3166-1 alpha-2, uppercase)",
+						"schema": {
+							"type": "string",
+							"pattern": "^[A-Z]{2}$"
+						}
+					},
+					{
+						"name": "place",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose current offline place is this city (GeoNames geonameid from `filter-options` `places`)",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
 						"name": "north",
 						"in": "query",
 						"required": false,
@@ -312,6 +332,26 @@
 							"type": "string",
 							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 							"maxLength": 64
+						}
+					},
+					{
+						"name": "country",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose current offline place is in this country (ISO 3166-1 alpha-2, uppercase)",
+						"schema": {
+							"type": "string",
+							"pattern": "^[A-Z]{2}$"
+						}
+					},
+					{
+						"name": "place",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose current offline place is this city (GeoNames geonameid from `filter-options` `places`)",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
 						}
 					},
 					{
@@ -560,6 +600,26 @@
 							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 							"maxLength": 64
 						}
+					},
+					{
+						"name": "country",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose current offline place is in this country (ISO 3166-1 alpha-2, uppercase)",
+						"schema": {
+							"type": "string",
+							"pattern": "^[A-Z]{2}$"
+						}
+					},
+					{
+						"name": "place",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose current offline place is this city (GeoNames geonameid from `filter-options` `places`)",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
 					}
 				],
 				"responses": {
@@ -679,6 +739,61 @@
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/PhotoTagsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"description": "Photo not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"photoNotFound": {
+										"value": {
+											"error": {
+												"code": "PHOTO_NOT_FOUND",
+												"message": "Photo not found"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/photos/{id}/place": {
+			"get": {
+				"operationId": "getPhotoPlace",
+				"description": "The photo's offline place: the nearest GeoNames city (population >= 5,000) within 100 km of its GPS location. `null` when the photo has no valid location, no city is that close, or the place backfill has not run since the location changed.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Photo place",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PhotoPlaceResponse"
 								}
 							}
 						}
@@ -1456,7 +1571,15 @@
 			"FilterOptionsResponse": {
 				"type": "object",
 				"additionalProperties": false,
-				"required": ["cameras", "lenses", "isos", "dates", "tags"],
+				"required": [
+					"cameras",
+					"lenses",
+					"isos",
+					"dates",
+					"tags",
+					"countries",
+					"places"
+				],
 				"properties": {
 					"cameras": {
 						"type": "array",
@@ -1493,6 +1616,58 @@
 							"properties": {
 								"tag": {
 									"type": "string"
+								},
+								"count": {
+									"type": "integer",
+									"minimum": 1
+								}
+							}
+						}
+					},
+					"countries": {
+						"type": "array",
+						"description": "Countries of current places with photo counts in scope, count descending then name ascending",
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["code", "name", "count"],
+							"properties": {
+								"code": {
+									"type": "string",
+									"pattern": "^[A-Z]{2}$"
+								},
+								"name": {
+									"type": "string"
+								},
+								"count": {
+									"type": "integer",
+									"minimum": 1
+								}
+							}
+						}
+					},
+					"places": {
+						"type": "array",
+						"description": "Cities of current places with photo counts in scope, count descending then name ascending",
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["id", "name", "region", "countryCode", "count"],
+							"properties": {
+								"id": {
+									"type": "integer",
+									"minimum": 1,
+									"description": "GeoNames geonameid (the `place` filter value)"
+								},
+								"name": {
+									"type": "string"
+								},
+								"region": {
+									"type": ["string", "null"]
+								},
+								"countryCode": {
+									"type": "string",
+									"pattern": "^[A-Z]{2}$"
 								},
 								"count": {
 									"type": "integer",
@@ -1855,6 +2030,16 @@
 						"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 						"maxLength": 64,
 						"description": "Only photos carrying this automatic tag slug"
+					},
+					"country": {
+						"type": "string",
+						"pattern": "^[A-Z]{2}$",
+						"description": "Only photos whose current offline place is in this country (ISO 3166-1 alpha-2, uppercase)"
+					},
+					"place": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "Only photos whose current offline place is this city (GeoNames geonameid from `filter-options` `places`)"
 					},
 					"bounds": {
 						"$ref": "#/components/schemas/PhotoBounds"
@@ -2243,6 +2428,14 @@
 						"type": "string",
 						"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 						"maxLength": 64
+					},
+					"country": {
+						"type": "string",
+						"pattern": "^[A-Z]{2}$"
+					},
+					"place": {
+						"type": "integer",
+						"minimum": 1
 					}
 				}
 			},
@@ -2302,6 +2495,23 @@
 								"maxLength": 64
 							}
 						]
+					},
+					"country": {
+						"type": "string",
+						"description": "ISO 3166-1 alpha-2 country code of the photo's current place",
+						"anyOf": [
+							{
+								"const": ""
+							},
+							{
+								"pattern": "^[A-Z]{2}$"
+							}
+						]
+					},
+					"place": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "GeoNames geonameid of the photo's current place"
 					}
 				}
 			},
@@ -2471,6 +2681,45 @@
 								}
 							}
 						}
+					}
+				}
+			},
+			"PhotoPlaceResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["place"],
+				"properties": {
+					"place": {
+						"oneOf": [
+							{
+								"type": "null"
+							},
+							{
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["id", "city", "region", "country", "countryCode"],
+								"properties": {
+									"id": {
+										"type": "integer",
+										"minimum": 1,
+										"description": "GeoNames geonameid (the `place` filter value)"
+									},
+									"city": {
+										"type": "string"
+									},
+									"region": {
+										"type": ["string", "null"]
+									},
+									"country": {
+										"type": "string"
+									},
+									"countryCode": {
+										"type": "string",
+										"pattern": "^[A-Z]{2}$"
+									}
+								}
+							}
+						]
 					}
 				}
 			},

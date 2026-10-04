@@ -46,24 +46,30 @@ final class PhotoTagsStore: ObservableObject {
     }
 }
 
-/// Closes whatever loupe is presenting a photo and shows the Library filtered to a tag.
+/// What a loupe chip narrows the Library to.
+enum LibraryShortcut: Equatable, Sendable {
+    case tag(String)
+    case place(PhotoPlaceDTO)
+}
+
+/// Closes whatever loupe is presenting a photo and shows the Library filtered to a tag or place.
 /// Installed at the app root; presenters that stack extra modals wrap it to close them too.
-struct ShowTagInLibraryAction {
-    let handler: @MainActor (String) -> Void
+struct ShowInLibraryAction {
+    let handler: @MainActor (LibraryShortcut) -> Void
 
     @MainActor
-    func callAsFunction(_ tag: String) {
-        handler(tag)
+    func callAsFunction(_ shortcut: LibraryShortcut) {
+        handler(shortcut)
     }
 }
 
-private struct ShowTagInLibraryKey: EnvironmentKey {
-    static let defaultValue: ShowTagInLibraryAction? = nil
+private struct ShowInLibraryKey: EnvironmentKey {
+    static let defaultValue: ShowInLibraryAction? = nil
 }
 
 extension EnvironmentValues {
-    var showTagInLibrary: ShowTagInLibraryAction? {
-        get { self[ShowTagInLibraryKey.self] }
-        set { self[ShowTagInLibraryKey.self] = newValue }
+    var showInLibrary: ShowInLibraryAction? {
+        get { self[ShowInLibraryKey.self] }
+        set { self[ShowInLibraryKey.self] = newValue }
     }
 }

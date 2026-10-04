@@ -41,8 +41,16 @@ const QUALITY_REQUESTED = {
 	name: "photos/quality.requested",
 	data: {},
 } as unknown as EmbeddingEvent;
-// The appended trigger step (ID unchanged since F6) sends both backfills.
-const BACKFILLS_REQUESTED = [TAGS_REQUESTED, QUALITY_REQUESTED];
+const PLACES_REQUESTED = {
+	name: "photos/places.requested",
+	data: {},
+} as unknown as EmbeddingEvent;
+// The appended trigger step (ID unchanged since F6) sends every backfill.
+const BACKFILLS_REQUESTED = [
+	TAGS_REQUESTED,
+	QUALITY_REQUESTED,
+	PLACES_REQUESTED,
+];
 type Steps = {
 	run<T>(id: string, work: () => T | Promise<T>): Promise<T>;
 	sendEvent(

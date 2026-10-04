@@ -27,6 +27,10 @@ struct LibraryFilters: Hashable, Sendable {
     var flag: PhotoFlagFilter?
     /// Auto tag slug; `nil` means any tag.
     var tag: String?
+    /// Country of the photos' place; `nil` means anywhere. Clearing it clears `place`.
+    var country: PlaceCountryFilter?
+    /// City of the photos' place, always inside `country` when both are set.
+    var place: PlaceCityFilter?
     /// Map region the photos must lie in (Map's "Show N Photos"). A view scope, not saved
     /// criteria: smart albums never store it.
     var bounds: PhotoBounds?
@@ -40,12 +44,14 @@ struct LibraryFilters: Hashable, Sendable {
         case minRating
         case flag
         case tag
+        case country
+        case place
         case bounds
     }
 
     var isActive: Bool {
         mediaKind != .all || camera != nil || lens != nil || iso != nil || dateMonth != nil
-            || minRating != nil || flag != nil || tag != nil || bounds != nil
+            || minRating != nil || flag != nil || tag != nil || country != nil || place != nil || bounds != nil
     }
 
     struct ActiveFilter: Identifiable, Equatable, Sendable {
@@ -65,6 +71,8 @@ struct LibraryFilters: Hashable, Sendable {
         if let minRating { fields.append(ActiveFilter(field: .minRating, title: Self.formatMinRating(minRating))) }
         if let flag { fields.append(ActiveFilter(field: .flag, title: flag.title)) }
         if let tag { fields.append(ActiveFilter(field: .tag, title: PhotoTagName.hashtag(tag))) }
+        if let country { fields.append(ActiveFilter(field: .country, title: country.name)) }
+        if let place { fields.append(ActiveFilter(field: .place, title: place.name)) }
         if bounds != nil { fields.append(ActiveFilter(field: .bounds, title: "Map Area")) }
         return fields
     }
@@ -86,6 +94,8 @@ struct LibraryFilters: Hashable, Sendable {
             minRating: minRating,
             flag: flag,
             tag: tag,
+            country: country?.code,
+            place: place?.id,
             bounds: bounds
         )
     }
@@ -101,6 +111,10 @@ struct LibraryFilters: Hashable, Sendable {
         case .minRating: updated.minRating = nil
         case .flag: updated.flag = nil
         case .tag: updated.tag = nil
+        case .country:
+            updated.country = nil
+            updated.place = nil
+        case .place: updated.place = nil
         case .bounds: updated.bounds = nil
         }
         return updated
@@ -108,6 +122,30 @@ struct LibraryFilters: Hashable, Sendable {
 
     mutating func clear() {
         self = LibraryFilters()
+    }
+
+    /// Selects a country (or anywhere, for `nil`). A city outside the new country is cleared.
+    func selectingCountry(_ country: PlaceCountryFilter?) -> Self {
+        var updated = self
+        updated.country = country
+        if updated.place?.countryCode != country?.code { updated.place = nil }
+        return updated
+    }
+
+    /// Selects a city together with the country it lies in.
+    func selectingCity(_ city: PlaceCityFilter, in country: PlaceCountryFilter) -> Self {
+        var updated = self
+        updated.country = country
+        updated.place = city
+        return updated
+    }
+
+    /// Selects a photo's place: its city and that city's country.
+    func selectingPlace(_ place: PhotoPlaceDTO) -> Self {
+        selectingCity(
+            PlaceCityFilter(id: place.id, name: place.city, region: place.region, countryCode: place.countryCode),
+            in: PlaceCountryFilter(code: place.countryCode, name: place.country)
+        )
     }
 
     static func formatMonth(_ value: String) -> String {
@@ -469,6 +507,20 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         var updated = filters
         updated.tag = tag
         applyFilters(updated)
+    }
+
+    /// Loupe place-row action: closes this store's loupe and narrows the library to the
+    /// place's city (and its country), keeping the other active filters, then reloads.
+    func showPlace(_ place: PhotoPlaceDTO) {
+        activePhotoID = nil
+        applyFilters(filters.selectingPlace(place))
+    }
+
+    func show(_ shortcut: LibraryShortcut) {
+        switch shortcut {
+        case let .tag(tag): showTag(tag)
+        case let .place(place): showPlace(place)
+        }
     }
 
     func observeVisible(firstID: Int?, distanceFromNewest: CGFloat) {

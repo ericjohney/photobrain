@@ -67,6 +67,8 @@
 		A10000000000000000000022 /* PhotoMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* PhotoMap.swift */; };
 		A10000000000000000000023 /* MapScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* MapScreen.swift */; };
 		A20000000000000000000017 /* MapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000017 /* MapTests.swift */; };
+		A10000000000000000000024 /* PhotoPlaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* PhotoPlaces.swift */; };
+		A20000000000000000000018 /* PhotoPlacesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000018 /* PhotoPlacesTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -147,6 +149,8 @@
 		B10000000000000000000022 /* PhotoMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMap.swift; sourceTree = "<group>"; };
 		B10000000000000000000023 /* MapScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapScreen.swift; sourceTree = "<group>"; };
 		B20000000000000000000017 /* MapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTests.swift; sourceTree = "<group>"; };
+		B10000000000000000000024 /* PhotoPlaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPlaces.swift; sourceTree = "<group>"; };
+		B20000000000000000000018 /* PhotoPlacesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPlacesTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -196,7 +200,7 @@
 		C00000000000000000000004 /* App */ = {isa = PBXGroup; children = (B10000000000000000000001 /* PhotoBrainApp.swift */, B1000000000000000000000D /* AppEnvironment.swift */, B10000000000000000000015 /* AppLinkRouting.swift */,); path = App; sourceTree = "<group>"; };
 		C00000000000000000000005 /* Fixtures */ = {isa = PBXGroup; children = (B10000000000000000000002 /* RedactedFixture.swift */,); path = Fixtures; sourceTree = "<group>"; };
 		C00000000000000000000006 /* Instrumentation */ = {isa = PBXGroup; children = (B10000000000000000000003 /* SpikeSignposts.swift */,); path = Instrumentation; sourceTree = "<group>"; };
-		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */, B1000000000000000000001D /* SmartAlbumsState.swift */, B1000000000000000000001F /* DuplicatesState.swift */, B10000000000000000000021 /* PhotoPair.swift */, B10000000000000000000022 /* PhotoMap.swift */,); path = Library; sourceTree = "<group>"; };
+		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */, B1000000000000000000001D /* SmartAlbumsState.swift */, B1000000000000000000001F /* DuplicatesState.swift */, B10000000000000000000021 /* PhotoPair.swift */, B10000000000000000000022 /* PhotoMap.swift */, B10000000000000000000024 /* PhotoPlaces.swift */,); path = Library; sourceTree = "<group>"; };
 		C00000000000000000000008 /* Models */ = {isa = PBXGroup; children = (B10000000000000000000006 /* PhotoRecord.swift */, B1000000000000000000000B /* APIDTOs.swift */,); path = Models; sourceTree = "<group>"; };
 		C00000000000000000000009 /* Networking */ = {isa = PBXGroup; children = (B10000000000000000000007 /* RedirectAwareImageLoader.swift */, B1000000000000000000000C /* APIClient.swift */,); path = Networking; sourceTree = "<group>"; };
 		C0000000000000000000000A /* PhotoBrainTests */ = {
@@ -225,6 +229,7 @@
 				B20000000000000000000015 /* DuplicatesTests.swift */,
 				B20000000000000000000016 /* PhotoPairTests.swift */,
 				B20000000000000000000017 /* MapTests.swift */,
+				B20000000000000000000018 /* PhotoPlacesTests.swift */,
 			);
 			path = PhotoBrainTests;
 			sourceTree = "<group>";
@@ -328,6 +333,7 @@
 				A10000000000000000000021 /* PhotoPair.swift in Sources */,
 				A10000000000000000000022 /* PhotoMap.swift in Sources */,
 				A10000000000000000000023 /* MapScreen.swift in Sources */,
+				A10000000000000000000024 /* PhotoPlaces.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -358,6 +364,7 @@
 				A20000000000000000000015 /* DuplicatesTests.swift in Sources */,
 				A20000000000000000000016 /* PhotoPairTests.swift in Sources */,
 				A20000000000000000000017 /* MapTests.swift in Sources */,
+				A20000000000000000000018 /* PhotoPlacesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

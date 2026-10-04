@@ -21,6 +21,11 @@ export type FlagFilter = NonNullable<
 
 // Filter option types
 export type FilterOptions = RouterOutputs["filterOptions"];
+export type CountryOption = FilterOptions["countries"][number];
+export type PlaceOption = FilterOptions["places"][number];
+
+// Place types
+export type PhotoPlace = NonNullable<RouterOutputs["photoPlace"]["place"]>;
 
 // Collection types
 export type Collection = RouterOutputs["collections"]["collections"][number];

@@ -280,6 +280,37 @@ export const photoQuality = sqliteTable("photo_quality", {
 	qualityVersion: integer("quality_version").notNull(),
 });
 
+// Offline place (nearest GeoNames city within 100 km) for a photo's GPS. Only
+// "current" when `places_version` matches the API's dataset version and the
+// exact `photo_exif` coordinate texts still equal `latitude_text`/
+// `longitude_text`; readers enforce that, so stale rows never surface.
+export const photoPlaces = sqliteTable(
+	"photo_places",
+	{
+		photoId: integer("photo_id")
+			.primaryKey()
+			.references(() => photos.id, { onDelete: "cascade" }),
+		geonameId: integer("geoname_id").notNull(),
+		city: text("city").notNull(),
+		region: text("region"),
+		countryCode: text("country_code").notNull(),
+		country: text("country").notNull(),
+		latitudeText: text("latitude_text").notNull(),
+		longitudeText: text("longitude_text").notNull(),
+		placesVersion: integer("places_version").notNull(),
+	},
+	(table) => [
+		index("idx_photo_places_country_photo_id").on(
+			table.countryCode,
+			table.photoId,
+		),
+		index("idx_photo_places_geoname_photo_id").on(
+			table.geonameId,
+			table.photoId,
+		),
+	],
+);
+
 // Saved live filter sets. `filters` is the API's canonical JSON; names are unique
 // case-insensitively (NOCASE unique index), independently of collection names.
 export const smartAlbums = sqliteTable(
@@ -344,6 +375,8 @@ export type PhotoTag = typeof photoTags.$inferSelect;
 export type NewPhotoTag = typeof photoTags.$inferInsert;
 export type PhotoQuality = typeof photoQuality.$inferSelect;
 export type NewPhotoQuality = typeof photoQuality.$inferInsert;
+export type PhotoPlace = typeof photoPlaces.$inferSelect;
+export type NewPhotoPlace = typeof photoPlaces.$inferInsert;
 export type SmartAlbum = typeof smartAlbums.$inferSelect;
 export type NewSmartAlbum = typeof smartAlbums.$inferInsert;
 export type DuplicateDismissal = typeof duplicateDismissals.$inferSelect;

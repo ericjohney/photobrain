@@ -16,22 +16,23 @@ struct LoupeScreen: View {
     @State private var showingInfo = false
     @State private var similarSource: PhotoRecord?
     @State private var collectionSheetPhotoID: CollectionSheetTarget?
-    @Environment(\.showTagInLibrary) private var showTagInLibrary
+    @Environment(\.showInLibrary) private var showInLibrary
 
     private var activeRecord: PhotoRecord? {
         records.first { $0.id == activeID }
     }
 
-    /// Tag-chip action for this loupe: closes its sheets and the loupe itself, then forwards to
-    /// the presenter's action so any enclosing loupe closes too before the Library is filtered.
-    private var tagSelection: ShowTagInLibraryAction? {
-        guard let showTagInLibrary else { return nil }
-        return ShowTagInLibraryAction { tag in
+    /// Tag-chip/place-row action for this loupe: closes its sheets and the loupe itself, then
+    /// forwards to the presenter's action so any enclosing loupe closes too before the Library
+    /// is filtered.
+    private var librarySelection: ShowInLibraryAction? {
+        guard let showInLibrary else { return nil }
+        return ShowInLibraryAction { shortcut in
             showingInfo = false
             similarSource = nil
             collectionSheetPhotoID = nil
             dismiss()
-            showTagInLibrary(tag)
+            showInLibrary(shortcut)
         }
     }
 
@@ -79,7 +80,7 @@ struct LoupeScreen: View {
         .statusBarHidden(!chromeVisible)
         .sheet(isPresented: $showingInfo) {
             if let activeRecord {
-                PhotoMetadataView(photo: activeRecord, api: api, onSelectTag: tagSelection)
+                PhotoMetadataView(photo: activeRecord, api: api, onSelect: librarySelection)
                     .id(activeRecord.id)
             }
         }
@@ -87,7 +88,7 @@ struct LoupeScreen: View {
             SimilarPhotosScreen(source: source, api: api, curation: curation, collections: collections) {
                 similarSource = nil
             }
-            .environment(\.showTagInLibrary, tagSelection)
+            .environment(\.showInLibrary, librarySelection)
         }
         .sheet(item: $collectionSheetPhotoID) { target in
             AddToCollectionSheet(photoID: target.id, collections: collections)
@@ -345,16 +346,18 @@ struct LoupeReviewActions {
 
 private struct PhotoMetadataView: View {
     let photo: PhotoRecord
-    /// Nil when no Library is reachable; chips then render without an action.
-    let onSelectTag: ShowTagInLibraryAction?
+    /// Nil when no Library is reachable; chips and the place row then render without an action.
+    let onSelect: ShowInLibraryAction?
     @StateObject private var tags: PhotoTagsStore
+    @StateObject private var place: PhotoPlaceStore
     @StateObject private var pair: PhotoPairStore
     @Environment(\.dismiss) private var dismiss
 
-    init(photo: PhotoRecord, api: any PhotoBrainAPI, onSelectTag: ShowTagInLibraryAction?) {
+    init(photo: PhotoRecord, api: any PhotoBrainAPI, onSelect: ShowInLibraryAction?) {
         self.photo = photo
-        self.onSelectTag = onSelectTag
+        self.onSelect = onSelect
         _tags = StateObject(wrappedValue: PhotoTagsStore(photoID: photo.id, api: api))
+        _place = StateObject(wrappedValue: PhotoPlaceStore(photoID: photo.id, api: api))
         _pair = StateObject(wrappedValue: PhotoPairStore(photo: photo, api: api))
     }
 
@@ -429,6 +432,9 @@ private struct PhotoMetadataView: View {
                         row("Taken", exif.dateTaken)
                     }
                     Section("Location") {
+                        if let loaded = place.place {
+                            placeRow(loaded)
+                        }
                         if let coordinate = PhotoCoordinate(exif: exif) {
                             PhotoLocationMiniMap(coordinate: coordinate)
                             row("Coordinates", coordinate.formatted)
@@ -441,6 +447,11 @@ private struct PhotoMetadataView: View {
                 }
             }
             .task { await tags.load() }
+            .task {
+                // Only geotagged photos (by the server's validity rule) can have a place.
+                guard PhotoCoordinate(exif: photo.exif) != nil else { return }
+                await place.load()
+            }
             .task { await pair.load() }
             .navigationTitle("Photo Info")
             .navigationBarTitleDisplayMode(.inline)
@@ -490,9 +501,9 @@ private struct PhotoMetadataView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Capsule().fill(Color.accentColor.opacity(0.18)))
-        if let onSelectTag {
+        if let onSelect {
             Button {
-                onSelectTag(tag.tag)
+                onSelect(.tag(tag.tag))
             } label: {
                 label
             }
@@ -501,6 +512,30 @@ private struct PhotoMetadataView: View {
             .accessibilityHint("Shows Library photos tagged \(name)")
         } else {
             label.accessibilityLabel("Tag \(name)")
+        }
+    }
+
+    @ViewBuilder
+    private func placeRow(_ loaded: PhotoPlaceDTO) -> some View {
+        let label = PlaceName.label(loaded)
+        if let onSelect {
+            Button {
+                onSelect(.place(loaded))
+            } label: {
+                LabeledContent("Place") {
+                    HStack(spacing: 4) {
+                        Text(label).multilineTextAlignment(.trailing)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .foregroundStyle(.primary)
+            .accessibilityLabel("Place, \(label)")
+            .accessibilityHint("Shows Library photos taken in \(loaded.city)")
+        } else {
+            row("Place", label)
         }
     }
 

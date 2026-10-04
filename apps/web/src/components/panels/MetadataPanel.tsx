@@ -27,12 +27,18 @@ import type { CurationPatch } from "@/hooks/use-photo-curation";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
 import { rawBadge } from "@/lib/raw-badge";
 import { trpc } from "@/lib/trpc";
-import type { JunkAction, JunkReason, PhotoMetadata } from "@/lib/types";
+import type {
+	JunkAction,
+	JunkReason,
+	PhotoMetadata,
+	PhotoPlace,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
 	PhotoCollections,
 	type PhotoCollectionsProps,
 } from "./PhotoCollections";
+import { PhotoPlaceRow } from "./PhotoPlaceRow";
 import { PhotoTags } from "./PhotoTags";
 
 interface MetadataPanelProps {
@@ -41,6 +47,8 @@ interface MetadataPanelProps {
 	onCurate?: (patch: CurationPatch) => void;
 	/** Applies a tag chip as the library tag filter. */
 	onTagSelect?: (tag: string) => void;
+	/** Applies the Place row as the library country + city filter. */
+	onPlaceSelect?: (place: PhotoPlace) => void;
 	/** Present only when the photo has a valid location: open it on the map. */
 	onShowOnMap?: () => void;
 	/** Collection membership controls for the active photo. */
@@ -257,6 +265,7 @@ export function MetadataPanel({
 	onFindSimilar,
 	onCurate,
 	onTagSelect,
+	onPlaceSelect,
 	onShowOnMap,
 	collections,
 	review,
@@ -423,6 +432,7 @@ export function MetadataPanel({
 						photo.exif.gpsAltitude) && (
 						<MetadataSection title="Location" icon={MapPin}>
 							<div className="space-y-0.5 pt-1">
+								<PhotoPlaceRow photoId={photo.id} onSelect={onPlaceSelect} />
 								<MetadataRow label="Latitude" value={photo.exif.gpsLatitude} />
 								<MetadataRow
 									label="Longitude"

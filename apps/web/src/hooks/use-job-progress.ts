@@ -231,9 +231,10 @@ export function useJobProgress(jobId: string | null) {
 			refresh.terminal = true;
 			flush();
 			void utils.searchPhotos.invalidate();
-			// Tags, quality, and hashes are written after media, so review and
-			// duplicate groups settle at the end.
+			// Tags, places, quality, and hashes are written after media, so
+			// review and duplicate groups settle at the end.
 			void utils.photoTags.invalidate();
+			void utils.photoPlace.invalidate();
 			void utils.junkReview.invalidate();
 			void utils.duplicateGroups.invalidate();
 			return;
@@ -264,6 +265,7 @@ export function useJobProgress(jobId: string | null) {
 		refreshLibrary,
 		utils.searchPhotos,
 		utils.photoTags,
+		utils.photoPlace,
 		utils.junkReview,
 		utils.duplicateGroups,
 	]);

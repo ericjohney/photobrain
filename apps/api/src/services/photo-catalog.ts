@@ -6,6 +6,7 @@ import {
 	photos as photosTable,
 	publicPhotoColumns,
 } from "../db/schema";
+import { PLACE_DATASET_VERSION } from "./place-lookup";
 
 export type ApiDatabase = typeof productionDb;
 
@@ -30,6 +31,10 @@ export type PhotoFilters = {
 	collectionId?: number;
 	/** Only photos carrying this automatic tag slug. */
 	tag?: string;
+	/** Only photos whose current place is in this ISO 3166-1 alpha-2 country. */
+	country?: string;
+	/** Only photos whose current place is this GeoNames city (geonameid). */
+	place?: number;
 	/** Only photos with a valid location inside this box (edges inclusive). */
 	bounds?: PhotoBounds;
 };
@@ -94,6 +99,21 @@ function locationColumns(exif: string) {
 		latitude: sql`CAST(${latitudeText} AS REAL)`,
 		longitude: sql`CAST(${longitudeText} AS REAL)`,
 	};
+}
+
+/**
+ * The place row visible as `place` is current: computed with the current
+ * dataset version from exactly the `photo_exif` coordinate texts the photo has
+ * now (one probe of the unique `photo_exif.photo_id` index). A changed or
+ * removed location therefore hides its stale place before the backfill runs.
+ * Every place read in the API goes through this builder.
+ */
+export function currentPlaceSql(place = "photo_places"): SQL {
+	const row = sql.identifier(place);
+	return sql`(${row}.places_version = ${PLACE_DATASET_VERSION}
+		AND EXISTS (SELECT 1 FROM photo_exif current_exif WHERE current_exif.photo_id = ${row}.photo_id
+			AND current_exif.gps_latitude IS ${row}.latitude_text
+			AND current_exif.gps_longitude IS ${row}.longitude_text))`;
 }
 
 /**
@@ -297,6 +317,34 @@ export async function listFilterOptions(
 		GROUP BY t.tag
 		ORDER BY count DESC, tag ASC
 	`);
+	// Places count current rows only, folder-scoped like tags.
+	const countriesResult = await database.all<{
+		code: string;
+		name: string;
+		count: number;
+	}>(sql`
+		SELECT photo_places.country_code AS code, photo_places.country AS name, count(*) AS count
+		FROM photo_places
+		INNER JOIN ${photosTable} ON ${photosTable.id} = photo_places.photo_id
+		WHERE ${currentPlaceSql()}${folderCondition}
+		GROUP BY photo_places.country_code, photo_places.country
+		ORDER BY count DESC, name ASC, code ASC
+	`);
+	const placesResult = await database.all<{
+		id: number;
+		name: string;
+		region: string | null;
+		countryCode: string;
+		count: number;
+	}>(sql`
+		SELECT photo_places.geoname_id AS id, photo_places.city AS name, photo_places.region AS region,
+			photo_places.country_code AS countryCode, count(*) AS count
+		FROM photo_places
+		INNER JOIN ${photosTable} ON ${photosTable.id} = photo_places.photo_id
+		WHERE ${currentPlaceSql()}${folderCondition}
+		GROUP BY photo_places.geoname_id
+		ORDER BY count DESC, name ASC, id ASC
+	`);
 
 	return {
 		cameras: camerasResult.map(({ camera }) => camera),
@@ -304,6 +352,8 @@ export async function listFilterOptions(
 		isos: isosResult.map(({ iso }) => iso),
 		dates: datesResult.map(({ month }) => month),
 		tags: tagsResult,
+		countries: countriesResult,
+		places: placesResult,
 	};
 }
 
@@ -376,6 +426,18 @@ export function photoFilterConditions(
 		// Resolved through the (tag, photo_id) index.
 		conditions.push(
 			sql`${photosTable.id} IN (SELECT photo_id FROM photo_tags WHERE tag = ${input.tag})`,
+		);
+	}
+	if (input.country !== undefined) {
+		// Resolved through the (country_code, photo_id) index.
+		conditions.push(
+			sql`${photosTable.id} IN (SELECT photo_id FROM photo_places WHERE country_code = ${input.country} AND ${currentPlaceSql()})`,
+		);
+	}
+	if (input.place !== undefined) {
+		// Resolved through the (geoname_id, photo_id) index.
+		conditions.push(
+			sql`${photosTable.id} IN (SELECT photo_id FROM photo_places WHERE geoname_id = ${input.place} AND ${currentPlaceSql()})`,
 		);
 	}
 	if (input.bounds) {

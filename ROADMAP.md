@@ -35,7 +35,7 @@ These are the next product and production-readiness priorities for the current c
 
 1. **Expo collections** - manual collections and saved-filter smart albums ship on web and native iOS; the Expo Android collections screen remains.
 2. **Duplicate follow-ups** - a larger pHash for a looser threshold, side-by-side comparison, and the Expo Android duplicates screen. Groups, suggested keeper, and reject-based resolution ship on web and native iOS.
-3. **Map follow-ups** - photo thumbnails as markers, the Expo Android map, and place names (reverse geocoding). Clustered maps, area filtering, and "show on map" ship on web and native iOS.
+3. **Map follow-ups** - photo thumbnails as markers and the Expo Android map. Clustered maps, area filtering, "show on map", and offline place names with country/city filters ship on web and native iOS.
 4. **Mobile backup** - add camera-roll access, background upload, and offline thumbnail handling.
 5. **Production hardening** - add authentication, database/file backups, deleted-file reconciliation, rate limiting, and REST/Inngest coverage.
 
@@ -412,9 +412,9 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [x] **Photo map view**
   - Cluster photos by location
   - Interactive map (MapLibre GL on web, MapKit on iOS) with area filtering
-- [ ] **GPS reverse geocoding**
-  - Convert coordinates to place names
-  - City, country, landmark detection
+- [x] **GPS reverse geocoding** (offline GeoNames cities, nearest within 100 km)
+  - Country and city filters, place row in photo metadata (web and native iOS)
+  - Landmark detection remains open
 - [ ] **Location-based albums**
   - Auto-group photos by location
   - Travel timeline

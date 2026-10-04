@@ -5,6 +5,7 @@ import {
 	FIXTURE_DUPLICATE_GROUPS,
 	FIXTURE_FOLDERS,
 	FIXTURE_JUNK_REASONS,
+	FIXTURE_PHOTO_PLACES,
 	FIXTURE_PHOTO_TAGS,
 	FIXTURE_PHOTOS,
 	type FixtureDuplicateKind,
@@ -13,6 +14,7 @@ import {
 	type FixturePhotoFilters,
 	filterFixturePhotos,
 	fixtureLocation,
+	fixturePlaceOptions,
 	fixtureTagCounts,
 	searchPhotosByQuery,
 } from "./photos";
@@ -352,10 +354,12 @@ function createDefaultHandlers(): Record<string, Handler> {
 			return photo;
 		},
 		similarPhotos: (input) => {
-			const { photoId, collectionId, tag } = (input ??
+			const { photoId, collectionId, tag, country, place } = (input ??
 				{}) as CollectionScope & {
 				photoId?: number;
 				tag?: string;
+				country?: string;
+				place?: number;
 			};
 			const source = library.find((p) => p.id === photoId);
 			if (!source) {
@@ -364,6 +368,8 @@ function createDefaultHandlers(): Record<string, Handler> {
 			// Never the source itself or its own pair partner.
 			const photos = filterFixturePhotos(scopeToCollection({ collectionId }), {
 				tag,
+				country,
+				place,
 			})
 				.filter((p) => p.id !== photoId && p.id !== source.pairedPhotoId)
 				.reverse();
@@ -583,6 +589,13 @@ function createDefaultHandlers(): Record<string, Handler> {
 			}
 			return { tags: FIXTURE_PHOTO_TAGS[photoId] ?? [] };
 		},
+		photoPlace: (input) => {
+			const { photoId } = input as { photoId: number };
+			if (!library.some((p) => p.id === photoId)) {
+				throw new TrpcFixtureError("NOT_FOUND", "Photo not found");
+			}
+			return { place: FIXTURE_PHOTO_PLACES[photoId] ?? null };
+		},
 		collectionsForPhoto: (input) => {
 			const { photoId } = input as { photoId: number };
 			if (!library.some((p) => p.id === photoId)) {
@@ -649,22 +662,28 @@ function createDefaultHandlers(): Record<string, Handler> {
 				photoCount: collection.photoIds.length,
 			};
 		},
-		filterOptions: (input) => ({
-			cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
-			lenses: [
-				"FE 24-70mm f/2.8 GM",
-				"FE 85mm f/1.4 GM",
-				"RF 15-35mm f/2.8L IS USM",
-			],
-			isos: [100, 200, 400, 800, 3200],
-			dates: ["2024-06", "2024-07", "2024-08"],
-			// Folder-scoped like the API's tag counts.
-			tags: fixtureTagCounts(
-				filterFixturePhotos(library, {
-					folder: (input as { folder?: string } | undefined)?.folder,
-				}),
-			),
-		}),
+		filterOptions: (input) => {
+			// Folder-scoped like the API's tag and place counts.
+			const scoped = filterFixturePhotos(library, {
+				folder: (input as { folder?: string } | undefined)?.folder,
+			});
+			// Photo rows, not stacked pairs, like the API's place counts.
+			const scopedRows = library.filter((p) =>
+				scoped.some((s) => s.id === p.id || s.id === p.pairedPhotoId),
+			);
+			return {
+				cameras: ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"],
+				lenses: [
+					"FE 24-70mm f/2.8 GM",
+					"FE 85mm f/1.4 GM",
+					"RF 15-35mm f/2.8L IS USM",
+				],
+				isos: [100, 200, 400, 800, 3200],
+				dates: ["2024-06", "2024-07", "2024-08"],
+				tags: fixtureTagCounts(scoped),
+				...fixturePlaceOptions(scopedRows),
+			};
+		},
 		scan: () => ({ success: true, jobId: FIXTURE_JOB_ID }),
 		scanStatus: (input) => ({
 			id:

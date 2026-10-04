@@ -274,6 +274,114 @@ export function fixtureTagCounts(photos: FixturePhoto[]) {
 		.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
+export type FixturePlace = {
+	id: number;
+	city: string;
+	region: string | null;
+	country: string;
+	countryCode: string;
+};
+
+const SAN_FRANCISCO: FixturePlace = {
+	id: 5391959,
+	city: "San Francisco",
+	region: "California",
+	country: "United States",
+	countryCode: "US",
+};
+const HONOLULU: FixturePlace = {
+	id: 5856195,
+	city: "Honolulu",
+	region: "Hawaii",
+	country: "United States",
+	countryCode: "US",
+};
+const SEATTLE: FixturePlace = {
+	id: 5809844,
+	city: "Seattle",
+	region: "Washington",
+	country: "United States",
+	countryCode: "US",
+};
+const NADI: FixturePlace = {
+	id: 2202064,
+	city: "Nadi",
+	region: "Western",
+	country: "Fiji",
+	countryCode: "FJ",
+};
+const APIA: FixturePlace = {
+	id: 4035413,
+	city: "Apia",
+	region: "Tuamasaga",
+	country: "Samoa",
+	countryCode: "WS",
+};
+
+/**
+ * Current offline-geocoded place per photo ID (the API's `photo_places`).
+ * Every validly geotagged photo has one; invalid/missing GPS (2, 4, 5, 10,
+ * 11, 12) has none.
+ */
+export const FIXTURE_PHOTO_PLACES: Record<number, FixturePlace> = {
+	1: SAN_FRANCISCO,
+	3: SAN_FRANCISCO,
+	6: HONOLULU,
+	7: NADI,
+	8: SEATTLE,
+	9: APIA,
+	13: SEATTLE,
+};
+
+/**
+ * Country and city filter options over `photos`, like the API: photo rows
+ * (no pair stacking), ordered count desc, then name asc.
+ */
+export function fixturePlaceOptions(photos: FixturePhoto[]) {
+	const countries = new Map<
+		string,
+		{ code: string; name: string; count: number }
+	>();
+	const places = new Map<
+		number,
+		{
+			id: number;
+			name: string;
+			region: string | null;
+			countryCode: string;
+			count: number;
+		}
+	>();
+	for (const photo of photos) {
+		const place = FIXTURE_PHOTO_PLACES[photo.id];
+		if (!place) continue;
+		const country = countries.get(place.countryCode) ?? {
+			code: place.countryCode,
+			name: place.country,
+			count: 0,
+		};
+		country.count++;
+		countries.set(place.countryCode, country);
+		const city = places.get(place.id) ?? {
+			id: place.id,
+			name: place.city,
+			region: place.region,
+			countryCode: place.countryCode,
+			count: 0,
+		};
+		city.count++;
+		places.set(place.id, city);
+	}
+	const byCountThenName = (
+		a: { name: string; count: number },
+		b: { name: string; count: number },
+	) => b.count - a.count || a.name.localeCompare(b.name);
+	return {
+		countries: [...countries.values()].sort(byCountThenName),
+		places: [...places.values()].sort(byCountThenName),
+	};
+}
+
 export type FixtureJunkReason = "screenshot" | "document" | "blurry" | "dark";
 
 /**
@@ -339,6 +447,8 @@ export type FixturePhotoFilters = {
 	minRating?: number;
 	flag?: "pick" | "reject" | "unflagged";
 	tag?: string;
+	country?: string;
+	place?: number;
 	bounds?: FixturePhotoBounds;
 };
 
@@ -425,6 +535,16 @@ export function filterFixturePhotos(
 			filters.tag !== undefined &&
 			!FIXTURE_PHOTO_TAGS[p.id]?.some(({ tag }) => tag === filters.tag)
 		) {
+			return false;
+		}
+		const place = FIXTURE_PHOTO_PLACES[p.id];
+		if (
+			filters.country !== undefined &&
+			place?.countryCode !== filters.country
+		) {
+			return false;
+		}
+		if (filters.place !== undefined && place?.id !== filters.place) {
 			return false;
 		}
 		if (filters.bounds !== undefined && !inBounds(p, filters.bounds)) {
