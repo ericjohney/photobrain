@@ -224,6 +224,15 @@ enum LibraryScope: Equatable, Sendable {
     case person(Int)
 }
 
+extension LibraryScope {
+    /// Query smart albums keep `POST /search`'s nearest-first ranking: their presentation is
+    /// one unsorted section opened at the best match, never re-sorted by date.
+    var isRanked: Bool {
+        if case .smartAlbum(_, .some) = self { return true }
+        return false
+    }
+}
+
 /// The request that produces a `LibraryStore`'s photos.
 enum PhotoListingSource: Equatable, Sendable {
     case photos(PhotoQuery)
@@ -621,17 +630,20 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         let records = records
         let sort = sort
         let grouping = grouping
+        let ranked = scope.isRanked
         let presentation = await Task.detached(priority: .userInitiated) {
             let signpost = SpikeSignposts.beginCapturedPresentation(
                 recordCount: records.count,
                 grouping: grouping,
                 sort: sort
             )
-            let presentation = LibraryPresentationBuilder.build(
-                records: records,
-                sort: sort,
-                grouping: grouping
-            )
+            let presentation = ranked
+                ? LibraryPresentationBuilder.ranked(records)
+                : LibraryPresentationBuilder.build(
+                    records: records,
+                    sort: sort,
+                    grouping: grouping
+                )
             SpikeSignposts.endCapturedPresentation(
                 signpost,
                 recordCount: records.count,
@@ -730,6 +742,11 @@ enum LibraryPresentationBuilder {
             )
         }
         return (ordered, sections)
+    }
+
+    /// Server order unchanged, as one section.
+    static func ranked(_ records: [PhotoRecord]) -> (ordered: [PhotoRecord], sections: [PhotoSection]) {
+        (records, [allSection(records)])
     }
 
     private static func allSection(_ ordered: [PhotoRecord]) -> PhotoSection {

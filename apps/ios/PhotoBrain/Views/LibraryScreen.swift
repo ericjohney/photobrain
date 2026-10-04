@@ -267,7 +267,7 @@ struct LibraryScreen: View {
                     .fixedSize()
                     .frame(minHeight: 44)
                 }
-                .accessibilityLabel("Review, \(review.counts.all) photos")
+                .accessibilityLabel("Review, \(CountText.photos(review.counts.all))")
                 Menu {
                     if duplicates.counts.total > 0 {
                         Button {
@@ -278,7 +278,7 @@ struct LibraryScreen: View {
                                 systemImage: "square.on.square"
                             )
                         }
-                        .accessibilityLabel("Duplicates, \(duplicates.counts.total) groups")
+                        .accessibilityLabel("Duplicates, \(CountText.of(duplicates.counts.total, "group", "groups"))")
                     }
                     Button {
                         calendarPresented = true
@@ -304,7 +304,7 @@ struct LibraryScreen: View {
                         .frame(width: 44, height: 44)
                 }
                 .accessibilityLabel(duplicates.counts.total > 0
-                    ? "Browse, \(duplicates.counts.total) duplicate groups"
+                    ? "Browse, \(CountText.of(duplicates.counts.total, "duplicate group", "duplicate groups"))"
                     : "Browse")
                 Button("Select") {
                     store.beginSelection()
@@ -939,7 +939,7 @@ private struct TagFilterCategoryView: View {
             if selected { Image(systemName: "checkmark") }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(count.map { "\(text), \($0) photos" } ?? text)
+        .accessibilityLabel(count.map { "\(text), \(CountText.photos($0))" } ?? text)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -1106,6 +1106,6 @@ private struct PlaceFilterRow: View {
 
     private var accessibilityText: String {
         let name = detail.map { "\(text), \($0)" } ?? text
-        return count.map { "\(name), \($0) photos" } ?? name
+        return count.map { "\(name), \(CountText.photos($0))" } ?? name
     }
 }

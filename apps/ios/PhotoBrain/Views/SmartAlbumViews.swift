@@ -50,7 +50,7 @@ struct SmartAlbumCard: View {
 
     private var accessibilityText: String {
         if let count = album.photoCount {
-            return "\(album.name), smart album, \(count) photos"
+            return "\(album.name), smart album, \(CountText.photos(count))"
         }
         return "\(album.name), smart album, search for \(album.query ?? "")"
     }

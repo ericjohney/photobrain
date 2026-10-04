@@ -16,9 +16,9 @@ enum PersonLabel {
 
     static func accessibilityLabel(name: String?, photoCount: Int) -> String {
         if let name {
-            "\(name), \(photoCount) photos"
+            "\(name), \(CountText.photos(photoCount))"
         } else {
-            "Unnamed person, \(photoCount) photos"
+            "Unnamed person, \(CountText.photos(photoCount))"
         }
     }
 

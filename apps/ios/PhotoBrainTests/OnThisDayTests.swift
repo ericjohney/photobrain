@@ -212,9 +212,12 @@ final class OnThisDayCardTests: XCTestCase {
         XCTAssertEqual(LibraryFilters.formatCapturedDate("not-a-date", locale: usEnglish), "not-a-date")
     }
 
-    func testLargeCountsUseGroupedDigits() {
-        XCTAssertEqual(OnThisDayCard.countText(0), "0 photos")
-        XCTAssertEqual(OnThisDayCard.countText(1_234), "\(1_234.formatted()) photos")
+    func testCountTextPluralizesExactlyOneAndGroupsDigits() {
+        XCTAssertEqual(CountText.photos(0), "0 photos")
+        XCTAssertEqual(CountText.photos(1), "1 photo")
+        XCTAssertEqual(CountText.photos(1_234), "\(1_234.formatted()) photos")
+        XCTAssertEqual(CountText.of(1, "group", "groups"), "1 group")
+        XCTAssertEqual(CountText.of(2, "group", "groups"), "2 groups")
     }
 }
 

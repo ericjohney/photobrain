@@ -19,12 +19,7 @@ enum GearStatsPresentation {
 
     /// `1,234 photos · 1,100 with camera data`.
     static func headerText(total: Int, withExif: Int) -> String {
-        "\(countText(total)) · \(withExif.formatted()) with camera data"
-    }
-
-    /// `1 photo`, `12 photos`.
-    static func countText(_ count: Int) -> String {
-        count == 1 ? "1 photo" : "\(count.formatted()) photos"
+        "\(CountText.photos(total)) · \(withExif.formatted()) with camera data"
     }
 
     /// The first `listLimit` entries, or all of them when `showAll` is set.
@@ -39,12 +34,12 @@ enum GearStatsPresentation {
 
     /// `35–49 mm: 120 photos`.
     static func accessibilityLabel(_ bucket: GearBucketDTO) -> String {
-        "\(bucket.label): \(countText(bucket.count))"
+        "\(bucket.label): \(CountText.photos(bucket.count))"
     }
 
     /// `Canon EOS R5: 12 photos`.
     static func accessibilityLabel(_ entry: GearCountDTO) -> String {
-        "\(entry.label): \(countText(entry.count))"
+        "\(entry.label): \(CountText.photos(entry.count))"
     }
 
     /// Bar length for `count` relative to the largest count shown; 0 when nothing is counted.
@@ -71,7 +66,7 @@ enum GearStatsPresentation {
         /// `2023: 120 photos; Canon EOS R5 80, Other 40`.
         var accessibilityLabel: String {
             let parts = segments.map { "\($0.label) \($0.count.formatted())" }.joined(separator: ", ")
-            return "\(year): \(GearStatsPresentation.countText(total)); \(parts)"
+            return "\(year): \(CountText.photos(total)); \(parts)"
         }
     }
 

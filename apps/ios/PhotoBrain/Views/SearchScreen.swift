@@ -16,7 +16,7 @@ struct SearchScreen: View {
                 content(width: geometry.size.width)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                if store.filters.isActive { filterChips }
+                if store.filters.isActive || savedQuery != nil { filterBar }
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
@@ -137,10 +137,29 @@ struct SearchScreen: View {
             .buttonStyle(.bordered)
     }
 
-    /// Removable chips for each active filter, shown under the search bar.
-    private var filterChips: some View {
+    /// Filters button plus removable chips for each active filter, shown under the search bar.
+    /// The toolbar's Filters button is hidden while the search field is active, so this keeps
+    /// filters reachable without cancelling the query.
+    private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                Button {
+                    filtersPresented = true
+                } label: {
+                    Label(
+                        "Filters",
+                        systemImage: store.filters.isActive
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle"
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    store.filters.isActive ? "Edit filters, \(store.filters.summary)" : "Add filters"
+                )
                 ForEach(store.filters.activeFields) { entry in
                     Button {
                         store.applyFilters(store.filters.removing(entry.field))
@@ -157,8 +176,10 @@ struct SearchScreen: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Remove filter \(entry.title)")
                 }
-                Button("Clear All") { store.clearFilters() }
-                    .accessibilityLabel("Clear all filters")
+                if store.filters.isActive {
+                    Button("Clear All") { store.clearFilters() }
+                        .accessibilityLabel("Clear all filters")
+                }
             }
             .font(.subheadline)
             .padding(.horizontal, 16)
@@ -205,16 +226,19 @@ struct PhotoResultsGrid: View {
                     Button {
                         onSelect(photo.id)
                     } label: {
-                        RemotePhotoImage(
-                            photo: photo,
-                            url: photo.thumbnailURL,
-                            contentMode: .fill,
-                            showsRetry: false,
-                            targetSize: CGSize(width: side, height: side)
-                        ) {
-                            Color(uiColor: SyntheticThumbnail.color(id: photo.id))
-                        }
+                        Color(uiColor: SyntheticThumbnail.color(id: photo.id))
                         .aspectRatio(1, contentMode: .fit)
+                        .overlay {
+                            RemotePhotoImage(
+                                photo: photo,
+                                url: photo.thumbnailURL,
+                                contentMode: .fill,
+                                showsRetry: false,
+                                targetSize: CGSize(width: side, height: side)
+                            ) {
+                                Color(uiColor: SyntheticThumbnail.color(id: photo.id))
+                            }
+                        }
                         .clipped()
                         .opacity(photo.isRejected ? 0.35 : 1)
                         .overlay(alignment: .bottomTrailing) {

@@ -155,7 +155,7 @@ private struct KindPicker: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(title), \(count) groups")
+        .accessibilityLabel("\(title), \(CountText.of(count, "group", "groups"))")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -175,7 +175,7 @@ private struct DuplicateGroupCard: View {
                     systemImage: group.kind == .burst ? "square.stack.3d.down.right" : "square.on.square"
                 )
                 .font(.subheadline.weight(.semibold))
-                Text(photoCount(group.photos.count))
+                Text(CountText.photos(group.photos.count))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -185,7 +185,7 @@ private struct DuplicateGroupCard: View {
                     Label("Compare", systemImage: "rectangle.split.2x1")
                         .font(.subheadline)
                 }
-                .accessibilityLabel("Compare \(photoCount(group.photos.count))")
+                .accessibilityLabel("Compare \(CountText.photos(group.photos.count))")
             }
             .padding(.horizontal, 12)
 
@@ -277,9 +277,5 @@ private struct DuplicateGroupCard: View {
         .accessibilityAddTraits(isKept ? .isSelected : [])
         .accessibilityAction { store.toggleKeep(groupKey: group.key, photoID: photo.id) }
         .accessibilityAction(named: "Compare") { store.compare(groupKey: group.key, photoID: photo.id) }
-    }
-
-    private func photoCount(_ count: Int) -> String {
-        count == 1 ? "1 photo" : "\(count.formatted()) photos"
     }
 }

@@ -265,16 +265,19 @@ private struct ReviewGrid: View {
         return Button {
             store.activate(photo.id)
         } label: {
-            RemotePhotoImage(
-                photo: photo,
-                url: photo.thumbnailURL,
-                contentMode: .fill,
-                showsRetry: false,
-                targetSize: CGSize(width: side, height: side)
-            ) {
-                Color(uiColor: SyntheticThumbnail.color(id: photo.id))
-            }
+            Color(uiColor: SyntheticThumbnail.color(id: photo.id))
             .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                RemotePhotoImage(
+                    photo: photo,
+                    url: photo.thumbnailURL,
+                    contentMode: .fill,
+                    showsRetry: false,
+                    targetSize: CGSize(width: side, height: side)
+                ) {
+                    Color(uiColor: SyntheticThumbnail.color(id: photo.id))
+                }
+            }
             .clipped()
             .overlay(alignment: .bottomLeading) {
                 if let reason = photo.junkReasons.first {

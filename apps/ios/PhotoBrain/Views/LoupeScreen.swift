@@ -431,11 +431,7 @@ struct LoupeScreen: View {
         guard showing else { return "Off" }
         if failed { return "On, faces unavailable" }
         guard let count else { return "On, loading" }
-        switch count {
-        case 0: return "On, no faces found"
-        case 1: return "On, 1 face"
-        default: return "On, \(count) faces"
-        }
+        return count == 0 ? "On, no faces found" : "On, \(CountText.of(count, "face", "faces"))"
     }
 
     /// Plays the still's motion clip once, muted, over the still; disabled while it plays.

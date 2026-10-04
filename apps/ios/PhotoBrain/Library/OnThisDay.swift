@@ -74,7 +74,7 @@ struct OnThisDayCard: Identifiable, Equatable, Sendable {
         year = group.year
         yearsAgoText = Self.yearsAgoText(group.yearsAgo)
         dateText = LibraryFilters.formatCapturedDate(group.capturedDate, locale: locale)
-        countText = Self.countText(group.count)
+        countText = CountText.photos(group.count)
         capturedDate = group.capturedDate
         coverPhotoID = group.cover.photoId
         coverURL = group.coverURL(apiBaseURL: apiBaseURL)
@@ -82,10 +82,6 @@ struct OnThisDayCard: Identifiable, Equatable, Sendable {
 
     static func yearsAgoText(_ yearsAgo: Int) -> String {
         yearsAgo == 1 ? "1 year ago" : "\(yearsAgo) years ago"
-    }
-
-    static func countText(_ count: Int) -> String {
-        count == 1 ? "1 photo" : "\(count.formatted()) photos"
     }
 }
 

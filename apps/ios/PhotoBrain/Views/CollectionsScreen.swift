@@ -332,7 +332,7 @@ private struct CollectionCard: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(collection.name), \(collection.photoCount) photos")
+        .accessibilityLabel("\(collection.name), \(CountText.photos(collection.photoCount))")
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -512,6 +512,7 @@ struct ScopedPhotoGrid: View {
                 isSelecting: false,
                 resetVersion: store.browsingResetVersion,
                 contentRevision: store.presentationRevision,
+                opensAtTop: store.scope.isRanked,
                 onLongPress: { _ in },
                 onVisibleChange: store.observeVisible,
                 onRefresh: {

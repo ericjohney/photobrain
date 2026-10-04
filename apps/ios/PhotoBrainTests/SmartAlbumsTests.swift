@@ -523,6 +523,28 @@ final class SmartAlbumDetailStoreTests: XCTestCase {
         XCTAssertEqual(detail.orderedRecords.map(\.id), [9])
     }
 
+    func testQueryAlbumKeepsSearchRankingInsteadOfDateOrder() async {
+        let api = TestAPI()
+        // Nearest first, deliberately against capture-date and ID order.
+        let ranked = [
+            TestModels.photo(id: 3, taken: "2024-03-01T12:00:00Z"),
+            TestModels.photo(id: 1, taken: "2024-01-01T12:00:00Z"),
+            TestModels.photo(id: 2, taken: "2024-02-01T12:00:00Z"),
+        ]
+        await api.setSearch(
+            query: "sunset",
+            delay: .zero,
+            response: SearchResponseDTO(photos: ranked, total: 3, query: "sunset")
+        )
+        let detail = LibraryStore(api: api, scope: .smartAlbum(filters: SmartAlbumFilters(), query: "sunset"))
+        detail.grouping = .months
+
+        await detail.load()
+
+        XCTAssertEqual(detail.orderedRecords.map(\.id), [3, 1, 2])
+        XCTAssertEqual(detail.sections.map { $0.photos.map(\.id) }, [[3, 1, 2]])
+    }
+
     func testSourceSelection() {
         let filters = SmartAlbumFilters(iso: 400)
         XCTAssertEqual(

@@ -229,7 +229,7 @@ private struct PhotoClusterMap: UIViewRepresentable {
                 ) as? MKMarkerAnnotationView
                 view?.markerTintColor = .systemIndigo
                 view?.displayPriority = .required
-                view?.accessibilityLabel = "\(cluster.memberAnnotations.count) photos"
+                view?.accessibilityLabel = CountText.photos(cluster.memberAnnotations.count)
                 return view
             }
             guard let photo = annotation as? PhotoPointAnnotation else { return nil }

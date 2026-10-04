@@ -52,7 +52,7 @@ enum EventFormatting {
     /// `Oct 3 – 5, 2023 · 12 photos` under a place title; only `12 photos` when the title is
     /// already the date range.
     static func subtitle(for event: EventDTO, locale: Locale = .autoupdatingCurrent) -> String {
-        let count = OnThisDayCard.countText(event.photoCount)
+        let count = CountText.photos(event.photoCount)
         guard event.place != nil else { return count }
         return "\(dateRange(startAt: event.startAt, endAt: event.endAt, locale: locale)) · \(count)"
     }

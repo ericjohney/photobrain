@@ -8,6 +8,9 @@ struct LibraryGrid: UIViewControllerRepresentable {
     let isSelecting: Bool
     let resetVersion: Int
     let contentRevision: Int
+    /// Open (and reset) at the first item instead of the newest edge at the bottom; for
+    /// ranked lists whose best match comes first.
+    var opensAtTop = false
     let onLongPress: (Int) -> Void
     let onVisibleChange: (Int?, CGFloat) -> Void
     let onRefresh: () async -> Void
@@ -46,6 +49,7 @@ struct LibraryGrid: UIViewControllerRepresentable {
             }
         }
         controller.onLongPress = onLongPress
+        controller.opensAtTop = opensAtTop
         controller.onVisibleChange = onVisibleChange
         controller.onRefresh = onRefresh
     }
@@ -70,6 +74,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     var onLongPress: ((Int) -> Void)?
     var onVisibleChange: ((Int?, CGFloat) -> Void)?
     var onRefresh: (() async -> Void)?
+    var opensAtTop = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -152,7 +157,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                 }
             }
             if shouldReset {
-                scrollToNewest()
+                scrollToInitialEdge()
                 publishVisibleState()
             }
             return
@@ -206,7 +211,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             guard let self else { return }
             if shouldReset || !didInitialPosition {
                 didInitialPosition = true
-                scrollToNewest()
+                scrollToInitialEdge()
             } else if let visibleAnchorID, let indexPath = dataSource.indexPath(for: visibleAnchorID) {
                 collectionView.scrollToItem(at: indexPath, at: .top, animated: false)
             }
@@ -240,7 +245,14 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         onLongPress?(id)
     }
 
-    private func scrollToNewest() {
+    private func scrollToInitialEdge() {
+        if opensAtTop {
+            collectionView.setContentOffset(
+                CGPoint(x: 0, y: -collectionView.adjustedContentInset.top),
+                animated: false
+            )
+            return
+        }
         guard let lastID = currentIDs.last, let indexPath = dataSource.indexPath(for: lastID) else { return }
         collectionView.scrollToItem(at: indexPath, at: .bottom, animated: false)
     }

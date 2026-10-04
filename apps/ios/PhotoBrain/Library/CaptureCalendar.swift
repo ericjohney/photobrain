@@ -190,7 +190,7 @@ struct CaptureCalendar: Sendable {
 
     /// `October 3, 2023, 12 photos` in `locale`; zero days read `no photos`.
     static func accessibilityLabel(for day: Day, count: Int, locale: Locale = .autoupdatingCurrent) -> String {
-        let countText = count == 0 ? "no photos" : OnThisDayCard.countText(count)
+        let countText = count == 0 ? "no photos" : CountText.photos(count)
         guard let date = OnThisDayDate.utcCalendar.date(from: DateComponents(year: day.year, month: day.month, day: day.day)) else {
             return "\(day.capturedDate), \(countText)"
         }
