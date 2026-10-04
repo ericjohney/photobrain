@@ -14,6 +14,8 @@ struct PhotoQuery: Hashable, Sendable {
     var collectionId: Int?
     /// Auto tag slug, e.g. `night-sky`.
     var tag: String?
+    /// Only photos with a face assigned to this person.
+    var personId: Int?
     /// ISO 3166-1 alpha-2 country code of the photo's place, e.g. `JP`.
     var country: String?
     /// GeoNames city id of the photo's place.
@@ -38,6 +40,7 @@ struct PhotoQuery: Hashable, Sendable {
         if let flag { items.append(URLQueryItem(name: "flag", value: flag.rawValue)) }
         if let collectionId { items.append(URLQueryItem(name: "collectionId", value: String(collectionId))) }
         if let tag { items.append(URLQueryItem(name: "tag", value: tag)) }
+        if let personId { items.append(URLQueryItem(name: "personId", value: String(personId))) }
         if let country { items.append(URLQueryItem(name: "country", value: country)) }
         if let place { items.append(URLQueryItem(name: "place", value: String(place))) }
         if let bounds {
@@ -95,6 +98,21 @@ protocol PhotoBrainAPI: Sendable {
     func renameSmartAlbum(id: Int, name: String) async throws -> SmartAlbumDTO
     /// `DELETE /smart-albums/{id}`, expects `204`. Photos are untouched.
     func deleteSmartAlbum(id: Int) async throws
+    /// `GET /people`; hidden people are included only when `includeHidden` (sent only when true).
+    /// The server's order (named first, then photo count) is the display order.
+    func people(includeHidden: Bool) async throws -> PeopleResponseDTO
+    /// `GET /people/{id}`; an unknown id throws `PERSON_NOT_FOUND`.
+    func person(id: Int) async throws -> PersonDTO
+    /// `PATCH /people/{id}`. `name: nil` leaves the name unchanged; `.some(nil)` clears it.
+    /// `hidden: nil` leaves visibility unchanged. At least one field must be provided.
+    func updatePerson(id: Int, name: String??, hidden: Bool?) async throws -> PersonDTO
+    /// `POST /people/{targetId}/merge`: moves every source's faces to the target, deleting
+    /// the sources. Returns the updated target.
+    func mergePeople(targetId: Int, sourceIds: [Int]) async throws -> PersonDTO
+    /// `GET /photos/{id}/faces`: the photo's faces left to right.
+    func photoFaces(photoId: Int) async throws -> PhotoFacesResponseDTO
+    /// `PUT /faces/{id}/person`; returns the updated face.
+    func assignFace(faceId: Int, to target: FaceAssignmentTarget) async throws -> PhotoFaceDTO
     /// `GET /review/junk`. `reason` and `cursor` are sent only when set; `limit` is 1-500.
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO
     /// `POST /review/junk/resolve` for 1-500 positive photo ids.
@@ -322,6 +340,55 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         var request = try request(path: ["smart-albums", String(id)])
         request.httpMethod = "DELETE"
         _ = try await transfer(request, expectedStatus: 204)
+    }
+
+    func people(includeHidden: Bool) async throws -> PeopleResponseDTO {
+        try await get(
+            path: ["people"],
+            queryItems: includeHidden ? [URLQueryItem(name: "includeHidden", value: "true")] : []
+        )
+    }
+
+    func person(id: Int) async throws -> PersonDTO {
+        guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await get(path: ["people", String(id)])
+    }
+
+    func updatePerson(id: Int, name: String??, hidden: Bool?) async throws -> PersonDTO {
+        guard id > 0, name != nil || hidden != nil else { throw PhotoBrainAPIError.invalidRequest }
+        var validatedName: String?? = nil
+        if case let .some(raw) = name {
+            validatedName = .some(try raw.flatMap(PersonName.validatedOptional))
+        }
+        return try await send(
+            method: "PATCH",
+            path: ["people", String(id)],
+            body: UpdatePersonRequestDTO(name: validatedName, hidden: hidden)
+        )
+    }
+
+    func mergePeople(targetId: Int, sourceIds: [Int]) async throws -> PersonDTO {
+        guard PeopleMerge.isValid(targetId: targetId, sourceIds: sourceIds) else {
+            throw PhotoBrainAPIError.invalidRequest
+        }
+        return try await post(
+            path: ["people", String(targetId), "merge"],
+            body: MergePeopleRequestDTO(sourceIds: sourceIds)
+        )
+    }
+
+    func photoFaces(photoId: Int) async throws -> PhotoFacesResponseDTO {
+        guard photoId > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await get(path: ["photos", String(photoId), "faces"])
+    }
+
+    func assignFace(faceId: Int, to target: FaceAssignmentTarget) async throws -> PhotoFaceDTO {
+        guard faceId > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await send(
+            method: "PUT",
+            path: ["faces", String(faceId), "person"],
+            body: AssignFaceRequestDTO(target: try target.validated())
+        )
     }
 
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO {

@@ -12,6 +12,8 @@ struct PagedLoupe: UIViewControllerRepresentable {
     let chromeVisible: Bool
     let onTap: () -> Void
     let onEmpty: () -> Void
+    /// Face boxes drawn over each photo by id; empty when Show Faces is off.
+    var faceBoxes: [Int: [FaceBoxDTO]] = [:]
 
     func makeUIViewController(context: Context) -> PagedLoupeViewController {
         let controller = PagedLoupeViewController()
@@ -20,6 +22,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.onTap = onTap
         controller.attach(playback: playback)
         controller.chromeVisible = chromeVisible
+        controller.faceBoxes = faceBoxes
         controller.update(records: records, activeID: activeID)
         return controller
     }
@@ -30,6 +33,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.onTap = onTap
         controller.attach(playback: playback)
         controller.chromeVisible = chromeVisible
+        controller.faceBoxes = faceBoxes
         controller.update(records: records, activeID: activeID)
     }
 }
@@ -56,6 +60,15 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         didSet {
             guard chromeVisible != oldValue else { return }
             applyChromeInsets()
+        }
+    }
+    /// Face boxes by photo id, applied to every cell showing that photo.
+    var faceBoxes: [Int: [FaceBoxDTO]] = [:] {
+        didSet {
+            guard faceBoxes != oldValue else { return }
+            knownCells.allObjects.forEach { cell in
+                cell.setFaceBoxes(cell.representedID.flatMap { faceBoxes[$0] } ?? [])
+            }
         }
     }
 
@@ -176,6 +189,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             onZoomChanged: { [weak self] _ in self?.updatePagingAvailability() }
         )
         knownCells.add(cell)
+        cell.setFaceBoxes(faceBoxes[photo.id] ?? [])
         syncPlayerHost()
         return cell
     }
@@ -340,6 +354,9 @@ final class ZoomPageCell: UICollectionViewCell {
     static let reuseIdentifier = "ZoomPageCell"
 
     let zoomView = ZoomingImageScrollView()
+    /// Face boxes over the image; follows the zoom view's pinch-zoom and pan.
+    private let faceOverlay = FaceBoxOverlayView()
+    private var faceBoxes: [FaceBoxDTO] = []
     private let failureStack = UIStackView()
     private let failureLabel = UILabel()
     private let retryButton = UIButton(type: .system)
@@ -364,13 +381,20 @@ final class ZoomPageCell: UICollectionViewCell {
         failureStack.addArrangedSubview(failureLabel)
         failureStack.addArrangedSubview(retryButton)
         failureStack.isHidden = true
+        faceOverlay.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(zoomView)
+        contentView.addSubview(faceOverlay)
         contentView.addSubview(failureStack)
+        zoomView.onGeometryChanged = { [weak self] in self?.layoutFaceBoxes() }
         NSLayoutConstraint.activate([
             zoomView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             zoomView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             zoomView.topAnchor.constraint(equalTo: contentView.topAnchor),
             zoomView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            faceOverlay.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            faceOverlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            faceOverlay.topAnchor.constraint(equalTo: contentView.topAnchor),
+            faceOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             failureStack.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             failureStack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
         ])
@@ -391,6 +415,7 @@ final class ZoomPageCell: UICollectionViewCell {
         zoomView.setImage(nil)
         zoomView.onSingleTap = nil
         zoomView.onZoomStateChanged = nil
+        setFaceBoxes([])
         hostedPlayerView?.removeFromSuperview()
     }
 
@@ -410,6 +435,38 @@ final class ZoomPageCell: UICollectionViewCell {
         hostedPlayerView = playerView
     }
 
+    /// Draws `boxes` (normalized to the oriented image) over the photo; empty hides them.
+    func setFaceBoxes(_ boxes: [FaceBoxDTO]) {
+        guard boxes != faceBoxes else { return }
+        faceBoxes = boxes
+        layoutFaceBoxes()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layoutFaceBoxes()
+    }
+
+    /// Boxes are drawn only over a loaded thumbnail: the synthetic placeholder has the cell's
+    /// aspect ratio, not the photo's, so boxes over it would be misplaced.
+    private var showsPhotoImage = false
+
+    private func layoutFaceBoxes() {
+        guard showsPhotoImage, !faceBoxes.isEmpty, let geometry = zoomView.faceGeometry else {
+            faceOverlay.show([])
+            return
+        }
+        faceOverlay.show(faceBoxes.map { box in
+            FaceGeometry.rect(
+                for: box,
+                imageSize: geometry.imageSize,
+                in: geometry.viewSize,
+                zoomScale: geometry.zoomScale,
+                contentOffset: geometry.contentOffset
+            )
+        })
+    }
+
     func configure(
         photo: PhotoRecord,
         loader: RedirectAwareImageLoader,
@@ -427,6 +484,7 @@ final class ZoomPageCell: UICollectionViewCell {
         zoomView.onSingleTap = onTap
         zoomView.onZoomStateChanged = onZoomChanged
         zoomView.setImage(SyntheticThumbnail.image(id: photo.id, size: bounds.size))
+        setShowsPhotoImage(false)
 
         guard photo.largeThumbnailURL.host != "photos.example.invalid" else { return }
         let targetSize = bounds.size == .zero ? UIScreen.main.bounds.size : bounds.size
@@ -441,6 +499,7 @@ final class ZoomPageCell: UICollectionViewCell {
                     targetSize: targetSize
                 ), !Task.isCancelled, self?.representedID == photo.id {
                     self?.zoomView.setImage(small, resetsZoom: false)
+                    self?.setShowsPhotoImage(true)
                 }
                 guard !Task.isCancelled else { return }
                 do {
@@ -451,6 +510,7 @@ final class ZoomPageCell: UICollectionViewCell {
                     )
                     guard !Task.isCancelled, self?.representedID == photo.id else { return }
                     self?.zoomView.setImage(image, resetsZoom: false)
+                    self?.setShowsPhotoImage(true)
                 } catch is CancellationError {
                     return
                 } catch {
@@ -475,6 +535,7 @@ final class ZoomPageCell: UICollectionViewCell {
             SyntheticThumbnail.image(id: representedID, size: bounds.size),
             resetsZoom: false
         )
+        setShowsPhotoImage(false)
         retry?()
     }
 
@@ -483,6 +544,12 @@ final class ZoomPageCell: UICollectionViewCell {
         loadTask = nil
         decodedImageWasEvicted = true
         zoomView.setImage(nil, resetsZoom: false)
+        setShowsPhotoImage(false)
+    }
+
+    private func setShowsPhotoImage(_ value: Bool) {
+        showsPhotoImage = value
+        layoutFaceBoxes()
     }
 
     @objc private func retryLoad() {
@@ -495,6 +562,32 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
     private let imageView = UIImageView()
     var onSingleTap: (() -> Void)?
     var onZoomStateChanged: ((Bool) -> Void)?
+    /// Called whenever the image, zoom, pan, or size changes, so overlays can follow.
+    var onGeometryChanged: (() -> Void)?
+
+    /// What an overlay needs to place normalized image points on screen.
+    struct FaceOverlayGeometry {
+        let imageSize: CGSize
+        /// The unzoomed image view size (the scroll view's frame).
+        let viewSize: CGSize
+        let zoomScale: CGFloat
+        /// Content offset relative to the zoomed image view's origin.
+        let contentOffset: CGPoint
+    }
+
+    /// `nil` until an image is shown and the view has a size.
+    var faceGeometry: FaceOverlayGeometry? {
+        guard let image = imageView.image, bounds.width > 0, bounds.height > 0 else { return nil }
+        return FaceOverlayGeometry(
+            imageSize: image.size,
+            viewSize: frame.size,
+            zoomScale: zoomScale,
+            contentOffset: CGPoint(
+                x: contentOffset.x - imageView.frame.minX,
+                y: contentOffset.y - imageView.frame.minY
+            )
+        )
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -533,6 +626,12 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
     func setImage(_ image: UIImage?, resetsZoom: Bool = true) {
         if resetsZoom { resetZoom() }
         imageView.image = image
+        onGeometryChanged?()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onGeometryChanged?()
     }
 
     var hasImage: Bool {
@@ -550,6 +649,11 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         onZoomStateChanged?(zoomScale > minimumZoomScale + 0.001)
+        onGeometryChanged?()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        onGeometryChanged?()
     }
 
     @objc private func handleSingleTap() {
@@ -559,5 +663,51 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
     @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
         let targetScale = zoomScale > minimumZoomScale ? minimumZoomScale : min(3, maximumZoomScale)
         setZoomScale(targetScale, animated: true)
+    }
+}
+
+/// Outlines face rects over a loupe page. Purely visual: it never intercepts touches, so
+/// pinch, pan, paging, and taps reach the zoom view underneath.
+@MainActor
+final class FaceBoxOverlayView: UIView {
+    private var boxLayers: [CAShapeLayer] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        clipsToBounds = true
+        isAccessibilityElement = false
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// Replaces the outlines with `rects` (in this view's coordinates) without animation.
+    func show(_ rects: [CGRect]) {
+        let visible = rects.filter { !$0.isNull && !$0.isEmpty }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        while boxLayers.count < visible.count {
+            let shape = CAShapeLayer()
+            shape.fillColor = UIColor.clear.cgColor
+            shape.strokeColor = UIColor.white.withAlphaComponent(0.9).cgColor
+            shape.lineWidth = 2
+            shape.shadowColor = UIColor.black.cgColor
+            shape.shadowOpacity = 0.6
+            shape.shadowRadius = 2
+            shape.shadowOffset = .zero
+            layer.addSublayer(shape)
+            boxLayers.append(shape)
+        }
+        for (index, shape) in boxLayers.enumerated() {
+            if index < visible.count {
+                shape.isHidden = false
+                shape.path = UIBezierPath(roundedRect: visible[index], cornerRadius: 6).cgPath
+            } else {
+                shape.isHidden = true
+            }
+        }
+        CATransaction.commit()
     }
 }

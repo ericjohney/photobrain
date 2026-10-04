@@ -19,6 +19,8 @@ struct LoupeScreen: View {
     @StateObject private var exports: ExportStore
     /// The open page's video or Live Photo player; released on page change and dismissal.
     @StateObject private var playback = LoupePlaybackController()
+    /// Show Faces: boxes over the paged photos while on.
+    @StateObject private var faceBoxes: LoupeFaceBoxesStore
     @Environment(\.showInLibrary) private var showInLibrary
 
     init(
@@ -38,6 +40,7 @@ struct LoupeScreen: View {
         self.dismiss = dismiss
         self.review = review
         _exports = StateObject(wrappedValue: ExportStore(api: api))
+        _faceBoxes = StateObject(wrappedValue: LoupeFaceBoxesStore(api: api))
     }
 
     private var activeRecord: PhotoRecord? {
@@ -75,7 +78,8 @@ struct LoupeScreen: View {
                         }
                     }
                 },
-                onEmpty: dismiss
+                onEmpty: dismiss,
+                faceBoxes: faceBoxes.visibleBoxes
             )
             .ignoresSafeArea()
 
@@ -93,9 +97,7 @@ struct LoupeScreen: View {
                     } else if let message = curation.errorMessage {
                         curationError(message)
                     }
-                    if activeRecord?.motionVideoURL != nil {
-                        liveButton
-                    }
+                    overlayControls
                     Spacer()
                     if let activeRecord {
                         if let review {
@@ -111,7 +113,10 @@ struct LoupeScreen: View {
         }
         .preferredColorScheme(.dark)
         .onAppear { playback.show(activeRecord) }
-        .onChange(of: activeID) { _, _ in playback.show(activeRecord) }
+        .onChange(of: activeID) { _, _ in
+            playback.show(activeRecord)
+            Task { await faceBoxes.load(activeRecord) }
+        }
         .onDisappear { playback.release() }
         .statusBarHidden(!chromeVisible)
         .exportPresentation(exports)
@@ -381,28 +386,75 @@ struct LoupeScreen: View {
         }
     }
 
+    /// LIVE (for Live Photos) and Show Faces (for stills) over the top of the photo.
+    @ViewBuilder
+    private var overlayControls: some View {
+        let hasLive = activeRecord?.motionVideoURL != nil
+        let canShowFaces = activeRecord.map { !$0.isVideo } ?? false
+        if hasLive || canShowFaces {
+            HStack(spacing: 8) {
+                if hasLive { liveButton }
+                if canShowFaces { facesButton }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+        }
+    }
+
+    /// Outlines detected faces on the photo; they follow pinch-zoom and pan.
+    private var facesButton: some View {
+        let showing = faceBoxes.isShowing
+        let count = activeRecord.flatMap { faceBoxes.faceCount(photoID: $0.id) }
+        let failed = activeRecord.map { faceBoxes.failedPhotoIDs.contains($0.id) } ?? false
+        return Button {
+            let record = activeRecord
+            Task { await faceBoxes.setShowing(!showing, photo: record) }
+        } label: {
+            Label(
+                showing && count == 0 ? "No Faces" : "Faces",
+                systemImage: showing ? "person.crop.square.fill" : "person.crop.square"
+            )
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Color.black.opacity(showing ? 0.72 : 0.5)))
+            .foregroundStyle(showing ? Color.yellow : Color.white)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Show Faces")
+        .accessibilityValue(facesAccessibilityValue(showing: showing, count: count, failed: failed))
+        .accessibilityAddTraits(showing ? .isSelected : [])
+    }
+
+    private func facesAccessibilityValue(showing: Bool, count: Int?, failed: Bool) -> String {
+        guard showing else { return "Off" }
+        if failed { return "On, faces unavailable" }
+        guard let count else { return "On, loading" }
+        switch count {
+        case 0: return "On, no faces found"
+        case 1: return "On, 1 face"
+        default: return "On, \(count) faces"
+        }
+    }
+
     /// Plays the still's motion clip once, muted, over the still; disabled while it plays.
     private var liveButton: some View {
         let playing = playback.isPlayingLive
-        return HStack {
-            Button {
-                playback.playLive()
-            } label: {
-                Label("LIVE", systemImage: "livephoto")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(Color.black.opacity(playing ? 0.72 : 0.5)))
-                    .foregroundStyle(playing ? Color.yellow : Color.white)
-            }
-            .buttonStyle(.plain)
-            .disabled(playing)
-            .accessibilityLabel("Play Live Photo")
-            .accessibilityValue(playing ? "Playing" : "")
-            Spacer()
+        return Button {
+            playback.playLive()
+        } label: {
+            Label("LIVE", systemImage: "livephoto")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.black.opacity(playing ? 0.72 : 0.5)))
+                .foregroundStyle(playing ? Color.yellow : Color.white)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .buttonStyle(.plain)
+        .disabled(playing)
+        .accessibilityLabel("Play Live Photo")
+        .accessibilityValue(playing ? "Playing" : "")
     }
 
     @ViewBuilder
@@ -433,6 +485,9 @@ private struct PhotoMetadataView: View {
     @StateObject private var tags: PhotoTagsStore
     @StateObject private var place: PhotoPlaceStore
     @StateObject private var pair: PhotoPairStore
+    @StateObject private var faces: PhotoFacesStore
+    @State private var assigningFace: PhotoFaceDTO?
+    @Environment(\.peopleStore) private var people
     @Environment(\.dismiss) private var dismiss
 
     init(photo: PhotoRecord, api: any PhotoBrainAPI, onSelect: ShowInLibraryAction?) {
@@ -441,6 +496,7 @@ private struct PhotoMetadataView: View {
         _tags = StateObject(wrappedValue: PhotoTagsStore(photoID: photo.id, api: api))
         _place = StateObject(wrappedValue: PhotoPlaceStore(photoID: photo.id, api: api))
         _pair = StateObject(wrappedValue: PhotoPairStore(photo: photo, api: api))
+        _faces = StateObject(wrappedValue: PhotoFacesStore(photoID: photo.id, api: api))
     }
 
     var body: some View {
@@ -466,6 +522,13 @@ private struct PhotoMetadataView: View {
                 }
                 Section("Tags") {
                     tagContent
+                }
+                if !photo.isVideo {
+                    Section("People") {
+                        PhotoFacesSection(faces: faces, apiBaseURL: faces.api.baseURL) { face in
+                            assigningFace = face
+                        }
+                    }
                 }
                 Section("File") {
                     row("Name", photo.filename)
@@ -539,6 +602,16 @@ private struct PhotoMetadataView: View {
                 await place.load()
             }
             .task { await pair.load() }
+            .task {
+                guard !photo.isVideo else { return }
+                faces.onAssigned = { [weak people] in people?.refreshInBackground() }
+                await faces.load()
+            }
+            .sheet(item: $assigningFace) { face in
+                FaceAssignSheet(face: face, api: faces.api, people: people) { target, displayName in
+                    Task { await faces.assign(faceId: face.id, to: target, displayName: displayName) }
+                }
+            }
             .navigationTitle(photo.isVideo ? "Video Info" : "Photo Info")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

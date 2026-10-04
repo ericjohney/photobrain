@@ -9,6 +9,7 @@ import {
 	type MutableRefObject,
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useRef,
 	useState,
 } from "react";
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { rawBadge } from "@/lib/raw-badge";
 import { getFullImageUrl, getThumbnailUrl } from "@/lib/thumbnails";
-import type { PhotoMetadata } from "@/lib/types";
+import type { PhotoFace, PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type ZoomLevel = "fit" | "fill" | "100";
@@ -34,6 +35,11 @@ interface LoupeViewProps {
 	/** Receives the shown video's element (null otherwise), for `Space` play/pause. */
 	videoRef?: MutableRefObject<HTMLVideoElement | null>;
 	className?: string;
+	/** Draw face boxes over a still (the toolbar toggle / `F`). */
+	showFaces?: boolean;
+	/** The shown photo's faces, normalized to the oriented image. */
+	faces?: readonly PhotoFace[];
+	onFaceClick?: (face: PhotoFace) => void;
 }
 
 /**
@@ -117,6 +123,100 @@ function LiveMotionVideo({
 	);
 }
 
+/** Displayed image content within its wrapper, in CSS pixels. */
+type ContentRect = { left: number; top: number; width: number; height: number };
+
+/**
+ * The image's drawn content rect relative to its offset parent: the element
+ * box, minus the object-fit letterbox computed from the natural size
+ * (contain scales down to fit, cover scales up to fill; both center).
+ */
+function contentRect(image: HTMLImageElement): ContentRect | null {
+	const { naturalWidth, naturalHeight, offsetWidth, offsetHeight } = image;
+	if (!naturalWidth || !naturalHeight || !offsetWidth || !offsetHeight) {
+		return null;
+	}
+	const fit = getComputedStyle(image).objectFit;
+	const scaleX = offsetWidth / naturalWidth;
+	const scaleY = offsetHeight / naturalHeight;
+	const scale =
+		fit === "cover" ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+	// `fill`/`none` and an unconstrained element draw over the whole box.
+	const width =
+		fit === "contain" || fit === "cover" ? naturalWidth * scale : offsetWidth;
+	const height =
+		fit === "contain" || fit === "cover" ? naturalHeight * scale : offsetHeight;
+	return {
+		left: image.offsetLeft + (offsetWidth - width) / 2,
+		top: image.offsetTop + (offsetHeight - height) / 2,
+		width,
+		height,
+	};
+}
+
+/**
+ * Face boxes (with name labels) positioned over the image's drawn rect;
+ * recomputed on image load and whenever the image or wrapper resizes.
+ */
+function FaceBoxes({
+	image,
+	loaded,
+	faces,
+	onFaceClick,
+}: {
+	image: HTMLImageElement | null;
+	loaded: boolean;
+	faces: readonly PhotoFace[];
+	onFaceClick?: (face: PhotoFace) => void;
+}) {
+	const [rect, setRect] = useState<ContentRect | null>(null);
+	useLayoutEffect(() => {
+		if (!image || !loaded) {
+			setRect(null);
+			return;
+		}
+		const update = () => setRect(contentRect(image));
+		update();
+		const observer = new ResizeObserver(update);
+		observer.observe(image);
+		if (image.parentElement) observer.observe(image.parentElement);
+		return () => observer.disconnect();
+	}, [image, loaded]);
+	if (!rect) return null;
+	return (
+		<div
+			data-testid="face-boxes"
+			className="pointer-events-none absolute"
+			style={rect}
+		>
+			{faces.map((face) => {
+				const label = face.personName ?? "Unknown";
+				return (
+					<button
+						key={face.id}
+						type="button"
+						data-testid="face-box"
+						data-face-id={face.id}
+						aria-label={`Face: ${label}`}
+						onClick={() => onFaceClick?.(face)}
+						className="pointer-events-auto absolute rounded-sm border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.5)] hover:border-primary"
+						style={{
+							left: face.box.x * rect.width,
+							top: face.box.y * rect.height,
+							width: face.box.width * rect.width,
+							height: face.box.height * rect.height,
+						}}
+					>
+						<span className="absolute left-0 top-full mt-0.5 max-w-40 truncate whitespace-nowrap rounded bg-black/60 px-1 text-2xs text-white">
+							{label}
+						</span>
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
 export function LoupeView({
 	photo,
 	onNavigate,
@@ -124,7 +224,14 @@ export function LoupeView({
 	hasNext = false,
 	videoRef,
 	className,
+	showFaces = false,
+	faces,
+	onFaceClick,
 }: LoupeViewProps) {
+	// State (not a ref) so the face overlay measures the mounted image.
+	const [imageElement, setImageElement] = useState<HTMLImageElement | null>(
+		null,
+	);
 	const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("fit");
 	const [imageLoaded, setImageLoaded] = useState(false);
 	const [livePlaying, setLivePlaying] = useState(false);
@@ -214,7 +321,7 @@ export function LoupeView({
 			) : (
 				<div
 					className={cn(
-						"flex h-full w-full items-center justify-center",
+						"relative flex h-full w-full items-center justify-center",
 						zoomLevel === "100" && "overflow-auto",
 					)}
 				>
@@ -231,6 +338,7 @@ export function LoupeView({
 						/>
 					)}
 					<img
+						ref={setImageElement}
 						src={getImageSrc()}
 						alt={photo.name}
 						className={cn(
@@ -246,6 +354,14 @@ export function LoupeView({
 							key={photo.motionVideoId}
 							motionVideoId={photo.motionVideoId}
 							onDone={stopLive}
+						/>
+					)}
+					{showFaces && faces && faces.length > 0 && !livePlaying && (
+						<FaceBoxes
+							image={imageElement}
+							loaded={imageLoaded}
+							faces={faces}
+							onFaceClick={onFaceClick}
 						/>
 					)}
 				</div>

@@ -52,6 +52,11 @@ export function getFullImageUrl(
 	return `${base}?v=${ts}`;
 }
 
+/** Square crop of one detected face (`GET /api/faces/:id/crop`), 128 or 256 px. */
+export function getFaceCropUrl(faceId: number, size: 128 | 256 = 256): string {
+	return `${config.apiUrl}/api/faces/${faceId}/crop?size=${size}`;
+}
+
 /** Export rendition: the untouched original, or a metadata-free JPEG fit to that long edge. */
 export type ExportSize = "original" | "2048" | "1024";
 

@@ -4,11 +4,14 @@ import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
 import {
 	FIXTURE_DUPLICATE_GROUPS,
 	FIXTURE_FOLDERS,
+	FIXTURE_FACES,
 	FIXTURE_JUNK_REASONS,
+	FIXTURE_PEOPLE,
 	FIXTURE_PHOTO_PLACES,
 	FIXTURE_PHOTO_TAGS,
 	FIXTURE_PHOTOS,
 	type FixtureDuplicateKind,
+	type FixtureFace,
 	type FixtureJunkReason,
 	type FixturePhoto,
 	type FixturePhotoFilters,
@@ -118,6 +121,12 @@ function createDefaultHandlers(
 	const junkDismissed = new Set<number>();
 	// Group keys marked "Not duplicates" (the API's duplicate_dismissals).
 	const duplicateDismissals = new Set<string>();
+	// Faces and people, mutated by assignFace, updatePerson, and mergePeople.
+	const faces: FixtureFace[] = FIXTURE_FACES.map((face) => ({ ...face }));
+	const people = new Map(
+		FIXTURE_PEOPLE.map((person) => [person.id, { ...person }]),
+	);
+	let nextPersonId = Math.max(...FIXTURE_PEOPLE.map((p) => p.id)) + 1;
 	// Strictly increasing so same-millisecond writes still order deterministically.
 	let clock = Date.parse("2024-09-01T00:00:00Z");
 	const now = () => {
@@ -151,7 +160,9 @@ function createDefaultHandlers(
 	/** Live evaluation like the API: query albums have no count or cover. */
 	const smartAlbumDto = (album: FixtureSmartAlbum) => {
 		const matching =
-			album.query === null ? filterFixturePhotos(library, album.filters) : null;
+			album.query === null
+				? filterFixturePhotos(library, album.filters, faces)
+				: null;
 		const coverId = matching?.reduce<number | undefined>(
 			(max, p) => (max === undefined || p.id > max ? p.id : max),
 			undefined,
@@ -248,6 +259,35 @@ function createDefaultHandlers(
 		const members = collections.get(collectionId)?.photoIds ?? [];
 		return library.filter((p) => members.includes(p.id));
 	};
+	const findPerson = (id: number) => {
+		const person = people.get(id);
+		if (!person) throw new TrpcFixtureError("NOT_FOUND", "Person not found");
+		return person;
+	};
+	/** Like the API's people rows: counts over the stacked library listing. */
+	const personDto = (person: (typeof FIXTURE_PEOPLE)[number]) => {
+		const own = faces.filter((f) => f.personId === person.id);
+		const cover = own.some((f) => f.id === person.coverFaceId)
+			? person.coverFaceId
+			: null;
+		return {
+			id: person.id,
+			name: person.name,
+			hidden: person.hidden,
+			photoCount: filterFixturePhotos(library, { personId: person.id }, faces)
+				.length,
+			faceCount: own.length,
+			coverFaceId: cover,
+		};
+	};
+	const photoFaceDto = (face: FixtureFace) => ({
+		id: face.id,
+		box: face.box,
+		personId: face.personId,
+		personName:
+			face.personId === null ? null : (people.get(face.personId)?.name ?? null),
+		assignment: face.assignment,
+	});
 	/**
 	 * Library photos with these IDs plus their RAW+standard partners, in
 	 * ascending ID order (the library's order), like the API's
@@ -312,6 +352,7 @@ function createDefaultHandlers(
 			const photos = filterFixturePhotos(
 				scopeToCollection({ collectionId }),
 				filters,
+				faces,
 			);
 			return {
 				photos,
@@ -326,7 +367,7 @@ function createDefaultHandlers(
 			const { collectionId, ...filters } = (input ??
 				{}) as FixturePhotoFilters & CollectionScope;
 			return fixtureGearStats(
-				filterFixturePhotos(scopeToCollection({ collectionId }), filters),
+				filterFixturePhotos(scopeToCollection({ collectionId }), filters, faces),
 			);
 		},
 		// Like the API: the same filters and stacking, then valid locations only.
@@ -336,6 +377,7 @@ function createDefaultHandlers(
 			const points = filterFixturePhotos(
 				scopeToCollection({ collectionId }),
 				filters,
+				faces,
 			)
 				.flatMap((p) => {
 					const location = fixtureLocation(p);
@@ -355,7 +397,7 @@ function createDefaultHandlers(
 				};
 			const photos = searchPhotosByQuery(
 				query,
-				filterFixturePhotos(scopeToCollection({ collectionId }), filters),
+				filterFixturePhotos(scopeToCollection({ collectionId }), filters, faces),
 			);
 			return { photos, total: photos.length, query };
 		},
@@ -419,6 +461,83 @@ function createDefaultHandlers(
 		// The fixture library is below the API's six-photo event minimum, so by
 		// default no event is detected; events.spec installs fixtureEvents.
 		events: () => ({ events: [] }),
+		// Like the API: named first, then photo count desc, then id.
+		people: (input) => {
+			const { includeHidden = false } = (input ?? {}) as {
+				includeHidden?: boolean;
+			};
+			return {
+				people: [...people.values()]
+					.filter((p) => includeHidden || !p.hidden)
+					.map(personDto)
+					.sort(
+						(a, b) =>
+							Number(a.name === null) - Number(b.name === null) ||
+							b.photoCount - a.photoCount ||
+							a.id - b.id,
+					),
+			};
+		},
+		person: (input) => personDto(findPerson((input as { id: number }).id)),
+		updatePerson: (input) => {
+			const { id, name, hidden } = input as {
+				id: number;
+				name?: string | null;
+				hidden?: boolean;
+			};
+			const person = findPerson(id);
+			if (name !== undefined) person.name = name;
+			if (hidden !== undefined) person.hidden = hidden;
+			return personDto(person);
+		},
+		mergePeople: (input) => {
+			const { targetId, sourceIds } = input as {
+				targetId: number;
+				sourceIds: number[];
+			};
+			const target = findPerson(targetId);
+			const sources = sourceIds.map(findPerson);
+			target.name ??= sources.find((p) => p.name !== null)?.name ?? null;
+			for (const face of faces) {
+				if (face.personId !== null && sourceIds.includes(face.personId)) {
+					face.personId = targetId;
+					face.assignment = "manual";
+				}
+			}
+			for (const id of sourceIds) people.delete(id);
+			return personDto(target);
+		},
+		photoFaces: (input) => {
+			const { photoId } = input as { photoId: number };
+			if (!library.some((p) => p.id === photoId)) {
+				throw new TrpcFixtureError("NOT_FOUND", "Photo not found");
+			}
+			return {
+				faces: faces
+					.filter((f) => f.photoId === photoId)
+					.sort((a, b) => a.box.x - b.box.x || a.id - b.id)
+					.map(photoFaceDto),
+			};
+		},
+		assignFace: (input) => {
+			const { faceId, personId, name } = input as {
+				faceId: number;
+				personId?: number | null;
+				name?: string;
+			};
+			const face = faces.find((f) => f.id === faceId);
+			if (!face) throw new TrpcFixtureError("NOT_FOUND", "Face not found");
+			if (name !== undefined) {
+				const id = nextPersonId++;
+				people.set(id, { id, name, hidden: false, coverFaceId: faceId });
+				face.personId = id;
+			} else {
+				if (personId != null) findPerson(personId);
+				face.personId = personId ?? null;
+			}
+			face.assignment = face.personId === null ? "rejected" : "manual";
+			return photoFaceDto(face);
+		},
 		setPhotoCuration: (input) => {
 			const { photoIds, rating, flag } = input as CurationInput;
 			const updated = withPartners(photoIds).map((p) => {
@@ -837,6 +956,13 @@ export async function installTrpcHandlers(
 		}),
 	);
 	await page.route(/\/api\/photos\/\d+\/file/, (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: "image/jpeg",
+			body: TINY_JPEG_BYTES,
+		}),
+	);
+	await page.route(/\/api\/faces\/\d+\/crop/, (route) =>
 		route.fulfill({
 			status: 200,
 			contentType: "image/jpeg",

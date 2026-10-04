@@ -128,3 +128,5 @@ Cargo.lock
 !.yarn/sdks
 !.yarn/versions
 /npm
+# Lazily downloaded face models (FACE_MODEL_DIR fallback)
+.face_models/

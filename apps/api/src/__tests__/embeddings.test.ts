@@ -214,12 +214,14 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 			current: 2,
 			total: 2,
 		});
-		// One appended step (ID unchanged since F6) requests every backfill.
+		// One appended step (ID unchanged since F6) requests every backfill;
+		// face detection follows as its own appended step.
 		expect(run.sent).toEqual([
 			{ id: "trigger-photo-tags-v1", name: "photos/tags.requested" },
 			{ id: "trigger-photo-tags-v1", name: "photos/quality.requested" },
 			{ id: "trigger-photo-tags-v1", name: "photos/places.requested" },
 			{ id: "trigger-photo-tags-v1", name: "photos/events.requested" },
+			{ id: "trigger-photo-faces-v1", name: "photos/faces.requested" },
 		]);
 	});
 

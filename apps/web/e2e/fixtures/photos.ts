@@ -514,6 +514,129 @@ export const FIXTURE_DUPLICATE_GROUPS: {
 	{ kind: "duplicate", photoIds: [1, 3, 4], maxDistance: 1 },
 ];
 
+export type FixtureFaceBox = {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+};
+
+export type FixtureFace = {
+	id: number;
+	photoId: number;
+	/** Normalized (0..1) to the oriented image, like the API. */
+	box: FixtureFaceBox;
+	personId: number | null;
+	assignment: "auto" | "manual" | "rejected";
+};
+
+export type FixturePerson = {
+	id: number;
+	name: string | null;
+	hidden: boolean;
+	/** The cover face (the API picks the best-scored face); null shows a placeholder. */
+	coverFaceId: number | null;
+};
+
+/**
+ * People before counts. In API order (named first, photo count desc, then
+ * id) the visible ones are Bob (3 photos), Alice (2), Carol (1, no cover),
+ * unnamed 3 (2), and unnamed 5 (1, no cover); Dave (6) is hidden.
+ */
+export const FIXTURE_PEOPLE: FixturePerson[] = [
+	{ id: 1, name: "Alice", hidden: false, coverFaceId: 106 },
+	{ id: 2, name: "Bob", hidden: false, coverFaceId: 101 },
+	{ id: 3, name: null, hidden: false, coverFaceId: 107 },
+	{ id: 4, name: "Carol", hidden: false, coverFaceId: null },
+	{ id: 5, name: null, hidden: false, coverFaceId: null },
+	{ id: 6, name: "Dave", hidden: true, coverFaceId: 111 },
+];
+
+/**
+ * Detected faces. sunset.jpg (1, 4000x3000) has Bob then Alice left to
+ * right; street.jpg (5, 4000x6000 portrait) has unnamed 3 then Bob;
+ * landscape.jpg (3) has an unassigned face between Bob and unnamed 5.
+ */
+export const FIXTURE_FACES: FixtureFace[] = [
+	{
+		id: 101,
+		photoId: 1,
+		box: { x: 0.1, y: 0.2, width: 0.2, height: 0.3 },
+		personId: 2,
+		assignment: "auto",
+	},
+	{
+		id: 102,
+		photoId: 1,
+		box: { x: 0.6, y: 0.25, width: 0.15, height: 0.2 },
+		personId: 1,
+		assignment: "manual",
+	},
+	{
+		id: 103,
+		photoId: 3,
+		box: { x: 0.05, y: 0.1, width: 0.1, height: 0.1 },
+		personId: 2,
+		assignment: "auto",
+	},
+	{
+		id: 104,
+		photoId: 3,
+		box: { x: 0.4, y: 0.1, width: 0.1, height: 0.1 },
+		personId: null,
+		assignment: "auto",
+	},
+	{
+		id: 110,
+		photoId: 3,
+		box: { x: 0.7, y: 0.1, width: 0.1, height: 0.1 },
+		personId: 5,
+		assignment: "auto",
+	},
+	{
+		id: 105,
+		photoId: 5,
+		box: { x: 0.55, y: 0.4, width: 0.3, height: 0.2 },
+		personId: 2,
+		assignment: "auto",
+	},
+	{
+		id: 107,
+		photoId: 5,
+		box: { x: 0.1, y: 0.1, width: 0.25, height: 0.15 },
+		personId: 3,
+		assignment: "auto",
+	},
+	{
+		id: 106,
+		photoId: 6,
+		box: { x: 0.3, y: 0.3, width: 0.1, height: 0.1 },
+		personId: 1,
+		assignment: "auto",
+	},
+	{
+		id: 109,
+		photoId: 6,
+		box: { x: 0.6, y: 0.3, width: 0.1, height: 0.1 },
+		personId: 3,
+		assignment: "auto",
+	},
+	{
+		id: 108,
+		photoId: 8,
+		box: { x: 0.2, y: 0.2, width: 0.1, height: 0.1 },
+		personId: 4,
+		assignment: "auto",
+	},
+	{
+		id: 111,
+		photoId: 8,
+		box: { x: 0.5, y: 0.2, width: 0.1, height: 0.1 },
+		personId: 6,
+		assignment: "auto",
+	},
+];
+
 export function searchPhotosByQuery(
 	query: string,
 	photos: FixturePhoto[] = FIXTURE_PHOTOS,
@@ -543,6 +666,8 @@ export type FixturePhotoFilters = {
 	tag?: string;
 	country?: string;
 	place?: number;
+	/** People id whose faces appear in the photo (see FIXTURE_FACES). */
+	personId?: number;
 	/** "On this day" capture date, `YYYY-MM-DD`. */
 	capturedDate?: string;
 	/** Auto event id (see FIXTURE_EVENTS); an unknown id matches nothing. */
@@ -634,6 +759,7 @@ function cameraLabel(exif: NonNullable<FixturePhoto["exif"]>) {
 export function filterFixturePhotos(
 	photos: FixturePhoto[],
 	filters: FixturePhotoFilters = {},
+	faces: readonly FixtureFace[] = FIXTURE_FACES,
 ): FixturePhoto[] {
 	const motionClipIds = new Set(
 		photos.flatMap((p) => (p.motionVideoId === null ? [] : [p.motionVideoId])),
@@ -686,6 +812,14 @@ export function filterFixturePhotos(
 			return false;
 		}
 		if (filters.place !== undefined && place?.id !== filters.place) {
+			return false;
+		}
+		if (
+			filters.personId !== undefined &&
+			!faces.some(
+				(f) => f.photoId === p.id && f.personId === filters.personId,
+			)
+		) {
 			return false;
 		}
 		if (

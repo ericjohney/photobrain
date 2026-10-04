@@ -22,6 +22,7 @@ final class AppBootstrap: ObservableObject {
     @Published private(set) var collections: CollectionsStore?
     @Published private(set) var smartAlbums: SmartAlbumsStore?
     @Published private(set) var events: EventsStore?
+    @Published private(set) var people: PeopleStore?
     @Published private(set) var review: ReviewStore?
     @Published private(set) var duplicates: DuplicatesStore?
     @Published private(set) var scans: ScanCoordinator?
@@ -46,6 +47,7 @@ final class AppBootstrap: ObservableObject {
             let collections = CollectionsStore(api: environment.api)
             let smartAlbums = SmartAlbumsStore(api: environment.api)
             let events = EventsStore(api: environment.api)
+            let people = PeopleStore(api: environment.api)
             let review = ReviewStore(api: environment.api, curation: curation)
             let duplicates = DuplicatesStore(api: environment.api, curation: curation)
             let scans = ScanCoordinator(api: environment.api, migration: migration)
@@ -69,6 +71,7 @@ final class AppBootstrap: ObservableObject {
             self.collections = collections
             self.smartAlbums = smartAlbums
             self.events = events
+            self.people = people
             self.review = review
             self.duplicates = duplicates
             self.scans = scans
@@ -89,6 +92,7 @@ private struct BootstrapView: View {
            let collections = bootstrap.collections,
            let smartAlbums = bootstrap.smartAlbums,
            let events = bootstrap.events,
+           let people = bootstrap.people,
            let review = bootstrap.review,
            let duplicates = bootstrap.duplicates,
            let scans = bootstrap.scans,
@@ -101,6 +105,7 @@ private struct BootstrapView: View {
                 collections: collections,
                 smartAlbums: smartAlbums,
                 events: events,
+                people: people,
                 review: review,
                 duplicates: duplicates,
                 scans: scans,
@@ -127,6 +132,7 @@ private struct RootTabView: View {
     let collections: CollectionsStore
     let smartAlbums: SmartAlbumsStore
     let events: EventsStore
+    let people: PeopleStore
     let review: ReviewStore
     let duplicates: DuplicatesStore
     @ObservedObject var scans: ScanCoordinator
@@ -156,6 +162,7 @@ private struct RootTabView: View {
                 store: collections,
                 smartAlbums: smartAlbums,
                 events: events,
+                people: people,
                 curation: library.curation,
                 environment: environment,
                 theme: theme
@@ -184,6 +191,7 @@ private struct RootTabView: View {
                 }
             }
         }
+        .environment(\.peopleStore, people)
         .environment(\.showInLibrary, ShowInLibraryAction { shortcut in
             navigation.selectedTab = .library
             library.show(shortcut)

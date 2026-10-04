@@ -6,6 +6,7 @@ import {
 	ScanEye,
 	Search,
 	Sparkles,
+	UserRound,
 	X,
 } from "lucide-react";
 import {
@@ -24,6 +25,7 @@ import { GearStatsView } from "@/components/GearStatsView";
 import { LoupeView } from "@/components/LoupeView";
 import type { MapFocus } from "@/components/MapView";
 import { OnThisDayStrip } from "@/components/OnThisDayStrip";
+import { PeopleView } from "@/components/PeopleView";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { ActivityPanel } from "@/components/panels/ActivityPanel";
 import {
@@ -34,6 +36,7 @@ import {
 	minRatingLabel,
 } from "@/components/panels/LibraryPanel";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
+import { faceRowId } from "@/components/panels/PhotoPeople";
 import { PanelLayout } from "@/components/panels/PanelLayout";
 import { ReviewHeader } from "@/components/ReviewHeader";
 import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
@@ -51,6 +54,7 @@ import {
 } from "@/hooks/use-library-state";
 import { useOnThisDay } from "@/hooks/use-on-this-day";
 import { usePanelState } from "@/hooks/use-panel-state";
+import { personName, usePeople } from "@/hooks/use-people";
 import {
 	type CurationPatch,
 	usePhotoCuration,
@@ -75,6 +79,7 @@ import type {
 	JunkAction,
 	JunkReason,
 	PhotoBounds,
+	PhotoFace,
 	PhotoMetadata,
 	PhotoPlace,
 	SmartAlbum,
@@ -96,13 +101,16 @@ export function Dashboard() {
 		number | null
 	>(null);
 	const [activeJobId, setActiveJobId] = useState<string | null>(null);
-	// Review and Duplicates replace the library view; folder, collection, and
-	// filters are kept (but ignored) so leaving them restores the library.
+	// Review, Duplicates, and People replace the library view; folder,
+	// collection, and filters are kept (but ignored) so leaving them restores
+	// the library.
 	const [catalogView, setCatalogView] = useState<
-		"review" | "duplicates" | null
+		"review" | "duplicates" | "people" | null
 	>(null);
 	const reviewActive = catalogView === "review";
 	const duplicatesActive = catalogView === "duplicates";
+	const peopleActive = catalogView === "people";
+	const [showHiddenPeople, setShowHiddenPeople] = useState(false);
 	const [reviewReason, setReviewReason] = useState<JunkReason | null>(null);
 	const [duplicateKind, setDuplicateKind] = useState<DuplicateKind | null>(
 		null,
@@ -181,6 +189,7 @@ export function Dashboard() {
 		tag: filters.tag ?? undefined,
 		country: filters.country ?? undefined,
 		place: filters.place ?? undefined,
+		personId: filters.personId ?? undefined,
 		capturedDate: filters.capturedDate ?? undefined,
 		event: filters.event?.id,
 	};
@@ -213,6 +222,19 @@ export function Dashboard() {
 		active: duplicatesActive,
 		kind: duplicateKind,
 	});
+	const peopleApi = usePeople({
+		active: peopleActive,
+		includeHidden: showHiddenPeople,
+	});
+	// The scoped person's name for the header, chip, and search scope.
+	const scopedPersonQuery = trpc.person.useQuery(
+		{ id: filters.personId ?? 0 },
+		{ enabled: filters.personId !== null },
+	);
+	const personScopeLabel =
+		filters.personId === null
+			? null
+			: `Person: ${scopedPersonQuery.data ? personName(scopedPersonQuery.data) : "…"}`;
 	// Loupe/filmstrip navigation in Duplicates walks every shown member once.
 	const duplicatePhotos = useMemo(() => {
 		const seen = new Set<number>();
@@ -252,15 +274,21 @@ export function Dashboard() {
 			: searchQuery
 				? searchPhotosQuery
 				: photosQuery;
-	const listedPhotos: PhotoMetadata[] = duplicatesActive
-		? duplicatePhotos
-		: (activeQuery.data?.photos ?? []);
-	const loading = duplicatesActive
-		? duplicates.listQuery.isLoading
-		: activeQuery.isLoading;
-	const error = duplicatesActive
-		? duplicates.listQuery.error
-		: activeQuery.error;
+	const listedPhotos: PhotoMetadata[] = peopleActive
+		? []
+		: duplicatesActive
+			? duplicatePhotos
+			: (activeQuery.data?.photos ?? []);
+	const loading = peopleActive
+		? false
+		: duplicatesActive
+			? duplicates.listQuery.isLoading
+			: activeQuery.isLoading;
+	const error = peopleActive
+		? null
+		: duplicatesActive
+			? duplicates.listQuery.error
+			: activeQuery.error;
 	const similarNotIndexed =
 		similarSource !== null && similarPhotosQuery.data?.indexed === false;
 
@@ -446,6 +474,35 @@ export function Dashboard() {
 		else video.pause();
 	}, []);
 
+	// `F` / toolbar: face boxes over a still in the loupe (People view aside).
+	const [showFaces, setShowFaces] = useState(false);
+	const faceBoxesAvailable =
+		library.viewMode === "loupe" &&
+		!peopleActive &&
+		library.activePhoto !== null &&
+		!activeIsVideo;
+	const toggleFaceBoxes = useCallback(
+		() => setShowFaces((current) => !current),
+		[],
+	);
+	const loupeFacesQuery = trpc.photoFaces.useQuery(
+		{ photoId: activePhotoId ?? 0 },
+		{ enabled: faceBoxesAvailable && showFaces && activePhotoId !== undefined },
+	);
+	// A face box focuses its metadata row (opening the panel when hidden).
+	const { rightPanelVisible, toggleRightPanel } = panels;
+	const focusFaceRow = useCallback(
+		(face: PhotoFace) => {
+			if (!rightPanelVisible) toggleRightPanel();
+			requestAnimationFrame(() => {
+				const row = document.getElementById(faceRowId(face.id));
+				row?.scrollIntoView({ block: "nearest" });
+				row?.focus();
+			});
+		},
+		[rightPanelVisible, toggleRightPanel],
+	);
+
 	// Keyboard shortcuts
 	useKeyboardShortcuts({
 		viewMode: library.viewMode,
@@ -465,6 +522,7 @@ export function Dashboard() {
 			library.viewMode === "loupe" && activeIsVideo
 				? toggleVideoPlayback
 				: null,
+		toggleFaceBoxes: faceBoxesAvailable ? toggleFaceBoxes : null,
 	});
 
 	const handlePhotoClick = useCallback(
@@ -532,7 +590,7 @@ export function Dashboard() {
 		setCatalogView("review");
 		setSimilarSource(null);
 		setActivePhoto(null);
-		// Review and Duplicates replace the library, which the map shows.
+		// Review, Duplicates, and People replace the library, which the map shows.
 		if (mapActive) setLibraryViewMode("grid");
 	}, [setActivePhoto, mapActive, setLibraryViewMode]);
 
@@ -542,6 +600,24 @@ export function Dashboard() {
 		setActivePhoto(null);
 		if (mapActive) setLibraryViewMode("grid");
 	}, [setActivePhoto, mapActive, setLibraryViewMode]);
+
+	const handlePeopleSelect = useCallback(() => {
+		setCatalogView("people");
+		setSimilarSource(null);
+		setActivePhoto(null);
+		// People has no photos to show in the loupe or on the map.
+		if (library.viewMode !== "grid") setLibraryViewMode("grid");
+	}, [setActivePhoto, library.viewMode, setLibraryViewMode]);
+
+	// A person card scopes the library (and an active search) to that person.
+	const handlePersonSelect = useCallback(
+		(personId: number) => {
+			setFilters((current) => ({ ...current, personId }));
+			setCatalogView(null);
+			setActivePhoto(null);
+		},
+		[setActivePhoto],
+	);
 
 	const exitCatalogView = useCallback(() => {
 		setCatalogView(null);
@@ -701,6 +777,28 @@ export function Dashboard() {
 			);
 		}
 
+		// People replaces the library in every non-map view mode.
+		if (peopleActive) {
+			return (
+				<PeopleView
+					people={peopleApi.people}
+					loading={peopleApi.listQuery.isLoading}
+					loadError={peopleApi.listQuery.error?.message ?? null}
+					showHidden={showHiddenPeople}
+					onShowHiddenChange={setShowHiddenPeople}
+					onSelect={(person) => handlePersonSelect(person.id)}
+					onRename={(person, name) => void peopleApi.rename(person, name)}
+					onSetHidden={(person, hidden) =>
+						void peopleApi.setHidden(person, hidden)
+					}
+					onMerge={(target, sources) => void peopleApi.merge(target, sources)}
+					error={peopleApi.error}
+					onDismissError={peopleApi.clearError}
+					onExit={exitCatalogView}
+				/>
+			);
+		}
+
 		if (gearShown) {
 			return (
 				<GearStatsView
@@ -749,6 +847,9 @@ export function Dashboard() {
 					hasPrev={hasPrev}
 					hasNext={hasNext}
 					videoRef={loupeVideoRef}
+					showFaces={showFaces && faceBoxesAvailable}
+					faces={loupeFacesQuery.data?.faces}
+					onFaceClick={focusFaceRow}
 				/>
 			);
 		}
@@ -882,6 +983,7 @@ export function Dashboard() {
 						(c) => c.code === filters.country,
 					)?.name ?? filters.country)
 				: null,
+		personScopeLabel,
 	].filter((part): part is string => part !== null);
 	// What "Save as Smart Album" stores (collection scope, map area, and
 	// capture date are never saved).
@@ -945,6 +1047,32 @@ export function Dashboard() {
 			</button>
 		</div>
 	);
+	const personHeader = personScopeLabel !== null && (
+		<div
+			data-testid="person-header"
+			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
+		>
+			<UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			<h2 className="min-w-0 flex-1 truncate font-medium">
+				{personScopeLabel}
+			</h2>
+			<button
+				type="button"
+				aria-label="Leave person"
+				onClick={() => setFilters((current) => ({ ...current, personId: null }))}
+				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+			>
+				<X className="h-3.5 w-3.5" />
+			</button>
+		</div>
+	);
+	const scopeHeaders =
+		collectionHeader || personHeader ? (
+			<>
+				{collectionHeader}
+				{personHeader}
+			</>
+		) : null;
 	const reviewHeader = reviewActive && (
 		<ReviewHeader
 			reason={reviewReason}
@@ -1001,17 +1129,19 @@ export function Dashboard() {
 	// A query album names itself above the search results header.
 	const banner = mapActive
 		? // The map shows the library scope: search and Find similar do not apply.
-			collectionHeader
-		: reviewHeader ||
-			duplicatesHeader ||
-			similarChip ||
-			(smartAlbumHeader || searchHeader ? (
-				<>
-					{smartAlbumHeader}
-					{searchHeader}
-				</>
-			) : null) ||
-			collectionHeader;
+			scopeHeaders
+		: peopleActive
+			? null
+			: reviewHeader ||
+				duplicatesHeader ||
+				similarChip ||
+				(smartAlbumHeader || searchHeader ? (
+					<>
+						{smartAlbumHeader}
+						{searchHeader}
+					</>
+				) : null) ||
+				scopeHeaders;
 
 	return (
 		<PanelLayout
@@ -1040,6 +1170,11 @@ export function Dashboard() {
 									active: gearShown,
 									onToggle: () => setGearActive((current) => !current),
 								}
+							: null
+					}
+					faces={
+						faceBoxesAvailable
+							? { shown: showFaces, onToggle: toggleFaceBoxes }
 							: null
 					}
 					leftPanelVisible={panels.leftPanelVisible}
@@ -1096,6 +1231,10 @@ export function Dashboard() {
 							}
 							duplicatesActive={duplicatesActive}
 							onDuplicatesSelect={handleDuplicatesSelect}
+							peopleCount={peopleApi.count}
+							peopleActive={peopleActive}
+							onPeopleSelect={peopleActive ? exitCatalogView : handlePeopleSelect}
+							personLabel={personScopeLabel}
 						/>
 					</div>
 					<ActivityPanel

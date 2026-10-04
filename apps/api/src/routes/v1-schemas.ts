@@ -13,6 +13,11 @@ import {
 	MAX_DUPLICATE_KEY_LENGTH,
 } from "../services/duplicates";
 import type { EventsResult } from "../services/events";
+import {
+	FACE_ASSIGNMENTS,
+	MAX_MERGE_SOURCE_IDS,
+	MAX_PERSON_NAME_LENGTH,
+} from "../services/faces";
 import type { GearStats } from "../services/gear-stats";
 import {
 	JUNK_ACTIONS,
@@ -115,6 +120,12 @@ export const tagFilterSchema = z
 	.max(MAX_TAG_SLUG_LENGTH)
 	.regex(TAG_SLUG_PATTERN)
 	.optional();
+/** A `people` id (`personId` filter); an unknown id matches nothing. */
+export const personIdFilterSchema = z.coerce
+	.number()
+	.int()
+	.positive()
+	.optional();
 export const countryFilterSchema = z
 	.string()
 	.regex(COUNTRY_CODE_PATTERN)
@@ -159,6 +170,7 @@ const photoFilterFieldsSchema = z.object({
 	flag: curationFlagFilterSchema,
 	collectionId: collectionIdFilterSchema,
 	tag: tagFilterSchema,
+	personId: personIdFilterSchema,
 	country: countryFilterSchema,
 	place: placeFilterSchema,
 	event: eventFilterSchema,
@@ -332,6 +344,7 @@ export const searchRequestSchema = z
 		flag: curationFlagFilterSchema,
 		collectionId: z.number().int().positive().optional(),
 		tag: tagFilterSchema,
+		personId: z.number().int().positive().optional(),
 		country: countryFilterSchema,
 		place: z.number().int().positive().optional(),
 		event: z.number().int().positive().optional(),
@@ -352,6 +365,7 @@ export const similarPhotosQuerySchema = z.object({
 	flag: curationFlagFilterSchema,
 	collectionId: collectionIdFilterSchema,
 	tag: tagFilterSchema,
+	personId: personIdFilterSchema,
 	country: countryFilterSchema,
 	place: placeFilterSchema,
 	event: eventFilterSchema,
@@ -575,6 +589,80 @@ export const photoCollectionsResponseSchema = z.object({
 	collectionIds: z.array(z.number().int().positive()),
 });
 
+export const personIdSchema = z.coerce.number().int().positive();
+export const faceIdSchema = z.coerce.number().int().positive();
+
+const personNameSchema = z.string().trim().min(1).max(MAX_PERSON_NAME_LENGTH);
+
+/** `includeHidden` is the literal `true`/`false` text of the query string. */
+export const peopleQuerySchema = z.object({
+	includeHidden: z
+		.enum(["true", "false"])
+		.optional()
+		.transform((value) => value === "true"),
+});
+
+export const personSchema = z.object({
+	id: z.number().int().positive(),
+	name: z.string().min(1).max(MAX_PERSON_NAME_LENGTH).nullable(),
+	hidden: z.boolean(),
+	photoCount: z.number().int().nonnegative(),
+	faceCount: z.number().int().nonnegative(),
+	coverFaceId: z.number().int().positive().nullable(),
+});
+
+export const peopleResponseSchema = z.object({
+	people: z.array(personSchema),
+});
+
+export const updatePersonRequestSchema = z
+	.object({
+		name: personNameSchema.nullable().optional(),
+		hidden: z.boolean().optional(),
+	})
+	.strict();
+
+/** The target is the path id; `sourceIds` must be distinct and exclude it (checked by the route). */
+export const mergePeopleRequestSchema = z
+	.object({
+		sourceIds: z
+			.array(z.number().int().positive())
+			.min(1)
+			.max(MAX_MERGE_SOURCE_IDS),
+	})
+	.strict();
+
+export const faceSchema = z.object({
+	id: z.number().int().positive(),
+	box: z.object({
+		x: z.number(),
+		y: z.number(),
+		width: z.number(),
+		height: z.number(),
+	}),
+	personId: z.number().int().positive().nullable(),
+	personName: z.string().nullable(),
+	assignment: z.enum(FACE_ASSIGNMENTS),
+});
+
+export const photoFacesResponseSchema = z.object({
+	faces: z.array(faceSchema),
+});
+
+/**
+ * Exactly one of `personId` (a person id assigns, `null` rejects) and `name`
+ * (creates a named person).
+ */
+export const assignFaceRequestSchema = z
+	.object({
+		personId: z.number().int().positive().nullable().optional(),
+		name: personNameSchema.optional(),
+	})
+	.strict()
+	.refine(
+		(input) => (input.personId !== undefined) !== (input.name !== undefined),
+	);
+
 export const smartAlbumIdSchema = z.coerce.number().int().positive();
 
 const smartAlbumNameSchema = z
@@ -610,6 +698,7 @@ export const smartAlbumFiltersRequestSchema = z
 		minRating: z.number().int().min(1).max(5).optional(),
 		flag: curationFlagFilterSchema,
 		tag: z.union([z.literal(""), tagFilterSchema.unwrap()]).optional(),
+		personId: z.number().int().positive().optional(),
 		country: z.union([z.literal(""), countryFilterSchema.unwrap()]).optional(),
 		place: z.number().int().positive().optional(),
 	})
@@ -645,6 +734,7 @@ export const smartAlbumSchema = z.object({
 			minRating: z.number().int().min(1).max(5).optional(),
 			flag: curationFlagFilterSchema,
 			tag: tagFilterSchema,
+			personId: z.number().int().positive().optional(),
 			country: countryFilterSchema,
 			place: z.number().int().positive().optional(),
 		})

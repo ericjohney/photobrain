@@ -27,6 +27,17 @@ import {
 	resolveDuplicateGroup,
 } from "../services/duplicates";
 import { listEvents } from "../services/events";
+import {
+	assignFace,
+	FaceError,
+	getPerson,
+	getPhotoFaces,
+	listPeople,
+	MAX_MERGE_SOURCE_IDS,
+	MAX_PERSON_NAME_LENGTH,
+	mergePeople,
+	updatePerson,
+} from "../services/faces";
 import { gearStats } from "../services/gear-stats";
 import {
 	JUNK_ACTIONS,
@@ -86,6 +97,7 @@ const sharedFilterShape = {
 	flag: z.enum(["pick", "reject", "unflagged"]).optional(),
 	collectionId: z.number().int().positive().optional(),
 	tag: z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN).optional(),
+	personId: z.number().int().positive().optional(),
 	country: z.string().regex(COUNTRY_CODE_PATTERN).optional(),
 	place: z.number().int().positive().optional(),
 	event: z.number().int().positive().optional(),
@@ -183,6 +195,7 @@ const smartAlbumFiltersSchema = z
 				z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN),
 			])
 			.optional(),
+		personId: sharedFilterShape.personId,
 		country: z
 			.union([z.literal(""), z.string().regex(COUNTRY_CODE_PATTERN)])
 			.optional(),
@@ -203,6 +216,25 @@ function smartAlbumMutation<T>(run: () => T): T {
 						: error.code === "NOT_FOUND"
 							? "NOT_FOUND"
 							: "BAD_REQUEST",
+				message: error.message,
+				cause: error,
+			});
+		}
+		throw error;
+	}
+}
+
+const personIdSchema = z.number().int().positive();
+const personNameSchema = z.string().trim().min(1).max(MAX_PERSON_NAME_LENGTH);
+
+/** Maps face/person domain errors to tRPC codes; other errors propagate unchanged. */
+function faceMutation<T>(run: () => T): T {
+	try {
+		return run();
+	} catch (error) {
+		if (error instanceof FaceError) {
+			throw new TRPCError({
+				code: "NOT_FOUND",
 				message: error.message,
 				cause: error,
 			});
@@ -417,6 +449,88 @@ export const appRouter = router({
 				throw error;
 			}
 		}),
+
+	people: publicProcedure
+		.input(z.object({ includeHidden: z.boolean().optional() }).optional())
+		.query(({ ctx, input }) => listPeople(ctx.db, input ?? {})),
+
+	person: publicProcedure
+		.input(z.object({ id: personIdSchema }))
+		.query(({ ctx, input }) => {
+			const person = getPerson(ctx.db, input.id);
+			if (!person) {
+				throw new TRPCError({ code: "NOT_FOUND", message: "Person not found" });
+			}
+			return person;
+		}),
+
+	updatePerson: publicProcedure
+		.input(
+			z.object({
+				id: personIdSchema,
+				name: personNameSchema.nullable().optional(),
+				hidden: z.boolean().optional(),
+			}),
+		)
+		.mutation(({ ctx, input }) =>
+			faceMutation(() =>
+				updatePerson(ctx.db, input.id, {
+					name: input.name,
+					hidden: input.hidden,
+				}),
+			),
+		),
+
+	mergePeople: publicProcedure
+		.input(
+			z
+				.object({
+					targetId: personIdSchema,
+					sourceIds: z.array(personIdSchema).min(1).max(MAX_MERGE_SOURCE_IDS),
+				})
+				.refine(
+					(input) =>
+						new Set(input.sourceIds).size === input.sourceIds.length &&
+						!input.sourceIds.includes(input.targetId),
+					{ message: "sourceIds must be distinct and exclude targetId" },
+				),
+		)
+		.mutation(({ ctx, input }) =>
+			faceMutation(() => mergePeople(ctx.db, input.targetId, input.sourceIds)),
+		),
+
+	photoFaces: publicProcedure
+		.input(z.object({ photoId: z.number().int().positive() }))
+		.query(({ ctx, input }) => {
+			const result = getPhotoFaces(ctx.db, input.photoId);
+			if (!result) {
+				throw new TRPCError({ code: "NOT_FOUND", message: "Photo not found" });
+			}
+			return result;
+		}),
+
+	assignFace: publicProcedure
+		.input(
+			z
+				.object({
+					faceId: z.number().int().positive(),
+					personId: personIdSchema.nullable().optional(),
+					name: personNameSchema.optional(),
+				})
+				.refine(
+					(input) =>
+						(input.personId !== undefined) !== (input.name !== undefined),
+					{ message: "Provide exactly one of personId or name" },
+				),
+		)
+		.mutation(({ ctx, input }) =>
+			faceMutation(() =>
+				assignFace(ctx.db, input.faceId, {
+					personId: input.personId,
+					name: input.name,
+				}),
+			),
+		),
 
 	collections: publicProcedure.query(({ ctx }) => ({
 		collections: listCollections(ctx.db),

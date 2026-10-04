@@ -37,6 +37,7 @@ export function toSmartAlbumFilters(
 		...(filters.minRating !== null && { minRating: filters.minRating }),
 		...(filters.flag !== null && { flag: filters.flag }),
 		...(filters.tag !== null && { tag: filters.tag }),
+		...(filters.personId !== null && { personId: filters.personId }),
 		...(filters.country !== null && { country: filters.country }),
 		...(filters.place !== null && { place: filters.place }),
 	};
@@ -56,6 +57,7 @@ export function fromSmartAlbumFilters(
 		minRating: filters.minRating ?? null,
 		flag: filters.flag ?? null,
 		tag: filters.tag ?? null,
+		personId: filters.personId ?? null,
 		country: filters.country ?? null,
 		place: filters.place ?? null,
 	};

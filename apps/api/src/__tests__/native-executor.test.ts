@@ -43,6 +43,22 @@ describe("off-thread native execution", () => {
 			null,
 			{ sharpness: 20, brightness: 128 },
 		]);
+		// Face detection keeps per-path failures aligned with its inputs.
+		expect(await executor.run("detectFaces", ["a", "missing"])).toEqual([
+			{
+				path: "a",
+				success: true,
+				faces: [
+					{
+						box: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+						score: 0.9,
+						embedding: [1, 0],
+					},
+				],
+				error: null,
+			},
+			{ path: "missing", success: false, faces: [], error: "unreadable" },
+		]);
 	});
 
 	test("API timers run during a blocking operation, not just during worker startup", async () => {
@@ -443,6 +459,36 @@ describe("continuous photo consumption", () => {
 			1,
 		);
 		// The second window continues the first session rather than reloading.
+		expect(names).toEqual(["1:/thumbs"]);
+		expect(loads).toBe(1);
+	});
+
+	test("a face crop runs beside an idle stream without draining it", async () => {
+		let loads = 0;
+		const load = () => {
+			loads++;
+			return inputs(30);
+		};
+		await executor.consumePhotos("job", "/thumbs", load, () => {}, 1);
+		const box = { x: 0.1, y: 0.2, width: 0.3, height: 0.4 };
+		const crop = await executor.run("renderFaceCrop", "/large.webp", box, 256);
+		expect(crop).toBeInstanceOf(Uint8Array);
+		expect(JSON.parse(new TextDecoder().decode(crop))).toEqual({
+			path: "/large.webp",
+			box,
+			size: 256,
+			streamsActive: 1,
+		});
+		const names: string[] = [];
+		await executor.consumePhotos(
+			"job",
+			"/thumbs",
+			load,
+			(_id, result) => {
+				names.push(result.name);
+			},
+			1,
+		);
 		expect(names).toEqual(["1:/thumbs"]);
 		expect(loads).toBe(1);
 	});

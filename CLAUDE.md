@@ -73,7 +73,8 @@ The scan flow is:
 8. Image quality: `analyze-quality-v1` (concurrency 1) measures the committed `medium` thumbnail of photos whose `photo_quality` row is missing, from another thumbnail generation, or from an older `QUALITY_VERSION`, 200 per step through the native executor's `analyzeImageQuality` (Laplacian-variance sharpness and mean luma on a ≤512 px luma downscale), with a generation-checked write.
 9. Place names: `place-photos-v1` (concurrency 1, on `photos/places.requested`, sent in the same trigger step as tags and quality) reverse-geocodes valid GPS offline against the committed GeoNames artifact `apps/api/src/data/places.tsv.gz` (cities ≥ 5,000 people, CC BY 4.0; regenerate with `cd apps/api && bun run build:places`): nearest city within 100 km through an in-memory 1° grid. Batches of 1,000 upsert or delete `photo_places`. A place is shown only while its `places_version` equals `PLACE_DATASET_VERSION` and its stored coordinate texts equal the photo's current EXIF texts, so changed or removed GPS never shows a stale place.
 10. Events: `detect-events-v1` (concurrency 1, on `photos/events.requested`, sent in the same trigger step) recomputes `events`/`event_photos` in one transaction from one streamed candidate query (valid EXIF wall-clock capture time, rejects excluded, RAW+JPEG stacked). Consecutive photos split at a gap ≥ 6 h, or ≥ 1 h when both have differing current places or current-model CLIP vectors with cosine < 0.6; runs of ≥ 6 photos are kept. An event's ID is its smallest member photo ID; cover is highest rating, then newest capture, then highest ID; place is the majority city (≥ 50% of located members), else majority country, else null. Bump `EVENTS_VERSION` when rules change.
-11. The scan and embedding functions persist progress to `scan_jobs` and publish it to the Inngest Realtime channel `job:{jobId}`. Exhausted failures become terminal failed rows.
+11. Faces: `detect-faces-v1` (concurrency 1, on `photos/faces.requested`, sent by a separate appended `trigger-photo-faces-v1` step) detects faces in the committed `large` thumbnails of stack-representative stills with native YuNet, embeds them with SFace (128-d), and writes `photo_faces` plus a `photo_face_scan` receipt per photo in generation-fenced batches of 32; rescanned faces inherit manual decisions by IoU ≥ 0.5. A final `cluster-faces-v1` step assigns unassigned `auto` faces to the nearest person centroid (cosine ≥ 0.50), groups the rest into new unnamed people (mutual-neighbour average linkage, cosine ≥ 0.48, ≥ 3 faces), and deletes faceless unnamed people. `manual`/`rejected` faces are never changed by automation. Models download lazily to `FACE_MODEL_DIR` (else `$FASTEMBED_CACHE_DIR/faces`, else `./.face_models`) with size/SHA-256 checks. Bump `FACE_MODEL_VERSION` when detection or embedding output changes.
+12. The scan and embedding functions persist progress to `scan_jobs` and publish it to the Inngest Realtime channel `job:{jobId}`. Exhausted failures become terminal failed rows.
 
 Incremental identity uses the canonical source root, byte size, nanosecond mtime/ctime, `MEDIA_VERSION`, and stat fingerprints of all four thumbnail files. Legacy rows receive one-time conservative adoption: matching size/whole-second mtime, completed media metadata, unambiguous stems, source ctime older than every thumbnail, full WebP/dimension validation, and post-validation stat checks. Valid artifacts are not re-encoded. These checks are metadata-based, not content hashes or proof of historical source provenance. `MEDIA_VERSION` and `EMBEDDING_MODEL_VERSION` in `processing-versions.ts` must change when their respective output contracts change.
 
@@ -120,6 +121,9 @@ The tables are:
 - `collection_photos`: collection membership with `added_at`; both foreign keys cascade, so deleting a collection never deletes photos.
 - `smart_albums`: saved filter sets (`filters` canonical JSON, `dateMonth` as `YYYY-MM`) plus an optional CLIP `query`, evaluated live; name unique case-insensitively among smart albums.
 - `duplicate_dismissals`: duplicate/burst group keys (`kind:sortedIds`) marked "not duplicates"; a key stops matching once membership changes.
+- `people`: automatic or user-created people (`name` nullable, `hidden`).
+- `photo_faces`: normalized face box, detector score, SFace embedding blob, thumbnail generation, `person_id` (set null when a person is deleted), and `assignment` (`auto`/`manual`/`rejected`); `(person_id, photo_id)` index; cascades with the photo.
+- `photo_face_scan`: per-photo detection receipt (thumbnail key, `FACE_MODEL_VERSION`, face count or error); cascades with the photo.
 - `scan_jobs`: durable scan/embedding phase, status, counts, errors, and timestamps.
 - `scan_manifests`: immutable per-job discovery boundary, roots, and processed/successful/unchanged/media/embedding counters.
 - `scan_items`: priority-ordered paths, work classification, frozen source/prior generation, current attempt key, and durable receipts; retained until final dispatch is checkpointed, then removed with the manifest.
@@ -139,7 +143,7 @@ cd packages/image-processing && bun run build
 
 Native development also requires Rust/Cargo, a C toolchain, `pkg-config`, OpenSSL development headers, `libheif-dev`, `libclang-dev`, and the `exiftool`, `ffmpeg`, and `ffprobe` executables. Debian/Ubuntu runtime images need `libheif1`, `libimage-exiftool-perl`, and `ffmpeg`.
 
-The first CLIP operation may download the FastEmbed model. Set `FASTEMBED_CACHE_DIR` to control the cache location.
+The first CLIP operation may download the FastEmbed model. Set `FASTEMBED_CACHE_DIR` to control the cache location. The first face detection downloads the YuNet (MIT) and SFace (Apache-2.0) ONNX models; set `FACE_MODEL_DIR` to control their location.
 
 ### Development servers
 
@@ -203,6 +207,7 @@ The schema and defaults are in `apps/api/src/config.ts`:
 | `RUN_DB_INIT` | `false` | `true` or `1` runs shared migrations on API startup |
 | `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false` | Enables `POST /api/v1/scans`; catalog/search/status compatibility routes remain readable while disabled |
 | `FASTEMBED_CACHE_DIR` | unset | Optional Rust/FastEmbed model cache |
+| `FACE_MODEL_DIR` | `$FASTEMBED_CACHE_DIR/faces`, else `./.face_models` | Optional YuNet/SFace ONNX cache read by Rust; files are size/SHA-256 verified |
 | `PHOTO_PROCESSING_THREADS` | available CPU capacity | Positive integer read by Rust at pool initialization; lower it to reduce concurrent decoded-image memory |
 | `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable Inngest HTTP(S) origin returned alongside subscription tokens |
 | `INNGEST_SERVE_ORIGIN` | unset | API callback origin parsed and passed to the Inngest Hono handler as `serveHost` |
@@ -253,6 +258,9 @@ The tRPC and `/api/v1` procedures are public; there is no authentication or auth
 | `resolveJunk` | mutation | 1-500 IDs; `reject` sets `flag = 'reject'`, `keep` sets `junk_dismissed`; returns existing IDs |
 | `duplicateGroups` | query | Near-duplicate groups (connected pHash components within 1 of 40 bits) and EXIF bursts (same camera, 3+ shots chained ≤ 2 s); undismissed, rejected photos excluded; suggested keeper; offset `cursor`, limit 1-200; `counts` per kind |
 | `resolveDuplicateGroup` | mutation | Key must still match current membership (`CONFLICT`). `keep` rejects every non-kept member and dismisses the kept set when 2+; `dismiss` records the key. Files are never touched |
+| `people` / `person` | query | People (named first, then photo count) with `photoCount`, `faceCount`, `coverFaceId`; hidden people only with `includeHidden` / one person, `NOT_FOUND` for unknown IDs |
+| `updatePerson` / `mergePeople` | mutation | Rename (1-80 chars, `null` clears) and hide; merge 1-50 sources into a target as `manual` faces, deleting the sources |
+| `photoFaces` / `assignFace` | query / mutation | A photo's faces left to right with box, person, and assignment / assign a face to a person, a new named person, or `null` (reject) |
 | `scan` | mutation | Defaults to incremental scanning; optional `{ force: true }` reprocesses all discovered files. Creates a durable job and returns `{ success, jobId? }` |
 | `scanStatus` | query | Returns durable progress for a scan UUID or `null` |
 | `realtimeToken` | query | Returns `{ token, baseUrl? }` for a job ID; optional client-reachable self-hosted origin |
@@ -273,6 +281,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `GET /api/v1/gear-stats` (same query as `/photos`; `{ total, withExif, cameras, lenses, focalLengths, apertures, shutterSpeeds, isos, cameraYears }` over exactly the listing's photo set with RAW+JPEG stacking). Cameras/lenses are all entries, count desc then label; the four histograms always return every fixed bucket (`FOCAL_LENGTH_BUCKETS`, `APERTURE_BUCKETS`, `SHUTTER_SPEED_BUCKETS`, `ISO_BUCKETS` in `services/gear-stats.ts`), excluding unparseable values per dimension. The camera label SQL (`cameraLabelSql`) is shared with the `camera` filter and `filterOptions`.
 - `GET|POST /api/v1/collections`, `PATCH|DELETE /api/v1/collections/:id`, `POST /api/v1/collections/:id/photos`, `POST /api/v1/collections/:id/photos/remove`, `GET /api/v1/photos/:id/collections` (409 `COLLECTION_NAME_TAKEN`, 404 `COLLECTION_NOT_FOUND`)
 - `GET|POST /api/v1/smart-albums`, `PATCH|DELETE /api/v1/smart-albums/:id` (`dateMonth` emitted as `YYYY-MM`; 409 `SMART_ALBUM_NAME_TAKEN`, 404 `SMART_ALBUM_NOT_FOUND`); clients open an album through `photos` or, with a query, `search` (limit 100)
+- `GET /api/v1/people`, `GET|PATCH /api/v1/people/:id`, `POST /api/v1/people/:id/merge`, `GET /api/v1/photos/:id/faces`, `PUT /api/v1/faces/:id/person` (404 `PERSON_NOT_FOUND`/`FACE_NOT_FOUND`). `personId` filters `/photos`, `/locations`, search, similar, gear stats, and smart albums.
 - `GET /api/v1/review/junk`, `POST /api/v1/review/junk/resolve` (same shapes as `junkReview`/`resolveJunk`; 400 `INVALID_REQUEST`)
 - `POST /api/v1/search`
 - `POST /api/v1/scans` (disabled by default through `V1_NATIVE_SCAN_MUTATIONS_ENABLED`)
@@ -287,6 +296,7 @@ REST routes under `/api/photos`:
 
 - `GET /api/photos/:id/file`: streams the original standard image or video (stored MIME type); serves the `large` WebP for converted RAW files. Always sends `Accept-Ranges: bytes`; one satisfiable `Range` returns 206 with `Content-Range`, an unsatisfiable one 416 (`bytes */size`), and multi-range or malformed headers the full 200. HEAD is supported.
 - `GET /api/photos/:id/thumbnail/:size`: serves `tiny`, `small`, `medium`, or `large` WebP and falls back to the file route when missing.
+- `GET /api/faces/:id/crop?size=128|256`: square WebP face crop rendered from the face's own thumbnail generation, immutable with an ETag; used for people avatars.
 - `POST /api/photos/reprocess-heic`: one-off maintenance route; still present and should be removed after its operational use.
 - `POST /api/photos/backfill-thumbnail-timestamps`: one-off maintenance route for missing `thumbnailUpdatedAt` values.
 

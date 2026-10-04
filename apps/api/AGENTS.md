@@ -10,6 +10,7 @@ Scope: `apps/api`.
 - `src/routes/v1.ts`, `v1-schemas.ts`, and `openapi-v1.json`: versioned JSON compatibility API, runtime DTO validation/serialization, and checked-in native-client contract.
 - `src/routes/photos.ts`: binary file and thumbnail routes plus one-off maintenance routes. `/:id/file` answers single byte ranges through `services/byte-range.ts` (`parseByteRange`).
 - `src/routes/exports.ts`: binary export downloads (`/api/photos/:id/export`, `/api/collections/:id/export`) and the RFC 6266 `contentDisposition` helper; `services/exports.ts` (filenames, duplicate-name disambiguation, pull-based collection ZIP stream), `services/zip-writer.ts` (STORE/ZIP64 encoder), `services/photo-files.ts` (`originalFilePath`, shared with `/:id/file`).
+- `src/routes/faces.ts`: binary face crops (`/api/faces/:id/crop`) for people avatars; see [Faces and People](#faces-and-people).
 - `src/inngest/client.ts`: typed event definitions and Realtime middleware.
 - `src/inngest/functions/scan.ts`: durable incremental planning, continuous Rust processing, and completed-result checkpoints.
 - `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches; tags each saved vector in the same transaction and finally requests the tag backfill.
@@ -17,6 +18,7 @@ Scope: `apps/api`.
 - `src/inngest/functions/quality.ts`: `analyze-quality-v1` backfill measuring committed `medium` thumbnails lacking a current quality row.
 - `src/inngest/functions/places.ts`: `place-photos-v1` backfill geocoding valid locations lacking a current place and deleting places whose location became invalid or remote.
 - `src/inngest/functions/events.ts`: `detect-events-v1` single-step full recompute of automatic events.
+- `src/inngest/functions/faces.ts`: `detect-faces-v1` face detection batches plus the final `cluster-faces-v1` grouping step.
 - `src/services/photo-quality.ts`: quality backfill eligibility, generation-fenced writes, and `analyzeQualityBatch`; native measurement is injected.
 - `src/services/junk-review.ts`: junk-review reasons, thresholds, candidate paging/counts, and `resolveJunk`, shared by tRPC and `/api/v1`.
 - `src/services/duplicates.ts`: perceptual-hash duplicate and EXIF burst groups, suggested keeper, dismissals, and `resolveDuplicateGroup`, shared by tRPC and `/api/v1`. Grouping calls the native `groupNearDuplicates` through an injectable `HashGrouper`.
@@ -27,6 +29,7 @@ Scope: `apps/api`.
 - `src/services/photo-places.ts`: `placePhotoBatch` backfill steps and `getPhotoPlace`; the "current place" rule lives in `photo-catalog.ts` (`currentPlaceSql`).
 - `src/services/on-this-day.ts`: `onThisDay` year groups for a calendar date (see [On This Day](#on-this-day)); the capture-date validity rule and `capturedDate` filter live in `photo-catalog.ts` (`isValidCapturedDate`, `capturedDateCondition`).
 - `src/services/events.ts`: `detectEvents` (streamed detection plus atomic replacement) and `listEvents` (see [Events](#events)); the `event` filter lives in `photo-catalog.ts`.
+- `src/services/faces.ts`: face scan selection, generation-fenced face writes with IoU carry-over, the cluster step, people reads/mutations (`listPeople`, `getPerson`, `updatePerson`, `mergePeople`), `getPhotoFaces`, `assignFace`, crop sources, thresholds, and the `FaceError` (`FACE_NOT_FOUND`/`PERSON_NOT_FOUND`) used by tRPC and `/api/v1`; the `personId` filter lives in `photo-catalog.ts` (see [Faces and People](#faces-and-people)).
 - `src/services/gear-stats.ts`: `gearStats` camera/lens counts, focal-length/aperture/shutter/ISO histograms, and per-year camera counts over the listing's photo set (see [Gear Stats](#gear-stats)); the camera label rule (`cameraLabelSql`) lives in `photo-catalog.ts`.
 - `src/services/vector-search.ts`: sqlite-vec text search and photo-to-photo similarity (`findSimilarToPhoto`), shared by both transports; every query takes an injectable `ApiDatabase`.
 - `src/services/photo-catalog.ts`: shared folder/filter/photo reads used by tRPC and `/api/v1`, the single RAW+JPEG pair SQL builders (`pairedPhotoIdSql`, `pairedFormatSql`, `pairedPhotoExtras`, `photoIdsWithPartnersSql`; see [RAW+JPEG Pairs](#rawjpeg-pairs)), the single location validity rule (`validLocationSql`), `bounds` filter, and `listPhotoLocations` (see [Locations](#locations)), and the single current-place rule (`currentPlaceSql`) behind the `country`/`place` filters and options (see [Places](#places)).
@@ -37,7 +40,7 @@ Scope: `apps/api`.
 - `src/services/scan-jobs.ts`: shared durable scan creation/status/recovery operations used by both transports.
 - `src/services/import-persistence.ts`: synchronous transactional scan and embedding batch writes.
 - `src/services/scan-planner.ts`: source/artifact freshness checks and conservative legacy adoption.
-- `src/services/processing-versions.ts`: manual media, embedding-model, and image-quality (`QUALITY_VERSION`) invalidation constants.
+- `src/services/processing-versions.ts`: manual media, embedding-model, image-quality (`QUALITY_VERSION`), and face-model (`FACE_MODEL_VERSION`) invalidation constants.
 - `src/services/native-executor.ts` and `native-worker.ts`: bounded persistent worker with a native photo stream surviving checkpoint windows; no database or Inngest state in the worker.
 - `src/services/scan-work.ts`: frozen classifications, priority-ordered pending media, attempt/generation fences, atomic per-photo receipts/progress, and terminal cleanup.
 - `src/db/index.ts`: SQLite/Drizzle connection and optional startup migration.
@@ -78,12 +81,18 @@ The Hono server registers:
 - `POST /api/v1/collections/:id/photos/remove`
 - `GET|POST /api/v1/smart-albums`
 - `PATCH|DELETE /api/v1/smart-albums/:id`
+- `GET /api/v1/people`
+- `GET|PATCH /api/v1/people/:id`
+- `POST /api/v1/people/:id/merge`
+- `GET /api/v1/photos/:id/faces`
+- `PUT /api/v1/faces/:id/person`
 - `POST /api/v1/search`
 - `POST /api/v1/scans`
 - `GET /api/v1/scans/active`
 - `GET /api/v1/scans/:jobId`
 - `GET /api/photos/:id/file`
 - `GET /api/photos/:id/thumbnail/:size`
+- `GET /api/faces/:id/crop`
 - `POST /api/photos/reprocess-heic` (one-off maintenance)
 - `POST /api/photos/backfill-thumbnail-timestamps` (one-off maintenance)
 - `GET|PUT|POST /api/inngest`
@@ -103,6 +112,8 @@ Smart albums: `GET /smart-albums` returns `{ albums }` sorted case-insensitively
 Tags: `GET /photos/:id/tags` returns `{ tags: [{ tag, score }] }` (score descending, ties by tag) or 404 `PHOTO_NOT_FOUND`. `GET /filter-options` includes `tags: [{ tag, count }]`. `tag` (slug matching `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 64 characters) is accepted on `GET /photos`, `POST /search`, and `GET /photos/:id/similar`; an invalid slug is 400 `INVALID_REQUEST`.
 
 Places: `GET /photos/:id/place` returns `{ place: { id, city, region, country, countryCode } | null }` or 404 `PHOTO_NOT_FOUND`. `GET /filter-options` includes `countries: [{ code, name, count }]` and `places: [{ id, name, region, countryCode, count }]`. `country` (ISO2, `^[A-Z]{2}$`) and `place` (positive integer GeoNames ID) are accepted on `GET /photos` and `GET /locations` query strings, `POST /search` bodies, `GET /photos/:id/similar` queries, and smart-album filters; invalid values are 400 `INVALID_REQUEST`. See [Places](#places).
+
+People: `GET /people?includeHidden=true` returns `{ people }`; `GET /people/:id`, `PATCH /people/:id` (`{ name?: string | null, hidden? }`), and `POST /people/:id/merge` (`{ sourceIds }`, 1-50 distinct positive integers excluding the target) return a Person `{ id, name, hidden, photoCount, faceCount, coverFaceId }`. `GET /photos/:id/faces` returns `{ faces: [{ id, box: { x, y, width, height }, personId, personName, assignment }] }` left to right, or 404 `PHOTO_NOT_FOUND`. `PUT /faces/:id/person` takes exactly one of `personId` (positive integer or `null`) and `name` and returns the updated face. Bodies are strict; invalid ids/bodies/names are 400 `INVALID_REQUEST`; unknown ids are 404 `PERSON_NOT_FOUND`/`FACE_NOT_FOUND`. `personId` (positive integer) is accepted on `GET /photos` and `GET /locations` query strings, `POST /search` bodies, `GET /photos/:id/similar` queries, and smart-album filters, exactly like `tag`; an unknown id is an empty result. See [Faces and People](#faces-and-people).
 
 On this day: `GET /on-this-day?date=YYYY-MM-DD` (required; the client's local today, a real calendar date in 1900 or later) returns `{ date, years: [{ year, yearsAgo, capturedDate, count, cover: { photoId, thumbnailUpdatedAt } }] }` with the collection-cover ISO/null cache token; a missing or invalid `date` is 400 `INVALID_REQUEST`. `capturedDate` (same rule) is accepted on `GET /photos` and `GET /locations` query strings, `POST /search` bodies, and `GET /photos/:id/similar` queries; invalid values are 400 `INVALID_REQUEST`. Smart-album filters reject it (strict bodies). See [On This Day](#on-this-day).
 
@@ -136,6 +147,7 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `createCollection({ name, photoIds? })`, `renameCollection({ id, name })`, `deleteCollection({ id })` (returns `{ id }`), `addToCollection({ collectionId, photoIds })` (returns `{ added, photoCount }`), `removeFromCollection({ collectionId, photoIds })` (returns `{ removed, photoCount }`): names are trimmed and 1-100 characters, unique case-insensitively (renaming to a case variant of the collection's own name is allowed). `NAME_TAKEN` maps to `CONFLICT`, an unknown collection to `NOT_FOUND`, invalid input to `BAD_REQUEST`. Adds/removes take 1-500 IDs, ignore duplicates and unknown photos, run one existence SELECT plus one multi-row INSERT/DELETE in a transaction, and bump `updatedAt` only when membership changes. Deleting a collection never touches photos.
 - `smartAlbums` returns `{ albums }`; `createSmartAlbum({ name, filters, query? })` and `updateSmartAlbum({ id, name?, filters?, query? })` return a SmartAlbum; `deleteSmartAlbum({ id })` returns `{ id }`. A smart album is a named, saved filter set (`photos` filters minus `collectionId`) plus an optional CLIP query (trimmed, 1-200 characters, or `null`), evaluated live with no stored membership. It needs at least one filter or a query (`EMPTY` → `BAD_REQUEST`); names are trimmed, 1-100 characters, and unique case-insensitively among smart albums only (`NAME_TAKEN` → `CONFLICT`, own-name case changes allowed); an unknown ID is `NOT_FOUND`. The service canonicalizes filters before storing them as JSON in `smart_albums.filters`: it drops empty strings and `filterRaw: "all"`, writes keys in a fixed order, and stores `dateMonth` as `YYYY-MM`. Reads rebuild filters from known keys only, so keys written by older code are ignored. Output follows the transport representation (`PhotoCatalogRepresentation.normalizeDateMonths`): tRPC emits `YYYY:MM` (the `filterOptions` form) and `/api/v1` emits `YYYY-MM`. A filter-only album's `photoCount` and `cover` (the highest-ID match, with `thumbnailUpdatedAt`) come from one aggregate statement per album (`count(*)`/`max(id)` over `photoFilterConditions(filters, { normalizeDateMonths: true })`, joined back for the cover). Query albums report `null` for both because vector search has no stable count. Listing is one SELECT plus one aggregate per filter-only album: 20 albums over 8,000 EXIF/tagged photos took 19.9 ms median warm (Apple M4 Pro).
 - `photoTags({ photoId })`: returns `{ tags: [{ tag, score }] }`, score descending then tag ascending, in one `LEFT JOIN` statement; `NOT_FOUND` for an unknown photo. `photos`, `searchPhotos`, and `similarPhotos` accept an optional `tag` slug, applied by `photoFilterConditions` as `photos.id IN (SELECT photo_id FROM photo_tags WHERE tag = ?)` (served by `idx_photo_tags_tag_photo_id`). `filterOptions` also returns `tags: [{ tag, count }]` under the same folder scope, count descending then tag ascending, only counts above zero.
+- `people({ includeHidden? })`, `person({ id })`, `updatePerson({ id, name?, hidden? })`, `mergePeople({ targetId, sourceIds })`, `photoFaces({ photoId })`, and `assignFace({ faceId, personId?, name? })`: see [Faces and People](#faces-and-people). `FACE_NOT_FOUND`/`PERSON_NOT_FOUND` (and an unknown photo for `photoFaces`) map to `NOT_FOUND`, invalid input to `BAD_REQUEST`. `photos`, `photoLocations`, `searchPhotos`, `similarPhotos`, and smart-album filters accept `personId` (positive integer), applied by `photoFilterConditions` as `photos.id IN (SELECT photo_id FROM photo_faces WHERE person_id = ?)` (served by `idx_photo_faces_person_photo`).
 - `photoPlace({ photoId })`: returns `{ place: { id, city, region, country, countryCode } | null }`; `NOT_FOUND` for an unknown photo. `photos`, `photoLocations`, `searchPhotos`, `similarPhotos`, and smart-album filters accept `country` (`^[A-Z]{2}$`) and `place` (positive integer); invalid values are `BAD_REQUEST`. `filterOptions` also returns `countries` and `places`. See [Places](#places).
 - `onThisDay({ date })`: returns `{ date, years }` (cover `thumbnailUpdatedAt` is a `Date` or `null`); an invalid `date` is `BAD_REQUEST`. `photos`, `photoLocations`, `searchPhotos`, and `similarPhotos` accept `capturedDate` (`YYYY-MM-DD`, invalid → `BAD_REQUEST`); smart-album filters reject it like `bounds`. See [On This Day](#on-this-day).
 - `events({ folder? })`: returns `{ events }` newest first (cover `thumbnailUpdatedAt` is a `Date` or `null`). `photos`, `photoLocations`, `searchPhotos`, and `similarPhotos` accept `event` (positive integer, else `BAD_REQUEST`; unknown id → empty); smart-album filters reject it like `capturedDate`. See [Events](#events).
@@ -168,6 +180,9 @@ photos/places.requested
   {}
 
 photos/events.requested
+  {}
+
+photos/faces.requested
   {}
 ```
 
@@ -203,7 +218,7 @@ Embedding function details:
 - Converts the Rust number array to a `Float32Array` buffer before storage.
 - Marks current-generation photos `completed` or `failed` and publishes progress. Search excludes noncompleted, wrong-model, and wrong-generation vectors.
 - Marks the scan job failed if no requested embedding can be generated; partial success still completes the job.
-- After its final progress publication it appends one `trigger-photo-tags-v1` `step.sendEvent` carrying `photos/tags.requested`, `photos/quality.requested`, `photos/places.requested`, and `photos/events.requested`; existing step IDs are unchanged for replay safety. `scan-photos-v5` likewise appends the same send only when a scan finishes without dispatching embeddings (for example after a vocabulary or quality-version bump), after its existing cleanup step.
+- After its final progress publication it appends one `trigger-photo-tags-v1` `step.sendEvent` carrying `photos/tags.requested`, `photos/quality.requested`, `photos/places.requested`, and `photos/events.requested`, then a separately named `trigger-photo-faces-v1` send of `photos/faces.requested`; existing step IDs are unchanged for replay safety. `scan-photos-v5` likewise appends the same two sends only when a scan finishes without dispatching embeddings (for example after a vocabulary or quality-version bump), after its existing cleanup step.
 
 ## Automatic Tags
 
@@ -311,6 +326,22 @@ Photos are grouped into automatic events (a trip day, a party), materialized in 
 
 Measured in a file database (512-d vectors, 20 photos per event 61 min apart so every pair is compared, `ANALYZE`) on Apple M4 Pro (`src/__tests__/events.test.ts`, `[events-perf]`): `detectEvents` over 10,000 photos 63 ms (20,000: 129 ms); `listEvents` over 1,000 events/20,000 photos 0.7 ms median (folder-scoped 1.4 ms); `photos` with `event` (20 rows with EXIF hydration) 0.4 ms. Budgets asserted: detection < 3 s, the reads < 20 ms; EXPLAIN asserts the backwards index scan without a temp B-tree and the `event_photos` primary-key search.
 
+## Faces and People
+
+Faces are detected in the committed `large` thumbnails of stills, embedded, and grouped into people automatically by `detect-faces-v1` (event `photos/faces.requested`, concurrency 1). Users name, hide, merge, and correct people; there is no login.
+
+- Selection (`readFaceScanBatch`): `media_type = 'photo'`, `thumbnail_status = 'completed'`, a committed `thumbnail_key`, and a `photo_face_scan` receipt that is missing, keyed to another thumbnail generation, or from another `FACE_MODEL_VERSION`. Only stack representatives qualify (`pairStackingCondition([])`, the listing's RAW+JPEG/Live Photo rule), so a pair is scanned once through its standard file. Videos are never scanned.
+- Batches: each `detect-faces-batch-v1-N` step reads at most `FACE_BATCH_SIZE = 32` photos past a photo-ID keyset cursor, runs `nativeExecutor.run("detectFaces", paths)` on `{thumbnailRoot ?? THUMBNAILS_DIRECTORY}/large/<key>.webp` (off the API thread; it drains an idle scan stream like the other pool operations), and writes in one transaction (`saveFaceScanBatch`). Each photo is re-checked against its current committed key, so a result for a regenerated thumbnail is skipped and picked up next run. A success replaces the photo's faces and receipt; a per-path failure (or an embedding that is not 128 values) records a `failed` receipt with its error and keeps the existing faces. Failed receipts are not retried until the generation or model version changes.
+- Carry-over: a rescanned face inherits `person_id` and `assignment` from an old face of the same photo with IoU >= `FACE_CARRY_IOU = 0.5`, matched greedily by descending IoU so each old face is inherited at most once. Unmatched new faces are `auto` with no person.
+- Cluster step (`cluster-faces-v1`, `clusterFaces`, one transaction): (1) every `auto` face without a person joins the person whose centroid (normalized mean of that person's `manual` and `auto` embeddings) has the highest cosine, when it is >= `FACE_ASSIGN_THRESHOLD = 0.50` (compared at float32 precision); (2) the remaining unassigned `auto` faces go to the native `clusterFaceEmbeddings(threshold = FACE_CLUSTER_THRESHOLD = 0.48, minClusterSize = FACE_MIN_CLUSTER_SIZE = 3)`, and each group becomes a new unnamed person; (3) unnamed people without faces are deleted, named ones are kept. `manual` and `rejected` faces are never changed by automation. Embeddings are read once per step: assigned faces stream into per-person sums, unassigned faces into one packed `Float32Array` (faces x 512 bytes) compacted in place for clustering; with no unassigned faces the clusterer is not called. The thresholds are the contract defaults until the Rust calibration replaces them.
+- Person: `{ id, name, hidden, photoCount, faceCount, coverFaceId }`. `coverFaceId` is the highest-score face (ties by id); `photoCount` uses exactly the listing's `personId` condition and stacking, so it equals that listing's total. `listPeople` omits people with no faces unless named, omits hidden people unless `includeHidden`, and orders named before unnamed, then `photoCount` descending, then id. Counts and cover are correlated subqueries over `idx_photo_faces_person_photo`.
+- Mutations each run in one transaction. `updatePerson` trims names to 1-80 characters (`null` clears) and sets `hidden`. `mergePeople(targetId, sourceIds)` (1-50 distinct ids, not containing the target) moves every source face to the target as `manual`, deletes the sources, and gives an unnamed target the first named source's name (in `sourceIds` order). `assignFace` with `personId` assigns the face to that person as `manual`; with `name` (and no `personId`) it creates a named person and assigns the face as `manual`; with `personId: null` it marks the face `rejected` with no person. Unknown ids throw `FaceError` `FACE_NOT_FOUND`/`PERSON_NOT_FOUND`.
+- `getPhotoFaces` returns a photo's faces left to right (box `x`, then id) with `personName`, or `null` for an unknown photo.
+- `personId` filter: `photoFilterConditions` adds `photos.id IN (SELECT photo_id FROM photo_faces WHERE person_id = ?)`, served by `idx_photo_faces_person_photo`, before stacking, following the `tag` precedent on listing, locations, search, similarity, gear stats, and saved smart-album filters. An unknown id is an empty result.
+- Crops: `GET /api/faces/:id/crop?size=128|256` (default 256) renders `renderFaceCrop` through the native executor from the `large` thumbnail of the face's own `thumbnail_key` generation (on the worker thread, keeping an idle scan stream). Success sends `Content-Type: image/webp`, `Cache-Control: public, max-age=31536000, immutable`, and ETag `"face-{id}-{thumbnailKey}-{size}"`; a matching `If-None-Match` is 304. Errors are `{ error: { code, message } }` with `Cache-Control: no-store`: 400 `INVALID_REQUEST` (id or size), 404 `FACE_NOT_FOUND` (unknown face or missing thumbnail file), 503 `FACE_BUSY` with `Retry-After: 1` at executor admission capacity, 422 `FACE_CROP_FAILED` for a render failure. Not in `openapi-v1.json`, like the other binary routes.
+
+Measured in a file-backed WAL database with 20,000 photos, 30,000 faces, and 300 people on Apple M4 Pro (`src/__tests__/faces.test.ts`): `listPeople` 14.1 ms median; `listPhotos({ personId })` 1.1 ms median (90 rows incl. EXIF hydration); the cluster step 104 ms excluding native time (1,500 assigned, 1,500 clustered into 500 people). `EXPLAIN QUERY PLAN` of both uses `SEARCH photo_faces USING COVERING INDEX idx_photo_faces_person_photo (person_id=?)` and `SEARCH photos USING INTEGER PRIMARY KEY`, with no `SCAN photos` or `SCAN photo_faces` (people itself is a `SCAN people`). Unfiltered listing, search, similarity, and smart-album counts stayed within ±2.1% of the previous HEAD.
+
 ## Gear Stats
 
 `gearStats(database, filters)` in `services/gear-stats.ts` summarizes the photos the grid shows for `filters`: `photoFilterConditions` including RAW+JPEG stacking, so `total` equals `listPhotos(filters).total` and a pair counts once (via the listed row's EXIF). One SQL statement materializes the set joined to its `photo_exif` row and groups each dimension by stored value; JS assigns the few distinct values to buckets.
@@ -413,7 +444,7 @@ Active API variables are parsed in `src/config.ts`:
 
 `DATABASE_URL`, `PHOTO_DIRECTORY`, and `THUMBNAILS_DIRECTORY` are relative to the process working directory. The normal `bun run dev:api` script runs from `apps/api`.
 
-`FASTEMBED_CACHE_DIR` and `PHOTO_PROCESSING_THREADS` are read by Rust, not parsed here. The media pool defaults to `available_parallelism()`; the override must be a positive integer and is read once when the pool initializes. Larger pools increase decoded-image memory; lower the override when needed. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and do not control the current pipeline.
+`FASTEMBED_CACHE_DIR`, `FACE_MODEL_DIR`, and `PHOTO_PROCESSING_THREADS` are read by Rust, not parsed here. The media pool defaults to `available_parallelism()`; the override must be a positive integer and is read once when the pool initializes. Larger pools increase decoded-image memory; lower the override when needed. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and do not control the current pipeline.
 
 The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` directly. PhotoBrain parses `INNGEST_SERVE_ORIGIN` and passes it to the Hono handler as `serveHost`; set it to an API origin reachable from the runtime so internal registration requests cannot publish a `localhost` callback. For self-hosting, use production mode (`INNGEST_DEV=0`), matching server-only keys on the runtime/API, and an internal base URL. Set `INNGEST_REALTIME_BASE_URL` separately to the client-reachable HTTP(S) origin exposing `/v1/realtime/connect`. Never return either server key to clients. Register `/api/inngest` with the runtime and enable periodic app sync. SDK v3.54.2 is compatible with the self-hosted v1.45.1 server, which rejects vulnerable SDK releases below v3.54.0. The Hono handler must continue to allow only GET/PUT/POST.
 

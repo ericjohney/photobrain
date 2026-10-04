@@ -50,11 +50,18 @@ const EVENTS_REQUESTED = {
 	name: "photos/events.requested",
 	data: {},
 } as unknown as EmbeddingEvent;
+const FACES_REQUESTED = {
+	name: "photos/faces.requested",
+	data: {},
+} as unknown as EmbeddingEvent;
+// The trigger-photo-tags-v1 step sends the first four; trigger-photo-faces-v1
+// is appended as its own step.
 const BACKFILLS_REQUESTED = [
 	TAGS_REQUESTED,
 	QUALITY_REQUESTED,
 	PLACES_REQUESTED,
 	EVENTS_REQUESTED,
+	FACES_REQUESTED,
 ];
 type Steps = {
 	run<T>(id: string, work: () => T | Promise<T>): Promise<T>;

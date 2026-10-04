@@ -86,6 +86,14 @@ actor TestAPI: PhotoBrainAPI {
     var smartAlbumRequests: [SmartAlbumRequest] = []
     private var nextSmartAlbumID = 1
     private var nextCollectionID = 1
+    /// Server-side people in list order (the fake does not re-sort; tests set the order).
+    var peopleList: [PersonDTO] = []
+    /// Server-side faces by photo id, left to right.
+    var photoFaceList: [Int: [PhotoFaceDTO]] = [:]
+    var peopleFailures: [PeopleRoute: PhotoBrainAPIError] = [:]
+    var peopleDelay: Duration = .zero
+    var peopleRequests: [PeopleRequest] = []
+    private var nextPersonID = 1
 
     enum CollectionRoute: Hashable, Sendable {
         case list, create, rename, delete, add, remove, forPhoto
@@ -110,6 +118,19 @@ actor TestAPI: PhotoBrainAPI {
         case create(name: String, filters: SmartAlbumFilters, query: String?)
         case rename(id: Int, name: String)
         case delete(id: Int)
+    }
+
+    enum PeopleRoute: Hashable, Sendable {
+        case list, get, update, merge, faces, assign
+    }
+
+    enum PeopleRequest: Equatable, Sendable {
+        case list(includeHidden: Bool)
+        case get(id: Int)
+        case update(id: Int, name: String??, hidden: Bool?)
+        case merge(targetId: Int, sourceIds: [Int])
+        case faces(photoId: Int)
+        case assign(faceId: Int, target: FaceAssignmentTarget)
     }
 
     struct CurationRequest: Equatable, Sendable {
@@ -403,6 +424,32 @@ actor TestAPI: PhotoBrainAPI {
         smartAlbumList
     }
 
+    func setPeople(_ people: [PersonDTO], faces: [Int: [PhotoFaceDTO]] = [:]) {
+        peopleList = people
+        photoFaceList = faces
+        nextPersonID = (people.map(\.id).max() ?? 0) + 1
+    }
+
+    func setPeopleFailure(_ route: PeopleRoute, _ failure: PhotoBrainAPIError?) {
+        peopleFailures[route] = failure
+    }
+
+    func setPeopleDelay(_ delay: Duration) {
+        peopleDelay = delay
+    }
+
+    func recordedPeopleRequests() -> [PeopleRequest] {
+        peopleRequests
+    }
+
+    func serverPeople() -> [PersonDTO] {
+        peopleList
+    }
+
+    func serverFaces(photoId: Int) -> [PhotoFaceDTO] {
+        photoFaceList[photoId] ?? []
+    }
+
     func folders() async throws -> FoldersResponseDTO {
         FoldersResponseDTO(folders: [], totalPhotos: photosResponse.total)
     }
@@ -616,6 +663,91 @@ actor TestAPI: PhotoBrainAPI {
 
     private func sortSmartAlbums() {
         smartAlbumList.sort { $0.name.compare($1.name, options: .caseInsensitive) == .orderedAscending }
+    }
+
+    func people(includeHidden: Bool) async throws -> PeopleResponseDTO {
+        try await peopleCall(.list, .list(includeHidden: includeHidden))
+        return PeopleResponseDTO(people: peopleList.filter { includeHidden || !$0.hidden })
+    }
+
+    func person(id: Int) async throws -> PersonDTO {
+        try await peopleCall(.get, .get(id: id))
+        guard let person = peopleList.first(where: { $0.id == id }) else { throw Self.personNotFound }
+        return person
+    }
+
+    func updatePerson(id: Int, name: String??, hidden: Bool?) async throws -> PersonDTO {
+        try await peopleCall(.update, .update(id: id, name: name, hidden: hidden))
+        guard let index = peopleList.firstIndex(where: { $0.id == id }) else { throw Self.personNotFound }
+        if case let .some(name) = name { peopleList[index].name = name }
+        if let hidden { peopleList[index].hidden = hidden }
+        return peopleList[index]
+    }
+
+    func mergePeople(targetId: Int, sourceIds: [Int]) async throws -> PersonDTO {
+        try await peopleCall(.merge, .merge(targetId: targetId, sourceIds: sourceIds))
+        guard let targetIndex = peopleList.firstIndex(where: { $0.id == targetId }),
+              sourceIds.allSatisfy({ id in peopleList.contains { $0.id == id } }) else {
+            throw Self.personNotFound
+        }
+        var target = peopleList[targetIndex]
+        // `sourceIds` order, like the server: the first named source names an unnamed target.
+        for source in sourceIds.compactMap({ id in peopleList.first { $0.id == id } }) {
+            target.photoCount += source.photoCount
+            target.faceCount += source.faceCount
+            if target.name == nil { target.name = source.name }
+            if target.coverFaceId == nil { target.coverFaceId = source.coverFaceId }
+        }
+        peopleList[targetIndex] = target
+        peopleList.removeAll { sourceIds.contains($0.id) }
+        return target
+    }
+
+    func photoFaces(photoId: Int) async throws -> PhotoFacesResponseDTO {
+        try await peopleCall(.faces, .faces(photoId: photoId))
+        return PhotoFacesResponseDTO(faces: photoFaceList[photoId] ?? [])
+    }
+
+    func assignFace(faceId: Int, to target: FaceAssignmentTarget) async throws -> PhotoFaceDTO {
+        try await peopleCall(.assign, .assign(faceId: faceId, target: target))
+        guard let photoId = photoFaceList.first(where: { $0.value.contains { $0.id == faceId } })?.key,
+              let index = photoFaceList[photoId]?.firstIndex(where: { $0.id == faceId }),
+              var face = photoFaceList[photoId]?[index] else {
+            throw PhotoBrainAPIError.server(status: 404, code: "FACE_NOT_FOUND", message: "Face not found")
+        }
+        switch target {
+        case let .person(id):
+            guard let person = peopleList.first(where: { $0.id == id }) else { throw Self.personNotFound }
+            face.personId = id
+            face.personName = person.name
+            face.assignment = .manual
+        case let .newPerson(name):
+            let id = nextPersonID
+            nextPersonID += 1
+            peopleList.append(TestModels.person(id: id, name: name, photoCount: 1, faceCount: 1))
+            face.personId = id
+            face.personName = name
+            face.assignment = .manual
+        case .notThisPerson:
+            face.personId = nil
+            face.personName = nil
+            face.assignment = .rejected
+        }
+        photoFaceList[photoId]?[index] = face
+        return face
+    }
+
+    static let personNotFound = PhotoBrainAPIError.server(
+        status: 404,
+        code: "PERSON_NOT_FOUND",
+        message: "Person not found"
+    )
+
+    private func peopleCall(_ route: PeopleRoute, _ request: PeopleRequest) async throws {
+        peopleRequests.append(request)
+        let failure = peopleFailures[route]
+        if peopleDelay > .zero { try await Task.sleep(for: peopleDelay) }
+        if let failure { throw failure }
     }
 
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO {
@@ -938,6 +1070,40 @@ enum TestModels {
             cover: cover,
             createdAt: Date(timeIntervalSince1970: 1_700_000_000),
             updatedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(id))
+        )
+    }
+
+    static func person(
+        id: Int,
+        name: String? = nil,
+        hidden: Bool = false,
+        photoCount: Int = 0,
+        faceCount: Int = 0,
+        coverFaceId: Int? = nil
+    ) -> PersonDTO {
+        PersonDTO(
+            id: id,
+            name: name,
+            hidden: hidden,
+            photoCount: photoCount,
+            faceCount: faceCount,
+            coverFaceId: coverFaceId
+        )
+    }
+
+    static func face(
+        id: Int,
+        x: Double = 0.1,
+        personId: Int? = nil,
+        personName: String? = nil,
+        assignment: FaceAssignment = .auto
+    ) -> PhotoFaceDTO {
+        PhotoFaceDTO(
+            id: id,
+            box: FaceBoxDTO(x: x, y: 0.2, width: 0.1, height: 0.15),
+            personId: personId,
+            personName: personName,
+            assignment: assignment
         )
     }
 

@@ -47,6 +47,8 @@ export type PhotoFilters = {
 	collectionId?: number;
 	/** Only photos carrying this automatic tag slug. */
 	tag?: string;
+	/** Only photos with any face assigned to this person (`people` id). */
+	personId?: number;
 	/** Only photos whose current place is in this ISO 3166-1 alpha-2 country. */
 	country?: string;
 	/** Only photos whose current place is this GeoNames city (geonameid). */
@@ -598,6 +600,12 @@ export function photoFilterConditions(
 		// Resolved through the (tag, photo_id) index.
 		conditions.push(
 			sql`${photosTable.id} IN (SELECT photo_id FROM photo_tags WHERE tag = ${input.tag})`,
+		);
+	}
+	if (input.personId !== undefined) {
+		// Resolved through the (person_id, photo_id) index.
+		conditions.push(
+			sql`${photosTable.id} IN (SELECT photo_id FROM photo_faces WHERE person_id = ${input.personId})`,
 		);
 	}
 	if (input.country !== undefined) {

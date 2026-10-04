@@ -424,6 +424,78 @@ export const duplicateDismissals = sqliteTable("duplicate_dismissals", {
 	dismissedAt: integer("dismissed_at", { mode: "timestamp" }).notNull(),
 });
 
+// People grouped from detected faces. `name` NULL is an unnamed (automatic)
+// person; the cluster step deletes unnamed people left without faces.
+export const people = sqliteTable("people", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	name: text("name"),
+	hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+// Faces detected in a photo's committed `large` thumbnail generation
+// (`thumbnail_key`). Boxes are normalized 0..1 of the oriented thumbnail;
+// `embedding` is 128 little-endian float32 values, L2-normalized.
+// `assignment` 'auto' faces are owned by the cluster step; 'manual' and
+// 'rejected' faces are user decisions automation never changes.
+export const photoFaces = sqliteTable(
+	"photo_faces",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		photoId: integer("photo_id")
+			.notNull()
+			.references(() => photos.id, { onDelete: "cascade" }),
+		thumbnailKey: text("thumbnail_key").notNull(),
+		modelVersion: text("model_version").notNull(),
+		x: real("x").notNull(),
+		y: real("y").notNull(),
+		width: real("width").notNull(),
+		height: real("height").notNull(),
+		score: real("score").notNull(),
+		embedding: blob("embedding").notNull(),
+		personId: integer("person_id").references(() => people.id, {
+			onDelete: "set null",
+		}),
+		assignment: text("assignment", { enum: ["auto", "manual", "rejected"] })
+			.notNull()
+			.default("auto"),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		index("idx_photo_faces_photo_id").on(table.photoId),
+		// Serves the `personId` filter and per-person counts index-only.
+		index("idx_photo_faces_person_photo").on(table.personId, table.photoId),
+		check(
+			"photo_faces_assignment_values",
+			sql`${table.assignment} IN ('auto', 'manual', 'rejected')`,
+		),
+	],
+);
+
+// One face-detection receipt per photo: the generation and model it scanned.
+// A different `thumbnail_key` or `model_version` makes the photo eligible again.
+export const photoFaceScan = sqliteTable(
+	"photo_face_scan",
+	{
+		photoId: integer("photo_id")
+			.primaryKey()
+			.references(() => photos.id, { onDelete: "cascade" }),
+		thumbnailKey: text("thumbnail_key").notNull(),
+		modelVersion: text("model_version").notNull(),
+		faceCount: integer("face_count").notNull(),
+		status: text("status", { enum: ["completed", "failed"] }).notNull(),
+		error: text("error"),
+		scannedAt: integer("scanned_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		check(
+			"photo_face_scan_status_values",
+			sql`${table.status} IN ('completed', 'failed')`,
+		),
+	],
+);
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {
@@ -472,3 +544,9 @@ export type SmartAlbum = typeof smartAlbums.$inferSelect;
 export type NewSmartAlbum = typeof smartAlbums.$inferInsert;
 export type DuplicateDismissal = typeof duplicateDismissals.$inferSelect;
 export type NewDuplicateDismissal = typeof duplicateDismissals.$inferInsert;
+export type Person = typeof people.$inferSelect;
+export type NewPerson = typeof people.$inferInsert;
+export type PhotoFace = typeof photoFaces.$inferSelect;
+export type NewPhotoFace = typeof photoFaces.$inferInsert;
+export type PhotoFaceScan = typeof photoFaceScan.$inferSelect;
+export type NewPhotoFaceScan = typeof photoFaceScan.$inferInsert;

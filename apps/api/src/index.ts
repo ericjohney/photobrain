@@ -6,6 +6,7 @@ import { config } from "./config";
 import { db } from "./db";
 import { functions, inngest } from "./inngest";
 import { createExportsRouter } from "./routes/exports";
+import { createFacesRouter } from "./routes/faces";
 import photosRouter from "./routes/photos";
 import { createV1Router } from "./routes/v1";
 import { nativeExecutor } from "./services/native-executor";
@@ -51,6 +52,16 @@ app.route(
 	createExportsRouter({
 		database: db,
 		photoDirectory: config.PHOTO_DIRECTORY,
+		renderer: nativeExecutor,
+	}),
+);
+
+// Binary face crops (people avatars).
+app.route(
+	"/api",
+	createFacesRouter({
+		database: db,
+		thumbnailsDirectory: config.THUMBNAILS_DIRECTORY,
 		renderer: nativeExecutor,
 	}),
 );

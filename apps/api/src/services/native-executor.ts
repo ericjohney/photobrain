@@ -11,11 +11,15 @@ type NativeOperations = Pick<
 	| "validateThumbnails"
 	| "analyzeImageQuality"
 	| "renderExportJpeg"
+	| "detectFaces"
+	| "renderFaceCrop"
 >;
 type Operation = keyof NativeOperations;
 // Structured clone delivers a native Buffer to this thread as a plain,
 // unshared Uint8Array.
-type OperationResult<K extends Operation> = K extends "renderExportJpeg"
+type OperationResult<K extends Operation> = K extends
+	| "renderExportJpeg"
+	| "renderFaceCrop"
 	? Uint8Array<ArrayBuffer>
 	: ReturnType<NativeOperations[K]>;
 
@@ -300,7 +304,8 @@ export class NativeExecutor {
 			if (
 				request?.operation === "cancelPhotos"
 					? request.jobId === this.sessionJobId
-					: request?.operation !== "renderExportJpeg"
+					: request?.operation !== "renderExportJpeg" &&
+						request?.operation !== "renderFaceCrop"
 			) {
 				this.sessionJobId = undefined;
 			}

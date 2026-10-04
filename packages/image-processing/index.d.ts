@@ -131,3 +131,50 @@ export function renderExportJpeg(
 	maxEdge: number,
 	quality: number,
 ): Buffer;
+/** Normalized (0..1) box in the oriented input image. */
+export interface FaceBox {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+export interface DetectedFace {
+	box: FaceBox;
+	/** Detector confidence `sqrt(cls * obj)`, 0-1. */
+	score: number;
+	/** 128 L2-normalized SFace components. */
+	embedding: number[];
+}
+export interface FaceDetectionResult {
+	path: string;
+	success: boolean;
+	faces: DetectedFace[];
+	error?: string | null;
+}
+/**
+ * Detect (YuNet), align, and embed (SFace) faces in each image, normally `large`
+ * WebP thumbnails, on the shared processing pool. Faces are score-descending. A
+ * failing path yields `success: false` for that path only; model download or load
+ * failures throw.
+ */
+export function detectFaces(paths: string[]): FaceDetectionResult[];
+/**
+ * Deterministic mutual-kNN average-linkage clustering of index-aligned vectors at
+ * cosine >= `threshold`. Groups have at least `minClusterSize` members, members
+ * ascending, groups ordered by their smallest member.
+ */
+export function clusterFaceEmbeddings(
+	embeddings: Float32Array,
+	dimension: number,
+	threshold: number,
+	minClusterSize: number,
+): number[][];
+/**
+ * Square WebP (quality 85) of `size` x `size` (64-512) centred on a face box, side
+ * 1.6x the box's longer pixel side, clamped to the image.
+ */
+export function renderFaceCrop(
+	path: string,
+	box: FaceBox,
+	size: number,
+): Buffer;

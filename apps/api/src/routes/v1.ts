@@ -16,6 +16,15 @@ import {
 	resolveDuplicateGroup,
 } from "../services/duplicates";
 import { listEvents } from "../services/events";
+import {
+	assignFace,
+	FaceError,
+	getPerson,
+	getPhotoFaces,
+	listPeople,
+	mergePeople,
+	updatePerson,
+} from "../services/faces";
 import { gearStats } from "../services/gear-stats";
 import { junkReview, resolveJunk } from "../services/junk-review";
 import { onThisDay } from "../services/on-this-day";
@@ -45,6 +54,7 @@ import { findSimilarToPhoto } from "../services/vector-search";
 import {
 	activeScansResponseSchema,
 	addCollectionPhotosResponseSchema,
+	assignFaceRequestSchema,
 	collectionIdSchema,
 	collectionPhotosRequestSchema,
 	collectionSchema,
@@ -56,17 +66,25 @@ import {
 	errorResponseSchema,
 	eventsQuerySchema,
 	eventsResponseSchema,
+	faceIdSchema,
+	faceSchema,
 	filterOptionsQuerySchema,
 	filterOptionsResponseSchema,
 	foldersResponseSchema,
 	gearStatsResponseSchema,
 	junkReviewQuerySchema,
 	junkReviewResponseSchema,
+	mergePeopleRequestSchema,
 	onThisDayQuerySchema,
 	onThisDayResponseSchema,
 	PUBLIC_SCAN_START_ERROR,
+	peopleQuerySchema,
+	peopleResponseSchema,
+	personIdSchema,
+	personSchema,
 	photoCollectionsResponseSchema,
 	photoCurationPatchSchema,
+	photoFacesResponseSchema,
 	photoFiltersSchema,
 	photoIdSchema,
 	photoLocationsResponseSchema,
@@ -102,6 +120,7 @@ import {
 	smartAlbumsResponseSchema,
 	startScanRequestSchema,
 	startScanResponseSchema,
+	updatePersonRequestSchema,
 	updateSmartAlbumRequestSchema,
 } from "./v1-schemas";
 
@@ -202,6 +221,16 @@ function duplicateGroupError(error: unknown): Response {
 					409,
 				)
 			: invalidRequest();
+	}
+	return internalError(error);
+}
+
+/** Maps face/person domain errors to stable 404 envelopes; anything else is a 500. */
+function faceError(error: unknown): Response {
+	if (error instanceof FaceError) {
+		return error.code === "FACE_NOT_FOUND"
+			? errorResponse("FACE_NOT_FOUND", "Face not found", 404)
+			: errorResponse("PERSON_NOT_FOUND", "Person not found", 404);
 	}
 	return internalError(error);
 }
@@ -399,6 +428,104 @@ export function createV1Router(dependencies: V1Dependencies) {
 			return jsonResponse(photoPlaceResponseSchema, result);
 		} catch (error) {
 			return internalError(error);
+		}
+	});
+
+	router.get("/photos/:id/faces", (context) => {
+		const id = photoIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		try {
+			const result = getPhotoFaces(dependencies.database, id.data);
+			if (!result) {
+				return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+			}
+			return jsonResponse(photoFacesResponseSchema, result);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/people", (context) => {
+		const input = peopleQuerySchema.safeParse(context.req.query());
+		if (!input.success) return invalidRequest();
+		try {
+			return jsonResponse(
+				peopleResponseSchema,
+				listPeople(dependencies.database, input.data),
+			);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/people/:id", (context) => {
+		const id = personIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		try {
+			const person = getPerson(dependencies.database, id.data);
+			if (!person) {
+				return errorResponse("PERSON_NOT_FOUND", "Person not found", 404);
+			}
+			return jsonResponse(personSchema, person);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.patch("/people/:id", async (context) => {
+		const id = personIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		const input = await parseJsonBody(
+			context.req.raw,
+			updatePersonRequestSchema,
+		);
+		if (!input) return invalidRequest();
+		try {
+			return jsonResponse(
+				personSchema,
+				updatePerson(dependencies.database, id.data, input),
+			);
+		} catch (error) {
+			return faceError(error);
+		}
+	});
+
+	router.post("/people/:id/merge", async (context) => {
+		const id = personIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		const input = await parseJsonBody(
+			context.req.raw,
+			mergePeopleRequestSchema,
+		);
+		if (
+			!input ||
+			new Set(input.sourceIds).size !== input.sourceIds.length ||
+			input.sourceIds.includes(id.data)
+		) {
+			return invalidRequest();
+		}
+		try {
+			return jsonResponse(
+				personSchema,
+				mergePeople(dependencies.database, id.data, input.sourceIds),
+			);
+		} catch (error) {
+			return faceError(error);
+		}
+	});
+
+	router.put("/faces/:id/person", async (context) => {
+		const id = faceIdSchema.safeParse(context.req.param("id"));
+		if (!id.success) return invalidRequest();
+		const input = await parseJsonBody(context.req.raw, assignFaceRequestSchema);
+		if (!input) return invalidRequest();
+		try {
+			return jsonResponse(
+				faceSchema,
+				assignFace(dependencies.database, id.data, input),
+			);
+		} catch (error) {
+			return faceError(error);
 		}
 	});
 

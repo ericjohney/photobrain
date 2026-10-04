@@ -7,10 +7,12 @@ const notAvailable = (name) => () => {
 };
 
 module.exports.analyzeImageQuality = notAvailable("analyzeImageQuality");
+module.exports.clusterFaceEmbeddings = notAvailable("clusterFaceEmbeddings");
 module.exports.batchGenerateClipEmbeddings = notAvailable(
 	"batchGenerateClipEmbeddings",
 );
 module.exports.clipTextEmbedding = notAvailable("clipTextEmbedding");
+module.exports.detectFaces = notAvailable("detectFaces");
 module.exports.discoverPhotos = notAvailable("discoverPhotos");
 module.exports.extractExif = notAvailable("extractExif");
 module.exports.generatePhash = notAvailable("generatePhash");
@@ -23,6 +25,7 @@ module.exports.isSupportedMedia = notAvailable("isSupportedMedia");
 module.exports.perceptualHash = notAvailable("perceptualHash");
 module.exports.processPhoto = notAvailable("processPhoto");
 module.exports.processPhotosBatch = notAvailable("processPhotosBatch");
+module.exports.renderFaceCrop = notAvailable("renderFaceCrop");
 module.exports.renderExportJpeg = notAvailable("renderExportJpeg");
 module.exports.startPhotoProcessing = notAvailable("startPhotoProcessing");
 module.exports.validateThumbnails = notAvailable("validateThumbnails");

@@ -3,9 +3,11 @@ import type { PhotoProcessingStream } from "@photobrain/image-processing";
 import {
 	analyzeImageQuality,
 	batchGenerateClipEmbeddings,
+	detectFaces,
 	discoverPhotos,
 	processPhotosBatch,
 	renderExportJpeg,
+	renderFaceCrop,
 	startPhotoProcessing,
 	validateThumbnails,
 } from "@photobrain/image-processing";
@@ -111,6 +113,9 @@ async function execute(
 			// Rendering decodes on this thread and never waits on the shared processing
 			// pool, so an idle scan stream keeps its session (and its next window).
 			response = { id: request.id, result: renderExportJpeg(...request.args) };
+		} else if (request.operation === "renderFaceCrop") {
+			// One small thumbnail decode on this thread, like export rendering.
+			response = { id: request.id, result: renderFaceCrop(...request.args) };
 		} else {
 			// An idle stream can fill its native result queue. Drain it before running
 			// any synchronous native operation that may need the same native pool.
@@ -145,6 +150,12 @@ async function execute(
 					response = {
 						id: request.id,
 						result: analyzeImageQuality(...request.args),
+					};
+					break;
+				case "detectFaces":
+					response = {
+						id: request.id,
+						result: detectFaces(...request.args),
 					};
 					break;
 			}

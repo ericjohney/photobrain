@@ -149,6 +149,12 @@ export function canonicalizeSmartAlbumFilters(
 		}
 		filters.tag = input.tag;
 	}
+	if (input.personId !== undefined) {
+		if (!Number.isInteger(input.personId) || input.personId < 1) {
+			invalidFilter("personId");
+		}
+		filters.personId = input.personId;
+	}
 	if (input.country !== undefined && input.country !== "") {
 		if (
 			typeof input.country !== "string" ||

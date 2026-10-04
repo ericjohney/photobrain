@@ -219,6 +219,9 @@ enum LibraryScope: Equatable, Sendable {
     case event
     /// A smart album's saved criteria, evaluated live. The user's filters are not applied.
     case smartAlbum(filters: SmartAlbumFilters, query: String?)
+    /// One person's photos (any face assigned to them), narrowed by the user's filters. Like
+    /// other scoped screens it has no filter UI, so it loads no filter options.
+    case person(Int)
 }
 
 /// The request that produces a `LibraryStore`'s photos.
@@ -238,6 +241,10 @@ enum PhotoListingSource: Equatable, Sendable {
         case let .collection(id):
             var query = filters.photoQuery
             query.collectionId = id
+            self = .photos(query)
+        case let .person(id):
+            var query = filters.photoQuery
+            query.personId = id
             self = .photos(query)
         case let .smartAlbum(albumFilters, query):
             if let query {

@@ -573,6 +573,12 @@ private final class SlowCompletingAPI: PhotoBrainAPI, @unchecked Sendable {
     func createSmartAlbum(name: String, filters: SmartAlbumFilters, query: String?) async throws -> SmartAlbumDTO { throw PhotoBrainAPIError.invalidRequest }
     func renameSmartAlbum(id: Int, name: String) async throws -> SmartAlbumDTO { throw PhotoBrainAPIError.invalidRequest }
     func deleteSmartAlbum(id: Int) async throws { throw PhotoBrainAPIError.invalidRequest }
+    func people(includeHidden: Bool) async throws -> PeopleResponseDTO { throw PhotoBrainAPIError.invalidRequest }
+    func person(id: Int) async throws -> PersonDTO { throw PhotoBrainAPIError.invalidRequest }
+    func updatePerson(id: Int, name: String??, hidden: Bool?) async throws -> PersonDTO { throw PhotoBrainAPIError.invalidRequest }
+    func mergePeople(targetId: Int, sourceIds: [Int]) async throws -> PersonDTO { throw PhotoBrainAPIError.invalidRequest }
+    func photoFaces(photoId: Int) async throws -> PhotoFacesResponseDTO { throw PhotoBrainAPIError.invalidRequest }
+    func assignFace(faceId: Int, to target: FaceAssignmentTarget) async throws -> PhotoFaceDTO { throw PhotoBrainAPIError.invalidRequest }
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO { throw PhotoBrainAPIError.invalidRequest }
     func resolveJunk(ids: [Int], action: JunkAction) async throws -> ResolveJunkResponseDTO { throw PhotoBrainAPIError.invalidRequest }
     func duplicateGroups(kind: DuplicateKind?, limit: Int, cursor: String?) async throws -> DuplicateGroupsResponseDTO { throw PhotoBrainAPIError.invalidRequest }

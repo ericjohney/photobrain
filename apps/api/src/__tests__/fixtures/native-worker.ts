@@ -86,6 +86,33 @@ mock.module("@photobrain/image-processing", () => ({
 			JSON.stringify({ path, maxEdge, quality, streamsActive }),
 		);
 	},
+	renderFaceCrop(
+		path: string,
+		box: { x: number; y: number; width: number; height: number },
+		size: number,
+	) {
+		if (path === "throw") throw new Error("crop failed");
+		return Buffer.from(JSON.stringify({ path, box, size, streamsActive }));
+	},
+	detectFaces(paths: string[]) {
+		if (streamsActive)
+			throw new Error("Native operation overlapped active stream writers");
+		return paths.map((path) => ({
+			path,
+			success: path !== "missing",
+			faces:
+				path === "missing"
+					? []
+					: [
+							{
+								box: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+								score: 0.9,
+								embedding: [1, 0],
+							},
+						],
+			error: path === "missing" ? "unreadable" : null,
+		}));
+	},
 	validateThumbnails() {
 		throw new Error(
 			"Unexpected thumbnail validation in the worker transport fixture",

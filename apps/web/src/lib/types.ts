@@ -65,3 +65,8 @@ export type GearStats = RouterOutputs["gearStats"];
 export type GearCount = GearStats["cameras"][number];
 export type GearBucket = GearStats["focalLengths"][number];
 export type CameraYear = GearStats["cameraYears"][number];
+
+// Face grouping types
+export type Person = RouterOutputs["people"]["people"][number];
+export type PhotoFace = RouterOutputs["photoFaces"]["faces"][number];
+export type FaceBox = PhotoFace["box"];

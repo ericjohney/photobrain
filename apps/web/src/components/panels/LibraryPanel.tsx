@@ -15,6 +15,8 @@ import {
 	ScanEye,
 	Star,
 	Tag,
+	UserRound,
+	Users,
 	X,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -60,6 +62,8 @@ export interface LibraryFilters {
 	country: string | null;
 	/** City (GeoNames id) of the photo's place; set together with `country`. */
 	place: number | null;
+	/** Person (people id) whose faces appear in the photo; null matches any. */
+	personId: number | null;
 	/** "On this day" capture date (`YYYY-MM-DD`); never saved in smart albums. */
 	capturedDate: string | null;
 	/**
@@ -82,6 +86,7 @@ export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
 	tag: null,
 	country: null,
 	place: null,
+	personId: null,
 	capturedDate: null,
 	event: null,
 	bounds: null,
@@ -200,6 +205,13 @@ interface LibraryPanelProps {
 	/** Duplicates are shown instead of the library, like Review. */
 	duplicatesActive: boolean;
 	onDuplicatesSelect: () => void;
+	/** Visible (not hidden) people; undefined until loaded. */
+	peopleCount: number | undefined;
+	/** People are shown instead of the library, like Review. */
+	peopleActive: boolean;
+	onPeopleSelect: () => void;
+	/** "Person: {name}" for the `personId` filter chip. */
+	personLabel: string | null;
 }
 
 interface NavItemProps {
@@ -696,9 +708,13 @@ export function LibraryPanel({
 	duplicateCount,
 	duplicatesActive,
 	onDuplicatesSelect,
+	peopleCount,
+	peopleActive,
+	onPeopleSelect,
+	personLabel,
 }: LibraryPanelProps) {
-	// Review and Duplicates replace the library; its selection is not shown.
-	const catalogViewActive = reviewActive || duplicatesActive;
+	// Review, Duplicates, and People replace the library; its selection is not shown.
+	const catalogViewActive = reviewActive || duplicatesActive || peopleActive;
 	const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
 		new Set(),
 	);
@@ -763,6 +779,14 @@ export function LibraryPanel({
 						active={duplicatesActive}
 						toggle
 						onClick={onDuplicatesSelect}
+					/>
+					<NavItem
+						icon={<Users className="h-4 w-4" />}
+						label="People"
+						count={peopleCount}
+						active={peopleActive}
+						toggle
+						onClick={onPeopleSelect}
 					/>
 				</Section>
 
@@ -999,6 +1023,7 @@ export function LibraryPanel({
 						activeFilters.tag !== null ||
 						activeFilters.country !== null ||
 						activeFilters.place !== null ||
+						activeFilters.personId !== null ||
 						activeFilters.capturedDate !== null ||
 						activeFilters.event !== null ||
 						activeFilters.bounds !== null) && (
@@ -1044,6 +1069,17 @@ export function LibraryPanel({
 									clearLabel="Clear place"
 									onClear={() =>
 										onFilterChange({ ...activeFilters, place: null })
+									}
+								/>
+							)}
+							{activeFilters.personId !== null && (
+								<FilterChip
+									testId="person-chip"
+									icon={<UserRound className="h-3 w-3" />}
+									label={personLabel ?? "Person"}
+									clearLabel="Clear person"
+									onClear={() =>
+										onFilterChange({ ...activeFilters, personId: null })
 									}
 								/>
 							)}

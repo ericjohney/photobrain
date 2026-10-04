@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// Collections tab: a two-column grid of collection cards followed by auto Events and Smart
-/// Albums sections, with create, rename, and delete for collections and rename/delete for
-/// smart albums.
+/// Collections tab: People avatars, a two-column grid of collection cards, then auto Events
+/// and Smart Albums sections, with create, rename, and delete for collections and
+/// rename/delete for smart albums.
 struct CollectionsScreen: View {
     @ObservedObject var store: CollectionsStore
     @ObservedObject var smartAlbums: SmartAlbumsStore
     @ObservedObject var events: EventsStore
+    @ObservedObject var people: PeopleStore
     let curation: PhotoCurationCenter
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
@@ -36,6 +37,8 @@ struct CollectionsScreen: View {
                         ErrorBanner(message: message, dismiss: { smartAlbums.dismissError() })
                     } else if let message = events.errorMessage {
                         ErrorBanner(message: message, dismiss: { events.dismissError() })
+                    } else if let message = people.errorMessage {
+                        ErrorBanner(message: message, dismiss: { people.dismissError() })
                     }
                 }
                 .toolbar {
@@ -82,8 +85,21 @@ struct CollectionsScreen: View {
                         api: environment.api
                     )
                 }
+                .navigationDestination(for: PeopleListRoute.self) { _ in
+                    PeopleScreen(store: people, apiBaseURL: environment.api.baseURL)
+                }
+                .navigationDestination(for: PersonRoute.self) { route in
+                    PersonDetailScreen(
+                        person: route.person,
+                        people: people,
+                        collections: store,
+                        curation: curation,
+                        api: environment.api
+                    )
+                }
         }
         .task { await store.loadIfNeeded() }
+        .task { await people.loadIfNeeded() }
         .task { await smartAlbums.loadIfNeeded() }
         .task { await events.loadIfNeeded() }
         .alert("New Collection", isPresented: $newNamePresented) {
@@ -158,6 +174,9 @@ struct CollectionsScreen: View {
         case .loaded:
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    PeopleSection(store: people, apiBaseURL: environment.api.baseURL) {
+                        sectionHeader("People")
+                    }
                     if store.collections.isEmpty {
                         ContentUnavailableView {
                             Label("No Collections", systemImage: "rectangle.stack")
@@ -202,7 +221,8 @@ struct CollectionsScreen: View {
                 async let collections: Void = store.load()
                 async let albums: Void = smartAlbums.load()
                 async let eventList: Void = events.load()
-                _ = await (collections, albums, eventList)
+                async let peopleList: Void = people.load()
+                _ = await (collections, albums, eventList, peopleList)
             }
         }
     }

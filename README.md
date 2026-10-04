@@ -12,7 +12,8 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
 - Standard image, HEIF/HEIC, common RAW, and video (`.mp4`, `.mov`, `.m4v`) discovery; videos get `ffmpeg` poster thumbnails, duration/codec metadata, Range-streamed playback, and Live Photo pairing.
 - RAW display through embedded JPEG previews extracted with `exiftool`; this checkout does not demosaic RAW files.
-- Perceptual hashes stored for future duplicate-detection features.
+- Perceptual hashes for duplicate and burst grouping.
+- Automatic face grouping into people (offline YuNet detection and SFace embeddings), with naming, hiding, merging, per-face correction, a person filter, and loupe face boxes on web and native iOS.
 - Incremental scans reuse unchanged media and recover embeddings separately. Confirmed **Reprocess all photos** controls in the web and mobile clients deliberately rebuild the library's derived media.
 - SQLite/Drizzle persistence with runtime `sqlite-vec` vector search.
 
@@ -159,6 +160,7 @@ The native iOS command requires Xcode 26.6 and matches the unsigned Preview simu
 | `RUN_DB_INIT` | `false` | Set to `true` or `1` to run shared migrations on startup |
 | `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false` | Enables native `POST /api/v1/scans`; compatibility reads remain available while disabled |
 | `FASTEMBED_CACHE_DIR` | unset | Optional FastEmbed model cache directory |
+| `FACE_MODEL_DIR` | `$FASTEMBED_CACHE_DIR/faces`, else `./.face_models` | Optional face-model cache directory; YuNet/SFace download on first face detection |
 | `PHOTO_PROCESSING_THREADS` | available CPU capacity | Optional positive integer limiting concurrent media processing; read once by Rust when its pool initializes |
 | `INNGEST_DEV` | SDK default | Use `1` only for local development; `0` for production/self-hosting |
 | `INNGEST_BASE_URL` | SDK default | Server-to-server Inngest origin; set for self-hosting |

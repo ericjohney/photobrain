@@ -10,6 +10,7 @@ import {
 	PanelRightClose,
 	PanelRightOpen,
 	RefreshCw,
+	ScanFace,
 	Search,
 	Sun,
 } from "lucide-react";
@@ -65,6 +66,12 @@ const SORT_OPTIONS: { value: TimelineSort; label: string }[] = [
 /** Gear stats toggle; only offered while the library grid is shown. */
 export interface ToolbarGearStats {
 	active: boolean;
+	onToggle: () => void;
+}
+
+/** Loupe face-box toggle; only offered in the loupe on stills. */
+export interface ToolbarFaces {
+	shown: boolean;
 	onToggle: () => void;
 }
 
@@ -137,6 +144,8 @@ interface ToolbarProps {
 	timeline?: ToolbarTimeline | null;
 	/** Gear stats toggle; null outside the library grid. */
 	gearStats?: ToolbarGearStats | null;
+	/** Face boxes toggle; null outside the loupe on a still. */
+	faces?: ToolbarFaces | null;
 
 	// Panels
 	leftPanelVisible: boolean;
@@ -170,6 +179,7 @@ export function Toolbar({
 	onThumbnailSizeChange,
 	timeline = null,
 	gearStats = null,
+	faces = null,
 	leftPanelVisible,
 	rightPanelVisible,
 	onToggleLeftPanel,
@@ -296,6 +306,26 @@ export function Toolbar({
 						</TooltipTrigger>
 						<TooltipContent>
 							{gearStats.active ? "Back to grid" : "Gear stats"}
+						</TooltipContent>
+					</Tooltip>
+				)}
+
+				{faces && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								aria-label="Face boxes"
+								aria-pressed={faces.shown}
+								className={cn("h-7 w-7", faces.shown && "bg-secondary")}
+								onClick={faces.onToggle}
+							>
+								<ScanFace className="h-4 w-4" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							{faces.shown ? "Hide face boxes (F)" : "Show face boxes (F)"}
 						</TooltipContent>
 					</Tooltip>
 				)}

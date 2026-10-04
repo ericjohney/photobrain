@@ -154,6 +154,16 @@
 						}
 					},
 					{
+						"name": "personId",
+						"in": "query",
+						"required": false,
+						"description": "Only photos with a face assigned to this person (`id` from `GET /people`)",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
 						"name": "country",
 						"in": "query",
 						"required": false,
@@ -356,6 +366,16 @@
 						}
 					},
 					{
+						"name": "personId",
+						"in": "query",
+						"required": false,
+						"description": "Only photos with a face assigned to this person (`id` from `GET /people`)",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
 						"name": "country",
 						"in": "query",
 						"required": false,
@@ -555,6 +575,16 @@
 							"type": "string",
 							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 							"maxLength": 64
+						}
+					},
+					{
+						"name": "personId",
+						"in": "query",
+						"required": false,
+						"description": "Only photos with a face assigned to this person (`id` from `GET /people`)",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
 						}
 					},
 					{
@@ -915,6 +945,16 @@
 							"type": "string",
 							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 							"maxLength": 64
+						}
+					},
+					{
+						"name": "personId",
+						"in": "query",
+						"required": false,
+						"description": "Only photos with a face assigned to this person (`id` from `GET /people`)",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
 						}
 					},
 					{
@@ -1861,6 +1901,301 @@
 					}
 				}
 			}
+		},
+		"/api/v1/people": {
+			"get": {
+				"operationId": "listPeople",
+				"description": "People grouped from detected faces: named before unnamed, then photoCount descending, then id. People without faces are omitted unless named; hidden people are omitted unless includeHidden=true.",
+				"parameters": [
+					{
+						"name": "includeHidden",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "People",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PeopleResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/people/{id}": {
+			"get": {
+				"operationId": "getPerson",
+				"description": "One person, hidden or not.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Person",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Person"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/PersonNotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"patch": {
+				"operationId": "updatePerson",
+				"description": "Renames (null clears the name) and/or hides a person.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdatePersonRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated person",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Person"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/PersonNotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/people/{id}/merge": {
+			"post": {
+				"operationId": "mergePeople",
+				"description": "Moves every face of sourceIds to the path person as manual assignments and deletes the sources. An unnamed target takes the first named source's name.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/MergePeopleRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Merged person",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Person"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"$ref": "#/components/responses/PersonNotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/photos/{id}/faces": {
+			"get": {
+				"operationId": "listPhotoFaces",
+				"description": "Faces detected in the photo, left to right. Render one with GET /api/faces/{id}/crop.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Photo faces",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PhotoFacesResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"description": "Photo not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"photoNotFound": {
+										"value": {
+											"error": {
+												"code": "PHOTO_NOT_FOUND",
+												"message": "Photo not found"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/faces/{id}/person": {
+			"put": {
+				"operationId": "assignFace",
+				"description": "Corrects one face: assign it to a person, create a named person for it, or reject it (personId null).",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AssignFaceRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated face",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Face"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"404": {
+						"description": "Face or person not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"examples": {
+									"faceNotFound": {
+										"value": {
+											"error": {
+												"code": "FACE_NOT_FOUND",
+												"message": "Face not found"
+											}
+										}
+									},
+									"personNotFound": {
+										"value": {
+											"error": {
+												"code": "PERSON_NOT_FOUND",
+												"message": "Person not found"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -2528,6 +2863,11 @@
 						"maxLength": 64,
 						"description": "Only photos carrying this automatic tag slug"
 					},
+					"personId": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "Only photos with a face assigned to this person (`id` from `GET /people`)"
+					},
 					"country": {
 						"type": "string",
 						"pattern": "^[A-Z]{2}$",
@@ -3056,6 +3396,10 @@
 						"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 						"maxLength": 64
 					},
+					"personId": {
+						"type": "integer",
+						"minimum": 1
+					},
 					"country": {
 						"type": "string",
 						"pattern": "^[A-Z]{2}$"
@@ -3122,6 +3466,11 @@
 								"maxLength": 64
 							}
 						]
+					},
+					"personId": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "Only photos with a face assigned to this person"
 					},
 					"country": {
 						"type": "string",
@@ -3735,6 +4084,184 @@
 						}
 					}
 				}
+			},
+			"Person": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"id",
+					"name",
+					"hidden",
+					"photoCount",
+					"faceCount",
+					"coverFaceId"
+				],
+				"properties": {
+					"id": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"name": {
+						"type": ["string", "null"],
+						"minLength": 1,
+						"maxLength": 80,
+						"description": "null for an automatically grouped person the user has not named"
+					},
+					"hidden": {
+						"type": "boolean"
+					},
+					"photoCount": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Distinct photos the library lists for `personId` (a RAW+JPEG pair counts once)"
+					},
+					"faceCount": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"coverFaceId": {
+						"type": ["integer", "null"],
+						"minimum": 1,
+						"description": "The person's highest-score face; render it with GET /api/faces/{coverFaceId}/crop. null when the person has no faces."
+					}
+				}
+			},
+			"PeopleResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["people"],
+				"properties": {
+					"people": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Person"
+						}
+					}
+				}
+			},
+			"UpdatePersonRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"properties": {
+					"name": {
+						"type": ["string", "null"],
+						"minLength": 1,
+						"maxLength": 80,
+						"description": "Trimmed, 1-80 characters; null clears the name"
+					},
+					"hidden": {
+						"type": "boolean"
+					}
+				}
+			},
+			"MergePeopleRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["sourceIds"],
+				"properties": {
+					"sourceIds": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 50,
+						"uniqueItems": true,
+						"items": {
+							"type": "integer",
+							"minimum": 1
+						},
+						"description": "Distinct people merged into the path person; must not contain it"
+					}
+				}
+			},
+			"FaceBox": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["x", "y", "width", "height"],
+				"description": "Normalized 0..1 of the oriented image",
+				"properties": {
+					"x": {
+						"type": "number"
+					},
+					"y": {
+						"type": "number"
+					},
+					"width": {
+						"type": "number"
+					},
+					"height": {
+						"type": "number"
+					}
+				}
+			},
+			"Face": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["id", "box", "personId", "personName", "assignment"],
+				"properties": {
+					"id": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"box": {
+						"$ref": "#/components/schemas/FaceBox"
+					},
+					"personId": {
+						"type": ["integer", "null"],
+						"minimum": 1
+					},
+					"personName": {
+						"type": ["string", "null"]
+					},
+					"assignment": {
+						"type": "string",
+						"enum": ["auto", "manual", "rejected"],
+						"description": "`auto` faces are grouped automatically; `manual` and `rejected` are user decisions automation never changes"
+					}
+				}
+			},
+			"PhotoFacesResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["faces"],
+				"properties": {
+					"faces": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Face"
+						},
+						"description": "Left to right by box x"
+					}
+				}
+			},
+			"AssignFaceRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"description": "Exactly one of personId and name. A personId assigns the face to that person and null rejects it (no person); name creates a new named person for it.",
+				"oneOf": [
+					{
+						"required": ["personId"],
+						"not": {
+							"required": ["name"]
+						}
+					},
+					{
+						"required": ["name"],
+						"not": {
+							"required": ["personId"]
+						}
+					}
+				],
+				"properties": {
+					"personId": {
+						"type": ["integer", "null"],
+						"minimum": 1
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80,
+						"description": "Trimmed, 1-80 characters"
+					}
+				}
 			}
 		},
 		"responses": {
@@ -3871,6 +4398,46 @@
 									"error": {
 										"code": "SMART_ALBUM_NAME_TAKEN",
 										"message": "A smart album with that name already exists"
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"PersonNotFound": {
+				"description": "Person not found",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"examples": {
+							"personNotFound": {
+								"value": {
+									"error": {
+										"code": "PERSON_NOT_FOUND",
+										"message": "Person not found"
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"FaceNotFound": {
+				"description": "Face not found",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"examples": {
+							"faceNotFound": {
+								"value": {
+									"error": {
+										"code": "FACE_NOT_FOUND",
+										"message": "Face not found"
 									}
 								}
 							}

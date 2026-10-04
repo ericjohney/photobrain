@@ -360,6 +360,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let flag: String?
     let collectionId: Int?
     let tag: String?
+    let personId: Int?
     let country: String?
     let place: Int?
     let bounds: PhotoBounds?
@@ -379,6 +380,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
         flag = filters.flag?.rawValue
         collectionId = filters.collectionId
         tag = filters.tag
+        personId = filters.personId
         country = filters.country
         place = filters.place
         bounds = filters.bounds
@@ -902,13 +904,15 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
     var minRating: Int?
     var flag: PhotoFlagFilter?
     var tag: String?
+    /// Only photos with a face assigned to this person.
+    var personId: Int?
     /// ISO 3166-1 alpha-2 country code of the photos' place.
     var country: String?
     /// GeoNames city id of the photos' place.
     var place: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case filterRaw, folder, camera, lens, iso, dateMonth, minRating, flag, tag, country, place
+        case filterRaw, folder, camera, lens, iso, dateMonth, minRating, flag, tag, personId, country, place
     }
 
     init(
@@ -921,6 +925,7 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
         minRating: Int? = nil,
         flag: PhotoFlagFilter? = nil,
         tag: String? = nil,
+        personId: Int? = nil,
         country: String? = nil,
         place: Int? = nil
     ) {
@@ -933,6 +938,7 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
         self.minRating = minRating
         self.flag = flag
         self.tag = tag
+        self.personId = personId
         self.country = country
         self.place = place
     }
@@ -968,6 +974,7 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
             minRating: try container.decodeIfPresent(Int.self, forKey: .minRating),
             flag: try container.decodeIfPresent(String.self, forKey: .flag).flatMap(PhotoFlagFilter.init(rawValue:)),
             tag: try container.decodeIfPresent(String.self, forKey: .tag),
+            personId: try container.decodeIfPresent(Int.self, forKey: .personId),
             country: try container.decodeIfPresent(String.self, forKey: .country),
             place: try container.decodeIfPresent(Int.self, forKey: .place)
         )
@@ -984,13 +991,15 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
         try container.encodeIfPresent(minRating, forKey: .minRating)
         try container.encodeIfPresent(flag?.rawValue, forKey: .flag)
         try container.encodeIfPresent(tag, forKey: .tag)
+        try container.encodeIfPresent(personId, forKey: .personId)
         try container.encodeIfPresent(country, forKey: .country)
         try container.encodeIfPresent(place, forKey: .place)
     }
 
     var isEmpty: Bool {
         filterRaw == nil && folder == nil && camera == nil && lens == nil && iso == nil
-            && dateMonth == nil && minRating == nil && flag == nil && tag == nil && country == nil && place == nil
+            && dateMonth == nil && minRating == nil && flag == nil && tag == nil && personId == nil
+            && country == nil && place == nil
     }
 
     /// Wire filters for `GET /photos` and `POST /search`.
@@ -1005,6 +1014,7 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
             minRating: minRating,
             flag: flag,
             tag: tag,
+            personId: personId,
             country: country,
             place: place
         )
@@ -1108,6 +1118,189 @@ enum SmartAlbumValidationError: Error, Equatable, LocalizedError, Sendable {
     }
 }
 
+// MARK: - People
+
+/// `GET /api/v1/people` entry. Unnamed people have a `nil` name; `coverFaceId` is the
+/// person's highest-score face, `nil` when they have none.
+struct PersonDTO: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    /// Mutable so optimistic rename/hide/merge can patch the list before the server confirms.
+    var name: String?
+    var hidden: Bool
+    /// Distinct listed photos (a RAW+JPEG pair counts once).
+    var photoCount: Int
+    var faceCount: Int
+    var coverFaceId: Int?
+
+    /// The cover face crop, or `nil` without a cover face.
+    func coverURL(apiBaseURL: URL, size: Int = FaceCrop.defaultSize) -> URL? {
+        coverFaceId.map { FaceCrop.url(baseURL: apiBaseURL, faceID: $0, size: size) }
+    }
+}
+
+struct PeopleResponseDTO: Codable, Equatable, Sendable {
+    let people: [PersonDTO]
+}
+
+/// `PATCH /api/v1/people/:id` body. Only provided keys are encoded; clearing the name
+/// (`name: .some(nil)`) encodes an explicit JSON `null`, while `name: nil` omits the key.
+struct UpdatePersonRequestDTO: Encodable, Equatable, Sendable {
+    let name: String??
+    let hidden: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case hidden
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if case let .some(name) = name {
+            if let name {
+                try container.encode(name, forKey: .name)
+            } else {
+                try container.encodeNil(forKey: .name)
+            }
+        }
+        try container.encodeIfPresent(hidden, forKey: .hidden)
+    }
+}
+
+/// `POST /api/v1/people/:id/merge` body.
+struct MergePeopleRequestDTO: Encodable, Equatable, Sendable {
+    let sourceIds: [Int]
+}
+
+/// A face rectangle normalized to 0...1 of the oriented image, origin top-left.
+struct FaceBoxDTO: Codable, Hashable, Sendable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+}
+
+/// How a face got its person: automatic grouping, a user's choice, or a user's rejection.
+enum FaceAssignment: String, Codable, Hashable, Sendable {
+    case auto
+    case manual
+    case rejected
+}
+
+/// `GET /api/v1/photos/:id/faces` entry and the `PUT /api/v1/faces/:id/person` response.
+struct PhotoFaceDTO: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    let box: FaceBoxDTO
+    /// Mutable so an optimistic assignment can patch the face before the server confirms.
+    var personId: Int?
+    var personName: String?
+    var assignment: FaceAssignment
+}
+
+/// A photo's faces, ordered left to right.
+struct PhotoFacesResponseDTO: Codable, Equatable, Sendable {
+    let faces: [PhotoFaceDTO]
+}
+
+/// What `PUT /api/v1/faces/:id/person` does with a face.
+enum FaceAssignmentTarget: Hashable, Sendable {
+    /// Assigns the face to an existing person: `{"personId": id}`.
+    case person(Int)
+    /// Creates a named person holding the face: `{"name": name}`.
+    case newPerson(name: String)
+    /// Rejects the face from any person: `{"personId": null}`.
+    case notThisPerson
+
+    /// Trims and checks the new person's name and the person id, as the server does.
+    func validated() throws -> Self {
+        switch self {
+        case let .person(id):
+            guard id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+            return self
+        case let .newPerson(name):
+            return .newPerson(name: try PersonName.validated(name))
+        case .notThisPerson:
+            return self
+        }
+    }
+}
+
+struct AssignFaceRequestDTO: Encodable, Equatable, Sendable {
+    let target: FaceAssignmentTarget
+
+    private enum CodingKeys: String, CodingKey {
+        case personId
+        case name
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch target {
+        case let .person(id): try container.encode(id, forKey: .personId)
+        case let .newPerson(name): try container.encode(name, forKey: .name)
+        case .notThisPerson: try container.encodeNil(forKey: .personId)
+        }
+    }
+}
+
+/// Client-side mirror of the server's person name rule: trimmed, 1-80 UTF-16 units.
+enum PersonName {
+    static let maximumLength = 80
+
+    static func validated(_ raw: String) throws -> String {
+        guard let name = try validatedOptional(raw) else { throw PersonNameError.empty }
+        return name
+    }
+
+    /// A blank name is `nil`, which clears a person's name.
+    static func validatedOptional(_ raw: String) throws -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.utf16.count <= maximumLength else { throw PersonNameError.tooLong }
+        return trimmed
+    }
+}
+
+enum PersonNameError: Error, Equatable, LocalizedError, Sendable {
+    case empty
+    case tooLong
+
+    var errorDescription: String? {
+        switch self {
+        case .empty: "Enter a name."
+        case .tooLong: "Names can be at most \(PersonName.maximumLength) characters."
+        }
+    }
+}
+
+/// Client-side mirror of the merge rule: 1-50 distinct positive source ids, none the target.
+enum PeopleMerge {
+    static let maximumSources = 50
+
+    static func isValid(targetId: Int, sourceIds: [Int]) -> Bool {
+        targetId > 0
+            && (1...maximumSources).contains(sourceIds.count)
+            && Set(sourceIds).count == sourceIds.count
+            && !sourceIds.contains(targetId)
+            && sourceIds.allSatisfy { $0 > 0 }
+    }
+}
+
+/// `GET /api/faces/{id}/crop?size=`: a square WebP around one face, a binary route outside
+/// `/api/v1`. Crops are immutable per face id.
+enum FaceCrop {
+    static let defaultSize = 256
+
+    static func url(baseURL: URL, faceID: Int, size: Int = defaultSize) -> URL {
+        var url = baseURL
+            .appendingPathComponent("api")
+            .appendingPathComponent("faces")
+            .appendingPathComponent(String(faceID))
+            .appendingPathComponent("crop")
+        url.append(queryItems: [URLQueryItem(name: "size", value: String(size))])
+        return url
+    }
+}
+
 struct APIErrorEnvelope: Codable, Equatable, Sendable {
     struct Detail: Codable, Equatable, Sendable {
         let code: String
@@ -1142,6 +1335,8 @@ enum PhotoBrainAPIError: Error, Equatable, LocalizedError, Sendable {
             case "COLLECTION_NOT_FOUND": "This collection no longer exists."
             case "SMART_ALBUM_NAME_TAKEN": "A smart album with that name already exists."
             case "SMART_ALBUM_NOT_FOUND": "This smart album no longer exists."
+            case "PERSON_NOT_FOUND": "This person no longer exists."
+            case "FACE_NOT_FOUND": "This face is no longer in the photo."
             case "SOURCE_MISSING": "The original file is no longer in the photo library on the server."
             case "EXPORT_FAILED": "This photo couldn’t be converted for sharing."
             default: message

@@ -185,6 +185,11 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 			{ name: "photos/places.requested", data: {} },
 			{ name: "photos/events.requested", data: {} },
 		]);
+		// Appended as its own step for replay safety: detect and group faces.
+		await step.sendEvent("trigger-photo-faces-v1", {
+			name: "photos/faces.requested",
+			data: {},
+		});
 
 		return { processed: processedCount, successful: successCount };
 	},

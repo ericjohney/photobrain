@@ -301,6 +301,11 @@ export const scanPhotosFunction = inngest.createFunction(
 				{ name: "photos/places.requested", data: {} },
 				{ name: "photos/events.requested", data: {} },
 			]);
+			// Its own step, appended for replay safety: detect and group faces.
+			await step.sendEvent("trigger-photo-faces-v1", {
+				name: "photos/faces.requested",
+				data: {},
+			});
 		}
 		return result;
 	},

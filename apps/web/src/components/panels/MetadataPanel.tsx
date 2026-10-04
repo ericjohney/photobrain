@@ -40,6 +40,7 @@ import {
 	PhotoCollections,
 	type PhotoCollectionsProps,
 } from "./PhotoCollections";
+import { PhotoPeople } from "./PhotoPeople";
 import { PhotoPlaceRow } from "./PhotoPlaceRow";
 import { PhotoTags } from "./PhotoTags";
 
@@ -314,6 +315,7 @@ export function MetadataPanel({
 					<PhotoCollections photoId={photo.id} {...collections} />
 				)}
 				{onTagSelect && <PhotoTags photoId={photo.id} onSelect={onTagSelect} />}
+				{photo.mediaType !== "video" && <PhotoPeople photoId={photo.id} />}
 				{/* File Info */}
 				<MetadataSection title="File" icon={FileImage}>
 					<div className="space-y-0.5 pt-1">

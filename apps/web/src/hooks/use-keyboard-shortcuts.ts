@@ -24,6 +24,8 @@ interface KeyboardShortcutsOptions {
 	downloadActivePhoto: () => void;
 	/** Play/pause the loupe's video (`Space`); null unless the loupe shows a video. */
 	toggleVideoPlayback: (() => void) | null;
+	/** Show/hide loupe face boxes (`F`); null unless the loupe shows a still. */
+	toggleFaceBoxes: (() => void) | null;
 	enabled?: boolean;
 }
 
@@ -41,6 +43,7 @@ export function useKeyboardShortcuts({
 	resolveReviewPhoto,
 	downloadActivePhoto,
 	toggleVideoPlayback,
+	toggleFaceBoxes,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
 	useEffect(() => {
@@ -130,6 +133,13 @@ export function useKeyboardShortcuts({
 					}
 					break;
 
+				case "f":
+					if (!isCtrlOrCmd && !e.altKey && toggleFaceBoxes) {
+						e.preventDefault();
+						toggleFaceBoxes();
+					}
+					break;
+
 				// Panel shortcuts
 				case "tab":
 					e.preventDefault();
@@ -196,5 +206,6 @@ export function useKeyboardShortcuts({
 		resolveReviewPhoto,
 		downloadActivePhoto,
 		toggleVideoPlayback,
+		toggleFaceBoxes,
 	]);
 }

@@ -313,11 +313,8 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - Batch tagging
 - [ ] **Hierarchical tags**
   - Tag categories (people, places, events, things)
-- [ ] **Face detection & recognition**
-  - Detect faces in photos
-  - Cluster similar faces
-  - Name people and find all their photos
-  - Face recognition training
+- [x] **Face detection & recognition** (offline YuNet/SFace; automatic people clustering, naming, hide, merge, per-face assign/reject, person filter and smart albums, loupe face boxes on web and native iOS)
+  - [ ] Expo Android/web People UI
 
 ### 2.3 Duplicate Detection 🟡 **PARTIALLY COMPLETED**
 - [x] Generate and store a pHash during scanning

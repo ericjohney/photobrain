@@ -7,6 +7,7 @@ mod discovery;
 mod duplicates;
 mod exif;
 mod export;
+mod faces;
 mod heif;
 mod orientation;
 mod phash;
@@ -25,6 +26,10 @@ pub use clip::{batch_generate_clip_embeddings, clip_text_embedding};
 pub use discovery::{DiscoveryResult, discover_photos};
 pub use duplicates::{NearDuplicateGroup, group_near_duplicates};
 pub use export::render_export_jpeg;
+pub use faces::{
+  DetectedFace, FaceBox, FaceDetectionResult, cluster_face_embeddings, detect_faces,
+  render_face_crop,
+};
 pub use phash::generate_phash;
 pub use quality::{ImageQuality, analyze_image_quality};
 pub use stream::{PhotoProcessingStream, PhotoStreamResult, start_photo_processing};
