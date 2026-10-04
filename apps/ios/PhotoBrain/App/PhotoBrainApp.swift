@@ -64,6 +64,7 @@ final class AppBootstrap: ObservableObject {
                 search.retry()
             }
             await scans.restore(importedActiveID: imported.activeScanID)
+            BackupRuntime.shared.coordinator?.onFileCreated = { [weak scans] in scans?.expectImport() }
             self.environment = environment
             self.theme = theme
             self.library = library

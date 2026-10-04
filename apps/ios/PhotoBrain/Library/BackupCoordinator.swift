@@ -121,6 +121,9 @@ final class BackupCoordinator: ObservableObject {
     let deviceId: String
     /// Called when a background run should be scheduled (backup enabled, app backgrounded).
     var scheduleBackgroundRun: (() -> Void)?
+    /// Called after an upload stored a new file (`201 created`); the server imports it with a
+    /// debounced incremental scan.
+    var onFileCreated: (() -> Void)?
 
     private let api: any BackupServerAPI
     private let library: any BackupPhotoLibrary
@@ -560,7 +563,7 @@ final class BackupCoordinator: ObservableObject {
         guard let result else { return }
         let name = result.transfer.filename
         switch result.outcome {
-        case .done:
+        case let .done(_, duplicate):
             let assetId = result.transfer.key.assetId
             if let remaining = remainingByAsset[assetId] {
                 if remaining <= 1 {
@@ -570,6 +573,7 @@ final class BackupCoordinator: ObservableObject {
                     remainingByAsset[assetId] = remaining - 1
                 }
             }
+            if !duplicate { onFileCreated?() }
         case let .skipped(reason):
             skippedFiles += 1
             lastError = "\(name): \(reason)"

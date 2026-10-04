@@ -281,4 +281,49 @@ final class ScanCoordinatorTests: XCTestCase {
         XCTAssertNil(imported.activeScanID)
     }
 
+    func testExpectedImportSkipsTheRunningJobAndTracksTheNextOneToCompletion() async throws {
+        let api = TestAPI()
+        let runningID = "00000000-0000-0000-0000-000000000020"
+        let importID = "00000000-0000-0000-0000-000000000021"
+        let running = TestModels.scan(id: runningID, updatedAt: Date())
+        await api.setActive([running])
+        let suite = "ScanCoordinatorImportTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let coordinator = ScanCoordinator(api: api, migration: MigrationStore(defaults: defaults))
+        var libraryInvalidations = 0
+        coordinator.invalidateLibrary = { libraryInvalidations += 1 }
+        await coordinator.restore(importedActiveID: nil)
+
+        // The upload landed while `running` was active; its scan may predate the file.
+        coordinator.expectImport()
+        XCTAssertTrue(coordinator.isImportPending)
+        await api.setScan(id: runningID, response: TestModels.scan(id: runningID, phase: .completed, current: 10, updatedAt: Date()))
+        await api.setActive([])
+        try await waitUntil(timeout: .seconds(6)) { coordinator.selectedScan == nil }
+        XCTAssertTrue(coordinator.isImportPending, "the earlier job finishing is not the import")
+
+        await api.setActive([TestModels.scan(id: importID, phase: .queued, current: 0, updatedAt: Date())])
+        try await waitUntil(timeout: .seconds(6)) { coordinator.selectedScan?.id == importID }
+        XCTAssertFalse(coordinator.isImportPending)
+        let before = libraryInvalidations
+
+        await api.setScan(id: importID, response: TestModels.scan(id: importID, phase: .completed, current: 1, updatedAt: Date()))
+        await api.setActive([])
+        try await waitUntil(timeout: .seconds(6)) { libraryInvalidations > before && coordinator.selectedScan == nil }
+    }
+
+    @MainActor
+    private func waitUntil(
+        timeout: Duration,
+        _ condition: @MainActor () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTFail("condition not met within \(timeout)")
+    }
+
 }

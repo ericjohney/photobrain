@@ -16,6 +16,11 @@ enum ActiveSnapshotTrigger: String, Sendable {
 enum ScanPollingPolicy {
     static let progressingInterval: Duration = .milliseconds(1_500)
     static let stalledInterval: Duration = .seconds(15)
+    /// `/scans/active` poll while an upload's debounced import scan has not appeared yet.
+    static let importDiscoveryInterval: Duration = .seconds(2)
+    /// The server debounces imports by 60 s; after this the import is assumed to have come and
+    /// gone unseen (e.g. while suspended), so the library refreshes once and polling stops.
+    static let importDiscoveryTimeout: Duration = .seconds(180)
     static let stalledAge: TimeInterval = 5 * 60
 
     static func isStalled(_ scan: ScanDTO, now: Date = Date()) -> Bool {
@@ -63,8 +68,12 @@ final class ScanCoordinator: ObservableObject {
     private var lastInvalidatedProgress: (id: String, phase: ScanPhase, current: Int)?
     private var lastLibraryInvalidation = Date.distantPast
     private var trailingInvalidationTask: Task<Void, Never>?
+    /// Set while a created upload's import scan is expected; holds the job already running then.
+    private var pendingImport: (skipID: String?, task: Task<Void, Never>)?
     var invalidateLibrary: (@MainActor () async -> Void)?
     var invalidateSearch: (@MainActor () async -> Void)?
+
+    var isImportPending: Bool { pendingImport != nil }
 
     init(api: any PhotoBrainAPI, migration: MigrationStore) {
         self.api = api
@@ -275,6 +284,36 @@ final class ScanCoordinator: ObservableObject {
         await pollOnce(reconcileResolvedSelection: false)
         await refreshActiveSnapshot(trigger: .foreground)
         startPollingIfNeeded()
+        // The import may have run and finished while the app was suspended.
+        if pendingImport != nil { await invalidateLibrary?() }
+    }
+
+    /// A backup upload created a file. The server starts a debounced incremental scan for it, so
+    /// poll `/scans/active` until a job other than the one running now appears, then track it with
+    /// the normal progress polling (and its library refreshes). Gives up after
+    /// `importDiscoveryTimeout` with one library refresh.
+    func expectImport() {
+        pendingImport?.task.cancel()
+        let skipID = isActive ? selectedID : nil
+        let task = Task { [weak self, api] in
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: ScanPollingPolicy.importDiscoveryTimeout)
+            while clock.now < deadline {
+                try? await Task.sleep(for: ScanPollingPolicy.importDiscoveryInterval)
+                guard !Task.isCancelled else { return }
+                guard let jobs = try? await api.activeScans().jobs else { continue }
+                guard !Task.isCancelled, let self else { return }
+                if let job = jobs.first(where: { !$0.isTerminal && $0.id != skipID }) {
+                    await self.select(job, resetStallClassification: true)
+                    self.startPollingIfNeeded()
+                    return
+                }
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.pendingImport = nil
+            await self.invalidateLibrary?()
+        }
+        pendingImport = (skipID, task)
     }
 
     func manualLibraryRefresh() async {
@@ -413,6 +452,10 @@ final class ScanCoordinator: ObservableObject {
     private func select(_ scan: ScanDTO, resetStallClassification: Bool) async {
         if resetStallClassification || selectedID != scan.id {
             invalidateStatusRequest()
+        }
+        if let pending = pendingImport, !scan.isTerminal, scan.id != pending.skipID {
+            pending.task.cancel()
+            pendingImport = nil
         }
         selectedID = scan.id
         selectedScan = scan

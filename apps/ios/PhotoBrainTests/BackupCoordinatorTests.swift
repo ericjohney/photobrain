@@ -253,6 +253,8 @@ final class BackupCoordinatorTests: XCTestCase {
             BackupFixtures.asset("gif", created: 500, [(.photo, "G.GIF")]),
         ]
         let harness = makeHarness(server: server, library: library)
+        var createdNotifications = 0
+        harness.coordinator.onFileCreated = { createdNotifications += 1 }
         harness.coordinator.requestRun()
 
         try await waitUntil { harness.transport.uploads.count == 2 }
@@ -293,6 +295,7 @@ final class BackupCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.coordinator.failedFiles, 0)
         XCTAssertEqual(harness.ledger.record(for: BackupItemKey(assetId: "mid", resource: .photo)), .init(status: .uploaded, detail: "2019/M.HEIC"))
         XCTAssertEqual(harness.transport.uploads.count, 3)
+        XCTAssertEqual(createdNotifications, 2, "only created files (not duplicates) expect an import")
         XCTAssertFalse(library.exported.contains(BackupItemKey(assetId: "known", resource: .photo)))
 
         // A second run skips everything recorded locally and does not reconcile again.
