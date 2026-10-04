@@ -76,6 +76,13 @@ mock.module("@photobrain/image-processing", () => ({
 			path === "missing" ? null : { sharpness: index * 10, brightness: 128 },
 		);
 	},
+	// Renders may run beside an open scan stream: they never use its pool.
+	renderExportJpeg(path: string, maxEdge: number, quality: number) {
+		if (path === "throw") throw new Error("render failed");
+		return Buffer.from(
+			JSON.stringify({ path, maxEdge, quality, streamsActive }),
+		);
+	},
 	validateThumbnails() {
 		throw new Error(
 			"Unexpected thumbnail validation in the worker transport fixture",

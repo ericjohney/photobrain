@@ -23,5 +23,6 @@ module.exports.isSupportedImage = notAvailable("isSupportedImage");
 module.exports.perceptualHash = notAvailable("perceptualHash");
 module.exports.processPhoto = notAvailable("processPhoto");
 module.exports.processPhotosBatch = notAvailable("processPhotosBatch");
+module.exports.renderExportJpeg = notAvailable("renderExportJpeg");
 module.exports.startPhotoProcessing = notAvailable("startPhotoProcessing");
 module.exports.validateThumbnails = notAvailable("validateThumbnails");

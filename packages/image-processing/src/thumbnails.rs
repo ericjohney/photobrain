@@ -6,6 +6,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::batch::processing_pool;
+use crate::decode::decode_source;
+use crate::heif::is_heif_file;
 use crate::orientation::apply_orientation;
 
 #[napi(object)]
@@ -362,32 +364,10 @@ pub fn generate_thumbnails_from_file(
   thumbnails_base_dir: String,
   orientation: Option<u32>,
 ) -> napi::Result<()> {
-  use crate::heif::{decode_heif, is_heif_file};
-  use crate::preview::{extract_preview, is_raw_file};
-  use image::ImageReader;
-  use std::io::Cursor;
-
-  // Decode the image based on file type
-  let img = if is_heif_file(&file_path) {
-    // HEIC/HEIF: decode using libheif
-    decode_heif(&file_path)
-      .map_err(|e| napi::Error::from_reason(format!("Failed to decode HEIF: {}", e)))?
-  } else if is_raw_file(&file_path) {
-    // RAW: extract embedded preview
-    let preview = extract_preview(&file_path)
-      .ok_or_else(|| napi::Error::from_reason("No embedded preview found"))?;
-    ImageReader::new(Cursor::new(preview))
-      .with_guessed_format()
-      .map_err(|e| napi::Error::from_reason(format!("Failed to read preview: {}", e)))?
-      .decode()
-      .map_err(|e| napi::Error::from_reason(format!("Failed to decode preview: {}", e)))?
-  } else {
-    // Standard image: decode directly
-    ImageReader::open(&file_path)
-      .map_err(|e| napi::Error::from_reason(format!("Failed to open image: {}", e)))?
-      .decode()
-      .map_err(|e| napi::Error::from_reason(format!("Failed to decode image: {}", e)))?
-  };
+  // Decode the image based on file type (HEIF by extension only on this helper path).
+  let img = decode_source(&file_path, is_heif_file(&file_path))
+    .map_err(|e| napi::Error::from_reason(format!("Failed to decode image: {}", e)))?
+    .image;
 
   // Apply orientation if provided
   let img = apply_orientation(img, orientation);

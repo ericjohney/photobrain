@@ -16,6 +16,7 @@ import {
 	X,
 	XCircle,
 } from "lucide-react";
+import { PhotoExportMenu } from "@/components/PhotoExportMenu";
 import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
@@ -292,20 +293,21 @@ export function MetadataPanel({
 		<ScrollArea className={cn("h-full", className)}>
 			<div className="pb-4">
 				{review && <ReviewReasons {...review} />}
-				{onFindSimilar && (
-					<div className="border-b border-border px-3 py-2">
+				<div className="flex gap-2 border-b border-border px-3 py-2">
+					{onFindSimilar && (
 						<Button
 							variant="outline"
 							size="sm"
-							className="w-full"
+							className="flex-1"
 							onClick={onFindSimilar}
 							title="Find similar photos (S)"
 						>
 							<Sparkles className="h-4 w-4" />
 							Find similar
 						</Button>
-					</div>
-				)}
+					)}
+					<PhotoExportMenu photo={photo} className="flex-1" />
+				</div>
 				{onCurate && <CurationControls photo={photo} onCurate={onCurate} />}
 				{collections && (
 					<PhotoCollections photoId={photo.id} {...collections} />

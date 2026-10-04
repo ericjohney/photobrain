@@ -9,6 +9,7 @@ Scope: `apps/api`.
 - `src/trpc/router.ts`: public tRPC transport contract for web and Expo clients.
 - `src/routes/v1.ts`, `v1-schemas.ts`, and `openapi-v1.json`: versioned JSON compatibility API, runtime DTO validation/serialization, and checked-in native-client contract.
 - `src/routes/photos.ts`: binary file and thumbnail routes plus one-off maintenance routes.
+- `src/routes/exports.ts`: binary export downloads (`/api/photos/:id/export`, `/api/collections/:id/export`) and the RFC 6266 `contentDisposition` helper; `services/exports.ts` (filenames, duplicate-name disambiguation, pull-based collection ZIP stream), `services/zip-writer.ts` (STORE/ZIP64 encoder), `services/photo-files.ts` (`originalFilePath`, shared with `/:id/file`).
 - `src/inngest/client.ts`: typed event definitions and Realtime middleware.
 - `src/inngest/functions/scan.ts`: durable incremental planning, continuous Rust processing, and completed-result checkpoints.
 - `src/inngest/functions/embeddings.ts`: deferred CLIP embedding batches; tags each saved vector in the same transaction and finally requests the tag backfill.
@@ -412,6 +413,15 @@ The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, an
 - The standalone `src/db/migrate.ts` is not the normal migration path and currently points at an API-local `./drizzle` directory that does not exist.
 - Do not assume scan removes rows for files deleted from disk.
 - Streaming scan transactions include photo/EXIF/pHash/status saves, item receipts, manifest counters, and scan progress. Embedding transactions include vectors and embedding statuses. Native work/network publication remain outside transactions; never put async callbacks inside Bun SQLite transactions. `clearScanWork` explicitly deletes items and manifests in one transaction because foreign-key enforcement is not guaranteed on every connection.
+
+## Exports
+
+Binary routes outside tRPC, `/api/v1`, and `openapi-v1.json`; every response sends `Cache-Control: private, no-store` and an RFC 6266 `Content-Disposition` (`filename` ASCII fallback with non-printable-ASCII, `"`, `\` → `_`, plus RFC 5987 `filename*`). Errors are `{ error: { code, message } }`.
+
+- `GET /api/photos/:id/export?size=original|2048|1024` (default `2048`). `original` streams the source unchanged with its MIME type (else `application/octet-stream`) and `Content-Length`. Rendered sizes call `renderExportJpeg` (quality 90, long edge ≤ size, never upscaled, no metadata) through `nativeExecutor.run`, named `{stem}_{size}.jpg`. Codes: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`, 404 `SOURCE_MISSING`, 422 `EXPORT_FAILED`, and 503 `EXPORT_BUSY` with `Retry-After: 1` when the executor's eight-request admission limit is full.
+- `GET /api/collections/:id/export?size=…` (default `original`) streams `application/zip` without `Content-Length`. Members come from `listCollectionMembers`: the grid's default captured order (`capturedWallClockSql`, mirroring client `timelineWallClock`, then ID), RAW+JPEG pairs not stacked. Names are disambiguated case-insensitively as `stem (2).ext`; entry mtimes are `modifiedAt` UTC fields as DOS time. Missing/failed members are skipped and listed in a final `export-errors.txt`. 400 `INVALID_REQUEST` or 404 `COLLECTION_NOT_FOUND` occur before any bytes; an empty collection is a valid 22-byte ZIP.
+- The ZIP stream is pull-based (`highWaterMark: 0`): at most `ZIP_LOOKAHEAD` (2) members are reading/rendering beyond the entry being written. Renders use `nativeExecutor.runWhenAdmitted`, which waits for admission instead of failing and, on abort, withdraws queued requests; only an already-running render outlives a cancelled download. Entries are fully read before their header, so local headers carry real CRC-32 (`Bun.hash.crc32`) and sizes; ZIP64 extras/end records are emitted only when a size/offset ≥ 0xFFFFFFFF or count ≥ 0xFFFF.
+- Renders run on the persistent worker without draining an idle scan stream (`renderExportJpeg` never uses the Rayon processing pool) and without resetting the executor's session job.
 
 ## REST File Rules
 

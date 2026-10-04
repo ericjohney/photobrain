@@ -1,7 +1,12 @@
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import type * as schema from "../db/schema";
-import { collectionPhotos, collections, photos } from "../db/schema";
+import {
+	capturedDateSql,
+	collectionPhotos,
+	collections,
+	photos,
+} from "../db/schema";
 import type { ApiDatabase } from "./photo-catalog";
 
 export const MAX_COLLECTION_NAME_LENGTH = 100;
@@ -353,4 +358,96 @@ export function collectionsForPhoto(
 			row.collection_id === null ? [] : [row.collection_id],
 		),
 	};
+}
+
+/** A member's export identity: the private source root never leaves the API. */
+export type CollectionMember = {
+	id: number;
+	name: string;
+	path: string;
+	sourceRoot: string | null;
+	mimeType: string | null;
+	modifiedAt: Date;
+};
+
+export type CollectionMembers = {
+	name: string;
+	members: CollectionMember[];
+};
+
+/**
+ * The library grid's default "captured" timeline instant as sortable
+ * `YYYY-MM-DDTHH:MM:SS` wall-clock text, mirroring the clients'
+ * `timelineWallClock`: the EXIF `date_taken` when its `capturedDateSql` day
+ * is a real date in 1900 or later (an absent or invalid `HH:MM[:SS]` time
+ * reads as midnight), otherwise `modified_at` in UTC.
+ */
+function capturedWallClockSql(dateTaken: SQL, modifiedAt: SQL): SQL {
+	const day = capturedDateSql(dateTaken);
+	const minutes = sql`substr(${dateTaken}, 12, 5)`;
+	const seconds = sql`substr(${dateTaken}, 12, 8)`;
+	const validMinutes = sql`(${minutes} GLOB '[0-9][0-9]:[0-9][0-9]' AND ${minutes} < '24' AND time(${minutes}) IS NOT NULL)`;
+	return sql`CASE
+		WHEN ${day} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+			AND ${day} >= '1900' AND date(${day}) = ${day}
+		THEN ${day} || 'T' || CASE
+			WHEN substr(${dateTaken}, 17, 1) = ':'
+				THEN CASE WHEN ${validMinutes} AND time(${seconds}) = ${seconds} THEN ${seconds} ELSE '00:00:00' END
+			WHEN ${validMinutes} THEN ${minutes} || ':00'
+			ELSE '00:00:00'
+		END
+		ELSE strftime('%Y-%m-%dT%H:%M:%S', ${modifiedAt}, 'unixepoch')
+	END`;
+}
+
+type CollectionMemberRow = {
+	id: number;
+	name: string;
+	path: string;
+	source_root: string | null;
+	mime_type: string | null;
+	modified_at: number;
+};
+
+/**
+ * Every member of a collection, oldest first in the grid's default captured
+ * order with the ID tiebreak. RAW+JPEG pairs are not stacked: both files are
+ * listed when both are members. Rows orphaned on connections without
+ * foreign-key enforcement are excluded, as in the member counts.
+ * @throws CollectionError `NOT_FOUND` when the collection does not exist.
+ */
+export function listCollectionMembers(
+	database: ApiDatabase,
+	collectionId: number,
+): CollectionMembers {
+	return database.transaction((tx) => {
+		const collection = tx
+			.select({ name: collections.name })
+			.from(collections)
+			.where(eq(collections.id, collectionId))
+			.get();
+		if (!collection) throw notFound();
+		const rows = tx.all<CollectionMemberRow>(sql`
+			SELECT p.id AS id, p.name AS name, p.path AS path,
+				p.source_root AS source_root, p.mime_type AS mime_type,
+				p.modified_at AS modified_at
+			FROM collection_photos cp
+			INNER JOIN photos p ON p.id = cp.photo_id
+			LEFT JOIN photo_exif e ON e.photo_id = p.id
+			WHERE cp.collection_id = ${collectionId}
+			ORDER BY ${capturedWallClockSql(sql`e.date_taken`, sql`p.modified_at`)} ASC, p.id ASC
+		`);
+		return {
+			name: collection.name,
+			members: rows.map((row) => ({
+				id: row.id,
+				name: row.name,
+				path: row.path,
+				sourceRoot: row.source_root,
+				mimeType: row.mime_type,
+				// Drizzle timestamp columns store whole seconds.
+				modifiedAt: new Date(row.modified_at * 1000),
+			})),
+		};
+	});
 }

@@ -5,6 +5,7 @@ import {
 	batchGenerateClipEmbeddings,
 	discoverPhotos,
 	processPhotosBatch,
+	renderExportJpeg,
 	startPhotoProcessing,
 	validateThumbnails,
 } from "@photobrain/image-processing";
@@ -106,6 +107,10 @@ async function execute(
 		} else if (request.operation === "cancelPhotos") {
 			if (session?.jobId === request.jobId) await closeSession();
 			response = { id: request.id, result: null };
+		} else if (request.operation === "renderExportJpeg") {
+			// Rendering decodes on this thread and never waits on the shared processing
+			// pool, so an idle scan stream keeps its session (and its next window).
+			response = { id: request.id, result: renderExportJpeg(...request.args) };
 		} else {
 			// An idle stream can fill its native result queue. Drain it before running
 			// any synchronous native operation that may need the same native pool.

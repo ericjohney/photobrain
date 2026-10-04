@@ -20,6 +20,8 @@ interface KeyboardShortcutsOptions {
 	toggleLastUsedCollection: (() => void) | null;
 	/** In Review: resolve the active photo (`X` reject, `K` keep); null outside Review. */
 	resolveReviewPhoto: ((action: JunkAction) => void) | null;
+	/** Download the active photo as JPEG 2048 (`Shift+D`). */
+	downloadActivePhoto: () => void;
 	enabled?: boolean;
 }
 
@@ -35,6 +37,7 @@ export function useKeyboardShortcuts({
 	curateActivePhoto,
 	toggleLastUsedCollection,
 	resolveReviewPhoto,
+	downloadActivePhoto,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
 	useEffect(() => {
@@ -117,6 +120,13 @@ export function useKeyboardShortcuts({
 					}
 					break;
 
+				case "d":
+					if (e.shiftKey && !isCtrlOrCmd && !e.altKey && hasActivePhoto) {
+						e.preventDefault();
+						downloadActivePhoto();
+					}
+					break;
+
 				// Panel shortcuts
 				case "tab":
 					e.preventDefault();
@@ -172,5 +182,6 @@ export function useKeyboardShortcuts({
 		curateActivePhoto,
 		toggleLastUsedCollection,
 		resolveReviewPhoto,
+		downloadActivePhoto,
 	]);
 }

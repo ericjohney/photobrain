@@ -1,17 +1,14 @@
-use image::ImageReader;
 use napi_derive::napi;
 use rayon::prelude::*;
 use std::fs;
-use std::io::Cursor;
 use std::path::Path;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
+use crate::decode::{decode_with_orientation, is_heif_source};
 use crate::exif::{ExifData, METADATA_CHUNK_SIZE, extract_exif_batch, extract_exif_internal};
-use crate::heif::{decode_heif, is_heif_by_magic_bytes, is_heif_file};
-use crate::orientation::apply_orientation;
 use crate::phash::generate_phash_from_image;
-use crate::preview::{extract_preview, get_raw_format, is_raw_file};
+use crate::preview::get_raw_format;
 use crate::thumbnails::generate_all_thumbnails_internal;
 
 fn processing_threads(available: usize, configured: Option<&str>) -> Result<usize, String> {
@@ -92,7 +89,7 @@ pub struct PhotoProcessingResult {
 }
 
 /// Check if file is a standard image (directly decodable)
-fn is_standard_image(file_path: &str) -> bool {
+pub(crate) fn is_standard_image(file_path: &str) -> bool {
   let lower = file_path.to_lowercase();
   STANDARD_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
 }
@@ -176,46 +173,16 @@ pub(crate) fn process_photo_internal(
   let is_raw = raw_format.is_some();
 
   // Check for HEIF files - by extension or magic bytes (handles mislabeled iOS files)
-  let is_heif = is_heif_file(file_path) || is_heif_by_magic_bytes(file_path);
+  let is_heif = is_heif_source(file_path);
 
   // Extract EXIF (works for all formats via exiftool)
   let exif = load_exif();
   let orientation = exif.as_ref().and_then(|e| e.orientation);
 
-  // Decode image based on file type
-  // Check magic bytes first to handle mislabeled HEIC files (e.g., iOS saving HEIC as .JPEG)
-  let decode_result = if is_heif {
-    // HEIC/HEIF: decode using libheif
-    decode_heif(file_path)
-  } else if is_raw_file(file_path) {
-    // RAW: extract embedded preview
-    match extract_preview(file_path) {
-      Some(preview_bytes) => ImageReader::new(Cursor::new(preview_bytes))
-        .with_guessed_format()
-        .map_err(|e| e.to_string())
-        .and_then(|reader| reader.decode().map_err(|e| e.to_string())),
-      None => Err("No embedded preview found".to_string()),
-    }
-  } else if is_standard_image(file_path) {
-    // Standard image: decode directly
-    ImageReader::open(file_path)
-      .map_err(|e| e.to_string())
-      .and_then(|reader| reader.decode().map_err(|e| e.to_string()))
-  } else {
-    Err("Unsupported file type".to_string())
-  };
-
-  // Process the decoded image
-  match decode_result {
+  // Decode (HEIF, RAW preview, or standard) and apply orientation; HEIF is never rotated
+  // again because libheif already applies irot/imir transforms.
+  match decode_with_orientation(file_path, is_heif, orientation) {
     Ok(img) => {
-      // Apply EXIF orientation — skip for HEIF because libheif already
-      // applies irot/imir transforms during decode. Applying again would
-      // double-rotate the image.
-      let img = if is_heif {
-        img
-      } else {
-        apply_orientation(img, orientation)
-      };
       let width = img.width();
       let height = img.height();
 

@@ -12,6 +12,7 @@ import { photos, scanJobs } from "../db/schema";
 import { inngest } from "../inngest/client";
 import { failJob, updateJobProgress } from "../inngest/progress";
 import { nativeExecutor } from "../services/native-executor";
+import { originalFilePath } from "../services/photo-files";
 import { createScanPlan } from "../services/scan-planner";
 import {
 	clearScanWork,
@@ -82,10 +83,7 @@ router.get("/:id/file", async (c) => {
 		}
 
 		// Standard image: serve the original file
-		const absolutePath = join(
-			photo.sourceRoot ?? config.PHOTO_DIRECTORY,
-			photo.path,
-		);
+		const absolutePath = originalFilePath(photo, config.PHOTO_DIRECTORY);
 
 		// Read the file using Bun.file
 		const file = Bun.file(absolutePath);

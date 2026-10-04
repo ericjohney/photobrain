@@ -1107,6 +1107,9 @@ enum PhotoBrainAPIError: Error, Equatable, LocalizedError, Sendable {
     case decoding(String)
     /// `409 DUPLICATE_GROUP_CHANGED`: the group's membership changed since it was listed.
     case duplicateGroupChanged
+    /// `503 EXPORT_BUSY`: the server's render queue is full; `retryAfter` is the `Retry-After`
+    /// delay in seconds when the server sent one.
+    case exportBusy(retryAfter: Int?)
 
     var errorDescription: String? {
         switch self {
@@ -1120,16 +1123,37 @@ enum PhotoBrainAPIError: Error, Equatable, LocalizedError, Sendable {
             case "COLLECTION_NOT_FOUND": "This collection no longer exists."
             case "SMART_ALBUM_NAME_TAKEN": "A smart album with that name already exists."
             case "SMART_ALBUM_NOT_FOUND": "This smart album no longer exists."
+            case "SOURCE_MISSING": "The original file is no longer in the photo library on the server."
+            case "EXPORT_FAILED": "This photo couldn’t be converted for sharing."
             default: message
             }
         case .decoding: "PhotoBrain could not read the server response."
         case .duplicateGroupChanged: "This group changed since it was loaded. Duplicates were refreshed."
+        case let .exportBusy(retryAfter):
+            if let retryAfter, retryAfter > 0 {
+                retryAfter == 1
+                    ? "The server is busy preparing other exports. Try again in 1 second."
+                    : "The server is busy preparing other exports. Try again in \(retryAfter) seconds."
+            } else {
+                "The server is busy preparing other exports. Try again in a moment."
+            }
         }
     }
 
     var code: String? {
-        guard case let .server(_, code, _) = self else { return nil }
-        return code
+        switch self {
+        case let .server(_, code, _): code
+        case .exportBusy: "EXPORT_BUSY"
+        default: nil
+        }
+    }
+
+    /// The request may succeed if repeated unchanged: a lost connection or a busy server.
+    var isRetryable: Bool {
+        switch self {
+        case .transport, .exportBusy: true
+        default: false
+        }
     }
 
     var isDefinitiveScanRejection: Bool {

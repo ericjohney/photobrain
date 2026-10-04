@@ -357,15 +357,15 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - [ ] Offline browsing and cache management
   - Full-resolution download on demand
 
-### 3.2 Import & Export ⏳ **NOT STARTED**
+### 3.2 Import & Export 🟡 **PARTIALLY COMPLETED**
 - [ ] **Bulk import wizard**
   - Import from local directories
   - Import from external drives
   - Import from cloud services (Google Photos, iCloud, Dropbox)
-- [ ] **Export functionality**
-  - Export albums as ZIP
-  - Export with original metadata
-  - Export with selected quality/format
+- [x] **Export functionality** (web downloads and native iOS share sheet)
+  - [x] Export collections as ZIP (originals or resized JPEG)
+  - [x] Single photos as original or metadata-free resized JPEG (2048/1024 px)
+  - [ ] Export with original metadata in rendered JPEGs
 
 ---
 

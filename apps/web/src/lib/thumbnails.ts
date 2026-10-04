@@ -51,3 +51,19 @@ export function getFullImageUrl(
 			: new Date(updatedAt).getTime();
 	return `${base}?v=${ts}`;
 }
+
+/** Export rendition: the untouched original, or a metadata-free JPEG fit to that long edge. */
+export type ExportSize = "original" | "2048" | "1024";
+
+/** Attachment download of one photo (`GET /api/photos/:id/export`). */
+export function exportPhotoUrl(photoId: number, size: ExportSize): string {
+	return `${config.apiUrl}/api/photos/${photoId}/export?size=${size}`;
+}
+
+/** Streamed ZIP of a collection's members (`GET /api/collections/:id/export`). */
+export function exportCollectionUrl(
+	collectionId: number,
+	size: ExportSize,
+): string {
+	return `${config.apiUrl}/api/collections/${collectionId}/export?size=${size}`;
+}

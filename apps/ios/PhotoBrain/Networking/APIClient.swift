@@ -106,6 +106,14 @@ protocol PhotoBrainAPI: Sendable {
     func startScan(force: Bool) async throws -> StartScanResponseDTO
     func scan(id: String) async throws -> ScanDTO?
     func activeScans() async throws -> ActiveScansResponseDTO
+    /// Downloads an export into its own temporary directory and returns the file, named from
+    /// `Content-Disposition`. A failed or cancelled download leaves no files behind; the caller
+    /// removes a returned file with `ExportFile.remove()` once it is shared. `onProgress` is
+    /// called from a background queue.
+    func download(
+        _ target: ExportTarget,
+        onProgress: @escaping @Sendable (ExportProgress) -> Void
+    ) async throws -> ExportFile
     func cancelAll()
 }
 
@@ -113,16 +121,28 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
     let baseURL: URL
 
     private let session: URLSession
+    /// Long-lived transfers (collection ZIPs of originals) outgrow the 30 s JSON resource limit.
+    private let downloadSession: URLSession
+    /// Parent of every export's temporary directory.
+    private let exportsDirectory: URL
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private let lock = NSLock()
     private var tasks: [UUID: Task<(Data, URLResponse), Error>] = [:]
     private let maximumJSONBytes = 16 * 1_024 * 1_024
+    /// Export error bodies larger than this are not read back as JSON envelopes.
+    private let maximumErrorBytes = 64 * 1_024
 
-    init(baseURL: URL, session: URLSession? = nil) {
+    init(
+        baseURL: URL,
+        session: URLSession? = nil,
+        exportsDirectory: URL = FileManager.default.temporaryDirectory.appendingPathComponent("Exports", isDirectory: true)
+    ) {
         self.baseURL = baseURL
+        self.exportsDirectory = exportsDirectory
         if let session {
             self.session = session
+            downloadSession = session
         } else {
             let configuration = URLSessionConfiguration.default
             configuration.waitsForConnectivity = true
@@ -130,6 +150,14 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
             configuration.timeoutIntervalForResource = 30
             configuration.requestCachePolicy = .reloadRevalidatingCacheData
             self.session = URLSession(configuration: configuration)
+            let downloads = URLSessionConfiguration.default
+            downloads.waitsForConnectivity = true
+            // Idle limit between bytes; the server renders each ZIP entry before streaming it.
+            downloads.timeoutIntervalForRequest = 120
+            downloads.timeoutIntervalForResource = 24 * 60 * 60
+            downloads.requestCachePolicy = .reloadIgnoringLocalCacheData
+            downloads.urlCache = nil
+            downloadSession = URLSession(configuration: downloads)
         }
         decoder = APIModelCoding.decoder()
         encoder = APIModelCoding.encoder()
@@ -358,6 +386,105 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         try await get(path: ["scans", "active"])
     }
 
+    func download(
+        _ target: ExportTarget,
+        onProgress: @escaping @Sendable (ExportProgress) -> Void
+    ) async throws -> ExportFile {
+        guard target.id > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        let url = target.url(baseURL: baseURL)
+        guard let scheme = url.scheme, scheme == "https" || scheme == "http" else {
+            throw PhotoBrainAPIError.invalidRequest
+        }
+        var request = URLRequest(url: url)
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+
+        let directory = exportsDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            throw PhotoBrainAPIError.transport(error.localizedDescription)
+        }
+        let control = ExportDownloadControl(onProgress: onProgress)
+        let file: ExportFile = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let task = downloadSession.downloadTask(with: request) { [self] location, response, error in
+                    // `location` is deleted when this handler returns, so it is moved or read here.
+                    let result = Result {
+                        try self.finishDownload(
+                            target: target,
+                            directory: directory,
+                            location: location,
+                            response: response,
+                            error: error,
+                            control: control
+                        )
+                    }
+                    if case .failure = result {
+                        try? FileManager.default.removeItem(at: directory)
+                        control.finish(final: nil)
+                    }
+                    continuation.resume(with: result)
+                }
+                control.start(task)
+            }
+        } onCancel: {
+            control.cancel()
+        }
+        if Task.isCancelled {
+            file.remove()
+            throw CancellationError()
+        }
+        return file
+    }
+
+    /// Validates a finished download and moves it to `directory/<sanitized filename>`.
+    private func finishDownload(
+        target: ExportTarget,
+        directory: URL,
+        location: URL?,
+        response: URLResponse?,
+        error: Error?,
+        control: ExportDownloadControl
+    ) throws -> ExportFile {
+        if control.isCancelled { throw CancellationError() }
+        if let error {
+            if (error as? URLError)?.code == .cancelled { throw CancellationError() }
+            throw PhotoBrainAPIError.transport(error.localizedDescription)
+        }
+        guard let location, let http = response as? HTTPURLResponse else {
+            throw PhotoBrainAPIError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let error = serverError(status: http.statusCode, body: errorBody(at: location))
+            if error.code == "EXPORT_BUSY" {
+                throw PhotoBrainAPIError.exportBusy(
+                    retryAfter: RetryAfter.seconds(from: http.value(forHTTPHeaderField: "Retry-After"))
+                )
+            }
+            throw error
+        }
+        let filename = ContentDisposition.filename(from: http.value(forHTTPHeaderField: "Content-Disposition"))
+            .flatMap(ExportFilename.sanitized)
+            ?? target.fallbackFilename(mimeType: http.mimeType)
+        let destination = directory.appendingPathComponent(filename, isDirectory: false)
+        do {
+            try FileManager.default.moveItem(at: location, to: destination)
+        } catch {
+            throw PhotoBrainAPIError.transport(error.localizedDescription)
+        }
+        let size = (try? destination.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+        control.finish(final: ExportProgress(received: size, expected: size))
+        return ExportFile(url: destination)
+    }
+
+    /// The error body, or empty when it is too large to be a JSON envelope.
+    private func errorBody(at location: URL) -> Data {
+        guard let handle = try? FileHandle(forReadingFrom: location) else { return Data() }
+        defer { try? handle.close() }
+        let data = (try? handle.read(upToCount: maximumErrorBytes + 1)) ?? Data()
+        return data.count > maximumErrorBytes ? Data() : data
+    }
+
     func cancelAll() {
         lock.lock()
         let running = Array(tasks.values)
@@ -506,23 +633,24 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
             throw PhotoBrainAPIError.decoding("Response exceeded the 16 MiB contract")
         }
         guard (200..<300).contains(http.statusCode) else {
-            if let envelope = try? decoder.decode(APIErrorEnvelope.self, from: data) {
-                throw PhotoBrainAPIError.server(
-                    status: http.statusCode,
-                    code: envelope.error.code,
-                    message: envelope.error.message
-                )
-            }
-            throw PhotoBrainAPIError.server(
-                status: http.statusCode,
-                code: "HTTP_\(http.statusCode)",
-                message: HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
-            )
+            throw serverError(status: http.statusCode, body: data)
         }
         if let expectedStatus, http.statusCode != expectedStatus {
             throw PhotoBrainAPIError.invalidResponse
         }
         return data
+    }
+
+    /// `{ error: { code, message } }` envelope, or `HTTP_<status>` when the body is not one.
+    private func serverError(status: Int, body: Data) -> PhotoBrainAPIError {
+        if let envelope = try? decoder.decode(APIErrorEnvelope.self, from: body) {
+            return .server(status: status, code: envelope.error.code, message: envelope.error.message)
+        }
+        return .server(
+            status: status,
+            code: "HTTP_\(status)",
+            message: HTTPURLResponse.localizedString(forStatusCode: status)
+        )
     }
 
     private func store(_ task: Task<(Data, URLResponse), Error>, id: UUID) {

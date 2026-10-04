@@ -61,9 +61,11 @@ import {
 	useSmartAlbums,
 } from "@/hooks/use-smart-albums";
 import { eventTitle } from "@/lib/events";
+import { downloadUrl, exportFileName } from "@/lib/export";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
 import { photoLocation } from "@/lib/map";
 import { formatCapturedDate } from "@/lib/on-this-day";
+import { exportPhotoUrl } from "@/lib/thumbnails";
 import { countCapturedDays, groupPhotos } from "@/lib/timeline";
 import { trpc } from "@/lib/trpc";
 import type {
@@ -422,6 +424,16 @@ export function Dashboard() {
 		}
 	}, [activePhotoId, toggleLastUsedCollection]);
 
+	// `Shift+D`: download the active photo as JPEG 2048.
+	const activePhotoName = library.activePhoto?.name;
+	const downloadActivePhoto = useCallback(() => {
+		if (activePhotoId === undefined || activePhotoName === undefined) return;
+		downloadUrl(
+			exportPhotoUrl(activePhotoId, "2048"),
+			exportFileName(activePhotoName, "2048"),
+		);
+	}, [activePhotoId, activePhotoName]);
+
 	// Keyboard shortcuts
 	useKeyboardShortcuts({
 		viewMode: library.viewMode,
@@ -436,6 +448,7 @@ export function Dashboard() {
 		toggleLastUsedCollection:
 			lastUsedCollectionId === null ? null : toggleActiveInLastUsed,
 		resolveReviewPhoto: reviewActive ? resolveActiveReviewPhoto : null,
+		downloadActivePhoto,
 	});
 
 	const handlePhotoClick = useCallback(

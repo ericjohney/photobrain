@@ -753,6 +753,68 @@ actor TestAPI: PhotoBrainAPI {
         return activeResponse
     }
 
+    /// How `download` answers: write `name` with `bytes`, or fail with `error` after writing a
+    /// partial file, always into a fresh directory under `exportsDirectory` like `APIClient`.
+    enum ExportBehavior: Sendable {
+        case file(name: String, bytes: Data)
+        case failure(PhotoBrainAPIError)
+    }
+
+    nonisolated let exportsDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("TestExports-\(UUID().uuidString)", isDirectory: true)
+    var exportBehavior = ExportBehavior.file(name: "photo.jpg", bytes: Data("jpeg".utf8))
+    /// Time between the partial file/first progress and completion; cancellable.
+    var exportDelay: Duration = .zero
+    var exportRequests: [ExportTarget] = []
+
+    func setExport(_ behavior: ExportBehavior, delay: Duration = .zero) {
+        exportBehavior = behavior
+        exportDelay = delay
+    }
+
+    func recordedExportRequests() -> [ExportTarget] {
+        exportRequests
+    }
+
+    /// Every file left under `exportsDirectory`, symlinks resolved, sorted by path.
+    nonisolated func exportFilesOnDisk() -> [URL] {
+        let enumerator = FileManager.default.enumerator(at: exportsDirectory, includingPropertiesForKeys: nil)
+        return (enumerator?.allObjects as? [URL] ?? [])
+            .filter { !$0.hasDirectoryPath }
+            .map { $0.resolvingSymlinksInPath() }
+            .sorted { $0.path < $1.path }
+    }
+
+    func download(
+        _ target: ExportTarget,
+        onProgress: @escaping @Sendable (ExportProgress) -> Void
+    ) async throws -> ExportFile {
+        exportRequests.append(target)
+        let directory = exportsDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let partial = directory.appendingPathComponent("partial.download")
+        try Data("part".utf8).write(to: partial)
+        let behavior = exportBehavior
+        do {
+            onProgress(ExportProgress(received: 4, expected: 8))
+            if exportDelay > .zero { try await Task.sleep(for: exportDelay) }
+            try Task.checkCancellation()
+            switch behavior {
+            case let .failure(error):
+                throw error
+            case let .file(name, bytes):
+                let destination = directory.appendingPathComponent(name)
+                try FileManager.default.removeItem(at: partial)
+                try bytes.write(to: destination)
+                onProgress(ExportProgress(received: Int64(bytes.count), expected: Int64(bytes.count)))
+                return ExportFile(url: destination)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error is CancellationError ? CancellationError() : error
+        }
+    }
+
     nonisolated func cancelAll() {}
 }
 

@@ -289,6 +289,11 @@ REST routes under `/api/photos`:
 - `POST /api/photos/reprocess-heic`: one-off maintenance route; still present and should be removed after its operational use.
 - `POST /api/photos/backfill-thumbnail-timestamps`: one-off maintenance route for missing `thumbnailUpdatedAt` values.
 
+Export routes (`apps/api/src/routes/exports.ts`, mounted at `/api`; binary, not in the OpenAPI contract):
+
+- `GET /api/photos/:id/export?size=original|2048|1024` (default `2048`): `original` streams the source bytes unchanged; `2048`/`1024` render a metadata-free (no EXIF/GPS) sRGB JPEG at quality 90 through native `renderExportJpeg` (shared HEIF/RAW-preview decode, orientation applied, long edge fit, never upscaled) on the native executor. Filename `{stem}_{size}.jpg`; RFC 6266 `Content-Disposition` with an ASCII fallback; `Cache-Control: private, no-store`. Errors: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `EXPORT_FAILED`, 503 `EXPORT_BUSY` with `Retry-After` when executor admission is full.
+- `GET /api/collections/:id/export?size=original|2048|1024` (default `original`): streaming STORE ZIP (UTF-8 names, CRC-32, ZIP64 when needed) of every member, unstacked, in captured order (`listCollectionMembers`); duplicate names become `stem (2).ext` case-insensitively; missing/failed members are skipped and listed in a final `export-errors.txt`. Pull-based with at most two renders in flight; ZIP renders wait for executor capacity, and client abort stops further reads/renders. 404 `COLLECTION_NOT_FOUND` before any bytes.
+
 Managed scans write `{thumbnailRoot}/{size}/.versions/{uuid}/photo.webp` and publish the committed root/key with the photo. Legacy adopted files retain mirrored paths such as `large/2024/trip/photo.webp`; direct native helpers retain that default layout. REST resolves the committed root/key, with configured-root/path fallbacks for legacy rows. Immutable responses include generation/mtime/size ETags; `thumbnailUpdatedAt` advances monotonically even for same-second commits or backwards clocks. Clients use it for thumbnail cache busting, and web full-image URLs also include it. Old and abandoned generations are retained; garbage collection is not implemented.
 
 ## Frontend Behavior
@@ -310,6 +315,8 @@ Timeline on web: the library grid (not search, similar, review, or duplicates) s
 Events on web: a Filter By **Events** section (newest first, first 12 then **Show all**, folder-scoped) shows cover, title (place "City, Country"/country, else the date range), and subtitle (wall-clock date range, "N photos"). Clicking applies the `event` filter (chip shows the title) to the grid, map, search, and similar; smart-album saves omit it.
 
 Gear stats on web: a toolbar **Gear stats** toggle (library grid only) replaces the grid with stats for the current filters: header "N photos · M with camera data", camera/lens bars (top 10, **Show all**; clicking applies that filter and returns to the grid), focal/aperture/shutter/ISO histograms, and shots per year segmented by the top 5 cameras plus Other.
+
+Export on web: the metadata panel's **Export** menu (grid or loupe with an active photo) downloads Original / JPEG 2048 / JPEG 1024 through `download` anchors (streamed by the browser, no blob); `Shift+D` downloads the active photo as JPEG 2048. A collection's actions menu has **Download as ZIP** (Originals / JPEG 2048 / JPEG 1024).
 
 Catalog **Review** (badge = candidate count) replaces the grid with junk candidates, each badged with its first reason; a reason radiogroup with counts, **Reject all (N)** (confirmation above 50) and **Keep all (N)** act on the shown photos. In Review, `X` rejects and `K` keeps the active photo and advance; the metadata panel shows "Why it's here" with Reject/Keep. Resolutions remove photos optimistically and roll back on error. Choosing a folder, collection, tag, search, or Find similar leaves Review and restores the library filters.
 
@@ -353,6 +360,8 @@ Calendar on iOS: the Library header's Calendar button opens a month sheet counti
 Events on iOS: an Events section in the Collections tab (cover cards with the same title/subtitle rules as web) loads with collections and reloads on pull-to-refresh; tapping opens a detail grid/loupe through `LibraryStore` scope `.event`.
 
 Gear stats on iOS: the Library header's **Gear Stats** button opens a sheet with the same sections for the current filters; tapping a camera or lens applies that filter and dismisses.
+
+Export on iOS: the loupe's Share menu (**Share Photo** = JPEG 2048, **Share Original**) and a collection detail **Export** menu (Originals or JPEGs 2048 px as ZIP) download to a per-export temp directory with progress/cancel, then present the share sheet; temp files are deleted after sharing, on cancel, or on failure. `EXPORT_BUSY` offers a manual retry.
 
 Smart albums on iOS: a Smart Albums section in the Collections tab (cards with count or a magnifier for query albums, rename/delete with rollback); **Save as Smart Album…** in the Library filter sheet and Search. Detail screens reuse the collection grid/loupe through `LibraryStore` scope `.smartAlbum(filters, query)`.
 

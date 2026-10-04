@@ -76,6 +76,59 @@ describe("off-thread native execution", () => {
 		);
 	});
 
+	test("admission waits for capacity instead of rejecting", async () => {
+		const work = Array.from({ length: MAX_NATIVE_REQUESTS }, (_, index) =>
+			executor.run("discoverPhotos", index === 0 ? "busy" : String(index)),
+		);
+		const waited = executor.runWhenAdmitted(
+			undefined,
+			"renderExportJpeg",
+			"/waited.jpg",
+			1024,
+			90,
+		);
+		await Promise.all(work);
+		const rendered = JSON.parse(new TextDecoder().decode(await waited));
+		expect(rendered.path).toBe("/waited.jpg");
+	});
+
+	test("aborting withdraws waiting and queued requests but not the running one", async () => {
+		const abort = new AbortController();
+		const running = executor.run("discoverPhotos", "busy");
+		const queued = executor.runWhenAdmitted(
+			abort.signal,
+			"renderExportJpeg",
+			"/queued.jpg",
+			1024,
+			90,
+		);
+		const filler = Array.from({ length: MAX_NATIVE_REQUESTS - 2 }, (_, index) =>
+			executor.run("discoverPhotos", String(index)),
+		);
+		const waiting = executor.runWhenAdmitted(
+			abort.signal,
+			"renderExportJpeg",
+			"/waiting.jpg",
+			1024,
+			90,
+		);
+		abort.abort(new Error("client went away"));
+		const withdrawn = await Promise.allSettled([queued, waiting]);
+		expect(
+			withdrawn.map((result) =>
+				result.status === "rejected" ? String(result.reason) : result.status,
+			),
+		).toEqual(["Error: client went away", "Error: client went away"]);
+		// The withdrawn slot is free immediately, while the running call finishes.
+		const later = executor.run("discoverPhotos", "later");
+		expect((await running).filePaths).toEqual(["busy"]);
+		await Promise.all(filler);
+		expect((await later).filePaths).toEqual(["later"]);
+		await expect(
+			executor.runWhenAdmitted(abort.signal, "renderExportJpeg", "/x", 1, 90),
+		).rejects.toThrow("client went away");
+	});
+
 	test("a native exception rejects only that operation", async () => {
 		const failed = executor.run("discoverPhotos", "throw");
 		const next = executor.run("discoverPhotos", "next");
@@ -359,6 +412,39 @@ describe("continuous photo consumption", () => {
 		);
 		expect(names).toEqual(["2:/thumbs"]);
 		expect(loads).toBe(2);
+	});
+
+	test("an export render runs beside an idle stream without draining or reloading it", async () => {
+		let loads = 0;
+		const load = () => {
+			loads++;
+			return inputs(30);
+		};
+		await executor.consumePhotos("job", "/thumbs", load, () => {}, 1);
+		const rendered = JSON.parse(
+			new TextDecoder().decode(
+				await executor.run("renderExportJpeg", "/a.jpg", 2048, 90),
+			),
+		);
+		expect(rendered).toEqual({
+			path: "/a.jpg",
+			maxEdge: 2048,
+			quality: 90,
+			streamsActive: 1,
+		});
+		const names: string[] = [];
+		await executor.consumePhotos(
+			"job",
+			"/thumbs",
+			load,
+			(_id, result) => {
+				names.push(result.name);
+			},
+			1,
+		);
+		// The second window continues the first session rather than reloading.
+		expect(names).toEqual(["1:/thumbs"]);
+		expect(loads).toBe(1);
 	});
 
 	test("cancel drains a matching session but preserves an unrelated session", async () => {

@@ -10,8 +10,14 @@ type NativeOperations = Pick<
 	| "batchGenerateClipEmbeddings"
 	| "validateThumbnails"
 	| "analyzeImageQuality"
+	| "renderExportJpeg"
 >;
 type Operation = keyof NativeOperations;
+// Structured clone delivers a native Buffer to this thread as a plain,
+// unshared Uint8Array.
+type OperationResult<K extends Operation> = K extends "renderExportJpeg"
+	? Uint8Array<ArrayBuffer>
+	: ReturnType<NativeOperations[K]>;
 
 type OperationRequest = {
 	[K in Operation]: {
@@ -46,7 +52,8 @@ export type NativeRequest =
 export type NativeResponse =
 	| {
 			id: number;
-			result: ReturnType<NativeOperations[Operation]> | WindowResult | null;
+			// The worker posts the native Buffer; the receiver gets OperationResult.
+			result: OperationResult<Operation> | Uint8Array | WindowResult | null;
 	  }
 	| { id: number; error: string }
 	| {
@@ -81,6 +88,13 @@ type Pending = {
 };
 
 export const MAX_NATIVE_REQUESTS = 8;
+/** Admission rejection: the request never reached the worker and may be retried. */
+export class NativeExecutorBusyError extends Error {
+	constructor() {
+		super("Native executor is busy; retry this batch");
+		this.name = "NativeExecutorBusyError";
+	}
+}
 const asError = (error: unknown) =>
 	error instanceof Error ? error : new Error(String(error));
 
@@ -96,6 +110,7 @@ export class NativeExecutor {
 	private closed = false;
 	private draining?: Promise<void>;
 	private finishDrain?: () => void;
+	private capacityWaiters: (() => void)[] = [];
 
 	constructor(
 		private readonly workerUrl = new URL("./native-worker.ts", import.meta.url),
@@ -104,7 +119,15 @@ export class NativeExecutor {
 	run<K extends Operation>(
 		operation: K,
 		...args: Parameters<NativeOperations[K]>
-	): Promise<ReturnType<NativeOperations[K]>> {
+	): Promise<OperationResult<K>> {
+		return this.submit(undefined, operation, args);
+	}
+
+	private submit<K extends Operation>(
+		signal: AbortSignal | undefined,
+		operation: K,
+		args: Parameters<NativeOperations[K]>,
+	): Promise<OperationResult<K>> {
 		const request = { id: this.nextId++, operation, args } as OperationRequest;
 		if (
 			request.operation === "processPhotosBatch" &&
@@ -114,7 +137,7 @@ export class NativeExecutor {
 				new Error("Photo paths and relative paths must align"),
 			);
 		}
-		return this.enqueue({ id: request.id, request });
+		return this.enqueue({ id: request.id, request }, signal);
 	}
 
 	consumePhotos(
@@ -150,20 +173,76 @@ export class NativeExecutor {
 		});
 	}
 
-	private enqueue<T>(pending: Omit<Pending, "resolve" | "reject">): Promise<T> {
+	/**
+	 * `run`, but waits for admission instead of rejecting with
+	 * `NativeExecutorBusyError`, for background work that must not fail or add
+	 * to the eight-request bound. Aborting `signal` rejects with its reason and
+	 * withdraws the request unless the worker has already started it, so at most
+	 * the running operation outlives an abandoned caller.
+	 */
+	async runWhenAdmitted<K extends Operation>(
+		signal: AbortSignal | undefined,
+		operation: K,
+		...args: Parameters<NativeOperations[K]>
+	): Promise<OperationResult<K>> {
+		for (;;) {
+			signal?.throwIfAborted();
+			// Checked synchronously with registration, so no release can slip between.
+			if (this.closed || this.hasCapacity())
+				return this.submit(signal, operation, args);
+			const { promise, resolve } = Promise.withResolvers<void>();
+			const wake = () => resolve();
+			this.capacityWaiters.push(wake);
+			signal?.addEventListener("abort", wake, { once: true });
+			try {
+				await promise;
+			} finally {
+				signal?.removeEventListener("abort", wake);
+			}
+		}
+	}
+
+	private hasCapacity() {
+		return this.queue.length + Number(!!this.active) < MAX_NATIVE_REQUESTS;
+	}
+
+	/** Wakes every admission waiter to retry; freed slots go to whoever runs first. */
+	private releaseCapacity() {
+		const waiters = this.capacityWaiters;
+		this.capacityWaiters = [];
+		for (const wake of waiters) wake();
+	}
+
+	private enqueue<T>(
+		pending: Omit<Pending, "resolve" | "reject">,
+		signal?: AbortSignal,
+	): Promise<T> {
 		if (this.closed)
 			return Promise.reject(new Error("Native executor is closed"));
-		if (this.queue.length + Number(!!this.active) >= MAX_NATIVE_REQUESTS) {
-			return Promise.reject(
-				new Error("Native executor is busy; retry this batch"),
-			);
+		if (!this.hasCapacity()) {
+			return Promise.reject(new NativeExecutorBusyError());
 		}
 		const { promise, resolve, reject } = Promise.withResolvers<T>();
-		this.queue.push({
+		const withdraw = () => {
+			const index = this.queue.indexOf(entry);
+			if (index < 0) return; // Already started: let it finish.
+			this.queue.splice(index, 1);
+			reject(asError(signal?.reason));
+			this.releaseCapacity();
+		};
+		const entry: Pending = {
 			...pending,
-			resolve: (result) => resolve(result as T),
-			reject,
-		});
+			resolve: (result) => {
+				signal?.removeEventListener("abort", withdraw);
+				resolve(result as T);
+			},
+			reject: (error) => {
+				signal?.removeEventListener("abort", withdraw);
+				reject(error);
+			},
+		};
+		signal?.addEventListener("abort", withdraw, { once: true });
+		this.queue.push(entry);
 		this.dispatch();
 		return promise;
 	}
@@ -216,9 +295,12 @@ export class NativeExecutor {
 				thumbnailsDir,
 			} satisfies NativeRequest);
 		} else {
+			// Rendering leaves the worker's photo stream open (see native-worker.ts).
+			const request = pending.request;
 			if (
-				pending.request?.operation !== "cancelPhotos" ||
-				pending.request.jobId === this.sessionJobId
+				request?.operation === "cancelPhotos"
+					? request.jobId === this.sessionJobId
+					: request?.operation !== "renderExportJpeg"
 			) {
 				this.sessionJobId = undefined;
 			}
@@ -276,6 +358,7 @@ export class NativeExecutor {
 		}
 		if (this.queue.length) this.dispatch();
 		else worker.unref();
+		this.releaseCapacity();
 	}
 
 	private async acknowledge(
@@ -310,6 +393,7 @@ export class NativeExecutor {
 		this.active = undefined;
 		this.queue = [];
 		for (const request of pending) request.reject(error);
+		this.releaseCapacity();
 	}
 
 	private fail(error: Error, dead = false) {

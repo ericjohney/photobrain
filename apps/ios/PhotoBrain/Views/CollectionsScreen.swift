@@ -349,12 +349,13 @@ struct CollectionCoverImage: View {
     }
 }
 
-/// One collection's photos, with the same grid and loupe as the Library.
+/// One collection's photos, with the same grid and loupe as the Library, and a ZIP export.
 struct CollectionDetailScreen: View {
     let collection: CollectionDTO
     @ObservedObject var collections: CollectionsStore
     let api: any PhotoBrainAPI
     @StateObject private var store: LibraryStore
+    @StateObject private var exports: ExportStore
 
     init(
         collection: CollectionDTO,
@@ -368,6 +369,7 @@ struct CollectionDetailScreen: View {
         _store = StateObject(
             wrappedValue: LibraryStore(api: api, curation: curation, scope: .collection(collection.id))
         )
+        _exports = StateObject(wrappedValue: ExportStore(api: api))
     }
 
     private var title: String {
@@ -385,7 +387,36 @@ struct CollectionDetailScreen: View {
             emptyDescription: "Add photos from the Library with Add to Collection.",
             onRefresh: { await collections.load() }
         )
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if case let .failed(failure) = exports.state {
+                ErrorBanner(
+                    message: "Couldn’t export. \(failure.message)",
+                    retry: failure.retryTarget.map { _ in { exports.retry() } },
+                    dismiss: exports.dismissError
+                )
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                exportMenu
+            }
+        }
+        .exportPresentation(exports)
         .task { collections.register(store) }
+    }
+
+    private var exportMenu: some View {
+        Menu {
+            Button("Originals (ZIP)") {
+                exports.start(.collection(id: collection.id, size: .original))
+            }
+            Button("JPEGs, 2048 px (ZIP)") {
+                exports.start(.collection(id: collection.id, size: .jpeg2048))
+            }
+        } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
+        }
+        .disabled(exports.isBusy || store.loadState == .empty)
     }
 }
 

@@ -16,7 +16,27 @@ struct LoupeScreen: View {
     @State private var showingInfo = false
     @State private var similarSource: PhotoRecord?
     @State private var collectionSheetPhotoID: CollectionSheetTarget?
+    @StateObject private var exports: ExportStore
     @Environment(\.showInLibrary) private var showInLibrary
+
+    init(
+        records: [PhotoRecord],
+        activeID: Binding<Int>,
+        api: any PhotoBrainAPI,
+        curation: PhotoCurationCenter,
+        collections: CollectionsStore,
+        dismiss: @escaping () -> Void,
+        review: LoupeReviewActions? = nil
+    ) {
+        self.records = records
+        _activeID = activeID
+        self.api = api
+        self.curation = curation
+        self.collections = collections
+        self.dismiss = dismiss
+        self.review = review
+        _exports = StateObject(wrappedValue: ExportStore(api: api))
+    }
 
     private var activeRecord: PhotoRecord? {
         records.first { $0.id == activeID }
@@ -60,6 +80,12 @@ struct LoupeScreen: View {
                     topChrome
                     if let message = review?.errorMessage {
                         reviewError(message)
+                    } else if case let .failed(failure) = exports.state {
+                        ErrorBanner(
+                            message: "Couldn’t share. \(failure.message)",
+                            retry: failure.retryTarget.map { _ in { exports.retry() } },
+                            dismiss: exports.dismissError
+                        )
                     } else if let message = curation.errorMessage {
                         curationError(message)
                     }
@@ -78,6 +104,7 @@ struct LoupeScreen: View {
         }
         .preferredColorScheme(.dark)
         .statusBarHidden(!chromeVisible)
+        .exportPresentation(exports)
         .sheet(isPresented: $showingInfo) {
             if let activeRecord {
                 PhotoMetadataView(photo: activeRecord, api: api, onSelect: librarySelection)
@@ -121,6 +148,7 @@ struct LoupeScreen: View {
             Text("\((records.firstIndex { $0.id == activeID } ?? 0) + 1) of \(records.count)")
                 .font(.caption.monospacedDigit())
                 .accessibilityLabel("Photo \((records.firstIndex { $0.id == activeID } ?? 0) + 1) of \(records.count)")
+            shareMenu
             Button {
                 collectionSheetPhotoID = activeRecord.map { CollectionSheetTarget(id: $0.id) }
             } label: {
@@ -152,6 +180,27 @@ struct LoupeScreen: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .background(chromeBackground)
+    }
+
+    private var shareMenu: some View {
+        Menu {
+            Button {
+                activeRecord.map { exports.start(.photo(id: $0.id, size: .jpeg2048)) }
+            } label: {
+                Label("Share Photo", systemImage: "photo")
+            }
+            Button {
+                activeRecord.map { exports.start(.photo(id: $0.id, size: .original)) }
+            } label: {
+                Label("Share Original", systemImage: "doc")
+            }
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.title3)
+                .frame(width: 36, height: 36)
+        }
+        .disabled(activeRecord == nil || exports.isBusy)
+        .accessibilityLabel("Share")
     }
 
     private func curationBar(_ photo: PhotoRecord) -> some View {

@@ -115,3 +115,14 @@ export function groupNearDuplicates(
 	hashes: string[],
 	maxDistance: number,
 ): NearDuplicateGroup[];
+/**
+ * Render a metadata-free sRGB 8-bit JPEG through the scan decode path (HEIF,
+ * RAW embedded preview, EXIF orientation applied to the pixels). The long edge
+ * is fitted to `maxEdge` only when larger (never upscaled); alpha is composited
+ * over white. `quality` is 1-100. Throws when the source cannot be decoded.
+ */
+export function renderExportJpeg(
+	path: string,
+	maxEdge: number,
+	quality: number,
+): Buffer;

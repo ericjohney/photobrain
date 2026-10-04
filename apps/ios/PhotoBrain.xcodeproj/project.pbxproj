@@ -81,6 +81,10 @@
 		A1000000000000000000002B /* GearStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002B /* GearStats.swift */; };
 		A1000000000000000000002C /* GearStatsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002C /* GearStatsScreen.swift */; };
 		A2000000000000000000001C /* GearStatsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001C /* GearStatsTests.swift */; };
+		A1000000000000000000002D /* ExportDownload.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002D /* ExportDownload.swift */; };
+		A1000000000000000000002E /* PhotoExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002E /* PhotoExport.swift */; };
+		A1000000000000000000002F /* ExportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000002F /* ExportViews.swift */; };
+		A2000000000000000000001D /* ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001D /* ExportTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -175,6 +179,10 @@
 		B1000000000000000000002B /* GearStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GearStats.swift; sourceTree = "<group>"; };
 		B1000000000000000000002C /* GearStatsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GearStatsScreen.swift; sourceTree = "<group>"; };
 		B2000000000000000000001C /* GearStatsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GearStatsTests.swift; sourceTree = "<group>"; };
+		B1000000000000000000002D /* ExportDownload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportDownload.swift; sourceTree = "<group>"; };
+		B1000000000000000000002E /* PhotoExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoExport.swift; sourceTree = "<group>"; };
+		B1000000000000000000002F /* ExportViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportViews.swift; sourceTree = "<group>"; };
+		B2000000000000000000001D /* ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -224,9 +232,9 @@
 		C00000000000000000000004 /* App */ = {isa = PBXGroup; children = (B10000000000000000000001 /* PhotoBrainApp.swift */, B1000000000000000000000D /* AppEnvironment.swift */, B10000000000000000000015 /* AppLinkRouting.swift */,); path = App; sourceTree = "<group>"; };
 		C00000000000000000000005 /* Fixtures */ = {isa = PBXGroup; children = (B10000000000000000000002 /* RedactedFixture.swift */,); path = Fixtures; sourceTree = "<group>"; };
 		C00000000000000000000006 /* Instrumentation */ = {isa = PBXGroup; children = (B10000000000000000000003 /* SpikeSignposts.swift */,); path = Instrumentation; sourceTree = "<group>"; };
-		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */, B1000000000000000000001D /* SmartAlbumsState.swift */, B1000000000000000000001F /* DuplicatesState.swift */, B10000000000000000000021 /* PhotoPair.swift */, B10000000000000000000022 /* PhotoMap.swift */, B10000000000000000000024 /* PhotoPlaces.swift */, B10000000000000000000025 /* OnThisDay.swift */, B10000000000000000000027 /* CaptureCalendar.swift */, B10000000000000000000029 /* AutoEvents.swift */, B1000000000000000000002B /* GearStats.swift */,); path = Library; sourceTree = "<group>"; };
+		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */, B1000000000000000000001D /* SmartAlbumsState.swift */, B1000000000000000000001F /* DuplicatesState.swift */, B10000000000000000000021 /* PhotoPair.swift */, B10000000000000000000022 /* PhotoMap.swift */, B10000000000000000000024 /* PhotoPlaces.swift */, B10000000000000000000025 /* OnThisDay.swift */, B10000000000000000000027 /* CaptureCalendar.swift */, B10000000000000000000029 /* AutoEvents.swift */, B1000000000000000000002B /* GearStats.swift */, B1000000000000000000002E /* PhotoExport.swift */,); path = Library; sourceTree = "<group>"; };
 		C00000000000000000000008 /* Models */ = {isa = PBXGroup; children = (B10000000000000000000006 /* PhotoRecord.swift */, B1000000000000000000000B /* APIDTOs.swift */,); path = Models; sourceTree = "<group>"; };
-		C00000000000000000000009 /* Networking */ = {isa = PBXGroup; children = (B10000000000000000000007 /* RedirectAwareImageLoader.swift */, B1000000000000000000000C /* APIClient.swift */,); path = Networking; sourceTree = "<group>"; };
+		C00000000000000000000009 /* Networking */ = {isa = PBXGroup; children = (B10000000000000000000007 /* RedirectAwareImageLoader.swift */, B1000000000000000000000C /* APIClient.swift */, B1000000000000000000002D /* ExportDownload.swift */,); path = Networking; sourceTree = "<group>"; };
 		C0000000000000000000000A /* PhotoBrainTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -258,12 +266,13 @@
 				B2000000000000000000001A /* CaptureCalendarTests.swift */,
 				B2000000000000000000001B /* AutoEventsTests.swift */,
 				B2000000000000000000001C /* GearStatsTests.swift */,
+				B2000000000000000000001D /* ExportTests.swift */,
 			);
 			path = PhotoBrainTests;
 			sourceTree = "<group>";
 		};
 		C0000000000000000000000B /* Products */ = {isa = PBXGroup; children = (B00000000000000000000001 /* PhotoBrain.app */, B00000000000000000000002 /* PhotoBrainTests.xctest */,); name = Products; sourceTree = "<group>"; };
-		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */, B1000000000000000000001E /* SmartAlbumViews.swift */, B10000000000000000000020 /* DuplicatesScreen.swift */, B10000000000000000000023 /* MapScreen.swift */, B10000000000000000000026 /* OnThisDaySection.swift */, B10000000000000000000028 /* CaptureCalendarView.swift */, B1000000000000000000002A /* EventViews.swift */, B1000000000000000000002C /* GearStatsScreen.swift */,); path = Views; sourceTree = "<group>"; };
+		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */, B1000000000000000000001E /* SmartAlbumViews.swift */, B10000000000000000000020 /* DuplicatesScreen.swift */, B10000000000000000000023 /* MapScreen.swift */, B10000000000000000000026 /* OnThisDaySection.swift */, B10000000000000000000028 /* CaptureCalendarView.swift */, B1000000000000000000002A /* EventViews.swift */, B1000000000000000000002C /* GearStatsScreen.swift */, B1000000000000000000002F /* ExportViews.swift */,); path = Views; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -370,6 +379,9 @@
 				A1000000000000000000002A /* EventViews.swift in Sources */,
 				A1000000000000000000002B /* GearStats.swift in Sources */,
 				A1000000000000000000002C /* GearStatsScreen.swift in Sources */,
+				A1000000000000000000002D /* ExportDownload.swift in Sources */,
+				A1000000000000000000002E /* PhotoExport.swift in Sources */,
+				A1000000000000000000002F /* ExportViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -405,6 +417,7 @@
 				A2000000000000000000001A /* CaptureCalendarTests.swift in Sources */,
 				A2000000000000000000001B /* AutoEventsTests.swift in Sources */,
 				A2000000000000000000001C /* GearStatsTests.swift in Sources */,
+				A2000000000000000000001D /* ExportTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

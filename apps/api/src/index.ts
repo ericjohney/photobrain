@@ -5,8 +5,10 @@ import { serve } from "inngest/hono";
 import { config } from "./config";
 import { db } from "./db";
 import { functions, inngest } from "./inngest";
+import { createExportsRouter } from "./routes/exports";
 import photosRouter from "./routes/photos";
 import { createV1Router } from "./routes/v1";
+import { nativeExecutor } from "./services/native-executor";
 import { searchPhotosByText } from "./services/vector-search";
 import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
@@ -42,6 +44,16 @@ app.all("/api/trpc/*", async (c) => {
 		createContext,
 	});
 });
+
+// Binary downloads: single-photo exports and collection ZIPs.
+app.route(
+	"/api",
+	createExportsRouter({
+		database: db,
+		photoDirectory: config.PHOTO_DIRECTORY,
+		renderer: nativeExecutor,
+	}),
+);
 
 // Keep file serving as REST endpoint (better for streaming)
 app.route("/api/photos", photosRouter);

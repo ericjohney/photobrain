@@ -1,4 +1,4 @@
-import { Ellipsis, Layers } from "lucide-react";
+import { ChevronDown, Download, Ellipsis, Layers } from "lucide-react";
 import { useState } from "react";
 import { CollectionNameInput } from "@/components/CollectionNameInput";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/sheet";
 import { collectionErrorMessage } from "@/hooks/use-collections";
 import { useDismiss } from "@/hooks/use-dismiss";
+import { EXPORT_SIZES } from "@/lib/export";
+import { exportCollectionUrl } from "@/lib/thumbnails";
 import type { Collection } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -42,10 +44,13 @@ function CollectionRow({
 	onRequestDelete: () => void;
 }) {
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [zipOpen, setZipOpen] = useState(false);
 	const [renaming, setRenaming] = useState(false);
-	const menuRef = useDismiss<HTMLDivElement>(menuOpen, () =>
-		setMenuOpen(false),
-	);
+	const closeMenu = () => {
+		setMenuOpen(false);
+		setZipOpen(false);
+	};
+	const menuRef = useDismiss<HTMLDivElement>(menuOpen, closeMenu);
 
 	if (renaming) {
 		return (
@@ -93,7 +98,7 @@ function CollectionRow({
 					aria-label={`Collection actions for ${collection.name}`}
 					aria-haspopup="menu"
 					aria-expanded={menuOpen}
-					onClick={() => setMenuOpen((open) => !open)}
+					onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
 					className={cn(
 						"rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:opacity-100",
 						menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
@@ -105,13 +110,13 @@ function CollectionRow({
 					<div
 						role="menu"
 						aria-label={`${collection.name} actions`}
-						className="absolute right-0 top-full z-20 mt-1 w-28 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+						className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
 					>
 						<button
 							type="button"
 							role="menuitem"
 							onClick={() => {
-								setMenuOpen(false);
+								closeMenu();
 								setRenaming(true);
 							}}
 							className="w-full rounded px-2 py-1 text-left text-xs hover:bg-secondary"
@@ -121,8 +126,45 @@ function CollectionRow({
 						<button
 							type="button"
 							role="menuitem"
+							aria-haspopup="menu"
+							aria-expanded={zipOpen}
+							onClick={() => setZipOpen((open) => !open)}
+							className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-xs hover:bg-secondary"
+						>
+							<Download className="h-3 w-3" />
+							<span className="flex-1">Download as ZIP</span>
+							<ChevronDown
+								className={cn(
+									"h-3 w-3 transition-transform",
+									zipOpen && "rotate-180",
+								)}
+							/>
+						</button>
+						{zipOpen && (
+							<div
+								role="menu"
+								aria-label={`Download ${collection.name} as ZIP`}
+								className="ml-3 border-l border-border pl-1"
+							>
+								{EXPORT_SIZES.map((size) => (
+									<a
+										key={size}
+										role="menuitem"
+										href={exportCollectionUrl(collection.id, size)}
+										download={`${collection.name}.zip`}
+										onClick={closeMenu}
+										className="block rounded px-2 py-1 text-xs hover:bg-secondary"
+									>
+										{size === "original" ? "Originals" : `JPEG ${size}`}
+									</a>
+								))}
+							</div>
+						)}
+						<button
+							type="button"
+							role="menuitem"
 							onClick={() => {
-								setMenuOpen(false);
+								closeMenu();
 								onRequestDelete();
 							}}
 							className="w-full rounded px-2 py-1 text-left text-xs text-destructive hover:bg-secondary"
