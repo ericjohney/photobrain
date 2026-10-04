@@ -13,6 +13,7 @@ import {
 	type FixturePhoto,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
+	fixtureGearStats,
 	fixtureLocation,
 	fixtureOnThisDay,
 	fixturePlaceOptions,
@@ -317,6 +318,14 @@ function createDefaultHandlers(): Record<string, Handler> {
 				rawCount: photos.filter((p) => p.isRaw || p.pairedPhotoId !== null)
 					.length,
 			};
+		},
+		// Like the API: exactly the library grid's photo set for the same input.
+		gearStats: (input) => {
+			const { collectionId, ...filters } = (input ??
+				{}) as FixturePhotoFilters & CollectionScope;
+			return fixtureGearStats(
+				filterFixturePhotos(scopeToCollection({ collectionId }), filters),
+			);
 		},
 		// Like the API: the same filters and stacking, then valid locations only.
 		photoLocations: (input) => {

@@ -38,6 +38,7 @@ struct LibraryScreen: View {
     @State private var duplicatesPresented = false
     @State private var mapPresented = false
     @State private var calendarPresented = false
+    @State private var gearStatsPresented = false
     @Environment(\.showInLibrary) private var showInLibrary
 
     var body: some View {
@@ -108,6 +109,9 @@ struct LibraryScreen: View {
                 capturedDate: store.filters.capturedDate,
                 select: store.showCapturedDate
             )
+        }
+        .sheet(isPresented: $gearStatsPresented) {
+            GearStatsScreen(filters: store.filters, api: environment.api, select: store.showGear)
         }
         .sheet(isPresented: $addSelectionPresented) {
             AddSelectionToCollectionSheet(
@@ -295,6 +299,14 @@ struct LibraryScreen: View {
                         .frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Map")
+                Button {
+                    gearStatsPresented = true
+                } label: {
+                    Image(systemName: "chart.bar")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Gear Stats")
                 Button("Select") {
                     store.beginSelection()
                 }

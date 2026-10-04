@@ -283,6 +283,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [x] Display full EXIF in photo detail view
 - [ ] Parse IPTC metadata (keywords, copyright, descriptions)
 - [x] GPS coordinate extraction, display, and map view
+- [x] Gear stats: cameras, lenses, focal length/aperture/shutter/ISO histograms, and shots per camera per year for the current filters (web and native iOS)
 
 ---
 

@@ -19,6 +19,7 @@ import {
 import { DuplicateGroupList } from "@/components/DuplicateGroupList";
 import { DuplicatesHeader } from "@/components/DuplicatesHeader";
 import { Filmstrip } from "@/components/Filmstrip";
+import { GearStatsView } from "@/components/GearStatsView";
 import { LoupeView } from "@/components/LoupeView";
 import type { MapFocus } from "@/components/MapView";
 import { OnThisDayStrip } from "@/components/OnThisDayStrip";
@@ -182,12 +183,10 @@ export function Dashboard() {
 	};
 	const bounds = filters.bounds ?? undefined;
 
-	const photosQuery = trpc.photos.useQuery(
-		{ ...libraryScope, bounds },
-		{
-			enabled: !searchQuery && catalogView === null,
-		},
-	);
+	const photosInput = { ...libraryScope, bounds };
+	const photosQuery = trpc.photos.useQuery(photosInput, {
+		enabled: !searchQuery && catalogView === null,
+	});
 
 	// Search is scoped by the same folder and EXIF filters as the library.
 	const searchPhotosQuery = trpc.searchPhotos.useQuery(
@@ -296,6 +295,18 @@ export function Dashboard() {
 	const panels = usePanelState();
 	const mapActive = library.viewMode === "map";
 
+	// "Gear" replaces the library grid (never search, similar, Review, or
+	// Duplicates) with stats over exactly the grid's photo set.
+	const [gearActive, setGearActive] = useState(false);
+	const libraryGrid = libraryListed && library.viewMode === "grid";
+	const gearShown = gearActive && libraryGrid;
+	useEffect(() => {
+		if (!libraryGrid) setGearActive(false);
+	}, [libraryGrid]);
+	const gearStatsQuery = trpc.gearStats.useQuery(photosInput, {
+		enabled: gearShown,
+	});
+
 	// Map: every geotagged photo in the library scope (folder/collection and
 	// filters, not the search query or the current map area).
 	const photoLocationsQuery = trpc.photoLocations.useQuery(libraryScope, {
@@ -312,7 +323,7 @@ export function Dashboard() {
 		selectedCollectionId === null &&
 		catalogView === null &&
 		similarSource === null &&
-		library.viewMode === "grid";
+		!gearShown;
 	const onThisDay = useOnThisDay(wholeLibraryShown);
 	const mapFitKey = JSON.stringify(libraryScope);
 	// "Show on map": center on this photo instead of fitting all points.
@@ -615,6 +626,16 @@ export function Dashboard() {
 		[setActivePhoto, library.viewMode, setViewMode],
 	);
 
+	// Gear stats camera/lens row: apply that filter and return to the grid.
+	const handleGearCameraSelect = useCallback((camera: string) => {
+		setFilters((current) => ({ ...current, camera }));
+		setGearActive(false);
+	}, []);
+	const handleGearLensSelect = useCallback((lens: string) => {
+		setFilters((current) => ({ ...current, lens }));
+		setGearActive(false);
+	}, []);
+
 	// Navigation helpers for loupe - memoized to avoid recalculation on every render
 	const { hasPrev, hasNext } = useMemo(() => {
 		const currentIndex = library.activePhoto
@@ -648,6 +669,17 @@ export function Dashboard() {
 						onShowArea={handleShowMapArea}
 					/>
 				</Suspense>
+			);
+		}
+
+		if (gearShown) {
+			return (
+				<GearStatsView
+					stats={gearStatsQuery.data}
+					error={gearStatsQuery.error}
+					onCameraSelect={handleGearCameraSelect}
+					onLensSelect={handleGearLensSelect}
+				/>
 			);
 		}
 
@@ -958,7 +990,7 @@ export function Dashboard() {
 					thumbnailSize={library.thumbnailSize}
 					onThumbnailSizeChange={library.setThumbnailSize}
 					timeline={
-						libraryListed && library.viewMode === "grid"
+						libraryGrid && !gearShown
 							? {
 									grouping: timelineSettings.grouping,
 									onGroupingChange: timelineSettings.setGrouping,
@@ -967,6 +999,14 @@ export function Dashboard() {
 									calendarCounts,
 									capturedDate: filters.capturedDate,
 									onCapturedDateSelect: handleCapturedDateSelect,
+								}
+							: null
+					}
+					gearStats={
+						libraryGrid
+							? {
+									active: gearShown,
+									onToggle: () => setGearActive((current) => !current),
 								}
 							: null
 					}

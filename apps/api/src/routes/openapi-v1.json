@@ -461,6 +461,208 @@
 				}
 			}
 		},
+		"/api/v1/gear-stats": {
+			"get": {
+				"operationId": "gearStats",
+				"description": "Gear usage over exactly the photos `GET /photos` returns for the same filters (RAW+JPEG pairs counted once; `total` equals that listing's `total`). `cameras` and `lenses` list every value, count descending then label ascending (byte order); a camera label is the model when it starts with the make, else `make model` (the `camera` filter value). Histograms always contain every bucket in ascending order, including zero counts; a missing or unparseable value is excluded from that dimension only. Focal length (mm), aperture (f-number rounded to one decimal), and ISO ranges are inclusive; shutter-speed ranges (seconds, `1/N` or `N.Ns`) exclude `min` and include `max`. `cameraYears` counts photos with a camera label and an EXIF capture date in year 1900 or later, year ascending, then count descending, then camera ascending.",
+				"parameters": [
+					{
+						"name": "filterRaw",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["all", "raw", "standard"],
+							"default": "all"
+						}
+					},
+					{
+						"name": "folder",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "camera",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "lens",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "iso",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
+					},
+					{
+						"name": "dateMonth",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+						}
+					},
+					{
+						"name": "minRating",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 5
+						}
+					},
+					{
+						"name": "flag",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["pick", "reject", "unflagged"]
+						}
+					},
+					{
+						"name": "collectionId",
+						"in": "query",
+						"required": false,
+						"description": "Only photos that are members of this collection",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "tag",
+						"in": "query",
+						"required": false,
+						"description": "Only photos carrying this automatic tag slug",
+						"schema": {
+							"type": "string",
+							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"maxLength": 64
+						}
+					},
+					{
+						"name": "country",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose current offline place is in this country (ISO 3166-1 alpha-2, uppercase)",
+						"schema": {
+							"type": "string",
+							"pattern": "^[A-Z]{2}$"
+						}
+					},
+					{
+						"name": "place",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose current offline place is this city (GeoNames geonameid from `filter-options` `places`)",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "event",
+						"in": "query",
+						"required": false,
+						"description": "Only members of this automatically detected event (`id` from `GET /events`). RAW+JPEG pairs stack as usual. An unknown id matches nothing (empty result, not an error). A view scope: never accepted in smart album filters.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "capturedDate",
+						"in": "query",
+						"required": false,
+						"description": "Only photos whose EXIF capture date (wall clock, no timezone conversion) is this real calendar date, `YYYY-MM-DD`, year 1900 or later. Photos without a valid `dateTaken` never match. Invalid dates are rejected with 400.",
+						"schema": {
+							"type": "string",
+							"format": "date",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+						}
+					},
+					{
+						"name": "north",
+						"in": "query",
+						"required": false,
+						"description": "Northern edge of a location box in decimal degrees (inclusive). `north`, `south`, `east`, and `west` must be given together; `south` must not exceed `north`. Only photos with a valid location inside the box match.",
+						"schema": {
+							"type": "number",
+							"minimum": -90,
+							"maximum": 90
+						}
+					},
+					{
+						"name": "south",
+						"in": "query",
+						"required": false,
+						"description": "Southern edge of the location box (inclusive)",
+						"schema": {
+							"type": "number",
+							"minimum": -90,
+							"maximum": 90
+						}
+					},
+					{
+						"name": "east",
+						"in": "query",
+						"required": false,
+						"description": "Eastern edge of the location box (inclusive)",
+						"schema": {
+							"type": "number",
+							"minimum": -180,
+							"maximum": 180
+						}
+					},
+					{
+						"name": "west",
+						"in": "query",
+						"required": false,
+						"description": "Western edge of the location box (inclusive); `west` greater than `east` crosses the antimeridian",
+						"schema": {
+							"type": "number",
+							"minimum": -180,
+							"maximum": 180
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Gear statistics for the filtered photos",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GearStatsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
 		"/api/v1/on-this-day": {
 			"get": {
 				"operationId": "onThisDay",
@@ -2104,6 +2306,143 @@
 					"total": {
 						"type": "integer",
 						"minimum": 0
+					}
+				}
+			},
+			"GearStatsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"total",
+					"withExif",
+					"cameras",
+					"lenses",
+					"focalLengths",
+					"apertures",
+					"shutterSpeeds",
+					"isos",
+					"cameraYears"
+				],
+				"properties": {
+					"total": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Photos matching the filters; equals `GET /photos` `total`"
+					},
+					"withExif": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Photos with any camera make/model, lens, focal length, aperture, shutter speed, or ISO"
+					},
+					"cameras": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/GearCount"
+						}
+					},
+					"lenses": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/GearCount"
+						}
+					},
+					"focalLengths": {
+						"type": "array",
+						"minItems": 8,
+						"maxItems": 8,
+						"description": "Millimetres, inclusive: ≤15, 16–23, 24–34, 35–49, 50–84, 85–134, 135–299, ≥300",
+						"items": {
+							"$ref": "#/components/schemas/GearBucket"
+						}
+					},
+					"apertures": {
+						"type": "array",
+						"minItems": 7,
+						"maxItems": 7,
+						"description": "F-number rounded to one decimal, inclusive: ≤1.9, 2.0–2.7, 2.8–3.9, 4.0–5.5, 5.6–7.9, 8.0–10.9, ≥11",
+						"items": {
+							"$ref": "#/components/schemas/GearBucket"
+						}
+					},
+					"shutterSpeeds": {
+						"type": "array",
+						"minItems": 6,
+						"maxItems": 6,
+						"description": "Seconds, `min` exclusive and `max` inclusive: ≤0.0005, (0.0005, 0.002], (0.002, 0.008], (0.008, 0.0334], (0.0334, 0.5], >0.5",
+						"items": {
+							"$ref": "#/components/schemas/GearBucket"
+						}
+					},
+					"isos": {
+						"type": "array",
+						"minItems": 7,
+						"maxItems": 7,
+						"description": "Inclusive: ≤200, 201–400, 401–800, 801–1600, 1601–3200, 3201–6400, ≥6401",
+						"items": {
+							"$ref": "#/components/schemas/GearBucket"
+						}
+					},
+					"cameraYears": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/GearCameraYear"
+						}
+					}
+				}
+			},
+			"GearCount": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["label", "count"],
+				"properties": {
+					"label": {
+						"type": "string",
+						"minLength": 1
+					},
+					"count": {
+						"type": "integer",
+						"minimum": 1
+					}
+				}
+			},
+			"GearBucket": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["label", "min", "max", "count"],
+				"properties": {
+					"label": {
+						"type": "string"
+					},
+					"min": {
+						"type": ["number", "null"],
+						"description": "Lower bound; `null` when open"
+					},
+					"max": {
+						"type": ["number", "null"],
+						"description": "Upper bound (inclusive); `null` when open"
+					},
+					"count": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			},
+			"GearCameraYear": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["camera", "year", "count"],
+				"properties": {
+					"camera": {
+						"type": "string",
+						"minLength": 1
+					},
+					"year": {
+						"type": "integer",
+						"minimum": 1900
+					},
+					"count": {
+						"type": "integer",
+						"minimum": 1
 					}
 				}
 			},

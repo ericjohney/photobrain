@@ -49,6 +49,8 @@ actor TestAPI: PhotoBrainAPI {
     var onThisDayRequests: [Date] = []
     var eventsResult: Result<EventsResponseDTO, PhotoBrainAPIError> = .success(EventsResponseDTO(events: []))
     var eventsRequests: [String?] = []
+    var gearStatsResult: Result<GearStatsDTO, PhotoBrainAPIError> = .success(TestModels.gearStats())
+    var gearStatsQueries: [PhotoQuery] = []
     /// Server-side junk candidates, newest first; `junkReview` filters and pages over them.
     var junkCandidates: [PhotoDTO] = []
     /// Scripted responses returned (in order) before falling back to `junkCandidates`.
@@ -272,6 +274,14 @@ actor TestAPI: PhotoBrainAPI {
         eventsRequests
     }
 
+    func setGearStats(_ result: Result<GearStatsDTO, PhotoBrainAPIError>) {
+        gearStatsResult = result
+    }
+
+    func recordedGearStatsQueries() -> [PhotoQuery] {
+        gearStatsQueries
+    }
+
     struct SearchKey: Hashable, Sendable {
         let query: String
         let filters: PhotoQuery
@@ -460,6 +470,11 @@ actor TestAPI: PhotoBrainAPI {
     func events(folder: String?) async throws -> EventsResponseDTO {
         eventsRequests.append(folder)
         return try eventsResult.get()
+    }
+
+    func gearStats(query: PhotoQuery) async throws -> GearStatsDTO {
+        gearStatsQueries.append(query)
+        return try gearStatsResult.get()
     }
 
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {
@@ -879,6 +894,29 @@ enum TestModels {
             photos: ordered.map { photo(id: $0) },
             suggestedKeeperId: keeperID,
             maxDistance: kind == .burst ? nil : (maxDistance ?? 3)
+        )
+    }
+
+    static func gearStats(
+        total: Int = 0,
+        withExif: Int = 0,
+        cameras: [GearCountDTO] = [],
+        lenses: [GearCountDTO] = [],
+        cameraYears: [GearCameraYearDTO] = []
+    ) -> GearStatsDTO {
+        func buckets(_ labels: [String]) -> [GearBucketDTO] {
+            labels.map { GearBucketDTO(label: $0, min: nil, max: nil, count: 0) }
+        }
+        return GearStatsDTO(
+            total: total,
+            withExif: withExif,
+            cameras: cameras,
+            lenses: lenses,
+            focalLengths: buckets(["≤15 mm", "16–23 mm", "24–34 mm", "35–49 mm", "50–84 mm", "85–134 mm", "135–299 mm", "≥300 mm"]),
+            apertures: buckets(["≤f/1.9", "f/2–2.7", "f/2.8–3.9", "f/4–5.5", "f/5.6–7.9", "f/8–10.9", "≥f/11"]),
+            shutterSpeeds: buckets(["≤1/2000 s", "1/1000–1/500 s", "1/250–1/125 s", "1/60–1/30 s", "1/15–1/2 s", ">1/2 s"]),
+            isos: buckets(["≤200", "400", "800", "1600", "3200", "6400", ">6400"]),
+            cameraYears: cameraYears
         )
     }
 }

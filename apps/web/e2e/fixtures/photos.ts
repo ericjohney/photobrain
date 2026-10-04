@@ -835,3 +835,181 @@ export function fixtureEvents(
 		}));
 	return { events };
 }
+
+/** One gear stats histogram bucket as the API returns it. */
+export type FixtureGearBucket = {
+	label: string;
+	min: number | null;
+	max: number | null;
+	count: number;
+};
+
+/** One camera/lens row as the API returns it. */
+export type FixtureGearCount = { label: string; count: number };
+
+export type FixtureCameraYear = { camera: string; year: number; count: number };
+
+/** The API's `gearStats` response. */
+export type FixtureGearStats = {
+	total: number;
+	withExif: number;
+	cameras: FixtureGearCount[];
+	lenses: FixtureGearCount[];
+	focalLengths: FixtureGearBucket[];
+	apertures: FixtureGearBucket[];
+	shutterSpeeds: FixtureGearBucket[];
+	isos: FixtureGearBucket[];
+	cameraYears: FixtureCameraYear[];
+};
+
+type BucketBounds = [label: string, min: number | null, max: number | null];
+
+/** The API's fixed bucket definitions, in display order. */
+export const FIXTURE_GEAR_BUCKETS: Record<
+	"focalLengths" | "apertures" | "shutterSpeeds" | "isos",
+	BucketBounds[]
+> = {
+	focalLengths: [
+		["≤15 mm", null, 15],
+		["16–23 mm", 16, 23],
+		["24–34 mm", 24, 34],
+		["35–49 mm", 35, 49],
+		["50–84 mm", 50, 84],
+		["85–134 mm", 85, 134],
+		["135–299 mm", 135, 299],
+		["≥300 mm", 300, null],
+	],
+	apertures: [
+		["≤f/1.9", null, 1.9],
+		["f/2–2.7", 2.0, 2.7],
+		["f/2.8–3.9", 2.8, 3.9],
+		["f/4–5.5", 4.0, 5.5],
+		["f/5.6–7.9", 5.6, 7.9],
+		["f/8–10.9", 8.0, 10.9],
+		["≥f/11", 11.0, null],
+	],
+	shutterSpeeds: [
+		["≤1/2000 s", null, 0.0005],
+		["1/1000–1/500 s", 0.0005, 0.002],
+		["1/250–1/125 s", 0.002, 0.008],
+		["1/60–1/30 s", 0.008, 0.0334],
+		["1/15–1/2 s", 0.0334, 0.5],
+		[">1/2 s", 0.5, null],
+	],
+	isos: [
+		["≤200", null, 200],
+		["400", 201, 400],
+		["800", 401, 800],
+		["1600", 801, 1600],
+		["3200", 1601, 3200],
+		["6400", 3201, 6400],
+		[">6400", 6401, null],
+	],
+};
+
+/**
+ * Every bucket in order with its count. Buckets are contiguous, so a value
+ * belongs to the first bucket whose (inclusive) max it does not exceed; for
+ * shutter speeds that makes the lower bound exclusive, as in the API.
+ */
+function fixtureBuckets(
+	bounds: BucketBounds[],
+	values: (number | null)[],
+): FixtureGearBucket[] {
+	const buckets = bounds.map(([label, min, max]) => ({
+		label,
+		min,
+		max,
+		count: 0,
+	}));
+	for (const value of values) {
+		if (value === null || !Number.isFinite(value)) continue;
+		const bucket = buckets.find((b) => b.max === null || value <= b.max);
+		if (bucket) bucket.count++;
+	}
+	return buckets;
+}
+
+/** Count desc, then label asc, like the API's camera and lens lists. */
+function fixtureCounts(labels: (string | null)[]) {
+	const counts = new Map<string, number>();
+	for (const label of labels) {
+		if (label) counts.set(label, (counts.get(label) ?? 0) + 1);
+	}
+	return [...counts]
+		.map(([label, count]) => ({ label, count }))
+		.sort(
+			(a, b) =>
+				b.count - a.count ||
+				(a.label < b.label ? -1 : a.label > b.label ? 1 : 0),
+		);
+}
+
+/** `f/N.N` → N.N rounded to one decimal, else null. */
+function fixtureAperture(text: string | null) {
+	const match = text?.match(/^f\/(\d+(?:\.\d+)?)$/);
+	return match ? Math.round(Number(match[1]) * 10) / 10 : null;
+}
+
+/** `1/N` → 1/N seconds, `N.Ns` → N.N seconds, else null. */
+function fixtureShutterSeconds(text: string | null) {
+	const fraction = text?.match(/^1\/(\d+(?:\.\d+)?)$/);
+	if (fraction) return 1 / Number(fraction[1]);
+	const seconds = text?.match(/^(\d+(?:\.\d+)?)s$/);
+	return seconds ? Number(seconds[1]) : null;
+}
+
+/**
+ * The API's `gearStats` over an already filtered and stacked photo set (the
+ * library grid's photos for the same filters).
+ */
+export function fixtureGearStats(photos: FixturePhoto[]): FixtureGearStats {
+	const exifs = photos.flatMap((p) => (p.exif ? [p.exif] : []));
+	const cameraYears = new Map<string, FixtureCameraYear>();
+	for (const exif of exifs) {
+		const camera = cameraLabel(exif);
+		const year = Number(exif.dateTaken?.slice(0, 4));
+		if (!camera || !(year >= 1900)) continue;
+		const key = `${camera}\n${year}`;
+		const entry = cameraYears.get(key) ?? { camera, year, count: 0 };
+		entry.count++;
+		cameraYears.set(key, entry);
+	}
+	return {
+		total: photos.length,
+		withExif: exifs.filter(
+			(e) =>
+				e.cameraMake !== null ||
+				e.cameraModel !== null ||
+				e.lensModel !== null ||
+				e.focalLength !== null ||
+				e.aperture !== null ||
+				e.shutterSpeed !== null ||
+				e.iso !== null,
+		).length,
+		cameras: fixtureCounts(exifs.map(cameraLabel)),
+		lenses: fixtureCounts(exifs.map((e) => e.lensModel)),
+		focalLengths: fixtureBuckets(
+			FIXTURE_GEAR_BUCKETS.focalLengths,
+			exifs.map((e) => e.focalLength),
+		),
+		apertures: fixtureBuckets(
+			FIXTURE_GEAR_BUCKETS.apertures,
+			exifs.map((e) => fixtureAperture(e.aperture)),
+		),
+		shutterSpeeds: fixtureBuckets(
+			FIXTURE_GEAR_BUCKETS.shutterSpeeds,
+			exifs.map((e) => fixtureShutterSeconds(e.shutterSpeed)),
+		),
+		isos: fixtureBuckets(
+			FIXTURE_GEAR_BUCKETS.isos,
+			exifs.map((e) => e.iso),
+		),
+		cameraYears: [...cameraYears.values()].sort(
+			(a, b) =>
+				a.year - b.year ||
+				b.count - a.count ||
+				(a.camera < b.camera ? -1 : a.camera > b.camera ? 1 : 0),
+		),
+	};
+}

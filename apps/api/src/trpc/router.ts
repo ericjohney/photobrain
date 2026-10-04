@@ -27,6 +27,7 @@ import {
 	resolveDuplicateGroup,
 } from "../services/duplicates";
 import { listEvents } from "../services/events";
+import { gearStats } from "../services/gear-stats";
 import {
 	JUNK_ACTIONS,
 	JUNK_REASONS,
@@ -229,6 +230,10 @@ export const appRouter = router({
 	photoLocations: publicProcedure
 		.input(photoFiltersInput)
 		.query(({ ctx, input }) => listPhotoLocations(ctx.db, input ?? {})),
+
+	gearStats: publicProcedure
+		.input(photoFiltersInput)
+		.query(({ ctx, input }) => gearStats(ctx.db, input ?? {})),
 
 	events: publicProcedure
 		.input(

@@ -771,6 +771,44 @@ struct EventsResponseDTO: Codable, Equatable, Sendable {
     let events: [EventDTO]
 }
 
+/// One camera or lens label and how many photos in scope carry it.
+struct GearCountDTO: Codable, Hashable, Sendable {
+    let label: String
+    let count: Int
+}
+
+/// One fixed histogram bucket. `min`/`max` are `nil` for the open first/last buckets; the
+/// server always sends every bucket in ascending order, including zero counts.
+struct GearBucketDTO: Codable, Hashable, Sendable {
+    let label: String
+    let min: Double?
+    let max: Double?
+    let count: Int
+}
+
+/// Photos by one camera in one EXIF capture year.
+struct GearCameraYearDTO: Codable, Hashable, Sendable {
+    let camera: String
+    let year: Int
+    let count: Int
+}
+
+/// `GET /api/v1/gear-stats`: gear usage over exactly the photos `GET /photos` lists for the
+/// same filters. `cameras`/`lenses` hold every entry, count descending then label;
+/// `cameraYears` is year ascending, then count descending, then camera.
+struct GearStatsDTO: Codable, Equatable, Sendable {
+    let total: Int
+    /// Photos with any camera, lens, focal length, aperture, shutter speed, or ISO value.
+    let withExif: Int
+    let cameras: [GearCountDTO]
+    let lenses: [GearCountDTO]
+    let focalLengths: [GearBucketDTO]
+    let apertures: [GearBucketDTO]
+    let shutterSpeeds: [GearBucketDTO]
+    let isos: [GearBucketDTO]
+    let cameraYears: [GearCameraYearDTO]
+}
+
 struct CollectionsResponseDTO: Codable, Equatable, Sendable {
     let collections: [CollectionDTO]
 }

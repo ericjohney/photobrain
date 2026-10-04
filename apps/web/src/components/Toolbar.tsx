@@ -1,4 +1,5 @@
 import {
+	BarChart3,
 	Grid3X3,
 	Loader2,
 	Map as MapIcon,
@@ -60,6 +61,12 @@ const SORT_OPTIONS: { value: TimelineSort; label: string }[] = [
 	{ value: "captured", label: "Captured" },
 	{ value: "added", label: "Added" },
 ];
+
+/** Gear stats toggle; only offered while the library grid is shown. */
+export interface ToolbarGearStats {
+	active: boolean;
+	onToggle: () => void;
+}
 
 /** Compact single-choice segmented control (one radio per option). */
 function ToolbarSegmented<T extends string>({
@@ -128,6 +135,8 @@ interface ToolbarProps {
 	onThumbnailSizeChange: (size: number) => void;
 	/** Grouping/sort/calendar controls; null outside the library grid. */
 	timeline?: ToolbarTimeline | null;
+	/** Gear stats toggle; null outside the library grid. */
+	gearStats?: ToolbarGearStats | null;
 
 	// Panels
 	leftPanelVisible: boolean;
@@ -160,6 +169,7 @@ export function Toolbar({
 	thumbnailSize,
 	onThumbnailSizeChange,
 	timeline = null,
+	gearStats = null,
 	leftPanelVisible,
 	rightPanelVisible,
 	onToggleLeftPanel,
@@ -269,6 +279,26 @@ export function Toolbar({
 						{viewMode === "map" ? "Grid view (G)" : "Map view (M)"}
 					</TooltipContent>
 				</Tooltip>
+
+				{gearStats && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								aria-label="Gear stats"
+								aria-pressed={gearStats.active}
+								className={cn("h-7 w-7", gearStats.active && "bg-secondary")}
+								onClick={gearStats.onToggle}
+							>
+								<BarChart3 className="h-4 w-4" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							{gearStats.active ? "Back to grid" : "Gear stats"}
+						</TooltipContent>
+					</Tooltip>
+				)}
 
 				{/* Thumbnail size slider (only in grid mode) */}
 				{viewMode === "grid" && (

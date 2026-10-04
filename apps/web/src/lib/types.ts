@@ -59,3 +59,9 @@ export type OnThisDayYear = RouterOutputs["onThisDay"]["years"][number];
 
 // Event types
 export type EventSummary = RouterOutputs["events"]["events"][number];
+
+// Gear stats types
+export type GearStats = RouterOutputs["gearStats"];
+export type GearCount = GearStats["cameras"][number];
+export type GearBucket = GearStats["focalLengths"][number];
+export type CameraYear = GearStats["cameraYears"][number];

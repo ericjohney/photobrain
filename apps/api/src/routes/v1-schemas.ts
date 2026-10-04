@@ -13,6 +13,7 @@ import {
 	MAX_DUPLICATE_KEY_LENGTH,
 } from "../services/duplicates";
 import type { EventsResult } from "../services/events";
+import type { GearStats } from "../services/gear-stats";
 import {
 	JUNK_ACTIONS,
 	JUNK_REASONS,
@@ -211,6 +212,37 @@ export const photoLocationsResponseSchema: z.ZodType<PhotoLocationsResult> =
 		),
 		total: z.number().int().nonnegative(),
 	});
+
+const gearCountSchema = z.object({
+	label: z.string().min(1),
+	count: z.number().int().positive(),
+});
+
+const gearBucketSchema = z.object({
+	label: z.string(),
+	min: z.number().nullable(),
+	max: z.number().nullable(),
+	count: z.number().int().nonnegative(),
+});
+
+/** `GET /gear-stats` (query: `photoFiltersSchema`); the service shape as is. */
+export const gearStatsResponseSchema = z.object({
+	total: z.number().int().nonnegative(),
+	withExif: z.number().int().nonnegative(),
+	cameras: z.array(gearCountSchema),
+	lenses: z.array(gearCountSchema),
+	focalLengths: z.array(gearBucketSchema),
+	apertures: z.array(gearBucketSchema),
+	shutterSpeeds: z.array(gearBucketSchema),
+	isos: z.array(gearBucketSchema),
+	cameraYears: z.array(
+		z.object({
+			camera: z.string().min(1),
+			year: z.number().int().min(1900),
+			count: z.number().int().positive(),
+		}),
+	),
+}) satisfies z.ZodType<GearStats>;
 
 export const photoIdSchema = z.coerce.number().int().positive();
 

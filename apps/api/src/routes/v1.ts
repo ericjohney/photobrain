@@ -16,6 +16,7 @@ import {
 	resolveDuplicateGroup,
 } from "../services/duplicates";
 import { listEvents } from "../services/events";
+import { gearStats } from "../services/gear-stats";
 import { junkReview, resolveJunk } from "../services/junk-review";
 import { onThisDay } from "../services/on-this-day";
 import type { ApiDatabase } from "../services/photo-catalog";
@@ -58,6 +59,7 @@ import {
 	filterOptionsQuerySchema,
 	filterOptionsResponseSchema,
 	foldersResponseSchema,
+	gearStatsResponseSchema,
 	junkReviewQuerySchema,
 	junkReviewResponseSchema,
 	onThisDayQuerySchema,
@@ -271,6 +273,21 @@ export function createV1Router(dependencies: V1Dependencies) {
 			return jsonResponse(
 				photoLocationsResponseSchema,
 				listPhotoLocations(dependencies.database, input.data, {
+					normalizeDateMonths: true,
+				}),
+			);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/gear-stats", (context) => {
+		const input = photoFiltersSchema.safeParse(context.req.query());
+		if (!input.success) return invalidRequest();
+		try {
+			return jsonResponse(
+				gearStatsResponseSchema,
+				gearStats(dependencies.database, input.data, {
 					normalizeDateMonths: true,
 				}),
 			);

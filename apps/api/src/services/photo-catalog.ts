@@ -117,6 +117,20 @@ export function capturedDateCondition(date: string | SQL): SQL {
 }
 
 /**
+ * The single camera label rule over the `photo_exif` row visible as `exif`:
+ * the model when it already starts with the make (`LIKE`, so ASCII
+ * case-insensitive), otherwise `make model`; NULL unless both are present.
+ * The `camera` filter, `filterOptions` cameras, and gear stats all use it.
+ */
+export function cameraLabelSql(exif = "photo_exif"): SQL {
+	const table = sql.identifier(exif);
+	return sql`(CASE WHEN ${table}.camera_model LIKE ${table}.camera_make || '%'
+		THEN ${table}.camera_model
+		ELSE ${table}.camera_make || ' ' || ${table}.camera_model
+	END)`;
+}
+
+/**
  * The single location validity rule, over the `photo_exif` row visible as
  * `exif`. `gps_latitude`/`gps_longitude` are TEXT holding decimal degrees; a
  * location is valid iff both are numeric text (the NUMERIC cast round-trips,
@@ -326,11 +340,7 @@ export async function listFilterOptions(
 		? sql`replace(substr(${photoExif.dateTaken}, 1, 7), ':', '-')`
 		: sql`substr(${photoExif.dateTaken}, 1, 7)`;
 	const camerasResult = await database.all<{ camera: string }>(sql`
-		SELECT DISTINCT
-			CASE
-				WHEN ${photoExif.cameraModel} LIKE ${photoExif.cameraMake} || '%' THEN ${photoExif.cameraModel}
-				ELSE ${photoExif.cameraMake} || ' ' || ${photoExif.cameraModel}
-			END as camera
+		SELECT DISTINCT ${cameraLabelSql()} as camera
 		FROM ${photoExif}
 		INNER JOIN ${photosTable} ON ${photosTable.id} = ${photoExif.photoId}
 		WHERE ${photoExif.cameraMake} IS NOT NULL AND ${photoExif.cameraModel} IS NOT NULL${folderCondition}
@@ -433,12 +443,9 @@ export function photoFilterConditions(
 		);
 	}
 	if (input.camera) {
-		conditions.push(sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND (
-			CASE WHEN photo_exif.camera_model LIKE photo_exif.camera_make || '%'
-				THEN photo_exif.camera_model
-				ELSE photo_exif.camera_make || ' ' || photo_exif.camera_model
-			END = ${input.camera}
-		))`);
+		conditions.push(
+			sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND ${cameraLabelSql()} = ${input.camera})`,
+		);
 	}
 	if (input.lens) {
 		conditions.push(

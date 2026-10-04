@@ -25,8 +25,8 @@ struct PhotoQuery: Hashable, Sendable {
     /// One auto event's members, by event id. Never saved in smart albums.
     var event: Int?
 
-    /// `GET /photos` and `GET /locations` query items. `filterRaw` is always sent; the other
-    /// filters only when set, and the four bounds edges together or not at all.
+    /// `GET /photos`, `GET /locations`, and `GET /gear-stats` query items. `filterRaw` is always
+    /// sent; the other filters only when set, and the four bounds edges together or not at all.
     var queryItems: [URLQueryItem] {
         var items = [URLQueryItem(name: "filterRaw", value: filterRaw.rawValue)]
         if let folder { items.append(URLQueryItem(name: "folder", value: folder)) }
@@ -73,6 +73,9 @@ protocol PhotoBrainAPI: Sendable {
     func onThisDay(date: Date) async throws -> OnThisDayResponseDTO
     /// `GET /events?folder=`: auto events newest first; `folder` is sent only when set.
     func events(folder: String?) async throws -> EventsResponseDTO
+    /// `GET /gear-stats`: gear usage over exactly the photos `photos(query:)` lists for `query`,
+    /// sent with the same query items.
+    func gearStats(query: PhotoQuery) async throws -> GearStatsDTO
     /// `PATCH /photos/{id}`. `rating: nil` and `flag: nil` leave a field unchanged;
     /// `flag: .some(nil)` clears the flag. At least one field must be provided.
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO
@@ -196,6 +199,10 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
             path: ["events"],
             queryItems: folder.map { [URLQueryItem(name: "folder", value: $0)] } ?? []
         )
+    }
+
+    func gearStats(query: PhotoQuery) async throws -> GearStatsDTO {
+        try await get(path: ["gear-stats"], queryItems: query.queryItems)
     }
 
     func updateCuration(id: Int, rating: Int?, flag: PhotoFlag??) async throws -> PhotoDTO {
