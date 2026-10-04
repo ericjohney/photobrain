@@ -21,6 +21,7 @@ import {
 	getPhoto,
 	listFilterOptions,
 	listFolders,
+	listPhotoLocations,
 	listPhotos,
 } from "../services/photo-catalog";
 import { updatePhotoCuration } from "../services/photo-curation";
@@ -59,6 +60,7 @@ import {
 	photoCurationPatchSchema,
 	photoFiltersSchema,
 	photoIdSchema,
+	photoLocationsResponseSchema,
 	photoSchema,
 	photosResponseSchema,
 	photoTagsResponseSchema,
@@ -246,6 +248,21 @@ export function createV1Router(dependencies: V1Dependencies) {
 			return jsonResponse(
 				photosResponseSchema,
 				serializePhotosResponse(result),
+			);
+		} catch (error) {
+			return internalError(error);
+		}
+	});
+
+	router.get("/locations", (context) => {
+		const input = photoFiltersSchema.safeParse(context.req.query());
+		if (!input.success) return invalidRequest();
+		try {
+			return jsonResponse(
+				photoLocationsResponseSchema,
+				listPhotoLocations(dependencies.database, input.data, {
+					normalizeDateMonths: true,
+				}),
 			);
 		} catch (error) {
 			return internalError(error);

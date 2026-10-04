@@ -1,6 +1,7 @@
 import {
 	Grid3X3,
 	Loader2,
+	Map as MapIcon,
 	Maximize2,
 	Moon,
 	PanelLeftClose,
@@ -158,6 +159,27 @@ export function Toolbar({
 					</TooltipTrigger>
 					<TooltipContent>
 						{viewMode === "grid" ? "Loupe view (E)" : "Grid view (G)"}
+					</TooltipContent>
+				</Tooltip>
+
+				{/* Map view toggle */}
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="Map view"
+							aria-pressed={viewMode === "map"}
+							className={cn("h-7 w-7", viewMode === "map" && "bg-secondary")}
+							onClick={() =>
+								onViewModeChange(viewMode === "map" ? "grid" : "map")
+							}
+						>
+							<MapIcon className="h-4 w-4" />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						{viewMode === "map" ? "Grid view (G)" : "Map view (M)"}
 					</TooltipContent>
 				</Tooltip>
 

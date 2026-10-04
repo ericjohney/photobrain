@@ -86,12 +86,17 @@ function makePhoto(
 	};
 }
 
+function gps(gpsLatitude: string, gpsLongitude: string) {
+	return { gpsLatitude, gpsLongitude };
+}
+
 export const FIXTURE_PHOTOS: FixturePhoto[] = [
 	makePhoto(1, {
 		name: "sunset.jpg",
 		path: "photos/2024/sunset.jpg",
 		rating: 5,
 		flag: "pick",
+		exif: { ...makePhoto(1).exif!, ...gps("37.8199", "-122.4783") },
 	}),
 	makePhoto(2, {
 		name: "portrait.arw",
@@ -132,11 +137,14 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		name: "beach.jpg",
 		path: "photos/2024/beach.jpg",
 		rating: 3,
+		exif: { ...makePhoto(6).exif!, ...gps("21.281", "-157.8374") },
 	}),
+	// Fiji (7) and Samoa (9) sit on either side of the antimeridian.
 	makePhoto(7, {
 		name: "mountain.heic",
 		path: "photos/2024/mountain.heic",
 		mimeType: "image/heic",
+		exif: { ...makePhoto(7).exif!, ...gps("-17.7134", "178.065") },
 	}),
 	makePhoto(8, {
 		name: "forest.jpg",
@@ -145,11 +153,25 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		flag: "pick",
 		pairedPhotoId: 13,
 		pairedFormat: "ARW",
+		exif: { ...makePhoto(8).exif!, ...gps("47.6062", "-122.3321") },
 	}),
-	makePhoto(9, { name: "city.jpg", path: "photos/2024/city.jpg" }),
-	makePhoto(10, { name: "flower.jpg", path: "photos/2024/flower.jpg" }),
+	makePhoto(9, {
+		name: "city.jpg",
+		path: "photos/2024/city.jpg",
+		exif: { ...makePhoto(9).exif!, ...gps("-13.8333", "-171.7667") },
+	}),
+	// Invalid locations the map ignores: non-numeric text and the 0,0 default.
+	makePhoto(10, {
+		name: "flower.jpg",
+		path: "photos/2024/flower.jpg",
+		exif: { ...makePhoto(10).exif!, ...gps("unknown", "12.5") },
+	}),
 	makePhoto(11, { name: "cat.jpg", path: "photos/2024/cat.jpg", exif: null }),
-	makePhoto(12, { name: "dog.jpg", path: "photos/2024/dog.jpg" }),
+	makePhoto(12, {
+		name: "dog.jpg",
+		path: "photos/2024/dog.jpg",
+		exif: { ...makePhoto(12).exif!, ...gps("0", "0") },
+	}),
 	// RAW half of the forest pair: stacked under forest.jpg (8) unless a filter
 	// keeps only the RAW. Curated together with its partner, like the API does.
 	makePhoto(13, {
@@ -163,6 +185,7 @@ export const FIXTURE_PHOTOS: FixturePhoto[] = [
 		flag: "pick",
 		pairedPhotoId: 8,
 		pairedFormat: "JPG",
+		exif: { ...makePhoto(13).exif!, ...gps("47.6062", "-122.3321") },
 	}),
 ];
 
@@ -299,6 +322,13 @@ export function searchPhotosByQuery(
 	);
 }
 
+export type FixturePhotoBounds = {
+	north: number;
+	south: number;
+	east: number;
+	west: number;
+};
+
 export type FixturePhotoFilters = {
 	folder?: string;
 	filterRaw?: "all" | "raw" | "standard";
@@ -309,7 +339,38 @@ export type FixturePhotoFilters = {
 	minRating?: number;
 	flag?: "pick" | "reject" | "unflagged";
 	tag?: string;
+	bounds?: FixturePhotoBounds;
 };
+
+/**
+ * The API's single location validity rule: numeric latitude/longitude text,
+ * latitude in [-90, 90], longitude in [-180, 180], and not exactly 0,0.
+ */
+export function fixtureLocation(
+	photo: FixturePhoto,
+): { latitude: number; longitude: number } | null {
+	const numeric = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+	const latText = photo.exif?.gpsLatitude;
+	const lonText = photo.exif?.gpsLongitude;
+	if (!latText || !lonText || !numeric.test(latText) || !numeric.test(lonText))
+		return null;
+	const latitude = Number(latText);
+	const longitude = Number(lonText);
+	if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+	if (latitude === 0 && longitude === 0) return null;
+	return { latitude, longitude };
+}
+
+/** The API's `bounds` predicate, including the antimeridian wrap. */
+function inBounds(photo: FixturePhoto, bounds: FixturePhotoBounds) {
+	const location = fixtureLocation(photo);
+	if (!location) return false;
+	const { latitude, longitude } = location;
+	if (latitude < bounds.south || latitude > bounds.north) return false;
+	return bounds.west <= bounds.east
+		? longitude >= bounds.west && longitude <= bounds.east
+		: longitude >= bounds.west || longitude <= bounds.east;
+}
 
 /** Camera label as the API composes it: model alone when it already starts with the make. */
 function cameraLabel(exif: NonNullable<FixturePhoto["exif"]>) {
@@ -364,6 +425,9 @@ export function filterFixturePhotos(
 			filters.tag !== undefined &&
 			!FIXTURE_PHOTO_TAGS[p.id]?.some(({ tag }) => tag === filters.tag)
 		) {
+			return false;
+		}
+		if (filters.bounds !== undefined && !inBounds(p, filters.bounds)) {
 			return false;
 		}
 		return true;

@@ -7,10 +7,12 @@ import {
 	Folder,
 	FolderOpen,
 	Images,
+	MapPin,
 	Plus,
 	ScanEye,
 	Star,
 	Tag,
+	X,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -18,6 +20,7 @@ import type {
 	Collection,
 	FilterOptions,
 	FlagFilter,
+	PhotoBounds,
 	SmartAlbum,
 } from "@/lib/types";
 import { cn, formatMonthLabel, formatTagName } from "@/lib/utils";
@@ -44,6 +47,8 @@ export interface LibraryFilters {
 	flag: FlagFilter | null;
 	/** Tag slug; null matches any tag. */
 	tag: string | null;
+	/** "Map area" from the map view; never saved in smart albums. */
+	bounds: PhotoBounds | null;
 }
 
 export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
@@ -55,6 +60,7 @@ export const EMPTY_LIBRARY_FILTERS: LibraryFilters = {
 	minRating: null,
 	flag: null,
 	tag: null,
+	bounds: null,
 };
 
 /** Tags listed before "Show all" expands the full list. */
@@ -677,16 +683,38 @@ export function LibraryPanel({
 						activeFilters.dateMonth ||
 						activeFilters.minRating !== null ||
 						activeFilters.flag !== null ||
-						activeFilters.tag !== null) && (
-						<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary flex items-center justify-between">
-							<span>Filters active</span>
-							<button
-								type="button"
-								className="underline cursor-pointer"
-								onClick={() => onFilterChange(EMPTY_LIBRARY_FILTERS)}
-							>
-								Clear all
-							</button>
+						activeFilters.tag !== null ||
+						activeFilters.bounds !== null) && (
+						<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary">
+							<div className="flex items-center justify-between">
+								<span>Filters active</span>
+								<button
+									type="button"
+									className="underline cursor-pointer"
+									onClick={() => onFilterChange(EMPTY_LIBRARY_FILTERS)}
+								>
+									Clear all
+								</button>
+							</div>
+							{activeFilters.bounds !== null && (
+								<span
+									data-testid="map-area-chip"
+									className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-primary/15 py-0.5 pl-2 pr-0.5"
+								>
+									<MapPin className="h-3 w-3" />
+									Map area
+									<button
+										type="button"
+										aria-label="Clear map area"
+										onClick={() =>
+											onFilterChange({ ...activeFilters, bounds: null })
+										}
+										className="rounded-full p-0.5 hover:bg-primary/20"
+									>
+										<X className="h-3 w-3" />
+									</button>
+								</span>
+							)}
 						</div>
 					)}
 

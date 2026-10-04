@@ -35,6 +35,7 @@ struct LibraryScreen: View {
     @State private var addSelectionPresented = false
     @State private var reviewPresented = false
     @State private var duplicatesPresented = false
+    @State private var mapPresented = false
     @Environment(\.showTagInLibrary) private var showTagInLibrary
 
     var body: some View {
@@ -76,6 +77,15 @@ struct LibraryScreen: View {
                     .environment(\.showTagInLibrary, showTagInLibrary.map { action in
                         ShowTagInLibraryAction { tag in
                             duplicatesPresented = false
+                            action(tag)
+                        }
+                    })
+            }
+            .navigationDestination(isPresented: $mapPresented) {
+                MapScreen(filters: store.filters, collections: collections, curation: store.curation, api: environment.api)
+                    .environment(\.showTagInLibrary, showTagInLibrary.map { action in
+                        ShowTagInLibraryAction { tag in
+                            mapPresented = false
                             action(tag)
                         }
                     })
@@ -248,6 +258,14 @@ struct LibraryScreen: View {
                     }
                     .accessibilityLabel("Duplicates, \(duplicates.counts.total) groups")
                 }
+                Button {
+                    mapPresented = true
+                } label: {
+                    Image(systemName: "map")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Map")
                 Button("Select") {
                     store.beginSelection()
                 }

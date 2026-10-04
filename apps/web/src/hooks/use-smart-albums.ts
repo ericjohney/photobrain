@@ -17,7 +17,11 @@ export function smartAlbumErrorMessage(error: unknown, name?: string) {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/** Saved form of the dashboard's folder + library filters (no collection). */
+/**
+ * Saved form of the dashboard's folder + library filters. The collection and
+ * the map-area `bounds` are never saved (the API rejects both), so a map area
+ * alone is not savable and is ignored alongside other filters.
+ */
 export function toSmartAlbumFilters(
 	folder: string | null,
 	filters: LibraryFilters,

@@ -152,6 +152,50 @@
 							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 							"maxLength": 64
 						}
+					},
+					{
+						"name": "north",
+						"in": "query",
+						"required": false,
+						"description": "Northern edge of a location box in decimal degrees (inclusive). `north`, `south`, `east`, and `west` must be given together; `south` must not exceed `north`. Only photos with a valid location inside the box match.",
+						"schema": {
+							"type": "number",
+							"minimum": -90,
+							"maximum": 90
+						}
+					},
+					{
+						"name": "south",
+						"in": "query",
+						"required": false,
+						"description": "Southern edge of the location box (inclusive)",
+						"schema": {
+							"type": "number",
+							"minimum": -90,
+							"maximum": 90
+						}
+					},
+					{
+						"name": "east",
+						"in": "query",
+						"required": false,
+						"description": "Eastern edge of the location box (inclusive)",
+						"schema": {
+							"type": "number",
+							"minimum": -180,
+							"maximum": 180
+						}
+					},
+					{
+						"name": "west",
+						"in": "query",
+						"required": false,
+						"description": "Western edge of the location box (inclusive); `west` greater than `east` crosses the antimeridian",
+						"schema": {
+							"type": "number",
+							"minimum": -180,
+							"maximum": 180
+						}
 					}
 				],
 				"responses": {
@@ -161,6 +205,167 @@
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/PhotosResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/api/v1/locations": {
+			"get": {
+				"operationId": "listPhotoLocations",
+				"description": "Locations of every photo matching the `GET /photos` filters (including the location box and RAW+JPEG stacking) that has a valid location, ordered by id ascending. A location is valid when both stored coordinates are numeric, latitude is in [-90, 90], longitude in [-180, 180], and they are not both 0.",
+				"parameters": [
+					{
+						"name": "filterRaw",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["all", "raw", "standard"],
+							"default": "all"
+						}
+					},
+					{
+						"name": "folder",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "camera",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "lens",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "iso",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
+					},
+					{
+						"name": "dateMonth",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+						}
+					},
+					{
+						"name": "minRating",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 5
+						}
+					},
+					{
+						"name": "flag",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["pick", "reject", "unflagged"]
+						}
+					},
+					{
+						"name": "collectionId",
+						"in": "query",
+						"required": false,
+						"description": "Only photos that are members of this collection",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "tag",
+						"in": "query",
+						"required": false,
+						"description": "Only photos carrying this automatic tag slug",
+						"schema": {
+							"type": "string",
+							"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"maxLength": 64
+						}
+					},
+					{
+						"name": "north",
+						"in": "query",
+						"required": false,
+						"description": "Northern edge of a location box in decimal degrees (inclusive). `north`, `south`, `east`, and `west` must be given together; `south` must not exceed `north`. Only photos with a valid location inside the box match.",
+						"schema": {
+							"type": "number",
+							"minimum": -90,
+							"maximum": 90
+						}
+					},
+					{
+						"name": "south",
+						"in": "query",
+						"required": false,
+						"description": "Southern edge of the location box (inclusive)",
+						"schema": {
+							"type": "number",
+							"minimum": -90,
+							"maximum": 90
+						}
+					},
+					{
+						"name": "east",
+						"in": "query",
+						"required": false,
+						"description": "Eastern edge of the location box (inclusive)",
+						"schema": {
+							"type": "number",
+							"minimum": -180,
+							"maximum": 180
+						}
+					},
+					{
+						"name": "west",
+						"in": "query",
+						"required": false,
+						"description": "Western edge of the location box (inclusive); `west` greater than `east` crosses the antimeridian",
+						"schema": {
+							"type": "number",
+							"minimum": -180,
+							"maximum": 180
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Matching photo locations",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PhotoLocationsResponse"
 								}
 							}
 						}
@@ -1529,6 +1734,69 @@
 					}
 				}
 			},
+			"PhotoBounds": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["north", "south", "east", "west"],
+				"description": "Location box in decimal degrees, edges inclusive. `south` must not exceed `north`; `west` greater than `east` crosses the antimeridian. Only photos with a valid location inside the box match.",
+				"properties": {
+					"north": {
+						"type": "number",
+						"minimum": -90,
+						"maximum": 90
+					},
+					"south": {
+						"type": "number",
+						"minimum": -90,
+						"maximum": 90
+					},
+					"east": {
+						"type": "number",
+						"minimum": -180,
+						"maximum": 180
+					},
+					"west": {
+						"type": "number",
+						"minimum": -180,
+						"maximum": 180
+					}
+				}
+			},
+			"PhotoLocationsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["points", "total"],
+				"properties": {
+					"points": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["id", "latitude", "longitude"],
+							"properties": {
+								"id": {
+									"type": "integer",
+									"minimum": 1
+								},
+								"latitude": {
+									"type": "number",
+									"minimum": -90,
+									"maximum": 90
+								},
+								"longitude": {
+									"type": "number",
+									"minimum": -180,
+									"maximum": 180
+								}
+							}
+						}
+					},
+					"total": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			},
 			"SearchRequest": {
 				"type": "object",
 				"additionalProperties": false,
@@ -1587,6 +1855,9 @@
 						"pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
 						"maxLength": 64,
 						"description": "Only photos carrying this automatic tag slug"
+					},
+					"bounds": {
+						"$ref": "#/components/schemas/PhotoBounds"
 					}
 				}
 			},

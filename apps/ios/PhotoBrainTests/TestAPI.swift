@@ -27,6 +27,9 @@ actor TestAPI: PhotoBrainAPI {
     /// Server-side curation state; PATCHes apply onto it and responses echo it.
     var curationState: [Int: PhotoCuration] = [:]
     var photoQueries: [PhotoQuery] = []
+    var locationsResponse = LocationsResponseDTO(points: [], total: 0)
+    var locationsFailure: PhotoBrainAPIError?
+    var locationQueries: [PhotoQuery] = []
     /// Server-side collections, kept sorted by name like the real list route.
     var collectionList: [CollectionDTO] = []
     /// Server-side membership: collection id -> photo ids.
@@ -214,6 +217,15 @@ actor TestAPI: PhotoBrainAPI {
         shouldFailPhotos = failing
     }
 
+    func setLocations(_ response: LocationsResponseDTO, failure: PhotoBrainAPIError? = nil) {
+        locationsResponse = response
+        locationsFailure = failure
+    }
+
+    func recordedLocationQueries() -> [PhotoQuery] {
+        locationQueries
+    }
+
     func setFilterOptions(_ options: FilterOptionsDTO) {
         filterResponse = options
     }
@@ -359,6 +371,12 @@ actor TestAPI: PhotoBrainAPI {
         photoQueries.append(query)
         if shouldFailPhotos { throw URLError(.notConnectedToInternet) }
         return photosResponse
+    }
+
+    func locations(query: PhotoQuery) async throws -> LocationsResponseDTO {
+        locationQueries.append(query)
+        if let locationsFailure { throw locationsFailure }
+        return locationsResponse
     }
 
     func photo(id: Int) async throws -> PhotoDTO {

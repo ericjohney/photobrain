@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PhotoMetadata = RouterOutputs["photos"]["photos"][number];
 
-export type ViewMode = "grid" | "loupe";
+export type ViewMode = "grid" | "loupe" | "map";
 
 interface LibraryState {
 	viewMode: ViewMode;

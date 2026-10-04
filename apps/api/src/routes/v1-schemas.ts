@@ -19,6 +19,11 @@ import {
 	JUNK_REVIEW_MAX_LIMIT,
 	MAX_JUNK_RESOLVE_IDS,
 } from "../services/junk-review";
+import {
+	isValidPhotoBounds,
+	type PhotoBounds,
+	type PhotoLocationsResult,
+} from "../services/photo-catalog";
 import { MAX_CURATION_IDS } from "../services/photo-curation";
 import {
 	MAX_SMART_ALBUM_NAME_LENGTH,
@@ -89,7 +94,26 @@ export const tagFilterSchema = z
 	.regex(TAG_SLUG_PATTERN)
 	.optional();
 
-export const photoFiltersSchema = z.object({
+/** `bounds` in JSON bodies; the same rule as tRPC and `isValidPhotoBounds`. */
+export const photoBoundsSchema: z.ZodType<PhotoBounds> = z
+	.object({
+		north: z.number(),
+		south: z.number(),
+		east: z.number(),
+		west: z.number(),
+	})
+	.strict()
+	.refine(isValidPhotoBounds);
+
+// Empty or non-numeric text fails instead of coercing to 0 or NaN.
+const boundQueryParameterSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.pipe(z.coerce.number().finite())
+	.optional();
+
+const photoFilterFieldsSchema = z.object({
 	filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
 	folder: z.string().optional(),
 	camera: z.string().optional(),
@@ -104,6 +128,55 @@ export const photoFiltersSchema = z.object({
 	collectionId: collectionIdFilterSchema,
 	tag: tagFilterSchema,
 });
+
+/**
+ * `GET /photos` and `GET /locations` query: the filters plus `north`, `south`,
+ * `east`, `west` (all four or none) folded into `bounds`.
+ */
+export const photoFiltersSchema = photoFilterFieldsSchema
+	.extend({
+		north: boundQueryParameterSchema,
+		south: boundQueryParameterSchema,
+		east: boundQueryParameterSchema,
+		west: boundQueryParameterSchema,
+	})
+	.transform(({ north, south, east, west, ...filters }, context) => {
+		if (
+			north === undefined &&
+			south === undefined &&
+			east === undefined &&
+			west === undefined
+		) {
+			return filters;
+		}
+		if (
+			north === undefined ||
+			south === undefined ||
+			east === undefined ||
+			west === undefined ||
+			!isValidPhotoBounds({ north, south, east, west })
+		) {
+			context.addIssue({
+				code: z.ZodIssueCode.custom,
+				message:
+					"north, south, east, west must all be given, finite, in range, and south <= north",
+			});
+			return z.NEVER;
+		}
+		return { ...filters, bounds: { north, south, east, west } };
+	});
+
+export const photoLocationsResponseSchema: z.ZodType<PhotoLocationsResult> =
+	z.object({
+		points: z.array(
+			z.object({
+				id: z.number().int().positive(),
+				latitude: z.number().min(-90).max(90),
+				longitude: z.number().min(-180).max(180),
+			}),
+		),
+		total: z.number().int().nonnegative(),
+	});
 
 export const photoIdSchema = z.coerce.number().int().positive();
 
@@ -174,16 +247,17 @@ export const searchRequestSchema = z
 	.object({
 		query: z.string().min(1),
 		limit: z.number().int().min(1).max(100).default(20),
-		filterRaw: photoFiltersSchema.shape.filterRaw,
-		folder: photoFiltersSchema.shape.folder,
-		camera: photoFiltersSchema.shape.camera,
-		lens: photoFiltersSchema.shape.lens,
+		filterRaw: photoFilterFieldsSchema.shape.filterRaw,
+		folder: photoFilterFieldsSchema.shape.folder,
+		camera: photoFilterFieldsSchema.shape.camera,
+		lens: photoFilterFieldsSchema.shape.lens,
 		iso: z.number().int().optional(),
-		dateMonth: photoFiltersSchema.shape.dateMonth,
+		dateMonth: photoFilterFieldsSchema.shape.dateMonth,
 		minRating: z.number().int().min(1).max(5).optional(),
 		flag: curationFlagFilterSchema,
 		collectionId: z.number().int().positive().optional(),
 		tag: tagFilterSchema,
+		bounds: photoBoundsSchema.optional(),
 	})
 	.strict();
 
@@ -380,7 +454,8 @@ const smartAlbumQuerySchema = z
 	.nullable();
 
 /**
- * Saved filters as accepted from clients: the photo filters minus `collectionId`.
+ * Saved filters as accepted from clients: the photo filters minus
+ * `collectionId` and `bounds` (strict, so either is a 400).
  * Empty strings and `filterRaw: "all"` mean "no filter"; `dateMonth` accepts
  * `YYYY-MM` or the stored-EXIF `YYYY:MM`.
  */
@@ -426,7 +501,7 @@ export const smartAlbumSchema = z.object({
 			camera: z.string().min(1).optional(),
 			lens: z.string().min(1).optional(),
 			iso: z.number().int().positive().optional(),
-			dateMonth: photoFiltersSchema.shape.dateMonth,
+			dateMonth: photoFilterFieldsSchema.shape.dateMonth,
 			minRating: z.number().int().min(1).max(5).optional(),
 			flag: curationFlagFilterSchema,
 			tag: tagFilterSchema,

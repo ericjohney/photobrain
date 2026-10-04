@@ -41,3 +41,10 @@ export type DuplicateGroupsResponse = RouterOutputs["duplicateGroups"];
 export type DuplicateGroup = DuplicateGroupsResponse["groups"][number];
 export type DuplicateKind = DuplicateGroup["kind"];
 export type DuplicateCounts = DuplicateGroupsResponse["counts"];
+
+// Map types
+export type PhotoLocationsResponse = RouterOutputs["photoLocations"];
+export type PhotoLocation = PhotoLocationsResponse["points"][number];
+export type PhotoBounds = NonNullable<
+	Extract<RouterInputs["photos"], object>["bounds"]
+>;

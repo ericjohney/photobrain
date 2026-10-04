@@ -41,6 +41,8 @@ interface MetadataPanelProps {
 	onCurate?: (patch: CurationPatch) => void;
 	/** Applies a tag chip as the library tag filter. */
 	onTagSelect?: (tag: string) => void;
+	/** Present only when the photo has a valid location: open it on the map. */
+	onShowOnMap?: () => void;
 	/** Collection membership controls for the active photo. */
 	collections?: Omit<PhotoCollectionsProps, "photoId">;
 	/** Junk review: why the active photo is a candidate, and how to resolve it. */
@@ -255,6 +257,7 @@ export function MetadataPanel({
 	onFindSimilar,
 	onCurate,
 	onTagSelect,
+	onShowOnMap,
 	collections,
 	review,
 	className,
@@ -432,6 +435,17 @@ export function MetadataPanel({
 									/>
 								)}
 							</div>
+							{onShowOnMap && (
+								<Button
+									variant="outline"
+									size="sm"
+									className="mt-2 w-full"
+									onClick={onShowOnMap}
+								>
+									<MapPin className="h-4 w-4" />
+									Show on map
+								</Button>
+							)}
 						</MetadataSection>
 					)}
 

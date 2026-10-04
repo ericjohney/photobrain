@@ -30,7 +30,87 @@ export type PhotoFilters = {
 	collectionId?: number;
 	/** Only photos carrying this automatic tag slug. */
 	tag?: string;
+	/** Only photos with a valid location inside this box (edges inclusive). */
+	bounds?: PhotoBounds;
 };
+
+/**
+ * A latitude/longitude box in decimal degrees. `west > east` crosses the
+ * antimeridian. Transports validate with `isValidPhotoBounds` first.
+ */
+export type PhotoBounds = {
+	north: number;
+	south: number;
+	east: number;
+	west: number;
+};
+
+export type PhotoLocation = { id: number; latitude: number; longitude: number };
+
+/** `photoLocations` / `GET /api/v1/locations` response. */
+export type PhotoLocationsResult = { points: PhotoLocation[]; total: number };
+
+/** Finite, latitudes in [-90, 90], longitudes in [-180, 180], south <= north. */
+export function isValidPhotoBounds(bounds: PhotoBounds): boolean {
+	const { north, south, east, west } = bounds;
+	return (
+		[north, south, east, west].every(Number.isFinite) &&
+		south >= -90 &&
+		north <= 90 &&
+		south <= north &&
+		west >= -180 &&
+		west <= 180 &&
+		east >= -180 &&
+		east <= 180
+	);
+}
+
+/**
+ * The single location validity rule, over the `photo_exif` row visible as
+ * `exif`. `gps_latitude`/`gps_longitude` are TEXT holding decimal degrees; a
+ * location is valid iff both are numeric text (the NUMERIC cast round-trips,
+ * so empty, NULL, `abc`, `12abc`, and `Infinity` text fail), latitude is in
+ * [-90, 90], longitude in [-180, 180] (which also excludes an overflowing
+ * `1e999`), and not both exactly 0 (the common bogus default). Every location
+ * read in the API goes through this builder.
+ */
+export function validLocationSql(exif = "photo_exif"): SQL {
+	const { latitude, longitude, latitudeText, longitudeText } =
+		locationColumns(exif);
+	return sql`(${latitudeText} = CAST(${latitudeText} AS NUMERIC)
+		AND ${longitudeText} = CAST(${longitudeText} AS NUMERIC)
+		AND ${latitude} BETWEEN -90 AND 90
+		AND ${longitude} BETWEEN -180 AND 180
+		AND NOT (${latitude} = 0 AND ${longitude} = 0))`;
+}
+
+function locationColumns(exif: string) {
+	const table = sql.identifier(exif);
+	const latitudeText = sql`${table}.gps_latitude`;
+	const longitudeText = sql`${table}.gps_longitude`;
+	return {
+		latitudeText,
+		longitudeText,
+		latitude: sql`CAST(${latitudeText} AS REAL)`,
+		longitude: sql`CAST(${longitudeText} AS REAL)`,
+	};
+}
+
+/**
+ * The row visible as `photos` has a valid location inside `bounds`: latitude
+ * in [south, north] and longitude in [west, east], or, when `west > east`
+ * (antimeridian wrap), longitude >= west OR <= east. Resolved through the
+ * unique `photo_exif.photo_id` index.
+ */
+function locationCondition(bounds: PhotoBounds): SQL {
+	const { latitude, longitude } = locationColumns("photo_exif");
+	const longitudeRange =
+		bounds.west <= bounds.east
+			? sql`${longitude} BETWEEN ${bounds.west} AND ${bounds.east}`
+			: sql`(${longitude} >= ${bounds.west} OR ${longitude} <= ${bounds.east})`;
+	return sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND ${validLocationSql()}
+		AND ${latitude} BETWEEN ${bounds.south} AND ${bounds.north} AND ${longitudeRange})`;
+}
 
 export type PhotoCatalogRepresentation = {
 	normalizeDateMonths?: boolean;
@@ -298,6 +378,9 @@ export function photoFilterConditions(
 			sql`${photosTable.id} IN (SELECT photo_id FROM photo_tags WHERE tag = ${input.tag})`,
 		);
 	}
+	if (input.bounds) {
+		conditions.push(locationCondition(input.bounds));
+	}
 	// A type filter already excludes the partner of every row it admits.
 	if (input.filterRaw !== "raw" && input.filterRaw !== "standard") {
 		conditions.push(pairStackingCondition(conditions));
@@ -326,6 +409,41 @@ export async function listPhotos(
 			(photo) => photo.isRaw || photo.pairedPhotoId !== null,
 		).length,
 	};
+}
+
+const WHOLE_WORLD: PhotoBounds = {
+	north: 90,
+	south: -90,
+	east: 180,
+	west: -180,
+};
+
+/**
+ * Every photo matching `input` with a valid location, ordered by ID, in one
+ * statement without relational hydration. The location requirement always
+ * runs before RAW+JPEG stacking (as the whole-world box when no `bounds` is
+ * given), so a pair yields its standard file's point, or the RAW's when only
+ * the RAW is geotagged: the same rows as `listPhotos` with that box.
+ */
+export function listPhotoLocations(
+	database: ApiDatabase,
+	input: PhotoFilters = {},
+	representation: PhotoCatalogRepresentation = {},
+): PhotoLocationsResult {
+	const conditions = photoFilterConditions(
+		{ ...input, bounds: input.bounds ?? WHOLE_WORLD },
+		representation,
+	);
+	const points = database.all<PhotoLocation>(sql`
+		SELECT photos.id AS id,
+			CAST(location.gps_latitude AS REAL) AS latitude,
+			CAST(location.gps_longitude AS REAL) AS longitude
+		FROM photos
+		INNER JOIN photo_exif location ON location.photo_id = photos.id
+		WHERE ${sql.join(conditions, sql` AND `)}
+		ORDER BY photos.id
+	`);
+	return { points, total: points.length };
 }
 
 export async function getPhoto(database: ApiDatabase, id: number) {

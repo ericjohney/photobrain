@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct LibraryFilters: Equatable, Sendable {
+struct LibraryFilters: Hashable, Sendable {
     enum MediaKind: String, CaseIterable, Identifiable, Sendable {
         case all
         case raw
@@ -27,6 +27,9 @@ struct LibraryFilters: Equatable, Sendable {
     var flag: PhotoFlagFilter?
     /// Auto tag slug; `nil` means any tag.
     var tag: String?
+    /// Map region the photos must lie in (Map's "Show N Photos"). A view scope, not saved
+    /// criteria: smart albums never store it.
+    var bounds: PhotoBounds?
 
     enum Field: Hashable, Sendable {
         case mediaKind
@@ -37,11 +40,12 @@ struct LibraryFilters: Equatable, Sendable {
         case minRating
         case flag
         case tag
+        case bounds
     }
 
     var isActive: Bool {
         mediaKind != .all || camera != nil || lens != nil || iso != nil || dateMonth != nil
-            || minRating != nil || flag != nil || tag != nil
+            || minRating != nil || flag != nil || tag != nil || bounds != nil
     }
 
     struct ActiveFilter: Identifiable, Equatable, Sendable {
@@ -61,6 +65,7 @@ struct LibraryFilters: Equatable, Sendable {
         if let minRating { fields.append(ActiveFilter(field: .minRating, title: Self.formatMinRating(minRating))) }
         if let flag { fields.append(ActiveFilter(field: .flag, title: flag.title)) }
         if let tag { fields.append(ActiveFilter(field: .tag, title: PhotoTagName.hashtag(tag))) }
+        if bounds != nil { fields.append(ActiveFilter(field: .bounds, title: "Map Area")) }
         return fields
     }
 
@@ -80,7 +85,8 @@ struct LibraryFilters: Equatable, Sendable {
             dateMonth: dateMonth,
             minRating: minRating,
             flag: flag,
-            tag: tag
+            tag: tag,
+            bounds: bounds
         )
     }
 
@@ -95,6 +101,7 @@ struct LibraryFilters: Equatable, Sendable {
         case .minRating: updated.minRating = nil
         case .flag: updated.flag = nil
         case .tag: updated.tag = nil
+        case .bounds: updated.bounds = nil
         }
         return updated
     }
@@ -123,6 +130,9 @@ enum LibraryScope: Equatable, Sendable {
     case library
     /// One collection's members, narrowed by the user's filters.
     case collection(Int)
+    /// Map "Show N Photos": the user's filters including their map region (`bounds`).
+    /// Like other scoped screens it has no filter UI, so it loads no filter options.
+    case mapArea
     /// A smart album's saved criteria, evaluated live. The user's filters are not applied.
     case smartAlbum(filters: SmartAlbumFilters, query: String?)
 }
@@ -139,7 +149,7 @@ enum PhotoListingSource: Equatable, Sendable {
     /// search with the query and the same filters.
     init(scope: LibraryScope, filters: LibraryFilters) {
         switch scope {
-        case .library:
+        case .library, .mapArea:
             self = .photos(filters.photoQuery)
         case let .collection(id):
             var query = filters.photoQuery
@@ -220,10 +230,16 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     /// so the loupe never pages away underneath the membership sheet.
     private var pendingRemovalIDs: Set<Int> = []
 
-    init(api: any PhotoBrainAPI, curation: PhotoCurationCenter? = nil, scope: LibraryScope = .library) {
+    init(
+        api: any PhotoBrainAPI,
+        curation: PhotoCurationCenter? = nil,
+        scope: LibraryScope = .library,
+        filters: LibraryFilters = LibraryFilters()
+    ) {
         self.api = api
         self.curation = curation ?? PhotoCurationCenter(api: api)
         self.scope = scope
+        self.filters = filters
         self.curation.register(self)
     }
 

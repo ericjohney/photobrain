@@ -14,6 +14,30 @@ struct PhotoQuery: Hashable, Sendable {
     var collectionId: Int?
     /// Auto tag slug, e.g. `night-sky`.
     var tag: String?
+    /// Only photos with a valid location inside this map region. Never saved in smart albums.
+    var bounds: PhotoBounds?
+
+    /// `GET /photos` and `GET /locations` query items. `filterRaw` is always sent; the other
+    /// filters only when set, and the four bounds edges together or not at all.
+    var queryItems: [URLQueryItem] {
+        var items = [URLQueryItem(name: "filterRaw", value: filterRaw.rawValue)]
+        if let folder { items.append(URLQueryItem(name: "folder", value: folder)) }
+        if let camera { items.append(URLQueryItem(name: "camera", value: camera)) }
+        if let lens { items.append(URLQueryItem(name: "lens", value: lens)) }
+        if let iso { items.append(URLQueryItem(name: "iso", value: String(iso))) }
+        if let dateMonth { items.append(URLQueryItem(name: "dateMonth", value: dateMonth)) }
+        if let minRating { items.append(URLQueryItem(name: "minRating", value: String(minRating))) }
+        if let flag { items.append(URLQueryItem(name: "flag", value: flag.rawValue)) }
+        if let collectionId { items.append(URLQueryItem(name: "collectionId", value: String(collectionId))) }
+        if let tag { items.append(URLQueryItem(name: "tag", value: tag)) }
+        if let bounds {
+            items.append(URLQueryItem(name: "north", value: String(bounds.north)))
+            items.append(URLQueryItem(name: "south", value: String(bounds.south)))
+            items.append(URLQueryItem(name: "east", value: String(bounds.east)))
+            items.append(URLQueryItem(name: "west", value: String(bounds.west)))
+        }
+        return items
+    }
 }
 
 protocol PhotoBrainAPI: Sendable {
@@ -21,6 +45,8 @@ protocol PhotoBrainAPI: Sendable {
     func folders() async throws -> FoldersResponseDTO
     func filterOptions(folder: String?) async throws -> FilterOptionsDTO
     func photos(query: PhotoQuery) async throws -> PhotosResponseDTO
+    /// `GET /locations`: every matching photo with a valid location, ascending by id.
+    func locations(query: PhotoQuery) async throws -> LocationsResponseDTO
     func photo(id: Int) async throws -> PhotoDTO
     func search(query: String, limit: Int, filters: PhotoQuery) async throws -> SearchResponseDTO
     func similarPhotos(id: Int, limit: Int) async throws -> SimilarPhotosResponseDTO
@@ -97,21 +123,11 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
     }
 
     func photos(query: PhotoQuery) async throws -> PhotosResponseDTO {
-        var items = [URLQueryItem(name: "filterRaw", value: query.filterRaw.rawValue)]
-        if let folder = query.folder { items.append(URLQueryItem(name: "folder", value: folder)) }
-        if let camera = query.camera { items.append(URLQueryItem(name: "camera", value: camera)) }
-        if let lens = query.lens { items.append(URLQueryItem(name: "lens", value: lens)) }
-        if let iso = query.iso { items.append(URLQueryItem(name: "iso", value: String(iso))) }
-        if let month = query.dateMonth { items.append(URLQueryItem(name: "dateMonth", value: month)) }
-        if let minRating = query.minRating {
-            items.append(URLQueryItem(name: "minRating", value: String(minRating)))
-        }
-        if let flag = query.flag { items.append(URLQueryItem(name: "flag", value: flag.rawValue)) }
-        if let collectionId = query.collectionId {
-            items.append(URLQueryItem(name: "collectionId", value: String(collectionId)))
-        }
-        if let tag = query.tag { items.append(URLQueryItem(name: "tag", value: tag)) }
-        return try await get(path: ["photos"], queryItems: items)
+        try await get(path: ["photos"], queryItems: query.queryItems)
+    }
+
+    func locations(query: PhotoQuery) async throws -> LocationsResponseDTO {
+        try await get(path: ["locations"], queryItems: query.queryItems)
     }
 
     func photo(id: Int) async throws -> PhotoDTO {

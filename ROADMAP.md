@@ -35,7 +35,7 @@ These are the next product and production-readiness priorities for the current c
 
 1. **Expo collections** - manual collections and saved-filter smart albums ship on web and native iOS; the Expo Android collections screen remains.
 2. **Duplicate follow-ups** - a larger pHash for a looser threshold, side-by-side comparison, and the Expo Android duplicates screen. Groups, suggested keeper, and reject-based resolution ship on web and native iOS.
-3. **Photo map** - use the already extracted GPS coordinates to add a map and photo markers.
+3. **Map follow-ups** - photo thumbnails as markers, the Expo Android map, and place names (reverse geocoding). Clustered maps, area filtering, and "show on map" ship on web and native iOS.
 4. **Mobile backup** - add camera-roll access, background upload, and offline thumbnail handling.
 5. **Production hardening** - add authentication, database/file backups, deleted-file reconciliation, rate limiting, and REST/Inngest coverage.
 
@@ -223,11 +223,11 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [x] Parse GPS EXIF data (latitude, longitude, altitude)
 - [x] Add GPS fields to database
 - [x] Display coordinates in photo detail
-- [ ] Add basic map view using Leaflet.js
-- [ ] Show photo markers on map
-- [ ] Click marker to view photo
+- [x] Add basic map view (MapLibre GL on web, MapKit on iOS)
+- [x] Show clustered photo markers on map
+- [x] Click marker to view photo
 
-**Status:** GPS data extraction and display is complete. Map view functionality remains to be implemented.
+**Status:** GPS extraction, display, and the web/iOS map view are complete.
 **Files modified:** `packages/image-processing/src/exif.rs`, `apps/api/src/db/schema.ts`, `apps/web/src/components/Lightbox.tsx`
 
 ---
@@ -282,7 +282,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [ ] XMP sidecar support for non-destructive edits
 - [x] Display full EXIF in photo detail view
 - [ ] Parse IPTC metadata (keywords, copyright, descriptions)
-- [x] GPS coordinate extraction and display (map view remains pending)
+- [x] GPS coordinate extraction, display, and map view
 
 ---
 
@@ -409,9 +409,9 @@ Lens corrections compensate for optical imperfections in camera lenses:
 
 ### 5.1 Map Integration
 - [x] Extract and display GPS coordinates
-- [ ] **Photo map view**
+- [x] **Photo map view**
   - Cluster photos by location
-  - Interactive map (Leaflet.js or Mapbox)
+  - Interactive map (MapLibre GL on web, MapKit on iOS) with area filtering
 - [ ] **GPS reverse geocoding**
   - Convert coordinates to place names
   - City, country, landmark detection

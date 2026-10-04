@@ -91,6 +91,13 @@ export function useKeyboardShortcuts({
 					}
 					break;
 
+				case "m":
+					if (!isCtrlOrCmd && !e.altKey) {
+						e.preventDefault();
+						setViewMode("map");
+					}
+					break;
+
 				case "s":
 					if (!isCtrlOrCmd && hasActivePhoto) {
 						e.preventDefault();

@@ -429,8 +429,13 @@ private struct PhotoMetadataView: View {
                         row("Taken", exif.dateTaken)
                     }
                     Section("Location") {
-                        row("Latitude", exif.gpsLatitude)
-                        row("Longitude", exif.gpsLongitude)
+                        if let coordinate = PhotoCoordinate(exif: exif) {
+                            PhotoLocationMiniMap(coordinate: coordinate)
+                            row("Coordinates", coordinate.formatted)
+                        } else {
+                            row("Latitude", exif.gpsLatitude)
+                            row("Longitude", exif.gpsLongitude)
+                        }
                         row("Altitude", exif.gpsAltitude)
                     }
                 }

@@ -14,6 +14,7 @@ import {
 	photoTagsResponseSchema,
 	scanPhaseSchema,
 	scanStatusSchema,
+	searchRequestSchema,
 } from "../routes/v1-schemas";
 import { type ApiDatabase, pairedPhotoExtras } from "../services/photo-catalog";
 import type { ScanRequestedEvent } from "../services/scan-jobs";
@@ -567,6 +568,7 @@ describe("API v1 contract", () => {
 			"/api/v1/duplicates/resolve",
 			"/api/v1/filter-options",
 			"/api/v1/folders",
+			"/api/v1/locations",
 			"/api/v1/photos",
 			"/api/v1/photos/{id}",
 			"/api/v1/photos/{id}/collections",
@@ -716,5 +718,40 @@ describe("API v1 contract", () => {
 				document.paths["/api/v1/photos/{id}/tags"].get?.responses ?? {},
 			).sort(),
 		).toEqual(["200", "400", "404", "500"]);
+		expect(
+			Object.keys(
+				document.paths["/api/v1/locations"].get?.responses ?? {},
+			).sort(),
+		).toEqual(["200", "400", "500"]);
+		// /locations takes exactly the /photos filters, including the bounds params.
+		expect(queryParameters("/api/v1/locations")).toEqual(
+			queryParameters("/api/v1/photos"),
+		);
+		const boundsSchema = {
+			north: { type: "number", minimum: -90, maximum: 90 },
+			south: { type: "number", minimum: -90, maximum: 90 },
+			east: { type: "number", minimum: -180, maximum: 180 },
+			west: { type: "number", minimum: -180, maximum: 180 },
+		};
+		expect(queryParameters("/api/v1/photos")).toMatchObject(boundsSchema);
+		const allSchemas = document.components.schemas as unknown as Record<
+			string,
+			{
+				required?: string[];
+				properties: Record<string, unknown>;
+			}
+		>;
+		expect(allSchemas.PhotoBounds.properties).toEqual(boundsSchema);
+		expect(allSchemas.PhotoBounds.required).toEqual(Object.keys(boundsSchema));
+		expect(document.components.schemas.SearchRequest.properties).toHaveProperty(
+			"bounds",
+		);
+		expect(
+			Object.keys(document.components.schemas.SearchRequest.properties).sort(),
+		).toEqual(Object.keys(searchRequestSchema.shape).sort());
+		expect(allSchemas.PhotoLocationsResponse.required).toEqual([
+			"points",
+			"total",
+		]);
 	});
 });

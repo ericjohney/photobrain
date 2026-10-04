@@ -189,7 +189,7 @@ For Vite development, set `VITE_API_URL` in `apps/web/.env`:
 VITE_API_URL=http://localhost:3000
 ```
 
-The production Bun server reads `API_URL`, `HOST`, and `PORT`. It injects the API URL into the built HTML at runtime, so changing `API_URL` does not require rebuilding the web bundle.
+The production Bun server reads `API_URL`, `HOST`, and `PORT`. It injects the API URL into the built HTML at runtime, so changing `API_URL` does not require rebuilding the web bundle. Optional `MAP_STYLE_URL` selects the MapLibre style for the map view (default: the OpenFreeMap `liberty` style, loaded by the browser from `tiles.openfreemap.org`).
 
 ### Mobile clients
 

@@ -37,8 +37,10 @@ import {
 } from "../services/junk-review";
 import {
 	getPhoto,
+	isValidPhotoBounds,
 	listFilterOptions,
 	listFolders,
+	listPhotoLocations,
 	listPhotos,
 } from "../services/photo-catalog";
 import {
@@ -71,13 +73,38 @@ import { publicProcedure, router } from "./trpc";
 
 export type { FolderNode } from "../services/photo-catalog";
 
-// Filters shared by photos, searchPhotos, and similarPhotos.
+// Filters shared by photos, photoLocations, searchPhotos, and similarPhotos.
 const sharedFilterShape = {
 	minRating: z.number().int().min(1).max(5).optional(),
 	flag: z.enum(["pick", "reject", "unflagged"]).optional(),
 	collectionId: z.number().int().positive().optional(),
 	tag: z.string().max(MAX_TAG_SLUG_LENGTH).regex(TAG_SLUG_PATTERN).optional(),
+	bounds: z
+		.object({
+			north: z.number(),
+			south: z.number(),
+			east: z.number(),
+			west: z.number(),
+		})
+		.refine(isValidPhotoBounds, {
+			message:
+				"Bounds must be finite, latitudes in [-90, 90], longitudes in [-180, 180], south <= north",
+		})
+		.optional(),
 };
+
+// Input of photos and photoLocations.
+const photoFiltersInput = z
+	.object({
+		filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
+		folder: z.string().optional(),
+		camera: z.string().optional(),
+		lens: z.string().optional(),
+		iso: z.number().optional(),
+		dateMonth: z.string().optional(),
+		...sharedFilterShape,
+	})
+	.optional();
 
 const collectionIdSchema = z.number().int().positive();
 const collectionNameSchema = z
@@ -118,8 +145,9 @@ const smartAlbumQuerySchema = z
 	.min(1)
 	.max(MAX_SMART_ALBUM_QUERY_LENGTH)
 	.nullable();
-// Photo filters minus collectionId. Empty strings and filterRaw "all" mean "no filter";
-// dateMonth accepts `YYYY:MM` (what filterOptions emits) or `YYYY-MM`.
+// Photo filters minus collectionId and bounds (strict, so both are rejected).
+// Empty strings and filterRaw "all" mean "no filter"; dateMonth accepts
+// `YYYY:MM` (what filterOptions emits) or `YYYY-MM`.
 const smartAlbumFiltersSchema = z
 	.object({
 		filterRaw: z.enum(["all", "raw", "standard"]).optional(),
@@ -176,20 +204,12 @@ export const appRouter = router({
 		.query(({ ctx, input }) => listFilterOptions(ctx.db, input ?? {})),
 
 	photos: publicProcedure
-		.input(
-			z
-				.object({
-					filterRaw: z.enum(["all", "raw", "standard"]).default("all"),
-					folder: z.string().optional(),
-					camera: z.string().optional(),
-					lens: z.string().optional(),
-					iso: z.number().optional(),
-					dateMonth: z.string().optional(),
-					...sharedFilterShape,
-				})
-				.optional(),
-		)
+		.input(photoFiltersInput)
 		.query(({ ctx, input }) => listPhotos(ctx.db, input ?? {})),
+
+	photoLocations: publicProcedure
+		.input(photoFiltersInput)
+		.query(({ ctx, input }) => listPhotoLocations(ctx.db, input ?? {})),
 
 	photo: publicProcedure
 		.input(z.object({ id: z.number() }))

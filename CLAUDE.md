@@ -217,6 +217,7 @@ The production Bun server in `apps/web/serve.ts` reads:
 - `API_URL`, default `http://localhost:3000`
 - `HOST`, default `0.0.0.0`
 - `PORT`, default `3001`
+- `MAP_STYLE_URL`, optional MapLibre style URL injected into `window.__CONFIG__`; otherwise `VITE_MAP_STYLE_URL`, then the OpenFreeMap `liberty` style
 
 It injects `window.__CONFIG__` into `index.html`, allowing the API URL to change without rebuilding the Vite bundle.
 
@@ -257,6 +258,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `GET /api/v1/filter-options`
 - `GET /api/v1/photos`
 - `GET /api/v1/photos/:id`
+- `GET /api/v1/locations` (same filters as `/photos`; `{ points: [{ id, latitude, longitude }], total }` for photos with a valid location)
 - `PATCH /api/v1/photos/:id` (`{ rating?, flag? }`; returns the Photo DTO; not gated by the scan flag)
 - `GET /api/v1/photos/:id/similar`
 - `GET /api/v1/photos/:id/tags` (404 `PHOTO_NOT_FOUND`)
@@ -304,6 +306,7 @@ The normal scan control is incremental. The separate **Reprocess all photos…**
 Implemented keyboard shortcuts:
 
 - `G`: grid view
+- `M`: map view
 - `E`: loupe view when a photo is active
 - `Tab`: toggle all panels
 - `Shift+Space`: toggle filmstrip
@@ -324,6 +327,8 @@ Automatic tags on iOS: the shared filter sheet has a Tag picker with counts (sum
 Junk review on iOS: the Library header's **Review** button (candidate count) pushes a review screen with a reason picker and counts, first-reason badges, select mode with Reject/Keep, confirmed **Reject All**/**Keep All** for loaded photos, and a review loupe whose Reject/Keep buttons advance. Resolutions remove photos optimistically, roll back on failure, and propagate confirmed rejects to Library and Search through `PhotoCurationCenter`.
 
 Duplicates on iOS: the Library header's **Duplicates** button (combined count) pushes a screen with All/Duplicates/Bursts, group cards with the suggested keeper preselected, keep toggles (one photo always stays kept), a Compare loupe, **Keep N, reject M** and **Not duplicates**. Resolutions remove groups optimistically, roll back on failure, reload on a changed group, and propagate rejects through `PhotoCurationCenter`.
+
+Map on iOS: the Library header's **Map** button pushes an `MKMapView` with clustered markers for the Library's current filters. Tapping a marker opens the loupe and tapping a cluster zooms in. **Show N Photos** opens a grid scoped to the visible region (`LibraryScope.mapArea`). The loupe info sheet shows a mini-map when the photo's GPS is valid.
 
 Smart albums on iOS: a Smart Albums section in the Collections tab (cards with count or a magnifier for query albums, rename/delete with rollback); **Save as Smart Album…** in the Library filter sheet and Search. Detail screens reuse the collection grid/loupe through `LibraryStore` scope `.smartAlbum(filters, query)`.
 

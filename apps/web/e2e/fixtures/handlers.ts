@@ -12,6 +12,7 @@ import {
 	type FixturePhoto,
 	type FixturePhotoFilters,
 	filterFixturePhotos,
+	fixtureLocation,
 	fixtureTagCounts,
 	searchPhotosByQuery,
 } from "./photos";
@@ -313,6 +314,21 @@ function createDefaultHandlers(): Record<string, Handler> {
 				rawCount: photos.filter((p) => p.isRaw || p.pairedPhotoId !== null)
 					.length,
 			};
+		},
+		// Like the API: the same filters and stacking, then valid locations only.
+		photoLocations: (input) => {
+			const { collectionId, ...filters } = (input ??
+				{}) as FixturePhotoFilters & CollectionScope;
+			const points = filterFixturePhotos(
+				scopeToCollection({ collectionId }),
+				filters,
+			)
+				.flatMap((p) => {
+					const location = fixtureLocation(p);
+					return location ? [{ id: p.id, ...location }] : [];
+				})
+				.sort((a, b) => a.id - b.id);
+			return { points, total: points.length };
 		},
 		searchPhotos: (input) => {
 			const {
@@ -672,6 +688,23 @@ function createDefaultHandlers(): Record<string, Handler> {
 	};
 }
 
+/** The web's default `MAP_STYLE_URL` (the dev server sets no override). */
+export const FIXTURE_MAP_STYLE_URL =
+	"https://tiles.openfreemap.org/styles/liberty";
+
+/** Minimal offline MapLibre style: one background layer, no sources. */
+const FIXTURE_MAP_STYLE = {
+	version: 8,
+	sources: {},
+	layers: [
+		{
+			id: "background",
+			type: "background",
+			paint: { "background-color": "#dfe7ec" },
+		},
+	],
+};
+
 /** Inputs received by each mocked procedure, in request order. */
 export type TrpcCallLog = Record<string, unknown[]>;
 
@@ -755,6 +788,18 @@ export async function installTrpcHandlers(
 	// Block Inngest Realtime SSE
 	await page.route(/inngest\.com|\/api\/inngest/, (route) =>
 		route.fulfill({ status: 204, body: "" }),
+	);
+
+	// Map: the default style URL gets a background-only style, so no tiles,
+	// sprites, or glyphs are requested; anything else from the tile host fails.
+	await page.route(/tiles\.openfreemap\.org/, (route) =>
+		route.request().url() === FIXTURE_MAP_STYLE_URL
+			? route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(FIXTURE_MAP_STYLE),
+				})
+			: route.abort(),
 	);
 
 	return calls;

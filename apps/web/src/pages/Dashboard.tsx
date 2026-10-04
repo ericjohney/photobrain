@@ -8,11 +8,19 @@ import {
 	Sparkles,
 	X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { DuplicateGroupList } from "@/components/DuplicateGroupList";
 import { DuplicatesHeader } from "@/components/DuplicatesHeader";
 import { Filmstrip } from "@/components/Filmstrip";
 import { LoupeView } from "@/components/LoupeView";
+import type { MapFocus } from "@/components/MapView";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { ActivityPanel } from "@/components/panels/ActivityPanel";
 import {
@@ -33,7 +41,7 @@ import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { useJunkReview } from "@/hooks/use-junk-review";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useLibraryState } from "@/hooks/use-library-state";
+import { useLibraryState, type ViewMode } from "@/hooks/use-library-state";
 import { usePanelState } from "@/hooks/use-panel-state";
 import {
 	type CurationPatch,
@@ -46,15 +54,20 @@ import {
 	useSmartAlbums,
 } from "@/hooks/use-smart-albums";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
+import { photoLocation } from "@/lib/map";
 import { trpc } from "@/lib/trpc";
 import type {
 	DuplicateKind,
 	JunkAction,
 	JunkReason,
+	PhotoBounds,
 	PhotoMetadata,
 	SmartAlbum,
 } from "@/lib/types";
 import { formatMonthLabel } from "@/lib/utils";
+
+// MapLibre is large; load it only when the map view is first opened.
+const MapView = lazy(() => import("@/components/MapView"));
 
 export function Dashboard() {
 	const [searchQuery, setSearchQuery] = useState("");
@@ -102,6 +115,8 @@ export function Dashboard() {
 		selectedCollectionId === null &&
 		catalogView === null &&
 		similarSource === null &&
+		// A map area narrows the album, so it no longer shows exactly the album.
+		filters.bounds === null &&
 		smartAlbumMatches(
 			appliedSmartAlbum,
 			currentSmartAlbumFilters,
@@ -117,7 +132,8 @@ export function Dashboard() {
 			setAppliedSmartAlbumId(null);
 		}
 	}, [appliedSmartAlbumId, albumsLoaded, selectedSmartAlbum]);
-	// Collection scope is never saved, so it alone is not savable.
+	// Collection scope and map area are never saved, so either alone (or
+	// together) is not savable; with other filters they are left out.
 	const canSaveSmartAlbum =
 		Object.keys(currentSmartAlbumFilters).length > 0 ||
 		currentSmartAlbumQuery !== null;
@@ -129,19 +145,23 @@ export function Dashboard() {
 		folder: selectedFolder ?? undefined,
 	});
 
+	// Library scope shared by the grid, search, and the map (minus bounds).
+	const libraryScope = {
+		folder: selectedFolder ?? undefined,
+		collectionId,
+		filterRaw,
+		camera: filters.camera ?? undefined,
+		lens: filters.lens ?? undefined,
+		iso: filters.iso ?? undefined,
+		dateMonth: filters.dateMonth ?? undefined,
+		minRating: filters.minRating ?? undefined,
+		flag: filters.flag ?? undefined,
+		tag: filters.tag ?? undefined,
+	};
+	const bounds = filters.bounds ?? undefined;
+
 	const photosQuery = trpc.photos.useQuery(
-		{
-			folder: selectedFolder ?? undefined,
-			collectionId,
-			filterRaw,
-			camera: filters.camera ?? undefined,
-			lens: filters.lens ?? undefined,
-			iso: filters.iso ?? undefined,
-			dateMonth: filters.dateMonth ?? undefined,
-			minRating: filters.minRating ?? undefined,
-			flag: filters.flag ?? undefined,
-			tag: filters.tag ?? undefined,
-		},
+		{ ...libraryScope, bounds },
 		{
 			enabled: !searchQuery && catalogView === null,
 		},
@@ -153,16 +173,8 @@ export function Dashboard() {
 			query: searchQuery,
 			// An opened query smart album uses the API's maximum, like other clients.
 			limit: selectedSmartAlbum ? 100 : 50,
-			folder: selectedFolder ?? undefined,
-			collectionId,
-			filterRaw,
-			camera: filters.camera ?? undefined,
-			lens: filters.lens ?? undefined,
-			iso: filters.iso ?? undefined,
-			dateMonth: filters.dateMonth ?? undefined,
-			minRating: filters.minRating ?? undefined,
-			flag: filters.flag ?? undefined,
-			tag: filters.tag ?? undefined,
+			...libraryScope,
+			bounds,
 		},
 		{ enabled: !!searchQuery && catalogView === null },
 	);
@@ -231,6 +243,31 @@ export function Dashboard() {
 	// State management hooks
 	const library = useLibraryState(photos);
 	const panels = usePanelState();
+	const mapActive = library.viewMode === "map";
+
+	// Map: every geotagged photo in the library scope (folder/collection and
+	// filters, not the search query or the current map area).
+	const photoLocationsQuery = trpc.photoLocations.useQuery(libraryScope, {
+		enabled: mapActive,
+	});
+	const mapFitKey = JSON.stringify(libraryScope);
+	// "Show on map": center on this photo instead of fitting all points.
+	const [mapFocus, setMapFocus] = useState<MapFocus | null>(null);
+	const clearMapFocus = useCallback(() => setMapFocus(null), []);
+
+	// The map shows the library scope, so entering it leaves Find similar,
+	// Review, and Duplicates (like choosing a folder does).
+	const { setViewMode: setLibraryViewMode } = library;
+	const changeViewMode = useCallback(
+		(mode: ViewMode) => {
+			if (mode === "map") {
+				setSimilarSource(null);
+				setCatalogView(null);
+			}
+			setLibraryViewMode(mode);
+		},
+		[setLibraryViewMode],
+	);
 
 	const handleFindSimilar = useCallback(() => {
 		const source = library.activePhoto;
@@ -242,6 +279,30 @@ export function Dashboard() {
 	}, [library.activePhoto, library.setViewMode]);
 
 	const exitSimilar = useCallback(() => setSimilarSource(null), []);
+
+	const activeLocation = library.activePhoto
+		? photoLocation(library.activePhoto)
+		: null;
+	const activeLocationPhotoId = library.activePhoto?.id;
+	const showActiveOnMap = useCallback(() => {
+		if (!activeLocation || activeLocationPhotoId === undefined) return;
+		setMapFocus({ photoId: activeLocationPhotoId, ...activeLocation });
+		changeViewMode("map");
+	}, [activeLocation, activeLocationPhotoId, changeViewMode]);
+
+	// Map point: open that photo in the loupe (from the grid list when it is
+	// there, so loupe navigation continues from it).
+	const utils = trpc.useUtils();
+	const { openInLoupe } = library;
+	const handleMapPointClick = useCallback(
+		async (photoId: number) => {
+			const photo =
+				photos.find((p) => p.id === photoId) ??
+				(await utils.photo.fetch({ id: photoId }));
+			openInLoupe(photo);
+		},
+		[photos, utils, openInLoupe],
+	);
 
 	// Review: resolving the active candidate advances to the next one.
 	const { resolve: resolveJunk, photos: reviewPhotos } = review;
@@ -289,7 +350,7 @@ export function Dashboard() {
 	// Keyboard shortcuts
 	useKeyboardShortcuts({
 		viewMode: library.viewMode,
-		setViewMode: library.setViewMode,
+		setViewMode: changeViewMode,
 		toggleAllPanels: panels.toggleAllPanels,
 		toggleFilmstrip: panels.toggleFilmstrip,
 		navigatePhoto: library.navigatePhoto,
@@ -367,18 +428,30 @@ export function Dashboard() {
 		setCatalogView("review");
 		setSimilarSource(null);
 		setActivePhoto(null);
-	}, [setActivePhoto]);
+		// Review and Duplicates replace the library, which the map shows.
+		if (mapActive) setLibraryViewMode("grid");
+	}, [setActivePhoto, mapActive, setLibraryViewMode]);
 
 	const handleDuplicatesSelect = useCallback(() => {
 		setCatalogView("duplicates");
 		setSimilarSource(null);
 		setActivePhoto(null);
-	}, [setActivePhoto]);
+		if (mapActive) setLibraryViewMode("grid");
+	}, [setActivePhoto, mapActive, setLibraryViewMode]);
 
 	const exitCatalogView = useCallback(() => {
 		setCatalogView(null);
 		setActivePhoto(null);
 	}, [setActivePhoto]);
+
+	// "Show N photos in this area": the viewport becomes the "Map area" filter.
+	const handleShowMapArea = useCallback(
+		(bounds: PhotoBounds) => {
+			setFilters((current) => ({ ...current, bounds }));
+			setLibraryViewMode("grid");
+		},
+		[setLibraryViewMode],
+	);
 
 	const { deleteCollection } = collectionsApi;
 	const handleDeleteCollection = useCallback(
@@ -454,6 +527,29 @@ export function Dashboard() {
 
 	// Render content based on view mode
 	const renderContent = () => {
+		// The map has its own query and scope, independent of the photo list.
+		if (mapActive) {
+			return (
+				<Suspense
+					fallback={
+						<div className="flex h-full items-center justify-center">
+							<Loader2 className="h-10 w-10 animate-spin text-primary" />
+						</div>
+					}
+				>
+					<MapView
+						points={photoLocationsQuery.data?.points}
+						error={photoLocationsQuery.error}
+						fitKey={mapFitKey}
+						focus={mapFocus}
+						onFocusApplied={clearMapFocus}
+						onPointClick={(photoId) => void handleMapPointClick(photoId)}
+						onShowArea={handleShowMapArea}
+					/>
+				</Suspense>
+			);
+		}
+
 		if (loading) {
 			return (
 				<div className="flex h-full flex-col items-center justify-center">
@@ -602,7 +698,8 @@ export function Dashboard() {
 		filters.flag !== null ? FLAG_FILTER_LABELS[filters.flag] : null,
 		filters.tag !== null ? `#${filters.tag}` : null,
 	].filter((part): part is string => part !== null);
-	// What "Save as Smart Album" stores (collection scope is never saved).
+	// What "Save as Smart Album" stores (collection scope and map area are
+	// never saved).
 	const smartAlbumSummary = [
 		currentSmartAlbumQuery !== null ? `“${currentSmartAlbumQuery}”` : null,
 		selectedFolder,
@@ -624,6 +721,7 @@ export function Dashboard() {
 				for “{searchQuery}”{selectedFolder ? ` in ${selectedFolder}` : ""}
 				{selectedCollection ? ` in ${selectedCollection.name}` : ""}
 				{searchScope.length > 0 ? ` · ${searchScope.join(" · ")}` : ""}
+				{filters.bounds ? " · Map area" : ""}
 			</span>
 			<button
 				type="button"
@@ -712,24 +810,26 @@ export function Dashboard() {
 		</div>
 	);
 	// A query album names itself above the search results header.
-	const banner =
-		reviewHeader ||
-		duplicatesHeader ||
-		similarChip ||
-		(smartAlbumHeader || searchHeader ? (
-			<>
-				{smartAlbumHeader}
-				{searchHeader}
-			</>
-		) : null) ||
-		collectionHeader;
+	const banner = mapActive
+		? // The map shows the library scope: search and Find similar do not apply.
+			collectionHeader
+		: reviewHeader ||
+			duplicatesHeader ||
+			similarChip ||
+			(smartAlbumHeader || searchHeader ? (
+				<>
+					{smartAlbumHeader}
+					{searchHeader}
+				</>
+			) : null) ||
+			collectionHeader;
 
 	return (
 		<PanelLayout
 			toolbar={
 				<Toolbar
 					viewMode={library.viewMode}
-					onViewModeChange={library.setViewMode}
+					onViewModeChange={changeViewMode}
 					thumbnailSize={library.thumbnailSize}
 					onThumbnailSizeChange={library.setThumbnailSize}
 					leftPanelVisible={panels.leftPanelVisible}
@@ -799,6 +899,7 @@ export function Dashboard() {
 					onFindSimilar={handleFindSimilar}
 					onCurate={curateActivePhoto}
 					onTagSelect={handleTagSelect}
+					onShowOnMap={activeLocation ? showActiveOnMap : undefined}
 					collections={{
 						collections: collectionsApi.collections,
 						onSetMembership: collectionsApi.setMembership,

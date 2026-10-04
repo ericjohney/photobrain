@@ -244,6 +244,38 @@ struct SearchResponseDTO: Codable, Equatable, Sendable {
     let query: String
 }
 
+/// A latitude/longitude box in decimal degrees, edges inclusive. `west > east` crosses the
+/// antimeridian. Sent as `north`/`south`/`east`/`west` query items or a JSON `bounds` object.
+struct PhotoBounds: Codable, Hashable, Sendable {
+    let north: Double
+    let south: Double
+    let east: Double
+    let west: Double
+
+    /// Whether the point lies inside the box, using the server's antimeridian rule.
+    func contains(latitude: Double, longitude: Double) -> Bool {
+        guard latitude >= south, latitude <= north else { return false }
+        if west <= east {
+            return longitude >= west && longitude <= east
+        }
+        return longitude >= west || longitude <= east
+    }
+}
+
+/// One geotagged photo on the map. Coordinates are decimal degrees the server already
+/// validated (finite, in range, not 0,0).
+struct PhotoLocationPointDTO: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    let latitude: Double
+    let longitude: Double
+}
+
+/// `GET /api/v1/locations`: every photo matching the filters that has a valid location, by id.
+struct LocationsResponseDTO: Codable, Equatable, Sendable {
+    let points: [PhotoLocationPointDTO]
+    let total: Int
+}
+
 /// `POST /api/v1/search` body. `filterRaw` is always sent; optional filters are omitted when nil.
 struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let query: String
@@ -258,6 +290,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
     let flag: String?
     let collectionId: Int?
     let tag: String?
+    let bounds: PhotoBounds?
 
     init(query: String, limit: Int, filters: PhotoQuery) {
         self.query = query
@@ -272,6 +305,7 @@ struct SearchRequestDTO: Encodable, Equatable, Sendable {
         flag = filters.flag?.rawValue
         collectionId = filters.collectionId
         tag = filters.tag
+        bounds = filters.bounds
     }
 }
 
@@ -671,7 +705,8 @@ enum CollectionNameError: Error, Equatable, LocalizedError, Sendable {
     }
 }
 
-/// Saved criteria of a smart album: the `PhotoQuery` filters without collection scope.
+/// Saved criteria of a smart album: the `PhotoQuery` filters without collection scope or map
+/// bounds.
 /// Decoding is tolerant: unknown keys are ignored, `filterRaw` `"all"` (or an unknown value)
 /// means no media filter, unknown flag values are dropped, and `dateMonth` is normalized to
 /// `YYYY-MM` (the `/api/v1` representation used by filter options). Encoding omits nil keys.
@@ -714,6 +749,7 @@ struct SmartAlbumFilters: Codable, Hashable, Sendable {
     }
 
     /// The Library/Search filter set as saved criteria (those screens have no folder filter).
+    /// A map region (`bounds`) is a view scope, never saved criteria, so it is dropped.
     init(_ filters: LibraryFilters) {
         self.init(
             filterRaw: filters.mediaKind,

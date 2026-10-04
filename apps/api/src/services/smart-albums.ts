@@ -24,8 +24,11 @@ export const SMART_ALBUM_DATE_MONTH_PATTERN = /^\d{4}[-:](0[1-9]|1[0-2])$/;
 type Executor = BaseSQLiteDatabase<"sync", void, typeof schema>;
 type SmartAlbumRow = typeof smartAlbums.$inferSelect;
 
-/** Filters as accepted from clients: the photo filters minus `collectionId`. */
-export type SmartAlbumFiltersInput = Omit<PhotoFilters, "collectionId">;
+/** Filters as accepted from clients: the photo filters minus `collectionId` and `bounds`. */
+export type SmartAlbumFiltersInput = Omit<
+	PhotoFilters,
+	"collectionId" | "bounds"
+>;
 
 /**
  * Canonical saved filters: no empty strings, no `filterRaw: "all"`, and
