@@ -45,22 +45,18 @@ const PLACES_REQUESTED = {
 	name: "photos/places.requested",
 	data: {},
 } as unknown as EmbeddingEvent;
-// The appended trigger step (ID unchanged since F6) sends every backfill.
-const EVENTS_REQUESTED = {
-	name: "photos/events.requested",
-	data: {},
-} as unknown as EmbeddingEvent;
+// The appended trigger step (ID unchanged since F6) sends every backfill;
+// events follow from the places backfill, after places are current.
 const FACES_REQUESTED = {
 	name: "photos/faces.requested",
 	data: {},
 } as unknown as EmbeddingEvent;
-// The trigger-photo-tags-v1 step sends the first four; trigger-photo-faces-v1
+// The trigger-photo-tags-v1 step sends the first three; trigger-photo-faces-v1
 // is appended as its own step.
 const BACKFILLS_REQUESTED = [
 	TAGS_REQUESTED,
 	QUALITY_REQUESTED,
 	PLACES_REQUESTED,
-	EVENTS_REQUESTED,
 	FACES_REQUESTED,
 ];
 type Steps = {

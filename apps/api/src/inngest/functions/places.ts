@@ -13,6 +13,8 @@ import { inngest } from "../client";
  * became invalid, or no longer has a city within 100 km. Each step handles at
  * most 1,000 photos past a keyset cursor in one transaction, so retries and
  * duplicate events are idempotent and replays only redo the unfinished step.
+ * Events are requested only afterwards, because event labels and place-based
+ * scene splits read the current places.
  */
 export const placePhotosFunction = inngest.createFunction(
 	{ id: "place-photos-v1", concurrency: { limit: 1 } },
@@ -35,6 +37,10 @@ export const placePhotosFunction = inngest.createFunction(
 			cursor = result.cursor;
 			if (result.read < PLACE_BACKFILL_BATCH_SIZE) break;
 		}
+		await step.sendEvent("trigger-events-v1", {
+			name: "photos/events.requested",
+			data: {},
+		});
 		return { placed, removed };
 	},
 );

@@ -41,6 +41,7 @@ const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
 
 type PlaceStep = {
 	run<T>(id: string, work: () => T | Promise<T>): Promise<T>;
+	sendEvent(id: string, event: { name: string }): Promise<void>;
 };
 type PlaceFunction = {
 	handler(context: {
@@ -234,6 +235,7 @@ if (process.env.PHOTOBRAIN_PLACES_TEST_CHILD !== "1") {
 	function backfillHarness() {
 		const checkpoints = new Map<string, unknown>();
 		const steps: string[] = [];
+		const sent: { id: string; name: string }[] = [];
 		const step: PlaceStep = {
 			async run<T>(id: string, work: () => T | Promise<T>): Promise<T> {
 				if (checkpoints.has(id)) return checkpoints.get(id) as T;
@@ -242,9 +244,13 @@ if (process.env.PHOTOBRAIN_PLACES_TEST_CHILD !== "1") {
 				steps.push(id);
 				return value;
 			},
+			async sendEvent(id, event) {
+				sent.push({ id, name: event.name });
+			},
 		};
 		return {
 			steps,
+			sent,
 			run: () => backfill.handler({ event: { data: {} }, step }),
 		};
 	}
@@ -439,6 +445,11 @@ if (process.env.PHOTOBRAIN_PLACES_TEST_CHILD !== "1") {
 			const first = backfillHarness();
 			expect(await first.run()).toEqual({ placed: 2, removed: 0 });
 			expect(first.steps).toEqual(["place-photos-batch-v1-0"]);
+			// Events read current places, so they are requested only once all
+			// places are written.
+			expect(first.sent).toEqual([
+				{ id: "trigger-events-v1", name: "photos/events.requested" },
+			]);
 			const rows = placeRows();
 			expect(rows).toEqual([
 				{
