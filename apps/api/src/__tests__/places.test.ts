@@ -34,7 +34,7 @@ import {
 } from "../services/place-lookup";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
 import { canonicalizeSmartAlbumFilters } from "../services/smart-albums";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[places-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -295,7 +295,7 @@ if (process.env.PHOTOBRAIN_PLACES_TEST_CHILD !== "1") {
 			console.log(
 				`${PERF_LOG_PREFIX} dataset load (gunzip+parse+index of ${index.size} places): ${loadMs.toFixed(1)} ms`,
 			);
-			expect(loadMs).toBeLessThan(400);
+			expect(loadMs).toBeLessThan(perfBudgetMs(400));
 
 			expect(index.lookup(48.853, 2.3499)).toEqual(PARIS_PLACE);
 			expect(index.lookup(35.0116, 135.7681)).toEqual(KYOTO_PLACE);
@@ -1171,7 +1171,7 @@ if (process.env.PHOTOBRAIN_PLACES_TEST_CHILD !== "1") {
 			}
 			const backfillMs = performance.now() - backfillStarted;
 			expect(placed).toBeGreaterThan(COUNT / 2);
-			expect(backfillMs).toBeLessThan(3_000);
+			expect(backfillMs).toBeLessThan(perfBudgetMs(3_000));
 			const noopStarted = performance.now();
 			const noop = placePhotoBatch(fileDb, index, 0, COUNT);
 			const noopMs = performance.now() - noopStarted;
@@ -1213,7 +1213,7 @@ if (process.env.PHOTOBRAIN_PLACES_TEST_CHILD !== "1") {
 				}
 			});
 			const lookupUs = (lookupMs * 1_000) / lookups;
-			expect(lookupUs).toBeLessThan(50);
+			expect(lookupUs).toBeLessThan(perfBudgetMs(50));
 
 			const options = await listFilterOptions(fileDb);
 			const country = options.countries[0].code;
@@ -1230,11 +1230,11 @@ if (process.env.PHOTOBRAIN_PLACES_TEST_CHILD !== "1") {
 				listFilterOptions(fileDb, { folder: "folder3" }),
 			);
 			const photoPlaceMs = median(() => getPhotoPlace(fileDb, COUNT / 2));
-			expect(countryMs).toBeLessThan(50);
-			expect(placeMs).toBeLessThan(50);
-			expect(optionsMs).toBeLessThan(50);
-			expect(folderOptionsMs).toBeLessThan(50);
-			expect(photoPlaceMs).toBeLessThan(5);
+			expect(countryMs).toBeLessThan(perfBudgetMs(50));
+			expect(placeMs).toBeLessThan(perfBudgetMs(50));
+			expect(optionsMs).toBeLessThan(perfBudgetMs(50));
+			expect(folderOptionsMs).toBeLessThan(perfBudgetMs(50));
+			expect(photoPlaceMs).toBeLessThan(perfBudgetMs(5));
 
 			const statements: string[] = [];
 			const original = file.prepare;

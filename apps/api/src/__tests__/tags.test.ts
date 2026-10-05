@@ -35,7 +35,7 @@ import {
 	TAG_VOCABULARY,
 	TAG_VOCABULARY_VERSION,
 } from "../services/tag-vocabulary";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[tags-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -465,7 +465,7 @@ if (process.env.PHOTOBRAIN_TAGS_TEST_CHILD !== "1") {
 			console.log(
 				`${PERF_LOG_PREFIX} scoreTags 8,000 x ${TAG_VOCABULARY.length} labels x 512 dims: ${elapsed.toFixed(1)} ms (${tagged} tags)`,
 			);
-			expect(elapsed).toBeLessThan(2_000);
+			expect(elapsed).toBeLessThan(perfBudgetMs(2_000));
 		});
 	});
 

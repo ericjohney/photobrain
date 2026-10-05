@@ -18,7 +18,7 @@ import * as sqliteVec from "sqlite-vec";
 import { z } from "zod";
 import * as schema from "../db/schema";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[pairs-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -888,7 +888,7 @@ if (process.env.PHOTOBRAIN_PAIRS_TEST_CHILD !== "1") {
 			console.log(
 				`${PERF_LOG_PREFIX} listPhotos all over ${COUNT} photos / ${PAIRS} pairs (${result.total} rows, incl. EXIF + pair hydration): ${elapsed.toFixed(2)} ms median; folder+camera: ${filtered.toFixed(2)} ms median`,
 			);
-			expect(elapsed).toBeLessThan(50);
+			expect(elapsed).toBeLessThan(perfBudgetMs(50));
 		});
 
 		test("filtered listing, curation, junk and duplicate pair lookups use the stem index", async () => {
@@ -941,7 +941,7 @@ if (process.env.PHOTOBRAIN_PAIRS_TEST_CHILD !== "1") {
 			console.log(
 				`${PERF_LOG_PREFIX} listSmartAlbums 20 filter-only albums over ${COUNT} photos / ${PAIRS} pairs: ${elapsed.toFixed(2)} ms median`,
 			);
-			expect(elapsed).toBeLessThan(50);
+			expect(elapsed).toBeLessThan(perfBudgetMs(50));
 		});
 
 		test("500-ID curation with partners completes within 50 ms", async () => {
@@ -971,7 +971,7 @@ if (process.env.PHOTOBRAIN_PAIRS_TEST_CHILD !== "1") {
 					)
 					.get()?.count,
 			).toBe(1_000);
-			expect(elapsed).toBeLessThan(50);
+			expect(elapsed).toBeLessThan(perfBudgetMs(50));
 		});
 	});
 }

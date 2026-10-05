@@ -30,7 +30,7 @@ import {
 	renameCollection,
 } from "../services/collections";
 import { type ApiDatabase, listPhotos } from "../services/photo-catalog";
-import { createTestDb, seedTestData } from "./setup";
+import { createTestDb, perfBudgetMs, seedTestData } from "./setup";
 
 const PERF_LOG_PREFIX = "[collections-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -1095,7 +1095,7 @@ describe("collections performance over 8,000 photos", () => {
 		expect(result.find((c) => c.name === "Collection 0")?.cover?.photoId).toBe(
 			photoIds[(PER_COLLECTION - 1) * 40],
 		);
-		expect(elapsed).toBeLessThan(50);
+		expect(elapsed).toBeLessThan(perfBudgetMs(50));
 	});
 
 	test("addPhotos with 500 ids completes within 50 ms", () => {
@@ -1114,7 +1114,7 @@ describe("collections performance over 8,000 photos", () => {
 		);
 		// Seven of the targets (indexes 0, 16, ..., 96) were already members.
 		expect(result).toEqual({ added: 493, photoCount: 593 });
-		expect(elapsed).toBeLessThan(50);
+		expect(elapsed).toBeLessThan(perfBudgetMs(50));
 	});
 
 	test("collectionId-filtered listPhotos resolves through the membership primary key", async () => {

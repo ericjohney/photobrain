@@ -11,7 +11,7 @@ import { z } from "zod";
 import * as schema from "../db/schema";
 import { photoExif, photos } from "../db/schema";
 import { gearStatsResponseSchema } from "../routes/v1-schemas";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[gear-stats-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -900,9 +900,9 @@ if (process.env.PHOTOBRAIN_GEAR_STATS_TEST_CHILD !== "1") {
 			const cameraMs = median(() =>
 				gearStats(fileDb, { camera: "Canon EOS R5" }),
 			);
-			expect(allMs).toBeLessThan(50);
-			expect(folderMs).toBeLessThan(50);
-			expect(cameraMs).toBeLessThan(50);
+			expect(allMs).toBeLessThan(perfBudgetMs(50));
+			expect(folderMs).toBeLessThan(perfBudgetMs(50));
+			expect(cameraMs).toBeLessThan(perfBudgetMs(50));
 
 			const statements: string[] = [];
 			const original = file.prepare;

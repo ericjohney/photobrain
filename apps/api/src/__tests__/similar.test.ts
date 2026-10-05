@@ -13,7 +13,7 @@ import {
 	photos,
 } from "../db/schema";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[similar-perf]";
 
@@ -631,6 +631,6 @@ if (process.env.PHOTOBRAIN_SIMILAR_TEST_CHILD !== "1") {
 			.map((entry) => entry.id);
 		expect(similarIds(result)).toEqual(expected);
 		expect(result?.indexed).toBe(true);
-		expect(elapsed).toBeLessThan(250);
+		expect(elapsed).toBeLessThan(perfBudgetMs(250));
 	}, 60_000);
 }

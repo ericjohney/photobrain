@@ -18,7 +18,7 @@ import {
 } from "../routes/v1-schemas";
 import { PLACE_DATASET_VERSION } from "../services/place-lookup";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[events-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -980,7 +980,7 @@ if (process.env.PHOTOBRAIN_EVENTS_TEST_CHILD !== "1") {
 				events: 500,
 				photos: 10_000,
 			});
-			expect(detect10kMs).toBeLessThan(3_000);
+			expect(detect10kMs).toBeLessThan(perfBudgetMs(3_000));
 
 			seedEvents(500, 500);
 			file.run("ANALYZE");
@@ -1017,9 +1017,9 @@ if (process.env.PHOTOBRAIN_EVENTS_TEST_CHILD !== "1") {
 			expect((await listPhotos(fileDb, { event: sampleId })).total).toBe(
 				PER_EVENT,
 			);
-			expect(listMs).toBeLessThan(20);
-			expect(folderMs).toBeLessThan(20);
-			expect(filterMs).toBeLessThan(20);
+			expect(listMs).toBeLessThan(perfBudgetMs(20));
+			expect(folderMs).toBeLessThan(perfBudgetMs(20));
+			expect(filterMs).toBeLessThan(perfBudgetMs(20));
 
 			const statements: string[] = [];
 			const original = file.prepare;

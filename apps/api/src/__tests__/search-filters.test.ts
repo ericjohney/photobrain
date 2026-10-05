@@ -13,7 +13,7 @@ import {
 } from "../db/schema";
 import type { PhotoFilters } from "../services/photo-catalog";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[search-filters-perf]";
 
@@ -736,6 +736,6 @@ if (process.env.PHOTOBRAIN_SEARCH_FILTERS_TEST_CHILD !== "1") {
 			.map((entry) => entry.id);
 		expect(expected).toHaveLength(LIMIT);
 		expect(result.map((photo) => photo.id)).toEqual(expected);
-		expect(elapsed).toBeLessThan(250);
+		expect(elapsed).toBeLessThan(perfBudgetMs(250));
 	}, 60_000);
 }

@@ -23,7 +23,7 @@ import {
 	smartAlbumFiltersRequestSchema,
 } from "../routes/v1-schemas";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[on-this-day-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -997,9 +997,9 @@ if (process.env.PHOTOBRAIN_ON_THIS_DAY_TEST_CHILD !== "1") {
 			const listingMs = await medianAsync(() =>
 				listPhotos(fileDb, { capturedDate: sample.capturedDate }),
 			);
-			expect(onThisDayMs).toBeLessThan(20);
-			expect(feb28Ms).toBeLessThan(20);
-			expect(listingMs).toBeLessThan(20);
+			expect(onThisDayMs).toBeLessThan(perfBudgetMs(20));
+			expect(feb28Ms).toBeLessThan(perfBudgetMs(20));
+			expect(listingMs).toBeLessThan(perfBudgetMs(20));
 
 			const statements: string[] = [];
 			const original = file.prepare;

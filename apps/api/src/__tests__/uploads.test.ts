@@ -54,6 +54,11 @@ if (process.env.PHOTOBRAIN_UPLOADS_TEST_CHILD === "1") {
 		const { db } = createTestDb();
 		const sent: unknown[] = [];
 		mock.module("../db", () => ({ db }));
+		// `../inngest` reaches tag-labels, which value-imports the native addon;
+		// CI's API job does not build it.
+		mock.module("@photobrain/image-processing", () => ({
+			clipTextEmbedding: () => [1, 0, 0, 0],
+		}));
 		mock.module("../config", () => ({
 			config: {
 				PHOTO_DIRECTORY: "/library/photos",

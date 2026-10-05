@@ -18,7 +18,7 @@ import {
 	type PhotoLocationsResult,
 } from "../services/photo-catalog";
 import { createSmartAlbum } from "../services/smart-albums";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[locations-perf]";
 const INVALID_REQUEST = {
@@ -558,8 +558,8 @@ describe("performance", () => {
 		console.log(
 			`${PERF_LOG_PREFIX} listPhotoLocations over ${COUNT} geotagged photos / ${pairs} pairs (${result.total} points): all ${all.toFixed(2)} ms median; antimeridian box ${bounded.toFixed(2)} ms; folder+box ${filtered.toFixed(2)} ms`,
 		);
-		expect(all).toBeLessThan(50);
-		expect(bounded).toBeLessThan(50);
-		expect(filtered).toBeLessThan(50);
+		expect(all).toBeLessThan(perfBudgetMs(50));
+		expect(bounded).toBeLessThan(perfBudgetMs(50));
+		expect(filtered).toBeLessThan(perfBudgetMs(50));
 	});
 });

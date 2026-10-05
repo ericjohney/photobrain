@@ -40,7 +40,7 @@ import {
 	readQualityBackfillBatch,
 } from "../services/photo-quality";
 import { QUALITY_VERSION } from "../services/processing-versions";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[junk-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -1062,7 +1062,7 @@ if (process.env.PHOTOBRAIN_JUNK_TEST_CHILD !== "1") {
 		expect(counts.value.all).toBe(expectedAll ?? -1);
 		expect(counts.value.all).toBeGreaterThan(1_000);
 		for (const { ms } of [page1, page2, darkPage, counts])
-			expect(ms).toBeLessThan(50);
+			expect(ms).toBeLessThan(perfBudgetMs(50));
 		console.log(
 			`${PERF_LOG_PREFIX} junkReview over ${COUNT} photos (${counts.value.all} candidates; ${JSON.stringify(counts.value)}): page1 ${page1.ms.toFixed(2)} ms, cursor page ${page2.ms.toFixed(2)} ms, reason=dark ${darkPage.ms.toFixed(2)} ms (each incl. counts + EXIF hydration), counts alone ${counts.ms.toFixed(2)} ms`,
 		);

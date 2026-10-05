@@ -28,7 +28,7 @@ import {
 	type PhotoFlag,
 	updatePhotoCuration,
 } from "../services/photo-curation";
-import { createTestDb, seedTestData } from "./setup";
+import { createTestDb, perfBudgetMs, seedTestData } from "./setup";
 
 const PERF_LOG_PREFIX = "[curation-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -612,7 +612,7 @@ describe("curation performance over 8,000 photos", () => {
 				expect(row.flag).not.toBe("reject");
 			}
 		}
-		expect(elapsed).toBeLessThan(50);
+		expect(elapsed).toBeLessThan(perfBudgetMs(50));
 	});
 
 	test("minRating and flag filters use their indexes", async () => {

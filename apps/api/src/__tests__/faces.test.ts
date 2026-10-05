@@ -24,7 +24,7 @@ import {
 	photos,
 } from "../db/schema";
 import { EMBEDDING_MODEL_VERSION } from "../services/processing-versions";
-import { createTestDb } from "./setup";
+import { createTestDb, perfBudgetMs } from "./setup";
 
 const PERF_LOG_PREFIX = "[faces-perf]";
 const MIGRATIONS_FOLDER = "../../packages/db/drizzle";
@@ -1626,7 +1626,7 @@ if (process.env.PHOTOBRAIN_FACES_TEST_CHILD !== "1") {
 			const peopleMs = await time(() => listPeople(database));
 			const peopleResult = listPeople(database).people;
 			expect(peopleResult).toHaveLength(PEOPLE);
-			expect(peopleMs).toBeLessThan(30);
+			expect(peopleMs).toBeLessThan(perfBudgetMs(30));
 
 			const target = peopleResult[0].id;
 			const listingStatement = (
@@ -1644,7 +1644,7 @@ if (process.env.PHOTOBRAIN_FACES_TEST_CHILD !== "1") {
 			expect((await listPhotos(database, { personId: target })).total).toBe(
 				peopleResult[0].photoCount,
 			);
-			expect(listingMs).toBeLessThan(50);
+			expect(listingMs).toBeLessThan(perfBudgetMs(50));
 
 			// Cluster step (fake clusterer: no native time) over 3,000 unassigned faces.
 			let clusterNativeMs = 0;
@@ -1659,7 +1659,7 @@ if (process.env.PHOTOBRAIN_FACES_TEST_CHILD !== "1") {
 			});
 			const clusterMs = performance.now() - started - clusterNativeMs;
 			expect(clustered.assigned).toBeGreaterThan(0);
-			expect(clusterMs).toBeLessThan(3_000);
+			expect(clusterMs).toBeLessThan(perfBudgetMs(3_000));
 			console.log(
 				`${PERF_LOG_PREFIX} people (${PEOPLE} people, ${FACED_PHOTOS * FACES_PER_PHOTO} faces, ${PHOTOS} photos): ${peopleMs.toFixed(2)} ms median\n${peoplePlan}`,
 			);

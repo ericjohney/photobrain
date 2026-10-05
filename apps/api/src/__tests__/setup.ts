@@ -14,6 +14,18 @@ export function createTestDb() {
 	return { db, sqlite };
 }
 
+/**
+ * Wall-clock budget for performance assertions. Budgets are calibrated on a
+ * developer machine; shared CI runners set `PHOTOBRAIN_PERF_BUDGET_SCALE` to
+ * absorb host contention. Query-plan assertions stay unscaled everywhere.
+ */
+export function perfBudgetMs(ms: number): number {
+	const scale = Number(process.env.PHOTOBRAIN_PERF_BUDGET_SCALE ?? "1");
+	if (!Number.isFinite(scale) || scale < 1)
+		throw new Error("PHOTOBRAIN_PERF_BUDGET_SCALE must be a number >= 1");
+	return ms * scale;
+}
+
 export function seedTestData(db: ReturnType<typeof createTestDb>["db"]) {
 	const photoData = [
 		{
