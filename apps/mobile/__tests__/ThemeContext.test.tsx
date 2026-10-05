@@ -9,9 +9,18 @@ const mockRequireNativeModule = jest.fn(() => ({
 	setActiveScanId: mockSetActiveScanId,
 }));
 
-jest.mock("expo-modules-core", () => ({
-	requireNativeModule: (name: string) => mockRequireNativeModule(name),
-}));
+// Intercept only the bridge: Expo's lazy winter `fetch` global also resolves
+// native modules through `requireNativeModule` (Node 22 reads it during setup).
+jest.mock("expo-modules-core", () => {
+	const actual = jest.requireActual("expo-modules-core");
+	return {
+		...actual,
+		requireNativeModule: (name: string) =>
+			name === "PhotoBrainMigrationBridge"
+				? mockRequireNativeModule(name)
+				: actual.requireNativeModule(name),
+	};
+});
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
