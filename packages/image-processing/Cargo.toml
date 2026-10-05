@@ -24,6 +24,8 @@ once_cell = "1.19"
 libheif-rs = "1.0"
 # Face models run on the ONNX Runtime binding fastembed already pins; never a second runtime.
 ort = { version = "=2.0.0-rc.9", default-features = false }
+# ort rc.9 accepts any later ort-sys prerelease; rc.13+ needs ureq 3 and a TLS feature.
+ort-sys = { version = "=2.0.0-rc.9", default-features = false }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
 sha2 = "0.10"
 tempfile = "3.24.0"
