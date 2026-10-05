@@ -1,3 +1,4 @@
+import MapKit
 import XCTest
 @testable import PhotoBrain
 
@@ -95,34 +96,78 @@ final class MapAPITests: XCTestCase {
 }
 
 final class MapGeometryTests: XCTestCase {
-    func testRegionWithinOneHemisphereKeepsWestBelowEast() {
-        let bounds = MapRegionBounds.bounds(centerLatitude: 37, centerLongitude: -122, latitudeDelta: 2, longitudeDelta: 4)
-        XCTAssertEqual(bounds, PhotoBounds(north: 38, south: 36, east: -120, west: -124))
+    /// The Mercator rectangle spanning the given coordinate edges, with `east` unwrapped past
+    /// 180 when the rectangle crosses the antimeridian.
+    private func rect(north: Double, south: Double, west: Double, east: Double) -> MKMapRect {
+        let topLeft = MKMapPoint(CLLocationCoordinate2D(latitude: north, longitude: west))
+        let bottom = MKMapPoint(CLLocationCoordinate2D(latitude: south, longitude: west)).y
+        let width = (east - west) / 360 * MKMapRect.world.width
+        return MKMapRect(x: topLeft.x, y: topLeft.y, width: width, height: bottom - topLeft.y)
     }
 
-    func testRegionCrossingAntimeridianWrapsWithWestAboveEast() {
-        let bounds = MapRegionBounds.bounds(centerLatitude: -17, centerLongitude: 178, latitudeDelta: 4, longitudeDelta: 10)
-        XCTAssertEqual(bounds, PhotoBounds(north: -15, south: -19, east: -177, west: 173))
+    private func assertBounds(_ actual: PhotoBounds, _ expected: PhotoBounds, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(actual.north, expected.north, accuracy: 1e-6, file: file, line: line)
+        XCTAssertEqual(actual.south, expected.south, accuracy: 1e-6, file: file, line: line)
+        XCTAssertEqual(actual.east, expected.east, accuracy: 1e-6, file: file, line: line)
+        XCTAssertEqual(actual.west, expected.west, accuracy: 1e-6, file: file, line: line)
+    }
+
+    func testRectWithinOneHemisphereKeepsWestBelowEast() {
+        let bounds = MapRegionBounds.bounds(visibleMapRect: rect(north: 38, south: 36, west: -124, east: -120))
+        assertBounds(bounds, PhotoBounds(north: 38, south: 36, east: -120, west: -124))
+    }
+
+    /// At continent scale Mercator stretches latitude unevenly, so the visible edges are not
+    /// symmetric about the center (the old `MKCoordinateRegion` span reading was); the
+    /// conversion must return the rectangle's real edges.
+    func testContinentScaleRectKeepsAsymmetricMercatorEdges() {
+        let bounds = MapRegionBounds.bounds(visibleMapRect: rect(north: 79.19, south: -34.42, west: -116.74, east: -14.43))
+        assertBounds(bounds, PhotoBounds(north: 79.19, south: -34.42, east: -14.43, west: -116.74))
+    }
+
+    func testRectCrossingAntimeridianWrapsWithWestAboveEast() {
+        let bounds = MapRegionBounds.bounds(visibleMapRect: rect(north: -15, south: -19, west: 173, east: 183))
+        assertBounds(bounds, PhotoBounds(north: -15, south: -19, east: -177, west: 173))
         XCTAssertTrue(bounds.contains(latitude: -17, longitude: 179.5))
         XCTAssertTrue(bounds.contains(latitude: -17, longitude: -179.5))
         XCTAssertFalse(bounds.contains(latitude: -17, longitude: 0))
     }
 
-    func testRegionCenteredPastAntimeridianNormalizesLongitudes() {
-        let bounds = MapRegionBounds.bounds(centerLatitude: 0, centerLongitude: 185, latitudeDelta: 2, longitudeDelta: 2)
-        XCTAssertEqual(bounds.west, -176, accuracy: 1e-9)
-        XCTAssertEqual(bounds.east, -174, accuracy: 1e-9)
-    }
-
     func testEastEdgeOnAntimeridianClosesAt180() {
-        let bounds = MapRegionBounds.bounds(centerLatitude: 0, centerLongitude: 170, latitudeDelta: 2, longitudeDelta: 20)
-        XCTAssertEqual(bounds.west, 160)
+        let bounds = MapRegionBounds.bounds(visibleMapRect: rect(north: 1, south: -1, west: 160, east: 180))
+        XCTAssertEqual(bounds.west, 160, accuracy: 1e-6)
         XCTAssertEqual(bounds.east, 180)
     }
 
-    func testWholeWorldRegionClampsLatitudeAndCoversAllLongitudes() {
-        let bounds = MapRegionBounds.bounds(centerLatitude: 10, centerLongitude: 40, latitudeDelta: 200, longitudeDelta: 360)
-        XCTAssertEqual(bounds, PhotoBounds(north: 90, south: -90, east: 180, west: -180))
+    func testWholeWorldRectClampsLatitudeAndCoversAllLongitudes() {
+        let world = MKMapRect.world
+        let bounds = MapRegionBounds.bounds(visibleMapRect: MKMapRect(x: -100, y: -100, width: world.width * 1.5, height: world.height + 200))
+        XCTAssertEqual(bounds.east, 180)
+        XCTAssertEqual(bounds.west, -180)
+        XCTAssertTrue(bounds.contains(latitude: 85, longitude: 0))
+        XCTAssertTrue(bounds.contains(latitude: -85, longitude: 0))
+    }
+
+    func testDensestSpanPicksLargerOfTwoDistantGroups() {
+        // Two at x≈100, three at x≈500; a 50-wide window holds one group.
+        let picked = MapFit.densestSpan(xs: [500, 100, 510, 105, 520], width: 50, worldWidth: 1000)
+        XCTAssertEqual(Set(picked), [0, 2, 4])
+    }
+
+    func testDensestSpanWrapsAcrossAntimeridian() {
+        // 990 and 5 are 15 apart across the wrap; the window must join them.
+        let picked = MapFit.densestSpan(xs: [990, 5, 400, 995], width: 20, worldWidth: 1000)
+        XCTAssertEqual(Set(picked), [0, 1, 3])
+    }
+
+    func testDensestSpanKeepsEveryPointWhenAllFit() {
+        let picked = MapFit.densestSpan(xs: [10, 30, 20], width: 20, worldWidth: 1000)
+        XCTAssertEqual(Set(picked), [0, 1, 2])
+    }
+
+    func testDensestSpanTieKeepsWesternmostGroup() {
+        let picked = MapFit.densestSpan(xs: [700, 100, 710, 110], width: 50, worldWidth: 1000)
+        XCTAssertEqual(Set(picked), [1, 3])
     }
 
     func testBoundsEdgesAreInclusive() {

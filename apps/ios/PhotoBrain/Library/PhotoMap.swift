@@ -1,4 +1,5 @@
 import Foundation
+import MapKit
 
 /// A photo's location in decimal degrees, valid by the server's rule: finite, latitude in
 /// [-90, 90], longitude in [-180, 180], and not both exactly 0 (the common bogus default).
@@ -41,24 +42,24 @@ struct PhotoCoordinate: Hashable, Sendable {
     }
 }
 
-/// Converts a visible map region into the `bounds` filter.
+/// Converts the visible map into the `bounds` filter.
 enum MapRegionBounds {
-    /// Latitudes clamp to the poles. Longitudes normalize into [-180, 180]; a region crossing
-    /// the antimeridian yields `west > east` (the contract's wrap), and a region at least 360°
-    /// wide covers every longitude.
-    static func bounds(
-        centerLatitude: Double,
-        centerLongitude: Double,
-        latitudeDelta: Double,
-        longitudeDelta: Double
-    ) -> PhotoBounds {
-        let north = min(90, centerLatitude + latitudeDelta / 2)
-        let south = max(-90, centerLatitude - latitudeDelta / 2)
-        guard longitudeDelta < 360 else {
+    /// Uses MapKit's exact visible Mercator rectangle. `MKCoordinateRegion`'s span is only an
+    /// approximation and undershoots badly when zoomed out to continents, so markers on screen
+    /// would fall outside the filter. Latitudes clamp to Mercator's poles. Longitudes normalize
+    /// into [-180, 180]; a rectangle extending past the world's x range crosses the antimeridian
+    /// and yields `west > east` (the contract's wrap), and one at least a world wide covers
+    /// every longitude.
+    static func bounds(visibleMapRect rect: MKMapRect) -> PhotoBounds {
+        let world = MKMapRect.world
+        let north = MKMapPoint(x: world.midX, y: min(max(rect.minY, world.minY), world.maxY)).coordinate.latitude
+        let south = MKMapPoint(x: world.midX, y: min(max(rect.maxY, world.minY), world.maxY)).coordinate.latitude
+        guard rect.width < world.width else {
             return PhotoBounds(north: north, south: south, east: 180, west: -180)
         }
-        let west = normalizedLongitude(centerLongitude - longitudeDelta / 2)
-        var east = normalizedLongitude(centerLongitude + longitudeDelta / 2)
+        let degreesPerPoint = 360 / world.width
+        let west = normalizedLongitude(rect.minX * degreesPerPoint - 180)
+        var east = normalizedLongitude(rect.maxX * degreesPerPoint - 180)
         // -180 and 180 are the same meridian; as an eastern edge it closes the range at 180.
         if east == -180 { east = 180 }
         return PhotoBounds(north: north, south: south, east: east, west: west)
@@ -68,6 +69,28 @@ enum MapRegionBounds {
     static func normalizedLongitude(_ longitude: Double) -> Double {
         let wrapped = (longitude + 180).truncatingRemainder(dividingBy: 360)
         return (wrapped < 0 ? wrapped + 360 : wrapped) - 180
+    }
+}
+
+/// Chooses what the map opens on when MapKit cannot zoom out far enough to show every photo.
+enum MapFit {
+    /// Indices of the most points whose Mercator x coordinates fit in one window `width` wide,
+    /// on a world `worldWidth` wide that wraps at the antimeridian. Ties keep the westernmost
+    /// window. Sorting dominates: O(n log n).
+    static func densestSpan(xs: [Double], width: Double, worldWidth: Double) -> [Int] {
+        guard !xs.isEmpty else { return [] }
+        let order = xs.indices.sorted { xs[$0] < xs[$1] }
+        let n = order.count
+        // Position k in a second lap continues east past the antimeridian.
+        func x(_ k: Int) -> Double { xs[order[k % n]] + (k >= n ? worldWidth : 0) }
+        var best = (start: 0, count: 0)
+        var end = 0
+        for start in 0..<n {
+            end = max(end, start)
+            while end + 1 < start + n, x(end + 1) - x(start) <= width { end += 1 }
+            if end - start + 1 > best.count { best = (start, end - start + 1) }
+        }
+        return (best.start..<best.start + best.count).map { order[$0 % n] }
     }
 }
 

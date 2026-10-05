@@ -209,6 +209,17 @@ private struct PhotoClusterMap: UIViewRepresentable {
             guard let annotations = pendingFit, bounds.width > 0, bounds.height > 0 else { return }
             pendingFit = nil
             showAnnotations(annotations, animated: false)
+            // MapKit clamps how far out it zooms (about 100° of longitude on a portrait phone),
+            // so photos on distant continents leave the clamped fit centered between them with
+            // none on screen. Open on the largest group that fits instead.
+            let densest = MapFit.densestSpan(
+                xs: annotations.map { MKMapPoint($0.coordinate).x },
+                width: visibleMapRect.width,
+                worldWidth: MKMapRect.world.width
+            )
+            if densest.count < annotations.count {
+                showAnnotations(densest.map { annotations[$0] }, animated: false)
+            }
         }
     }
 
@@ -264,13 +275,9 @@ private struct PhotoClusterMap: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            let region = mapView.region
-            let bounds = MapRegionBounds.bounds(
-                centerLatitude: region.center.latitude,
-                centerLongitude: region.center.longitude,
-                latitudeDelta: region.span.latitudeDelta,
-                longitudeDelta: region.span.longitudeDelta
-            )
+            // `visibleMapRect` is the exact Mercator viewport; `region`'s span is an
+            // approximation that undershoots badly when zoomed out to continents.
+            let bounds = MapRegionBounds.bounds(visibleMapRect: mapView.visibleMapRect)
             // MapKit can report region changes while SwiftUI is updating this view.
             DispatchQueue.main.async { [parent] in parent.onRegionChange(bounds) }
         }
