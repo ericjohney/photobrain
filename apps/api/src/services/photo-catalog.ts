@@ -562,24 +562,26 @@ export function photoFilterConditions(
 			sql`(${photosTable.path} LIKE ${folderPrefix} ESCAPE '\\' AND instr(substr(${photosTable.path}, length(${input.folder}) + 2), '/') = 0)`,
 		);
 	}
+	// EXIF filters drive from `photo_exif` (indexed where the column is plain)
+	// into the photo rowid, instead of probing EXIF once per scanned photo.
 	if (input.camera) {
 		conditions.push(
-			sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND ${cameraLabelSql()} = ${input.camera})`,
+			sql`${photosTable.id} IN (SELECT photo_id FROM photo_exif WHERE ${cameraLabelSql()} = ${input.camera})`,
 		);
 	}
 	if (input.lens) {
 		conditions.push(
-			sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND photo_exif.lens_model = ${input.lens})`,
+			sql`${photosTable.id} IN (SELECT photo_id FROM photo_exif WHERE photo_exif.lens_model = ${input.lens})`,
 		);
 	}
 	if (input.iso) {
 		conditions.push(
-			sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND photo_exif.iso = ${input.iso})`,
+			sql`${photosTable.id} IN (SELECT photo_id FROM photo_exif WHERE photo_exif.iso = ${input.iso})`,
 		);
 	}
 	if (input.dateMonth) {
 		conditions.push(
-			sql`EXISTS (SELECT 1 FROM photo_exif WHERE photo_exif.photo_id = photos.id AND ${dateMonthExpression} = ${input.dateMonth})`,
+			sql`${photosTable.id} IN (SELECT photo_id FROM photo_exif WHERE ${dateMonthExpression} = ${input.dateMonth})`,
 		);
 	}
 	if (input.minRating !== undefined) {
