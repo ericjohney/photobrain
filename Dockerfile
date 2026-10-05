@@ -25,6 +25,8 @@ COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/mobile/package.json apps/mobile/
+# `file:` dependency of apps/mobile; bun installs it from the directory itself
+COPY apps/mobile/modules/migration-bridge apps/mobile/modules/migration-bridge
 
 # Install dependencies with cache mount
 RUN --mount=type=cache,target=/root/.bun/install/cache \
@@ -134,6 +136,7 @@ COPY packages/image-processing/package.json packages/image-processing/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/mobile/package.json apps/mobile/
+COPY apps/mobile/modules/migration-bridge apps/mobile/modules/migration-bridge
 
 # Install dependencies
 RUN --mount=type=cache,target=/root/.bun/install/cache \
