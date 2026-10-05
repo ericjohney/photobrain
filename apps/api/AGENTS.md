@@ -513,6 +513,8 @@ The two POST maintenance routes are operational leftovers. HEIC reprocessing for
 
 ## Tests
 
+Wall-clock budgets in performance tests go through `perfBudgetMs(ms)` from `setup.ts`. Budgets are calibrated on a developer machine; `PHOTOBRAIN_PERF_BUDGET_SCALE` (number >= 1, default 1) multiplies them, and the Build workflow sets it to `3` for shared runners. `EXPLAIN QUERY PLAN` assertions are never scaled and remain the regression guard for index use. The CI API job does not build the native addon, so any suite whose import graph reaches a value import of `@photobrain/image-processing` (for example through `../inngest`) must `mock.module` it.
+
 `src/__tests__/filters.test.ts` uses `createTestDb()` from `src/__tests__/setup.ts`, an in-memory SQLite database with shared migrations and seeded EXIF data. It covers folder-scoped filter options, raw/camera/lens/ISO/date filters, durable scan creation/status, dispatch failures, and missing job IDs.
 
 `src/__tests__/junk-review.test.ts` runs in an isolated child process (`PHOTOBRAIN_JUNK_TEST_CHILD=1`) with the database, native executor, and Inngest client mocked. It covers reason order and threshold/score boundaries, stale-generation and stale-version quality rows, candidate exclusions, counts independent of reason/cursor, ID-keyset pagination without duplicates or gaps (including resolution between pages), `resolveJunk` effects and validation, `analyze-quality-v1` eligibility, idempotency, 200-row steps, generation changes between measurement and write, tRPC/v1 shapes and 400s, the 8,000-photo performance/plan check (logged with `[junk-perf]`), and migration `0010` applied to a populated `0009` database.
