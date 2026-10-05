@@ -31,4 +31,18 @@ final class APIErrorTests: XCTestCase {
         XCTAssertNoThrow(try AppEnvironment.validate(url: URL(string: "https://example.com")!, lane: .production))
         XCTAssertNoThrow(try AppEnvironment.validate(url: URL(string: "http://localhost:3000")!, lane: .debug))
     }
+
+    func testLaunchEnvironmentOverridesAPIOriginOnlyInDebug() {
+        let environment = ["PHOTOBRAIN_API_URL": "http://127.0.0.1:61234"]
+        XCTAssertEqual(
+            AppEnvironment.configuredAPIURL(bundle: .main, lane: .debug, environment: environment),
+            "http://127.0.0.1:61234"
+        )
+        for lane in [BuildLane.preview, .production] {
+            XCTAssertEqual(
+                AppEnvironment.configuredAPIURL(bundle: .main, lane: lane, environment: environment),
+                Bundle.main.object(forInfoDictionaryKey: "PhotoBrainAPIURL") as? String
+            )
+        }
+    }
 }

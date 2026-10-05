@@ -186,10 +186,11 @@ cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui
 cd apps/mobile && bun run test
 xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' CODE_SIGNING_ALLOWED=NO test # Xcode 26.6
+apps/ios/scripts/run-ui-tests.sh # XCUITest flows (Debug, PhotoBrain-UITests scheme) against the seeded fixture API; needs bun install + Homebrew sqlite
 cd packages/image-processing && cargo test
 ```
 
-Web E2E tests use Playwright with mocked tRPC, image, and Inngest requests. Expo tests use Jest with heavily mocked native/API dependencies. Native iOS tests run in the iOS Simulator. API tests use an in-memory SQLite database and the shared migrations.
+Web E2E tests use Playwright with mocked tRPC, image, and Inngest requests. Expo tests use Jest with heavily mocked native/API dependencies. Native iOS unit tests run in the iOS Simulator. Native iOS UI tests (`apps/ios/PhotoBrainUITests`) drive the Debug app through `apps/ios/scripts/run-ui-tests.sh`, which starts `apps/api/scripts/ui-test-server.ts` (the real `/api/v1` and `/api/photos` routes over a throwaway SQLite library seeded through the shared migrations, plus `POST /__fixture/reset`) and passes its origin to the app through the Debug-only `PHOTOBRAIN_API_URL` launch-environment override. API tests use an in-memory SQLite database and the shared migrations.
 
 ## Environment
 
@@ -371,7 +372,7 @@ Junk review on iOS: the Library header's **Review** button (candidate count) pus
 
 Duplicates on iOS: the Library header's **Duplicates** button (combined count) pushes a screen with All/Duplicates/Bursts, group cards with the suggested keeper preselected, keep toggles (one photo always stays kept), a Compare loupe, **Keep N, reject M** and **Not duplicates**. Resolutions remove groups optimistically, roll back on failure, reload on a changed group, and propagate rejects through `PhotoCurationCenter`.
 
-Map on iOS: the Library header's **Map** button pushes an `MKMapView` with clustered markers for the Library's current filters. Tapping a marker opens the loupe and tapping a cluster zooms in. **Show N Photos** opens a grid scoped to the visible region (`LibraryScope.mapArea`). The loupe info sheet shows a mini-map when the photo's GPS is valid.
+Map on iOS: the Library header's **Map** button pushes an `MKMapView` with clustered markers for the Library's current filters. It opens fitted to every point, or, when MapKit's zoom-out limit cannot show them all (photos on distant continents), to the largest group that fits (`MapFit.densestSpan`). Tapping a marker opens the loupe and tapping a cluster zooms in. **Show N Photos** opens a grid scoped to the visible region (`LibraryScope.mapArea`), computed from the exact `visibleMapRect` rather than the approximate `MKCoordinateRegion` span. The loupe info sheet shows a mini-map when the photo's GPS is valid.
 
 Places on iOS: the Library filter sheet's Places category lists countries with counts and, under the selected country, its cities. The loupe info sheet shows a tappable Place row ("Kyoto, Japan") that applies the place filter. Smart albums save `country`/`place`.
 
@@ -419,7 +420,7 @@ There is no worker image and the mobile Docker target is not a static Expo web-e
 - Builds and pushes API, web, and mobile Docker targets.
 - Updates API/web/mobile image tags in the external ArgoCD repository on pushes to `main`.
 
-Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6 and runs the unsigned Preview configuration on an iOS 26.5 simulator. The manual `.github/workflows/native-ios-release.yml` validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
+Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. The manual `.github/workflows/native-ios-release.yml` validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 
 `.github/workflows/expo-ios-emergency-production.yml` is a manually confirmed, bridge-compatible emergency Production replacement. It resolves the EAS Production environment but builds, signs, inspects, retains, and uploads a full replacement IPA to TestFlight; it is explicitly never an OTA release. Native and emergency Production workflows share the serialized `ios-production-release` concurrency group and `apps/ios/scripts/allocate-app-store-build.mjs`, which chooses a build number above both App Store Connect history and the run reservation floor. Operators must pass the same App Store marketing version to a native release and any replacement; both lanes enforce the production bundle/API contract and iOS 17.0 minimum.
 

@@ -257,6 +257,7 @@ struct PhotoResultsGrid: View {
                 }
             }
         }
+        .accessibilityIdentifier("photo-results")
     }
 
     static func columnCount(width: CGFloat) -> Int {

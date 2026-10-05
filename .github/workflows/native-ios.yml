@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -41,3 +41,16 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
             CODE_SIGNING_ALLOWED=NO \
             test
+
+      - name: Set up Bun for the UI-test fixture API
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile --linker hoisted
+
+      # Apple's system SQLite cannot load extensions; db/setup.ts uses Homebrew's for sqlite-vec.
+      - name: Install extension-capable SQLite
+        run: brew list sqlite >/dev/null 2>&1 || brew install sqlite
+
+      - name: Run UI flows against the fixture API
+        run: apps/ios/scripts/run-ui-tests.sh

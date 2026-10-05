@@ -27,7 +27,7 @@ struct AppEnvironment: Sendable {
         lane: BuildLane = .current,
         session: URLSession? = nil
     ) throws {
-        guard let raw = bundle.object(forInfoDictionaryKey: "PhotoBrainAPIURL") as? String,
+        guard let raw = Self.configuredAPIURL(bundle: bundle, lane: lane),
               !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let url = URL(string: raw),
               url.host != nil else {
@@ -46,6 +46,20 @@ struct AppEnvironment: Sendable {
         self.lane = lane
         self.apiURL = apiURL
         self.api = api
+    }
+
+    /// The Info.plist origin, except that Debug builds honor a
+    /// `PHOTOBRAIN_API_URL` launch-environment override so UI tests can target
+    /// their fixture server's ephemeral port. Release lanes never read it.
+    static func configuredAPIURL(
+        bundle: Bundle,
+        lane: BuildLane,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        if lane == .debug, let override = environment["PHOTOBRAIN_API_URL"] {
+            return override
+        }
+        return bundle.object(forInfoDictionaryKey: "PhotoBrainAPIURL") as? String
     }
 
     static func validate(url: URL, lane: BuildLane) throws {

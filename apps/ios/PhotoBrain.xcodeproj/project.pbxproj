@@ -100,10 +100,20 @@
 		A1000000000000000000003A /* CountText.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000003A /* CountText.swift */; };
 		A20000000000000000000020 /* BackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000020 /* BackupTests.swift */; };
 		A20000000000000000000021 /* BackupCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000021 /* BackupCoordinatorTests.swift */; };
+		A40000000000000000000001 /* PhotoBrainUITestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000001 /* PhotoBrainUITestCase.swift */; };
+		A40000000000000000000002 /* LibraryFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000002 /* LibraryFlowTests.swift */; };
+		A40000000000000000000003 /* CollectionsSearchFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000003 /* CollectionsSearchFlowTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		D20000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D10000000000000000000001;
+			remoteInfo = PhotoBrain;
+		};
+		D20000000000000000000003 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D00000000000000000000001 /* Project object */;
 			proxyType = 1;
@@ -115,6 +125,10 @@
 /* Begin PBXFileReference section */
 		B00000000000000000000001 /* PhotoBrain.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoBrain.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000002 /* PhotoBrainTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoBrainTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0000000000000000000000A /* PhotoBrainUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoBrainUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B40000000000000000000001 /* PhotoBrainUITestCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoBrainUITestCase.swift; sourceTree = "<group>"; };
+		B40000000000000000000002 /* LibraryFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFlowTests.swift; sourceTree = "<group>"; };
+		B40000000000000000000003 /* CollectionsSearchFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionsSearchFlowTests.swift; sourceTree = "<group>"; };
 		B00000000000000000000003 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		B00000000000000000000004 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		B00000000000000000000005 /* Preview.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Preview.xcconfig; sourceTree = "<group>"; };
@@ -218,6 +232,7 @@
 /* Begin PBXFrameworksBuildPhase section */
 		C10000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		C20000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C30000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -227,6 +242,7 @@
 				C00000000000000000000002 /* Config */,
 				C00000000000000000000003 /* PhotoBrain */,
 				C0000000000000000000000A /* PhotoBrainTests */,
+				C0000000000000000000000D /* PhotoBrainUITests */,
 				C0000000000000000000000B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -305,7 +321,8 @@
 			path = PhotoBrainTests;
 			sourceTree = "<group>";
 		};
-		C0000000000000000000000B /* Products */ = {isa = PBXGroup; children = (B00000000000000000000001 /* PhotoBrain.app */, B00000000000000000000002 /* PhotoBrainTests.xctest */,); name = Products; sourceTree = "<group>"; };
+		C0000000000000000000000B /* Products */ = {isa = PBXGroup; children = (B00000000000000000000001 /* PhotoBrain.app */, B00000000000000000000002 /* PhotoBrainTests.xctest */, B0000000000000000000000A /* PhotoBrainUITests.xctest */,); name = Products; sourceTree = "<group>"; };
+		C0000000000000000000000D /* PhotoBrainUITests */ = {isa = PBXGroup; children = (B40000000000000000000001 /* PhotoBrainUITestCase.swift */, B40000000000000000000002 /* LibraryFlowTests.swift */, B40000000000000000000003 /* CollectionsSearchFlowTests.swift */,); path = PhotoBrainUITests; sourceTree = "<group>"; };
 		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */, B1000000000000000000001E /* SmartAlbumViews.swift */, B10000000000000000000020 /* DuplicatesScreen.swift */, B10000000000000000000023 /* MapScreen.swift */, B10000000000000000000026 /* OnThisDaySection.swift */, B10000000000000000000028 /* CaptureCalendarView.swift */, B1000000000000000000002A /* EventViews.swift */, B1000000000000000000002C /* GearStatsScreen.swift */, B1000000000000000000002F /* ExportViews.swift */, B10000000000000000000033 /* PeopleViews.swift */, B10000000000000000000039 /* BackupSettingsSection.swift */,); path = Views; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
@@ -332,6 +349,17 @@
 			productReference = B00000000000000000000002 /* PhotoBrainTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		D10000000000000000000003 /* PhotoBrainUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E10000000000000000000003 /* Build configuration list for PBXNativeTarget "PhotoBrainUITests" */;
+			buildPhases = (C30000000000000000000002 /* Sources */, C30000000000000000000001 /* Frameworks */, C30000000000000000000003 /* Resources */,);
+			buildRules = ();
+			dependencies = (D20000000000000000000004 /* PBXTargetDependency */,);
+			name = PhotoBrainUITests;
+			productName = PhotoBrainUITests;
+			productReference = B0000000000000000000000A /* PhotoBrainUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -344,6 +372,7 @@
 				TargetAttributes = {
 					D10000000000000000000001 = {CreatedOnToolsVersion = 26.0; };
 					D10000000000000000000002 = {CreatedOnToolsVersion = 26.0; TestTargetID = D10000000000000000000001; };
+					D10000000000000000000003 = {CreatedOnToolsVersion = 26.0; TestTargetID = D10000000000000000000001; };
 				};
 			};
 			buildConfigurationList = E00000000000000000000001 /* Build configuration list for PBXProject "PhotoBrain" */;
@@ -355,13 +384,14 @@
 			productRefGroup = C0000000000000000000000B /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (D10000000000000000000001 /* PhotoBrain */, D10000000000000000000002 /* PhotoBrainTests */,);
+			targets = (D10000000000000000000001 /* PhotoBrain */, D10000000000000000000002 /* PhotoBrainTests */, D10000000000000000000003 /* PhotoBrainUITests */,);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		C10000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A30000000000000000000001 /* PrivacyInfo.xcprivacy in Resources */, A30000000000000000000002 /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
 		C20000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C30000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -470,10 +500,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C30000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A40000000000000000000001 /* PhotoBrainUITestCase.swift in Sources */,
+				A40000000000000000000002 /* LibraryFlowTests.swift in Sources */,
+				A40000000000000000000003 /* CollectionsSearchFlowTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		D20000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = D10000000000000000000001 /* PhotoBrain */; targetProxy = D20000000000000000000001 /* PBXContainerItemProxy */; };
+		D20000000000000000000004 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = D10000000000000000000001 /* PhotoBrain */; targetProxy = D20000000000000000000003 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -486,12 +527,16 @@
 		F20000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B00000000000000000000004 /* Debug.xcconfig */; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.photobrain.app.debug.tests; PRODUCT_NAME = PhotoBrainTests; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PhotoBrain Debug.app/PhotoBrain Debug";}; name = Debug; };
 		F20000000000000000000002 /* Preview */ = {isa = XCBuildConfiguration; baseConfigurationReference = B00000000000000000000005 /* Preview.xcconfig */; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.photobrain.app.preview.tests; PRODUCT_NAME = PhotoBrainTests; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PhotoBrain Preview.app/PhotoBrain Preview";}; name = Preview; };
 		F20000000000000000000003 /* Production */ = {isa = XCBuildConfiguration; baseConfigurationReference = B00000000000000000000006 /* Production.xcconfig */; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.photobrain.app.tests; PRODUCT_NAME = PhotoBrainTests; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PhotoBrain.app/PhotoBrain";}; name = Production; };
+		F30000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B00000000000000000000004 /* Debug.xcconfig */; buildSettings = {GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.photobrain.app.debug.uitests; PRODUCT_NAME = PhotoBrainUITests; TEST_TARGET_NAME = PhotoBrain;}; name = Debug; };
+		F30000000000000000000002 /* Preview */ = {isa = XCBuildConfiguration; baseConfigurationReference = B00000000000000000000005 /* Preview.xcconfig */; buildSettings = {GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.photobrain.app.preview.uitests; PRODUCT_NAME = PhotoBrainUITests; TEST_TARGET_NAME = PhotoBrain;}; name = Preview; };
+		F30000000000000000000003 /* Production */ = {isa = XCBuildConfiguration; baseConfigurationReference = B00000000000000000000006 /* Production.xcconfig */; buildSettings = {GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.photobrain.app.uitests; PRODUCT_NAME = PhotoBrainUITests; TEST_TARGET_NAME = PhotoBrain;}; name = Production; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
 		E00000000000000000000001 /* Build configuration list for PBXProject "PhotoBrain" */ = {isa = XCConfigurationList; buildConfigurations = (F00000000000000000000001 /* Debug */, F00000000000000000000002 /* Preview */, F00000000000000000000003 /* Production */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Preview; };
 		E10000000000000000000001 /* Build configuration list for PBXNativeTarget "PhotoBrain" */ = {isa = XCConfigurationList; buildConfigurations = (F10000000000000000000001 /* Debug */, F10000000000000000000002 /* Preview */, F10000000000000000000003 /* Production */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Preview; };
 		E10000000000000000000002 /* Build configuration list for PBXNativeTarget "PhotoBrainTests" */ = {isa = XCConfigurationList; buildConfigurations = (F20000000000000000000001 /* Debug */, F20000000000000000000002 /* Preview */, F20000000000000000000003 /* Production */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Preview; };
+		E10000000000000000000003 /* Build configuration list for PBXNativeTarget "PhotoBrainUITests" */ = {isa = XCConfigurationList; buildConfigurations = (F30000000000000000000001 /* Debug */, F30000000000000000000002 /* Preview */, F30000000000000000000003 /* Production */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Preview; };
 /* End XCConfigurationList section */
 	};
 	rootObject = D00000000000000000000001 /* Project object */;
