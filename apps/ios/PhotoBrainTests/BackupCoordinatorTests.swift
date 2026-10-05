@@ -515,6 +515,10 @@ final class BackupCoordinatorTests: XCTestCase {
     }
 }
 
+/// Polls `condition` until it holds, failing once the coordinator has had `timeout` of polling
+/// time to get there. Each poll counts for at most `maximumPollCredit`: when the whole test host
+/// is descheduled (a stalled CI VM), the awaited work could not run either, so the stall must
+/// not use up the budget and fail the first check after the host resumes.
 @MainActor
 private func waitUntil(
     timeout: Duration = .seconds(3),
@@ -522,12 +526,18 @@ private func waitUntil(
     line: UInt = #line,
     _ condition: @MainActor () async -> Bool
 ) async throws {
-    let deadline = ContinuousClock.now + timeout
+    let maximumPollCredit = Duration.milliseconds(100)
+    let clock = ContinuousClock()
+    var waited = Duration.zero
+    var previous = clock.now
     while !(await condition()) {
-        guard ContinuousClock.now < deadline else {
+        guard waited < timeout else {
             XCTFail("Condition not met before timeout", file: file, line: line)
             return
         }
         try await Task.sleep(for: .milliseconds(10))
+        let now = clock.now
+        waited += min(now - previous, maximumPollCredit)
+        previous = now
     }
 }

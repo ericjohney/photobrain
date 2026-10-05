@@ -365,8 +365,10 @@ final class ExportDownloadTests: XCTestCase {
         } catch {
             XCTAssertTrue(error is CancellationError, "\(error)")
         }
-        XCTAssertTrue(ExportStubURLProtocol.wasStopped)
         XCTAssertEqual(filesOnDisk(under: exportsDirectory), [])
+        // URLSession calls `stopLoading()` on its custom-protocol thread, unordered with the
+        // cancelled completion handler that ended the download.
+        try await waitUntil { ExportStubURLProtocol.wasStopped }
     }
 
     func testCancellationBeforeStartNeverLeavesFiles() async {
