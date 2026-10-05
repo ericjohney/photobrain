@@ -44,10 +44,16 @@ jobs:
       EXPECTED_URL_SCHEME: photobrain
       EXPECTED_MINIMUM_IOS_VERSION: "17.0"
       XCODE_PROJECT: apps/ios/PhotoBrain.xcodeproj
-      ARCHIVE_PATH: ${{ runner.temp }}/PhotoBrain.xcarchive
-      EXPORT_PATH: ${{ runner.temp }}/PhotoBrain-export
-      KEYCHAIN_PATH: ${{ runner.temp }}/photobrain-signing.keychain-db
     steps:
+      # `runner` is not available in job-level `env`; resolve temp paths at runtime.
+      - name: Resolve runner-temporary paths
+        run: |
+          {
+            echo "ARCHIVE_PATH=$RUNNER_TEMP/PhotoBrain.xcarchive"
+            echo "EXPORT_PATH=$RUNNER_TEMP/PhotoBrain-export"
+            echo "KEYCHAIN_PATH=$RUNNER_TEMP/photobrain-signing.keychain-db"
+          } >> "$GITHUB_ENV"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
