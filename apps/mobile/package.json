@@ -10,14 +10,12 @@
 		"build:web": "expo export --platform web",
 		"typecheck": "tsc --noEmit",
 		"test": "NODE_ENV=test jest",
-		"test:ci": "NODE_ENV=test jest --runInBand",
-		"native-migration:baseline": "node scripts/native-migration-baseline.mjs"
+		"test:ci": "NODE_ENV=test jest --runInBand"
 	},
 	"dependencies": {
 		"@expo/vector-icons": "^15.0.2",
 		"@inngest/realtime": "^0.4.5",
 		"@photobrain/api": "workspace:*",
-		"@photobrain/migration-bridge": "file:./modules/migration-bridge",
 		"@photobrain/utils": "workspace:*",
 		"@react-native-async-storage/async-storage": "2.2.0",
 		"@react-native-masked-view/masked-view": "0.3.2",

@@ -6,7 +6,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 
 - Web grid and loupe views with keyboard navigation, metadata, folders, and EXIF filters.
 - Native SwiftUI/UIKit iOS 17+ app in `apps/ios` with Library/Collections/Search tabs, a chronological grid and loupe, filters, semantic search, scan recovery, and Debug/Preview/Production configurations.
-- Expo/React Native Android/web app with Library/Collections/Search tabs, bottom Years/Months/All Photos browsing, captured/recently-added sorting, selection, debounced search, and Photos-inspired filters with searchable camera/lens/ISO/month lists and RAW/standard choices. It retains a paged loupe with a synchronized thumbnail filmstrip, theme preferences, Android fallbacks, and Liquid Glass/native iOS zoom behavior for its temporary migration/emergency iOS builds. That iOS build path is not the iOS production implementation.
+- Expo/React Native Android/web app with Library/Collections/Search tabs, bottom Years/Months/All Photos browsing, captured/recently-added sorting, selection, debounced search, and Photos-inspired filters with searchable camera/lens/ISO/month lists and RAW/standard choices. It retains a paged loupe with a synchronized thumbnail filmstrip, theme preferences, and Android/web fallbacks. Expo has no iOS release path; `apps/ios` is the iOS app.
 - Four derived WebP preview sizes: `tiny`, `small`, `medium`, and `large`. Preview color is lossy; original photo files are untouched.
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
@@ -27,7 +27,7 @@ apps/
   api/                    Hono + tRPC API, REST file routes, Inngest functions
   web/                    React/Vite browser application
   ios/                    Native SwiftUI/UIKit iOS application (iOS 17+)
-  mobile/                 Expo/React Native Android/web app and temporary iOS migration bridge
+  mobile/                 Expo/React Native Android/web app
 packages/
   config/                 Shared TypeScript configuration
   db/                     Drizzle schema and migrations
@@ -44,7 +44,7 @@ Detailed implementation guidance is in:
 - [`CLAUDE.md`](CLAUDE.md): cross-repository architecture, commands, invariants, and documentation map.
 - [`apps/api/AGENTS.md`](apps/api/AGENTS.md): API, database orchestration, and Inngest jobs.
 - [`apps/web/AGENTS.md`](apps/web/AGENTS.md): browser routes, state, UI, and Playwright.
-- [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md): Expo Android/web behavior, temporary iOS migration bridge, EAS, and Jest.
+- [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md): Expo Android/web behavior, EAS, and Jest.
 - [`apps/ios`](apps/ios): native iOS app, project configurations, Swift sources, and XCTest suites.
 - [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md): Rust/N-API pipeline and native dependencies.
 - [`packages/db/AGENTS.md`](packages/db/AGENTS.md): schema, migrations, and persistence caveats.
@@ -206,7 +206,7 @@ For the Expo Android/web app, set `EXPO_PUBLIC_API_URL` in `apps/mobile/.env`:
 EXPO_PUBLIC_API_URL=http://localhost:3000
 ```
 
-For an Android emulator use `http://10.0.2.2:3000`; EAS profiles configure `https://photobrain-api.ericj5.com`. The Expo iOS module temporarily copies legacy theme/active-scan state into the versioned `com.photobrain.migration.v1` envelope that the native app imports.
+For an Android emulator use `http://10.0.2.2:3000`; EAS profiles configure `https://photobrain-api.ericj5.com`.
 
 ## API Overview
 
@@ -281,13 +281,11 @@ docker build --target mobile -t photobrain-mobile .
 
 The API image applies shared migrations on startup and runs on port 3000. The web image serves the Vite SPA on port 3001. The mobile image runs the Expo development server on port 8081; it is not a static Expo web-export image.
 
-The permanent GitHub Actions build workflow runs API tests/typecheck, web Playwright tests, Expo Jest tests, and retained emergency-preview decision tests. Its EAS release lane is Android-only: `main` builds an Android preview receiver and publishes an Android preview update; version tags build an Android production receiver and publish an Android production update. It never publishes an iOS OTA update. The workflow also builds API/web/mobile images and updates external ArgoCD image tags on `main`.
+The permanent GitHub Actions build workflow runs API tests/typecheck, web Playwright tests, and Expo Jest tests. Its EAS release lane is Android-only: `main` builds an Android preview receiver and publishes an Android preview update; version tags build an Android production receiver and publish an Android production update. It never publishes an iOS OTA update. The workflow also builds API/web/mobile images and updates external ArgoCD image tags on `main`.
 
 Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator. The manually dispatched `.github/workflows/native-ios-release.yml` validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 
-`.github/workflows/expo-ios-emergency-production.yml` is a separately confirmed emergency Production replacement for the bridge-compatible Expo app. It resolves the EAS Production configuration but produces a full signed, inspected TestFlight replacement; it never performs an iOS OTA release. Both Production workflows serialize on `ios-production-release`, use `apps/ios/scripts/allocate-app-store-build.mjs` against App Store Connect plus a run reservation floor, require the same operator-supplied marketing version for a native binary and its possible replacement, and enforce iOS 17.0 plus the production bundle/API contract.
-
-These workflow definitions are not evidence that a signed run, upload, or rollout completed. Signed execution, TestFlight verification, physical-device drills, and production cutover remain external gates.
+The release workflow serializes on `ios-production-release`, uses `apps/ios/scripts/allocate-app-store-build.mjs` against App Store Connect plus a run reservation floor, and enforces iOS 17.0 plus the production bundle/API contract.
 
 ## Roadmap and Historical Notes
 

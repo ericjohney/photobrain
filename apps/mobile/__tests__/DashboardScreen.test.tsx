@@ -7,7 +7,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { Alert, AppState, FlatList, StyleSheet } from "react-native";
 import * as jobProgress from "@/hooks/use-job-progress";
-import * as migrationBridge from "@/lib/migration-bridge";
+import * as preferences from "@/lib/preferences";
 
 // The screen and hook share the production stall threshold. The global hook
 // mock only supplies hook behavior, so preserve this exported runtime contract.
@@ -15,17 +15,17 @@ Object.defineProperty(jobProgress, "SCAN_STALL_THRESHOLD_MS", {
 	value: 5 * 60_000,
 });
 
-jest.mock("@/lib/migration-bridge", () => ({
+jest.mock("@/lib/preferences", () => ({
 	getActiveScanId: jest.fn(),
 	setActiveScanId: jest.fn(),
 	getThemePreference: jest.fn(),
 	setThemePreference: jest.fn(),
 }));
 
-const mockGetActiveScanId = jest.mocked(migrationBridge.getActiveScanId);
-const mockSetActiveScanId = jest.mocked(migrationBridge.setActiveScanId);
-const mockGetThemePreference = jest.mocked(migrationBridge.getThemePreference);
-const mockSetThemePreference = jest.mocked(migrationBridge.setThemePreference);
+const mockGetActiveScanId = jest.mocked(preferences.getActiveScanId);
+const mockSetActiveScanId = jest.mocked(preferences.setActiveScanId);
+const mockGetThemePreference = jest.mocked(preferences.getThemePreference);
+const mockSetThemePreference = jest.mocked(preferences.setThemePreference);
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch as unknown as typeof fetch;
@@ -697,7 +697,7 @@ describe("DashboardScreen", () => {
 		expect(view.getByRole("radio", { name: "Date Captured" })).toBeChecked();
 	});
 
-	it("persists only successfully created scan jobs through the migration bridge", async () => {
+	it("persists only successfully created scan jobs", async () => {
 		const successful = renderWithProviders(<DashboardScreen />);
 		await waitFor(() =>
 			expect(successful.getByLabelText("Library options")).toBeTruthy(),

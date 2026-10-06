@@ -46,7 +46,6 @@
         "@expo/vector-icons": "^15.0.2",
         "@inngest/realtime": "^0.4.5",
         "@photobrain/api": "workspace:*",
-        "@photobrain/migration-bridge": "file:./modules/migration-bridge",
         "@photobrain/utils": "workspace:*",
         "@react-native-async-storage/async-storage": "2.2.0",
         "@react-native-masked-view/masked-view": "0.3.2",
@@ -3003,8 +3002,6 @@
     "@photobrain/db/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@photobrain/image-processing/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@photobrain/mobile/@photobrain/migration-bridge": ["@photobrain/migration-bridge@file:apps/mobile/modules/migration-bridge", { "peerDependencies": { "expo": "*" } }],
 
     "@photobrain/mobile/@types/node": ["@types/node@26.2.0", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-5IviulTZeRNp2vAJ514cc/HUlY5nZ9fCbq9DMyC52BrhFZACo3nI0R7qBxhQmo/d27NFe96ur/b7Wwxklda+kg=="],
 

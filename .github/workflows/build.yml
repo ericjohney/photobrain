@@ -66,9 +66,6 @@ jobs:
       - name: Run mobile unit tests
         run: cd apps/mobile && bun run test:ci
 
-      - name: Run preview release decision tests
-        run: node --test apps/mobile/scripts/ensure-preview-build.test.mjs
-
   test-api:
     runs-on: ericjohney-org-runners
     steps:

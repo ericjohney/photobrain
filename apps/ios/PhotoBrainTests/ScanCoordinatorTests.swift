@@ -93,16 +93,16 @@ final class ScanCoordinatorTests: XCTestCase {
         let suite = "ScanCoordinatorTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let migration = MigrationStore(defaults: defaults)
-        let coordinator = ScanCoordinator(api: api, migration: migration)
+        let preferences = PreferencesStore(defaults: defaults)
+        let coordinator = ScanCoordinator(api: api, preferences: preferences)
 
         await coordinator.requestStart(force: false)
 
         XCTAssertNil(coordinator.selectedScan)
         XCTAssertFalse(coordinator.isActive)
         XCTAssertEqual(coordinator.statusMessage, "The scan could not be started")
-        let imported = await migration.importSchemaOne()
-        XCTAssertNil(imported.activeScanID)
+        let savedID = await preferences.activeScanID
+        XCTAssertNil(savedID)
     }
 
     func testBackgroundTerminalPollReconcilesActiveSnapshotBeforeLoopStops() async throws {
@@ -115,9 +115,9 @@ final class ScanCoordinatorTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let coordinator = ScanCoordinator(
             api: api,
-            migration: MigrationStore(defaults: defaults)
+            preferences: PreferencesStore(defaults: defaults)
         )
-        await coordinator.restore(importedActiveID: nil)
+        await coordinator.restore(savedActiveID: nil)
         let initialSnapshotCount = await api.recordedActiveCallCount()
         XCTAssertEqual(initialSnapshotCount, 1)
 
@@ -153,7 +153,7 @@ final class ScanCoordinatorTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let coordinator = ScanCoordinator(
             api: api,
-            migration: MigrationStore(defaults: defaults)
+            preferences: PreferencesStore(defaults: defaults)
         )
 
         await coordinator.requestStart(force: false)
@@ -192,7 +192,7 @@ final class ScanCoordinatorTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let coordinator = ScanCoordinator(
             api: api,
-            migration: MigrationStore(defaults: defaults)
+            preferences: PreferencesStore(defaults: defaults)
         )
 
         await coordinator.requestStart(force: true)
@@ -219,7 +219,7 @@ final class ScanCoordinatorTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let coordinator = ScanCoordinator(
             api: api,
-            migration: MigrationStore(defaults: defaults)
+            preferences: PreferencesStore(defaults: defaults)
         )
 
         await coordinator.requestStart(force: false)
@@ -254,13 +254,13 @@ final class ScanCoordinatorTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let coordinator = ScanCoordinator(
             api: api,
-            migration: MigrationStore(defaults: defaults)
+            preferences: PreferencesStore(defaults: defaults)
         )
         var libraryInvalidations = 0
         var searchInvalidations = 0
         coordinator.invalidateLibrary = { libraryInvalidations += 1 }
         coordinator.invalidateSearch = { searchInvalidations += 1 }
-        await coordinator.restore(importedActiveID: nil)
+        await coordinator.restore(savedActiveID: nil)
 
         await api.setScan(
             id: id,
@@ -277,8 +277,8 @@ final class ScanCoordinatorTests: XCTestCase {
         XCTAssertNil(coordinator.selectedScan)
         XCTAssertEqual(libraryInvalidations, 1)
         XCTAssertEqual(searchInvalidations, 1)
-        let imported = await MigrationStore(defaults: defaults).importSchemaOne()
-        XCTAssertNil(imported.activeScanID)
+        let savedID = await PreferencesStore(defaults: defaults).activeScanID
+        XCTAssertNil(savedID)
     }
 
     func testExpectedImportSkipsTheRunningJobAndTracksTheNextOneToCompletion() async throws {
@@ -290,10 +290,10 @@ final class ScanCoordinatorTests: XCTestCase {
         let suite = "ScanCoordinatorImportTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let coordinator = ScanCoordinator(api: api, migration: MigrationStore(defaults: defaults))
+        let coordinator = ScanCoordinator(api: api, preferences: PreferencesStore(defaults: defaults))
         var libraryInvalidations = 0
         coordinator.invalidateLibrary = { libraryInvalidations += 1 }
-        await coordinator.restore(importedActiveID: nil)
+        await coordinator.restore(savedActiveID: nil)
 
         // The upload landed while `running` was active; its scan may predate the file.
         coordinator.expectImport()

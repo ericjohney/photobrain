@@ -34,7 +34,7 @@
 		A20000000000000000000005 /* TestAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000005 /* TestAPI.swift */; };
 		A20000000000000000000006 /* APIModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000006 /* APIModelTests.swift */; };
 		A20000000000000000000007 /* APIErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* APIErrorTests.swift */; };
-		A20000000000000000000008 /* MigrationStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000008 /* MigrationStoreTests.swift */; };
+		A20000000000000000000008 /* PreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000008 /* PreferencesStoreTests.swift */; };
 		A20000000000000000000009 /* LibraryStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000009 /* LibraryStateTests.swift */; };
 		A2000000000000000000000A /* SearchStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000A /* SearchStateTests.swift */; };
 		A2000000000000000000000B /* LoupeStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000B /* LoupeStateTests.swift */; };
@@ -163,7 +163,7 @@
 		B20000000000000000000005 /* TestAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestAPI.swift; sourceTree = "<group>"; };
 		B20000000000000000000006 /* APIModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModelTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000007 /* APIErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIErrorTests.swift; sourceTree = "<group>"; };
-		B20000000000000000000008 /* MigrationStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MigrationStoreTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000008 /* PreferencesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesStoreTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000009 /* LibraryStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStateTests.swift; sourceTree = "<group>"; };
 		B2000000000000000000000A /* SearchStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchStateTests.swift; sourceTree = "<group>"; };
 		B2000000000000000000000B /* LoupeStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoupeStateTests.swift; sourceTree = "<group>"; };
@@ -291,7 +291,7 @@
 				B20000000000000000000005 /* TestAPI.swift */,
 				B20000000000000000000006 /* APIModelTests.swift */,
 				B20000000000000000000007 /* APIErrorTests.swift */,
-				B20000000000000000000008 /* MigrationStoreTests.swift */,
+				B20000000000000000000008 /* PreferencesStoreTests.swift */,
 				B20000000000000000000009 /* LibraryStateTests.swift */,
 				B2000000000000000000000A /* SearchStateTests.swift */,
 				B2000000000000000000000B /* LoupeStateTests.swift */,
@@ -471,7 +471,7 @@
 				A20000000000000000000005 /* TestAPI.swift in Sources */,
 				A20000000000000000000006 /* APIModelTests.swift in Sources */,
 				A20000000000000000000007 /* APIErrorTests.swift in Sources */,
-				A20000000000000000000008 /* MigrationStoreTests.swift in Sources */,
+				A20000000000000000000008 /* PreferencesStoreTests.swift in Sources */,
 				A20000000000000000000009 /* LibraryStateTests.swift in Sources */,
 				A2000000000000000000000A /* SearchStateTests.swift in Sources */,
 				A2000000000000000000000B /* LoupeStateTests.swift in Sources */,

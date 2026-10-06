@@ -11,20 +11,20 @@ import {
 	Text,
 } from "react-native";
 import GlassSurface from "@/components/GlassSurface";
-import * as migrationBridge from "@/lib/migration-bridge";
+import * as preferences from "@/lib/preferences";
 import { renderWithProviders } from "./test-utils";
 
-jest.mock("@/lib/migration-bridge", () => ({
+jest.mock("@/lib/preferences", () => ({
 	getThemePreference: jest.fn(),
 	setThemePreference: jest.fn(),
 	getActiveScanId: jest.fn(),
 	setActiveScanId: jest.fn(),
 }));
 
-const mockGetThemePreference = jest.mocked(migrationBridge.getThemePreference);
-const mockSetThemePreference = jest.mocked(migrationBridge.setThemePreference);
-const mockGetActiveScanId = jest.mocked(migrationBridge.getActiveScanId);
-const mockSetActiveScanId = jest.mocked(migrationBridge.setActiveScanId);
+const mockGetThemePreference = jest.mocked(preferences.getThemePreference);
+const mockSetThemePreference = jest.mocked(preferences.setThemePreference);
+const mockGetActiveScanId = jest.mocked(preferences.getActiveScanId);
+const mockSetActiveScanId = jest.mocked(preferences.setActiveScanId);
 
 const mockGlassApiAvailable = jest.mocked(isGlassEffectAPIAvailable);
 const mockLiquidGlassAvailable = jest.mocked(isLiquidGlassAvailable);

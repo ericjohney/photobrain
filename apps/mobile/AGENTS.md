@@ -1,6 +1,6 @@
 # Mobile Agent Guide
 
-Scope: `apps/mobile`, the Expo implementation retained for Android/web plus the temporary iOS migration bridge and explicit emergency preview/Production replacement paths. The current native iOS application lives in `apps/ios`; do not implement its product behavior here.
+Scope: `apps/mobile`, the Expo implementation for Android/web. The native iOS application lives in `apps/ios`; do not implement its product behavior here.
 
 ## Active Entrypoint
 
@@ -37,8 +37,7 @@ Scope: `apps/mobile`, the Expo implementation retained for Android/web plus the 
 - `src/theme/ThemeContext.tsx`: persisted light/dark/system theme.
 - `src/config.ts`: API URL and thumbnail URL construction.
 - `src/lib/trpc-client.ts`: HTTP tRPC batch client.
-- `src/lib/migration-bridge.ts`: cross-platform theme/active-scan storage facade; on iOS it initializes and updates the versioned native migration envelope.
-- `modules/migration-bridge/`: temporary Expo iOS native module writing `com.photobrain.migration.v1` for one-time import by `apps/ios`.
+- `src/lib/preferences.ts`: AsyncStorage persistence for theme (`@photobrain/theme`) and active scan (`@photobrain/active-scan`).
 - `__tests__/`: Jest Expo tests and mocks.
 
 The shared `src/components/PhotoGrid.tsx` and `SearchBar.tsx` exist, but the active dashboard/search screens render their own specialized layouts. `Filmstrip.tsx` is used by the active loupe. Check imports before changing a shared component.
@@ -47,21 +46,19 @@ The shared `src/components/PhotoGrid.tsx` and `SearchBar.tsx` exist, but the act
 
 ```bash
 cd apps/mobile && bun run start
-cd apps/mobile && bun run ios
 cd apps/mobile && bun run android
 cd apps/mobile && bun run web
 cd apps/mobile && bun run build:web
 cd apps/mobile && bun run test
 cd apps/mobile && bun run test:ci
 cd apps/mobile && bun run typecheck
-cd apps/mobile && bun run native-migration:baseline
 ```
 
-`typecheck` runs `tsc --noEmit`. `tsconfig.json` includes both active `app/**` routes and `src/**`; tests are validated by Jest/Babel rather than this TypeScript project. `bun run ios` remains only to maintain/test the migration bridge and emergency Expo artifacts during cutover; use `apps/ios/PhotoBrain.xcodeproj` for current iOS product work.
+`typecheck` runs `tsc --noEmit`. `tsconfig.json` includes both active `app/**` routes and `src/**`; tests are validated by Jest/Babel rather than this TypeScript project. Use `apps/ios/PhotoBrain.xcodeproj` for iOS product work.
 
 ## Data and UI Flow
 
-The active layout creates one tRPC/React Query client and a `ThemeProvider`. Dashboard queries `photos` and `filterOptions`, sends `scan`, restores the active job ID through the cross-platform migration-storage facade, and combines `scanStatus` polling with Inngest Realtime. On iOS, that facade reads and updates the schema-1 `UserDefaults.standard` migration envelope; Android and web retain AsyncStorage. Search debounces trimmed input by 350 ms before calling `searchPhotos({ query, limit: 50 })`; abandoned query observers request cancellation.
+The active layout creates one tRPC/React Query client and a `ThemeProvider`. Dashboard queries `photos` and `filterOptions`, sends `scan`, restores the active job ID from AsyncStorage through `src/lib/preferences.ts`, and combines `scanStatus` polling with Inngest Realtime. Search debounces trimmed input by 350 ms before calling `searchPhotos({ query, limit: 50 })`; abandoned query observers request cancellation.
 
 Do not use React Navigation focus or navigation hooks inside `SearchScreen`. The unstable native tab host can mount the search route before a React Navigation context exists. Search queries are enabled from the debounced input alone and use `abortOnUnmount` for cancellation.
 
@@ -106,15 +103,9 @@ On iOS, tab chrome, header search, and library chrome use native controls. `Glas
 2. `EXPO_PUBLIC_API_URL`.
 3. `http://localhost:3000`.
 
-EAS build profiles in `eas.json` set `EXPO_PUBLIC_API_URL=https://photobrain-api.ericj5.com`. The `android-preview` and `android-production` profiles are the automated release receivers. The iOS-capable Production profile is retained for the explicitly dispatched emergency replacement workflow; it is not the primary iOS production lane.
+EAS build profiles in `eas.json` set `EXPO_PUBLIC_API_URL=https://photobrain-api.ericj5.com`. The `android-preview` and `android-production` profiles are the automated release receivers.
 
 Self-hosted Realtime routing comes from `realtimeToken.baseUrl`, configured on the API with `INNGEST_REALTIME_BASE_URL`. `useJobProgress` attaches a keyless Inngest client to both initial and refreshed tokens; durable polling remains the fallback. The URL must be reachable by the phone and expose `/v1/realtime/connect`. Event/signing keys stay on the API/runtime and must never be added to `EXPO_PUBLIC_*`. Existing installed clients need the updated JavaScript bundle to use this routing; their durable polling still works without it.
-
-### Temporary iOS migration bridge
-
-On iOS only, `src/lib/migration-bridge.ts` and `modules/migration-bridge` store an exact schema-1 JSON envelope in `UserDefaults.standard` under `com.photobrain.migration.v1`. Its fields are `schemaVersion`, `theme`, and the active scan UUID. On first bridge initialization, valid legacy AsyncStorage values are copied into the envelope; later Expo changes update it. The native Swift app imports the same versioned key, falls back safely for absent/invalid data, and continues owning it. Android/web continue using AsyncStorage directly.
-
-This bridge is migration scaffolding, not a second long-term state system. Preserve strict schema/version/UUID validation and the shared key until the external cutover gate permits removal; do not broaden it with photo data, credentials, or private source/artifact identities.
 
 Metro watches the monorepo and redirects `@photobrain/image-processing` to `packages/image-processing/browser.js`. Native Rust processing must not be imported into the mobile bundle.
 
@@ -122,22 +113,19 @@ Metro watches the monorepo and redirects `@photobrain/image-processing` to `pack
 
 `app.json` keeps `expo-updates` configuration for the Expo application, but the permanent `.github/workflows/build.yml` release lane is Android-only. Pushes to `main` build an `android-preview` receiver and publish an Android preview update; version tags build an `android-production` receiver and publish an Android production update. Both verify that EAS environment values match the selected build profile. That workflow never publishes an iOS OTA update and does not export Expo web.
 
-The separate manual `Expo iOS Emergency Preview Build` retains the fingerprint-compatible preview tool for migration/emergency testing. Production replacement is a different, explicitly confirmed workflow: `.github/workflows/expo-ios-emergency-production.yml`. It resolves the EAS Production environment, then locally prebuilds, manually signs, strictly inspects, retains, and uploads a full bridge-compatible replacement IPA to TestFlight. Despite retaining Expo Updates metadata for binary compatibility, this path never publishes an iOS OTA update.
+iOS Production release belongs to `.github/workflows/native-ios-release.yml` in `apps/ios`; Expo has no iOS release path.
 
-Primary iOS Production release belongs to `.github/workflows/native-ios-release.yml`. It validates the native Production contract and signing assets, archives and strictly inspects the signed IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight. Native and emergency Production workflows share `ios-production-release` concurrency and `apps/ios/scripts/allocate-app-store-build.mjs`, preventing simultaneous allocation and choosing a build number above App Store Connect history plus the run reservation floor. Operators must supply the same marketing version to the native binary and any emergency replacement; both workflows enforce `com.photobrain.app`, the production API/URL scheme, and iOS 17.0.
-
-Native iOS CI remains independent in `.github/workflows/native-ios.yml`, pinned to Xcode 26.6 and running the unsigned `PhotoBrain-Preview` configuration on an iPhone 17 Pro / iOS 26.5 simulator. Workflow definitions are not rollout evidence: signed execution, TestFlight verification, physical-device drills, and production cutover remain external gates. The Docker `mobile` target still starts Expo on port 8081 rather than producing a static web image.
+Native iOS CI remains independent in `.github/workflows/native-ios.yml`, pinned to Xcode 26.6 and running the unsigned `PhotoBrain-Preview` configuration on an iPhone 17 Pro / iOS 26.5 simulator. The Docker `mobile` target still starts Expo on port 8081 rather than producing a static web image.
 
 ## Tests
 
-Jest uses the `jest-expo` preset, `__tests__/setup.ts`, and mocks for Expo, native modules (including the migration bridge), tRPC, AsyncStorage, zoom, haptics, and Realtime. Current suites cover the Expo route tree, dashboard behavior, debounced search, filters, loupe, library state, durable progress, migration-envelope behavior, Liquid Glass fallback, and theme propagation.
+Jest uses the `jest-expo` preset, `__tests__/setup.ts`, and mocks for Expo, native modules, tRPC, AsyncStorage, zoom, haptics, and Realtime. Current suites cover the Expo route tree, dashboard behavior, debounced search, filters, loupe, library state, durable progress, preference storage, Liquid Glass fallback, and theme propagation.
 
 CI runs:
 
 ```bash
 cd apps/mobile
 bun run test:ci
-node --test scripts/ensure-preview-build.test.mjs
 ```
 
-Tests do not perform real API calls, Android EAS builds/updates, native iOS builds, or end-to-end checks of Preferences, Collections, About, and OTA behavior. The retained preview decision tests exercise only the emergency Expo iOS selection logic. Update mocks when changing request shapes, native route primitives, migration storage, or thumbnail URL behavior.
+Tests do not perform real API calls, Android EAS builds/updates, native iOS builds, or end-to-end checks of Preferences, Collections, About, and OTA behavior. Update mocks when changing request shapes, native route primitives, preference storage, or thumbnail URL behavior.

@@ -31,7 +31,7 @@ final class AppBootstrap: ObservableObject {
     @Published private(set) var configurationError: String?
 
     let links = AppLinkRouter(lane: .current)
-    private let migration = MigrationStore()
+    private let preferences = PreferencesStore()
     private var started = false
 
     func start() async {
@@ -39,8 +39,7 @@ final class AppBootstrap: ObservableObject {
         started = true
         do {
             let environment = try AppEnvironment()
-            let imported = await migration.importSchemaOne()
-            let theme = ThemeController(preference: imported.theme, migration: migration)
+            let theme = ThemeController(preference: await preferences.theme, preferences: preferences)
             let curation = PhotoCurationCenter(api: environment.api)
             let library = LibraryStore(api: environment.api, curation: curation)
             let onThisDay = OnThisDayStore(api: environment.api)
@@ -51,7 +50,7 @@ final class AppBootstrap: ObservableObject {
             let people = PeopleStore(api: environment.api)
             let review = ReviewStore(api: environment.api, curation: curation)
             let duplicates = DuplicatesStore(api: environment.api, curation: curation)
-            let scans = ScanCoordinator(api: environment.api, migration: migration)
+            let scans = ScanCoordinator(api: environment.api, preferences: preferences)
             scans.invalidateLibrary = { [weak library, weak onThisDay, weak review, weak duplicates] in
                 await library?.load()
                 await onThisDay?.load()
@@ -63,7 +62,7 @@ final class AppBootstrap: ObservableObject {
                       !search.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                 search.retry()
             }
-            await scans.restore(importedActiveID: imported.activeScanID)
+            await scans.restore(savedActiveID: await preferences.activeScanID)
             BackupRuntime.shared.coordinator?.onFileCreated = { [weak scans] in scans?.expectImport() }
             self.environment = environment
             self.theme = theme

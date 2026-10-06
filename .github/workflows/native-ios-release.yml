@@ -14,7 +14,7 @@ on:
         type: string
         default: PhotoBrain-Production
       marketing_version:
-        description: App Store marketing version shared by native and emergency replacement builds
+        description: App Store marketing version
         required: true
         type: string
         default: 1.0.0

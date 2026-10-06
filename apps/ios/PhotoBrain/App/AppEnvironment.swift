@@ -117,164 +117,54 @@ enum ThemePreference: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
-struct MigrationEnvelope: Codable, Equatable, Sendable {
-    let schemaVersion: Int
-    let theme: ThemePreference
-    let activeScanId: String?
-
-    init(schemaVersion: Int = 1, theme: ThemePreference, activeScanId: String?) {
-        self.schemaVersion = schemaVersion
-        self.theme = theme
-        self.activeScanId = activeScanId
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case schemaVersion
-        case theme
-        case activeScanId
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == 1 else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .schemaVersion,
-                in: container,
-                debugDescription: "Unsupported migration schema"
-            )
-        }
-        theme = try container.decode(ThemePreference.self, forKey: .theme)
-        guard container.contains(.activeScanId) else {
-            throw DecodingError.keyNotFound(
-                CodingKeys.activeScanId,
-                .init(codingPath: decoder.codingPath, debugDescription: "Missing activeScanId")
-            )
-        }
-        let decodedID = try container.decodeIfPresent(String.self, forKey: .activeScanId)
-        if let decodedID {
-            guard UUID(uuidString: decodedID) != nil else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .activeScanId,
-                    in: container,
-                    debugDescription: "activeScanId is not a UUID"
-                )
-            }
-            activeScanId = decodedID.lowercased()
-        } else {
-            activeScanId = nil
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(schemaVersion, forKey: .schemaVersion)
-        try container.encode(theme, forKey: .theme)
-        if let activeScanId {
-            try container.encode(activeScanId, forKey: .activeScanId)
-        } else {
-            try container.encodeNil(forKey: .activeScanId)
-        }
-    }
-}
-
-struct MigrationImport: Equatable, Sendable {
-    let theme: ThemePreference
-    let activeScanID: String?
-}
-
-actor MigrationStore {
-    static let envelopeKey = "com.photobrain.migration.v1"
-
-    private enum EnvelopeState {
-        case absent
-        case valid(MigrationEnvelope)
-        case invalid
-    }
+/// Device-local preferences that survive relaunch: the theme and the scan to resume tracking.
+actor PreferencesStore {
+    static let themeKey = "com.photobrain.theme"
+    static let activeScanIDKey = "com.photobrain.activeScanId"
 
     private let defaults: UserDefaults
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        encoder.outputFormatting = [.sortedKeys]
     }
 
-    func importSchemaOne() -> MigrationImport {
-        switch envelopeState() {
-        case let .valid(envelope):
-            return MigrationImport(theme: envelope.theme, activeScanID: envelope.activeScanId)
-        case .absent:
-            let envelope = MigrationEnvelope(theme: .system, activeScanId: nil)
-            write(envelope)
-            return MigrationImport(theme: .system, activeScanID: nil)
-        case .invalid:
-            return MigrationImport(theme: .system, activeScanID: nil)
-        }
+    var theme: ThemePreference {
+        defaults.string(forKey: Self.themeKey).flatMap(ThemePreference.init(rawValue:)) ?? .system
+    }
+
+    /// The saved non-terminal scan, lowercased; nil when absent or not a UUID.
+    var activeScanID: String? {
+        guard let id = defaults.string(forKey: Self.activeScanIDKey),
+              UUID(uuidString: id) != nil else { return nil }
+        return id.lowercased()
     }
 
     func setTheme(_ theme: ThemePreference) {
-        mutateEnvelope { envelope in
-            MigrationEnvelope(theme: theme, activeScanId: envelope.activeScanId)
-        }
+        defaults.set(theme.rawValue, forKey: Self.themeKey)
     }
 
     func setActiveScanID(_ id: String?) {
-        let normalizedID: String?
-        if let id {
-            guard UUID(uuidString: id) != nil else { return }
-            normalizedID = id.lowercased()
-        } else {
-            normalizedID = nil
+        guard let id else {
+            defaults.removeObject(forKey: Self.activeScanIDKey)
+            return
         }
-        mutateEnvelope { envelope in
-            MigrationEnvelope(theme: envelope.theme, activeScanId: normalizedID)
-        }
-    }
-
-    private func mutateEnvelope(
-        _ mutation: (MigrationEnvelope) -> MigrationEnvelope
-    ) {
-        switch envelopeState() {
-        case let .valid(envelope):
-            write(mutation(envelope))
-        case .absent:
-            write(mutation(MigrationEnvelope(theme: .system, activeScanId: nil)))
-        case .invalid:
-            break
-        }
-    }
-
-    private func envelopeState() -> EnvelopeState {
-        guard let value = defaults.object(forKey: Self.envelopeKey) else {
-            return .absent
-        }
-        guard let data = value as? Data,
-              let envelope = try? decoder.decode(MigrationEnvelope.self, from: data) else {
-            return .invalid
-        }
-        return .valid(envelope)
-    }
-
-    private func write(_ envelope: MigrationEnvelope) {
-        guard let data = try? encoder.encode(envelope) else { return }
-        defaults.set(data, forKey: Self.envelopeKey)
+        guard UUID(uuidString: id) != nil else { return }
+        defaults.set(id.lowercased(), forKey: Self.activeScanIDKey)
     }
 }
 
 @MainActor
 final class ThemeController: ObservableObject {
     @Published private(set) var preference: ThemePreference
-    private let migration: MigrationStore
+    private let preferences: PreferencesStore
 
-    init(preference: ThemePreference, migration: MigrationStore) {
+    init(preference: ThemePreference, preferences: PreferencesStore) {
         self.preference = preference
-        self.migration = migration
+        self.preferences = preferences
     }
 
     func select(_ preference: ThemePreference) {
         self.preference = preference
-        Task { await migration.setTheme(preference) }
+        Task { await preferences.setTheme(preference) }
     }
 }

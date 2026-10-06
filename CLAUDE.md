@@ -19,7 +19,7 @@ Read the guide for the area being changed:
 - [API and background jobs](apps/api/AGENTS.md)
 - [Web application](apps/web/AGENTS.md)
 - [Native iOS application source and XCTest](apps/ios)
-- [Expo Android/web application and temporary iOS migration bridge](apps/mobile/AGENTS.md)
+- [Expo Android/web application](apps/mobile/AGENTS.md)
 - [Rust image processing](packages/image-processing/AGENTS.md)
 - [Database and migrations](packages/db/AGENTS.md)
 - [Shared utilities](packages/utils/AGENTS.md)
@@ -35,7 +35,7 @@ apps/
   api/                    Hono server, tRPC router, REST file routes, Inngest functions
   web/                    React/Vite browser application
   ios/                    Native SwiftUI/UIKit iOS application (iOS 17+)
-  mobile/                 Expo/React Native Android/web app and temporary iOS migration bridge
+  mobile/                 Expo/React Native Android/web app
 packages/
   config/                 Shared TypeScript configuration package
   db/                     Drizzle schema and migration files
@@ -237,7 +237,7 @@ It injects `window.__CONFIG__` into `index.html`, allowing the API URL to change
 
 ### Mobile clients
 
-The native Swift app reads `PhotoBrainAPIURL` from the selected configuration under `apps/ios/Config`: Debug uses local HTTP, while Preview and Production require a non-local HTTPS origin. The Expo app reads `EXPO_PUBLIC_API_URL` from `apps/mobile/src/config.ts`, with a fallback to `http://localhost:3000`; EAS profiles set `https://photobrain-api.ericj5.com`. Expo is the Android/web implementation. Its iOS module temporarily maintains the versioned theme/active-scan migration envelope consumed by the native app.
+The native Swift app reads `PhotoBrainAPIURL` from the selected configuration under `apps/ios/Config`: Debug uses local HTTP, while Preview and Production require a non-local HTTPS origin. The Expo app reads `EXPO_PUBLIC_API_URL` from `apps/mobile/src/config.ts`, with a fallback to `http://localhost:3000`; EAS profiles set `https://photobrain-api.ericj5.com`. Expo is the Android/web implementation.
 
 ## API Contract Summary
 
@@ -364,7 +364,7 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 
 ### Native iOS
 
-`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering (media type, EXIF, minimum rating, flag), semantic search scoped by the shared Library filter sheet, loupe **Find Similar** results, loupe star/Pick/Reject curation (`PhotoCurationCenter` coalesces in-flight PATCHes per photo and rolls back on failure across Library, Search, and Similar), collections (cover-card grid with create/rename/delete, collection-scoped grid/loupe detail, loupe **Add to Collection** sheet), theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. The migration store imports the versioned theme/active-scan envelope written by the temporary Expo iOS bridge.
+`apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library, Collections, and Search tabs; a grid and loupe; filtering (media type, EXIF, minimum rating, flag), semantic search scoped by the shared Library filter sheet, loupe **Find Similar** results, loupe star/Pick/Reject curation (`PhotoCurationCenter` coalesces in-flight PATCHes per photo and rolls back on failure across Library, Search, and Similar), collections (cover-card grid with create/rename/delete, collection-scoped grid/loupe detail, loupe **Add to Collection** sheet), theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. `PreferencesStore` (`apps/ios/PhotoBrain/App/AppEnvironment.swift`) persists theme and the active scan ID in `UserDefaults.standard` under `com.photobrain.theme` and `com.photobrain.activeScanId`.
 
 Automatic tags on iOS: the shared filter sheet has a Tag picker with counts (summary `#tag`) feeding Library and Search, and the loupe info sheet shows the photo's tag chips; tapping a chip closes the loupe, switches to Library, and adds that tag to the existing Library filters.
 
@@ -394,9 +394,9 @@ Backup on iOS: Settings → Backup turns on camera-roll backup (asking for Photo
 
 ### Expo Android/web
 
-The Expo entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint and is not the configured route tree or the target of active navigation tests. The Expo implementation remains current for Android/web and keeps an iOS build path only for the temporary migration bridge and explicit emergency preview/Production replacement workflows.
+The Expo entrypoint is `expo-router/entry`; routes live in `apps/mobile/app/`. `apps/mobile/App.tsx` is a legacy React Navigation entrypoint and is not the configured route tree or the target of active navigation tests. The Expo implementation targets Android and web; it has no iOS release path. Theme and active scan persist in AsyncStorage through `apps/mobile/src/lib/preferences.ts`.
 
-The Expo route tree retains Library, Collections, and an isolated Search tab. Library has a persistent header with live scrolling-grid blur and a visible-photo date, a continuous five-column phone grid ordered oldest-to-newest and opened at its newest edge, basic selection, EXIF filters, durable scan progress, and metadata. Scrolling back in time replaces the native tabs with a collapsed Collections + Years/Months/All + Search browsing bar. The modal loupe combines paged swipes, platform-native pinch zoom, a synchronized thumbnail filmstrip, and compact date/time and info controls. Search uses a 350 ms cancellable debounce. Its iOS-specific search bar, safe-area, and Liquid Glass behavior remains relevant only to bridge/emergency builds; Android and unsupported environments use their existing fallbacks.
+The Expo route tree retains Library, Collections, and an isolated Search tab. Library has a persistent header with live scrolling-grid blur and a visible-photo date, a continuous five-column phone grid ordered oldest-to-newest and opened at its newest edge, basic selection, EXIF filters, durable scan progress, and metadata. Scrolling back in time replaces the native tabs with a collapsed Collections + Years/Months/All + Search browsing bar. The modal loupe combines paged swipes, platform-native pinch zoom, a synchronized thumbnail filmstrip, and compact date/time and info controls. Search uses a 350 ms cancellable debounce. Its Liquid Glass and iOS-specific search bar code paths are inactive on Android/web, which use their existing fallbacks.
 
 Library Options offers incremental **Scan Library** and a separately confirmed **Reprocess all photos** action. Both are disabled during saved-scan recovery, dispatch, or an active scan.
 
@@ -414,7 +414,7 @@ There is no worker image and the mobile Docker target is not a static Expo web-e
 
 `.github/workflows/build.yml` currently:
 
-- Runs API tests/typecheck, web Playwright tests, Expo Jest tests, and retained emergency-preview decision tests.
+- Runs API tests/typecheck, web Playwright tests, and Expo Jest tests.
 - Builds Android preview receivers and publishes Android preview EAS updates on `main`.
 - Builds Android production receivers and publishes Android production EAS updates on version tags.
 - Builds and pushes API, web, and mobile Docker targets.
@@ -422,9 +422,7 @@ There is no worker image and the mobile Docker target is not a static Expo web-e
 
 Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. The manual `.github/workflows/native-ios-release.yml` validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 
-`.github/workflows/expo-ios-emergency-production.yml` is a manually confirmed, bridge-compatible emergency Production replacement. It resolves the EAS Production environment but builds, signs, inspects, retains, and uploads a full replacement IPA to TestFlight; it is explicitly never an OTA release. Native and emergency Production workflows share the serialized `ios-production-release` concurrency group and `apps/ios/scripts/allocate-app-store-build.mjs`, which chooses a build number above both App Store Connect history and the run reservation floor. Operators must pass the same App Store marketing version to a native release and any replacement; both lanes enforce the production bundle/API contract and iOS 17.0 minimum.
-
-The permanent `.github/workflows/build.yml` never publishes iOS OTA updates. Its EAS release work is explicitly Android-only for preview on `main` and production on version tags. The workflow definitions are implemented controls, not evidence that signed execution or upload has occurred: physical-device drills, signed workflow execution, TestFlight verification, and production cutover remain external release gates.
+The permanent `.github/workflows/build.yml` never publishes iOS OTA updates. Its EAS release work is explicitly Android-only for preview on `main` and production on version tags. `native-ios-release.yml` serializes on the `ios-production-release` concurrency group and uses `apps/ios/scripts/allocate-app-store-build.mjs`, which chooses a build number above both App Store Connect history and the run reservation floor; it enforces the production bundle/API contract and iOS 17.0 minimum.
 
 The API and worker must not be described as separate services unless a future change actually introduces a worker. Production still requires a reachable Inngest runtime for asynchronous processing and shared access to the SQLite database, photo directory, and thumbnail directory.
 

@@ -55,7 +55,7 @@ final class ScanCoordinator: ObservableObject {
     @Published private(set) var pendingForce = false
 
     private let api: any PhotoBrainAPI
-    private let migration: MigrationStore
+    private let preferences: PreferencesStore
     private var selectedID: String?
     private var selectedClassifiedStalled = false
     private var pollingTask: Task<Void, Never>?
@@ -75,9 +75,9 @@ final class ScanCoordinator: ObservableObject {
 
     var isImportPending: Bool { pendingImport != nil }
 
-    init(api: any PhotoBrainAPI, migration: MigrationStore) {
+    init(api: any PhotoBrainAPI, preferences: PreferencesStore) {
         self.api = api
-        self.migration = migration
+        self.preferences = preferences
     }
 
     var isActive: Bool {
@@ -135,10 +135,10 @@ final class ScanCoordinator: ObservableObject {
         }
     }
 
-    func restore(importedActiveID: String?) async {
+    func restore(savedActiveID: String?) async {
         isRestoring = true
-        if let importedActiveID {
-            selectedID = importedActiveID
+        if let savedActiveID {
+            selectedID = savedActiveID
             await pollOnce(reconcileResolvedSelection: false)
         }
         await refreshActiveSnapshot(trigger: .restore)
@@ -463,9 +463,9 @@ final class ScanCoordinator: ObservableObject {
             selectedClassifiedStalled = ScanPollingPolicy.isStalled(scan)
         }
         if scan.isTerminal {
-            await migration.setActiveScanID(nil)
+            await preferences.setActiveScanID(nil)
         } else {
-            await migration.setActiveScanID(scan.id)
+            await preferences.setActiveScanID(scan.id)
         }
     }
 
@@ -477,7 +477,7 @@ final class ScanCoordinator: ObservableObject {
         selectedID = nil
         selectedScan = nil
         selectedClassifiedStalled = false
-        await migration.setActiveScanID(nil)
+        await preferences.setActiveScanID(nil)
     }
 
     private func invalidateStatusRequest() {

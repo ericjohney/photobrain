@@ -49,7 +49,7 @@ import {
 	useJobProgress,
 } from "@/hooks/use-job-progress";
 import { useLibraryState } from "@/hooks/use-library-state";
-import { getActiveScanId, setActiveScanId } from "@/lib/migration-bridge";
+import { getActiveScanId, setActiveScanId } from "@/lib/preferences";
 import { trpc } from "@/lib/trpc";
 import { useTabBarVisibility } from "@/navigation/tab-bar-visibility";
 import { useTheme } from "@/theme";

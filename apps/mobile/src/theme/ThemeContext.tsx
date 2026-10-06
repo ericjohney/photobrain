@@ -9,12 +9,12 @@ import {
 import { Appearance, Platform, useColorScheme } from "react-native";
 import {
 	getThemePreference,
-	type MigrationTheme,
 	setThemePreference as persistThemePreference,
-} from "@/lib/migration-bridge";
+	type ThemePreference,
+} from "@/lib/preferences";
 import { type ColorTheme, colors, type ThemeColors } from "./colors";
 
-export type ThemePreference = MigrationTheme;
+export type { ThemePreference };
 
 interface ThemeContextValue {
 	theme: ColorTheme;
