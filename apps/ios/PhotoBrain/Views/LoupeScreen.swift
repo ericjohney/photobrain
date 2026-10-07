@@ -9,7 +9,6 @@ struct LoupeScreen: View {
     let dismiss: () -> Void
     /// Set when presented from Review: shows Reject/Keep instead of rating and flag controls.
     var review: LoupeReviewActions?
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var chromeVisible = true
@@ -84,21 +83,22 @@ struct LoupeScreen: View {
             .ignoresSafeArea()
 
             if chromeVisible {
-                VStack(spacing: 0) {
+                VStack(spacing: PBSpacing.s) {
                     topChrome
                     if let message = review?.errorMessage {
-                        reviewError(message)
+                        PBBanner(message: "Couldn’t save review. \(message)", dismiss: { review?.dismissError() })
                     } else if case let .failed(failure) = exports.state {
-                        ErrorBanner(
+                        PBBanner(
                             message: "Couldn’t share. \(failure.message)",
                             retry: failure.retryTarget.map { _ in { exports.retry() } },
                             dismiss: exports.dismissError
                         )
                     } else if let message = curation.errorMessage {
-                        curationError(message)
+                        PBBanner(message: "Couldn’t save rating. \(message)", dismiss: { curation.dismissError() })
                     }
                     overlayControls
                     Spacer()
+                    filmstrip
                     if let activeRecord {
                         if let review {
                             reviewBar(activeRecord, review: review)
@@ -106,8 +106,8 @@ struct LoupeScreen: View {
                             curationBar(activeRecord)
                         }
                     }
-                    filmstrip
                 }
+                .padding(.bottom, PBSpacing.xs)
                 .transition(.opacity)
             }
         }
@@ -140,61 +140,63 @@ struct LoupeScreen: View {
         }
     }
 
+    /// Close, a centered title (place when known, else date; date and time beneath), and Info.
     private var topChrome: some View {
-        HStack(spacing: 12) {
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.headline)
-                    .frame(width: 36, height: 36)
-            }
-            .accessibilityLabel("Close photo")
-            Spacer(minLength: 4)
+        HStack(spacing: PBSpacing.m) {
+            GlassIconButton(systemImage: "chevron.down", accessibilityLabel: "Close photo", dark: true, action: dismiss)
+            Spacer(minLength: 0)
             if let activeRecord {
-                VStack(spacing: 1) {
-                    Text(PhotoDateResolver.date(for: activeRecord), format: .dateTime.month(.abbreviated).day().year())
-                        .font(.subheadline.weight(.semibold))
-                    Text(PhotoDateResolver.date(for: activeRecord), format: .dateTime.hour().minute())
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .lineLimit(1)
+                LoupeTitle(photo: activeRecord, api: api, position: position)
+                    .id(activeRecord.id)
             }
-            Spacer(minLength: 4)
-            Text("\((records.firstIndex { $0.id == activeID } ?? 0) + 1) of \(records.count)")
-                .font(.caption.monospacedDigit())
-                .accessibilityLabel("Photo \((records.firstIndex { $0.id == activeID } ?? 0) + 1) of \(records.count)")
-            shareMenu
-            Button {
-                collectionSheetPhotoID = activeRecord.map { CollectionSheetTarget(id: $0.id) }
-            } label: {
-                Image(systemName: "rectangle.stack.badge.plus")
-                    .font(.title3)
-                    .frame(width: 36, height: 36)
-            }
-            .disabled(activeRecord == nil)
-            .accessibilityLabel("Add to Collection")
-            Button {
-                similarSource = activeRecord
-            } label: {
-                Image(systemName: "sparkle.magnifyingglass")
-                    .font(.title3)
-                    .frame(width: 36, height: 36)
-            }
-            .disabled(activeRecord == nil)
-            .accessibilityLabel("Find Similar")
-            Button {
+            Spacer(minLength: 0)
+            GlassIconButton(systemImage: "info", accessibilityLabel: "Photo info", dark: true) {
                 showingInfo = true
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.title3)
-                    .frame(width: 36, height: 36)
             }
-            .accessibilityLabel("Photo info")
+            .disabled(activeRecord == nil)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
-        .padding(.bottom, 8)
-        .background(chromeBackground)
+        .padding(.horizontal, PBSpacing.m)
+        .padding(.top, PBSpacing.xs)
+    }
+
+    /// `(index, count)` of the open photo, for the title's accessibility value.
+    private var position: (Int, Int) {
+        ((records.firstIndex { $0.id == activeID } ?? 0) + 1, records.count)
+    }
+
+    /// Share (export sizes) and everything else that acts on the open photo.
+    private var moreMenu: some View {
+        Menu {
+            if let activeRecord {
+                Section {
+                    Button {
+                        collectionSheetPhotoID = CollectionSheetTarget(id: activeRecord.id)
+                    } label: {
+                        Label("Add to Collection", systemImage: "rectangle.stack.badge.plus")
+                    }
+                    Button {
+                        similarSource = activeRecord
+                    } label: {
+                        Label("Find Similar", systemImage: "sparkle.magnifyingglass")
+                    }
+                    if !activeRecord.isVideo {
+                        Button {
+                            let record = activeRecord
+                            Task { await faceBoxes.setShowing(!faceBoxes.isShowing, photo: record) }
+                        } label: {
+                            Label(
+                                faceBoxes.isShowing ? "Hide Faces" : "Show Faces",
+                                systemImage: faceBoxes.isShowing ? "person.crop.square.fill" : "person.crop.square"
+                            )
+                        }
+                    }
+                }
+            }
+        } label: {
+            GlassIconLabel(systemImage: "ellipsis", dark: true)
+        }
+        .disabled(activeRecord == nil)
+        .accessibilityLabel("More")
     }
 
     private var shareMenu: some View {
@@ -209,55 +211,64 @@ struct LoupeScreen: View {
                 }
             }
         } label: {
-            Image(systemName: "square.and.arrow.up")
-                .font(.title3)
-                .frame(width: 36, height: 36)
+            GlassIconLabel(systemImage: "square.and.arrow.up", dark: true)
         }
         .disabled(activeRecord == nil || exports.isBusy)
         .accessibilityLabel("Share")
     }
 
+    /// Share, a glass capsule with stars and Pick/Reject, and More.
     private func curationBar(_ photo: PhotoRecord) -> some View {
         let current = PhotoCuration(photo)
-        return HStack(spacing: 2) {
-            ForEach(1...5, id: \.self) { stars in
-                Button {
-                    curation.update(photo, patch: .toggledRating(stars, current: current))
-                } label: {
-                    Image(systemName: stars <= current.rating ? "star.fill" : "star")
-                        .font(.title3)
-                        .foregroundStyle(stars <= current.rating ? Color.yellow : Color.white)
-                        .frame(width: 40, height: 40)
+        return HStack(spacing: PBSpacing.s) {
+            shareMenu
+            Spacer(minLength: 0)
+            HStack(spacing: 0) {
+                ForEach(1...5, id: \.self) { stars in
+                    Button {
+                        curation.update(photo, patch: .toggledRating(stars, current: current))
+                    } label: {
+                        Image(systemName: stars <= current.rating ? "star.fill" : "star")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(stars <= current.rating ? PBColor.rating : Color.white.opacity(0.85))
+                            .frame(width: 30, height: PBSize.control)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel(stars == 1 ? "Rate 1 star" : "Rate \(stars) stars")
+                    .accessibilityAddTraits(current.rating == stars ? .isSelected : [])
                 }
-                .accessibilityLabel(stars == 1 ? "Rate 1 star" : "Rate \(stars) stars")
-                .accessibilityAddTraits(current.rating == stars ? .isSelected : [])
+                Divider()
+                    .frame(height: 20)
+                    .overlay(Color.white.opacity(0.3))
+                    .padding(.horizontal, PBSpacing.xs)
+                flagButton(photo, current: current, flag: .pick)
+                flagButton(photo, current: current, flag: .reject)
             }
-            Spacer(minLength: 8)
-            Button {
-                curation.update(photo, patch: .toggledFlag(.pick, current: current))
-            } label: {
-                Image(systemName: current.flag == .pick ? "flag.fill" : "flag")
-                    .font(.title3)
-                    .foregroundStyle(current.flag == .pick ? Color.green : Color.white)
-                    .frame(width: 44, height: 40)
-            }
-            .accessibilityLabel("Pick")
-            .accessibilityAddTraits(current.flag == .pick ? .isSelected : [])
-            Button {
-                curation.update(photo, patch: .toggledFlag(.reject, current: current))
-            } label: {
-                Image(systemName: current.flag == .reject ? "xmark.circle.fill" : "xmark.circle")
-                    .font(.title3)
-                    .foregroundStyle(current.flag == .reject ? Color.red : Color.white)
-                    .frame(width: 44, height: 40)
-            }
-            .accessibilityLabel("Reject")
-            .accessibilityAddTraits(current.flag == .reject ? .isSelected : [])
+            .buttonStyle(.plain)
+            .padding(.horizontal, PBSpacing.s)
+            .pbGlass(in: Capsule(), dark: true)
+            .fixedSize()
+            Spacer(minLength: 0)
+            moreMenu
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 2)
-        .background(chromeBackground)
+        .padding(.horizontal, PBSpacing.m)
+    }
+
+    private func flagButton(_ photo: PhotoRecord, current: PhotoCuration, flag: PhotoFlag) -> some View {
+        let isOn = current.flag == flag
+        let symbol = flag == .pick ? "flag" : "xmark.circle"
+        let color = flag == .pick ? PBColor.pick : PBColor.reject
+        return Button {
+            curation.update(photo, patch: .toggledFlag(flag, current: current))
+        } label: {
+            Image(systemName: isOn ? "\(symbol).fill" : symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isOn ? color : Color.white.opacity(0.85))
+                .frame(width: 36, height: PBSize.control)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(flag == .pick ? "Pick" : "Reject")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     private func reviewBar(_ photo: PhotoRecord, review: LoupeReviewActions) -> some View {
@@ -287,60 +298,19 @@ struct LoupeScreen: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(chromeBackground)
+        .padding(PBSpacing.m)
+        .pbGlass(in: RoundedRectangle(cornerRadius: PBRadius.hero, style: .continuous), dark: true)
+        .padding(.horizontal, PBSpacing.m)
     }
 
-    private func reviewError(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-            Text("Couldn’t save review. \(message)")
-                .lineLimit(2)
-            Spacer(minLength: 4)
-            Button {
-                review?.dismissError()
-            } label: {
-                Image(systemName: "xmark")
-                    .frame(width: 32, height: 32)
-            }
-            .accessibilityLabel("Dismiss error")
-        }
-        .font(.caption)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.85))
-        .accessibilityElement(children: .combine)
-    }
-
-    private func curationError(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-            Text("Couldn’t save rating. \(message)")
-                .lineLimit(2)
-            Spacer(minLength: 4)
-            Button {
-                curation.dismissError()
-            } label: {
-                Image(systemName: "xmark")
-                    .frame(width: 32, height: 32)
-            }
-            .accessibilityLabel("Dismiss error")
-        }
-        .font(.caption)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.85))
-        .accessibilityElement(children: .combine)
-    }
-
+    /// Compact Photos-style strip: narrow frames with the open photo widened and outlined.
     private var filmstrip: some View {
-        ScrollViewReader { proxy in
+        let height: CGFloat = dynamicTypeSize.isAccessibilitySize ? 56 : 40
+        return ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 4) {
+                LazyHStack(spacing: 2) {
                     ForEach(records) { photo in
+                        let isActive = photo.id == activeID
                         Button {
                             activeID = photo.id
                         } label: {
@@ -349,36 +319,36 @@ struct LoupeScreen: View {
                                 url: photo.thumbnailURL,
                                 contentMode: .fill,
                                 showsRetry: false,
-                                targetSize: CGSize(width: 58, height: 58)
+                                targetSize: CGSize(width: height * 1.4, height: height)
                             ) {
                                 Color(uiColor: SyntheticThumbnail.color(id: photo.id))
                             }
-                            .frame(width: 58, height: 58)
+                            .frame(width: isActive ? height * 1.4 : height * 0.62, height: height)
                             .clipped()
                             .opacity(photo.isRejected ? 0.35 : 1)
+                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                             .overlay {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(photo.id == activeID ? Color.white : Color.clear, lineWidth: 3)
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .stroke(isActive ? Color.white : Color.clear, lineWidth: 2)
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .padding(.horizontal, isActive ? 4 : 0)
                         }
                         .buttonStyle(.plain)
                         .id(photo.id)
                         .accessibilityLabel("Open \(photo.filename)")
-                        .accessibilityAddTraits(photo.id == activeID ? .isSelected : [])
+                        .accessibilityAddTraits(isActive ? .isSelected : [])
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.vertical, 2)
             }
-            .frame(height: dynamicTypeSize.isAccessibilitySize ? 92 : 78)
-            .background(chromeBackground)
+            .contentMargins(.horizontal, 160, for: .scrollContent)
+            .frame(height: height + 4)
             .onAppear { proxy.scrollTo(activeID, anchor: .center) }
             .onChange(of: activeID) { _, newID in
                 if reduceMotion {
                     proxy.scrollTo(newID, anchor: .center)
                 } else {
-                    withAnimation(.easeOut(duration: 0.15)) {
+                    withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(newID, anchor: .center)
                     }
                 }
@@ -390,15 +360,14 @@ struct LoupeScreen: View {
     @ViewBuilder
     private var overlayControls: some View {
         let hasLive = activeRecord?.motionVideoURL != nil
-        let canShowFaces = activeRecord.map { !$0.isVideo } ?? false
+        let canShowFaces = faceBoxes.isShowing && (activeRecord.map { !$0.isVideo } ?? false)
         if hasLive || canShowFaces {
             HStack(spacing: 8) {
                 if hasLive { liveButton }
                 if canShowFaces { facesButton }
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
+            .padding(.horizontal, PBSpacing.m)
         }
     }
 
@@ -416,10 +385,10 @@ struct LoupeScreen: View {
                 systemImage: showing ? "person.crop.square.fill" : "person.crop.square"
             )
             .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(Color.black.opacity(showing ? 0.72 : 0.5)))
-            .foregroundStyle(showing ? Color.yellow : Color.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .foregroundStyle(Color.yellow)
+            .pbGlass(in: Capsule(), interactive: true, dark: true)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show Faces")
@@ -442,10 +411,10 @@ struct LoupeScreen: View {
         } label: {
             Label("LIVE", systemImage: "livephoto")
                 .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(Color.black.opacity(playing ? 0.72 : 0.5)))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
                 .foregroundStyle(playing ? Color.yellow : Color.white)
+                .pbGlass(in: Capsule(), interactive: true, dark: true)
         }
         .buttonStyle(.plain)
         .disabled(playing)
@@ -453,14 +422,6 @@ struct LoupeScreen: View {
         .accessibilityValue(playing ? "Playing" : "")
     }
 
-    @ViewBuilder
-    private var chromeBackground: some View {
-        if reduceTransparency {
-            Color.black.opacity(0.94)
-        } else {
-            Rectangle().fill(.ultraThinMaterial)
-        }
-    }
 }
 
 private struct CollectionSheetTarget: Identifiable {
@@ -499,22 +460,8 @@ private struct PhotoMetadataView: View {
         NavigationStack {
             List {
                 Section {
-                    HStack {
-                        Spacer()
-                        RemotePhotoImage(
-                            photo: photo,
-                            url: photo.thumbnailURL,
-                            contentMode: .fit,
-                            showsRetry: false,
-                            targetSize: CGSize(width: 240, height: 180)
-                        ) {
-                            Color(uiColor: SyntheticThumbnail.color(id: photo.id))
-                        }
-                        .frame(width: 240, height: 180)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .accessibilityLabel("Thumbnail for \(photo.filename)")
-                        Spacer()
-                    }
+                    PhotoInfoSummary(photo: photo)
+                        .listRowInsets(EdgeInsets(top: PBSpacing.m, leading: PBSpacing.l, bottom: PBSpacing.m, trailing: PBSpacing.l))
                 }
                 Section("Tags") {
                     tagContent
@@ -616,7 +563,9 @@ private struct PhotoMetadataView: View {
                 }
             }
         }
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .presentationBackgroundInteraction(.enabled(upThrough: .medium))
     }
 
     @ViewBuilder
@@ -653,9 +602,10 @@ private struct PhotoMetadataView: View {
         let label = Text(name)
             .font(.subheadline)
             .lineLimit(1)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, PBSpacing.m)
             .padding(.vertical, 6)
-            .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+            .foregroundStyle(PBColor.accent)
+            .background(Capsule().fill(PBColor.accent.opacity(0.15)))
         if let onSelect {
             Button {
                 onSelect(.tag(tag.tag))
@@ -717,5 +667,108 @@ private struct PhotoMetadataView: View {
                     .textSelection(.enabled)
             }
         }
+    }
+}
+
+/// The loupe's centered glass title: the photo's city when it has one, else its date, with
+/// the date and time beneath. The place loads only for geotagged photos.
+private struct LoupeTitle: View {
+    let photo: PhotoRecord
+    let position: (Int, Int)
+    @StateObject private var place: PhotoPlaceStore
+
+    init(photo: PhotoRecord, api: any PhotoBrainAPI, position: (Int, Int)) {
+        self.photo = photo
+        self.position = position
+        _place = StateObject(wrappedValue: PhotoPlaceStore(photoID: photo.id, api: api))
+    }
+
+    var body: some View {
+        let date = PhotoDateResolver.date(for: photo)
+        VStack(spacing: 0) {
+            if let city = place.place?.city {
+                Text(city)
+                    .font(.subheadline.weight(.semibold))
+                Text(date, format: .dateTime.month(.abbreviated).day().year().hour().minute())
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.75))
+            } else {
+                Text(date, format: .dateTime.month(.abbreviated).day().year())
+                    .font(.subheadline.weight(.semibold))
+                Text(date, format: .dateTime.hour().minute())
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .foregroundStyle(.white)
+        .padding(.horizontal, PBSpacing.l)
+        .frame(minHeight: PBSize.control)
+        .pbGlass(in: Capsule(), dark: true)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue("Photo \(position.0) of \(position.1)")
+        .task {
+            guard PhotoCoordinate(exif: photo.exif) != nil else { return }
+            await place.load()
+        }
+    }
+}
+
+/// The info sheet's header card: weekday, date and file name, then camera, lens, and an
+/// exposure strip (ISO, focal length, aperture, shutter, format).
+private struct PhotoInfoSummary: View {
+    let photo: PhotoRecord
+
+    var body: some View {
+        let date = PhotoDateResolver.date(for: photo)
+        VStack(alignment: .leading, spacing: PBSpacing.m) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(date, format: .dateTime.weekday(.wide))
+                    .font(.title3.weight(.bold))
+                Text("\(date.formatted(.dateTime.month(.wide).day().year().hour().minute())) · \(photo.filename)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            if let exif = photo.exif, exif.cameraDescription != nil || exif.lensModel != nil || !exposure.isEmpty {
+                VStack(alignment: .leading, spacing: PBSpacing.s) {
+                    if let camera = exif.cameraDescription {
+                        Text(camera).font(.subheadline.weight(.semibold))
+                    }
+                    if let lens = exif.lensModel {
+                        Text(lens).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    if !exposure.isEmpty {
+                        HStack {
+                            ForEach(Array(exposure.enumerated()), id: \.offset) { index, value in
+                                if index > 0 { Spacer(minLength: PBSpacing.xs) }
+                                Text(value)
+                            }
+                        }
+                        .font(.caption.monospacedDigit().weight(.medium))
+                        .padding(.top, 2)
+                    }
+                }
+                .padding(PBSpacing.m)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: PBRadius.card, style: .continuous)
+                        .fill(Color(uiColor: .tertiarySystemFill))
+                )
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var exposure: [String] {
+        guard let exif = photo.exif else { return [] }
+        var values: [String] = []
+        if let iso = exif.iso { values.append("ISO \(iso)") }
+        if let focal = exif.focalLength { values.append("\(focal) mm") }
+        if let aperture = exif.aperture { values.append(aperture.hasPrefix("f") || aperture.hasPrefix("ƒ") ? aperture : "ƒ\(aperture)") }
+        if let shutter = exif.shutterSpeed { values.append(shutter) }
+        if let format = photo.formatBadge { values.append(format) }
+        return values
     }
 }

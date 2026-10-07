@@ -8,66 +8,60 @@ struct EventRoute: Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(card.id) }
 }
 
-/// Collections-tab Events section: horizontally scrolling cards, newest first. Hidden until the
-/// list loads with at least one event, unless the first load failed.
-struct EventsSection<Header: View>: View {
-    @ObservedObject var store: EventsStore
+/// Albums-tab Memories: On this day cards (which filter the Library to that date) followed by
+/// auto events (which open their own grid), as large cover cards. Hidden while both are empty.
+struct MemoriesSection: View {
+    @ObservedObject var events: EventsStore
+    @ObservedObject var onThisDay: OnThisDayStore
     let apiBaseURL: URL
-    @ViewBuilder let header: () -> Header
+    let selectDate: (String) -> Void
 
     var body: some View {
-        switch store.loadState {
-        case .idle, .loading:
-            EmptyView()
-        case let .failed(message):
-            VStack(alignment: .leading, spacing: 8) {
-                header()
-                ErrorBanner(message: message, retry: { Task { await store.load() } })
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+        let days = onThisDay.cards(apiBaseURL: apiBaseURL)
+        let eventCards = events.loadState == .loaded ? events.cards(apiBaseURL: apiBaseURL) : []
+        if case let .failed(message) = events.loadState, days.isEmpty {
+            VStack(alignment: .leading, spacing: PBSpacing.s) {
+                PBSectionHeader(title: "Memories")
+                    .padding(.horizontal, PBSpacing.l)
+                PBBanner(message: message, retry: { Task { await events.load() } })
             }
-        case .loaded where store.events.isEmpty:
-            EmptyView()
-        case .loaded:
-            VStack(alignment: .leading, spacing: 10) {
-                header()
+        } else if !days.isEmpty || !eventCards.isEmpty {
+            VStack(alignment: .leading, spacing: PBSpacing.m) {
+                PBSectionHeader(title: "Memories")
+                    .padding(.horizontal, PBSpacing.l)
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(store.cards(apiBaseURL: apiBaseURL)) { card in
-                            NavigationLink(value: EventRoute(card: card)) {
-                                EventCardView(card: card)
+                    LazyHStack(alignment: .top, spacing: PBSpacing.m) {
+                        ForEach(days) { card in
+                            Button {
+                                selectDate(card.capturedDate)
+                            } label: {
+                                CoverCard(title: card.yearsAgoText, subtitle: "\(card.dateText) · \(card.countText)", width: 168, height: 168) {
+                                    CollectionCoverImage(photoID: card.coverPhotoID, url: card.coverURL)
+                                }
                             }
                             .buttonStyle(.plain)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(card.accessibilityLabel)
+                            .accessibilityHint("Shows these photos in the library")
+                            .accessibilityAddTraits(.isButton)
+                        }
+                        ForEach(eventCards) { card in
+                            NavigationLink(value: EventRoute(card: card)) {
+                                CoverCard(title: card.title, subtitle: card.subtitle, width: 260, height: 168) {
+                                    CollectionCoverImage(photoID: card.coverPhotoID, url: card.coverURL)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(card.accessibilityLabel)
+                            .accessibilityHint("Shows this event’s photos")
+                            .accessibilityAddTraits(.isButton)
                         }
                     }
+                    .padding(.horizontal, PBSpacing.l)
                 }
-                .scrollClipDisabled()
             }
         }
-    }
-}
-
-private struct EventCardView: View {
-    let card: EventCard
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            CollectionCoverImage(photoID: card.coverPhotoID, url: card.coverURL)
-                .frame(width: 168, height: 126)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .padding(.bottom, 4)
-            Text(card.title)
-                .font(.subheadline.weight(.semibold))
-            Text(card.subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .lineLimit(1)
-        .frame(width: 168, alignment: .leading)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(card.accessibilityLabel)
-        .accessibilityHint("Shows this event’s photos")
-        .accessibilityAddTraits(.isButton)
     }
 }
 

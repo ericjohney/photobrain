@@ -141,40 +141,83 @@ private struct RootTabView: View {
     @ObservedObject var links: AppLinkRouter
     @Environment(\.scenePhase) private var scenePhase
     @State private var navigation = AppLinkNavigationState()
+    @State private var libraryUtility: LibraryUtility?
+    @State private var gearStatsPresented = false
+
+    @ViewBuilder
+    private var tabs: some View {
+        if #available(iOS 18.0, *) {
+            TabView(selection: $navigation.selectedTab) {
+                Tab("Library", systemImage: "photo.on.rectangle", value: AppTab.library) { libraryTab }
+                Tab("Albums", systemImage: "rectangle.stack", value: AppTab.collections) { albumsTab }
+                Tab("People", systemImage: "person.2", value: AppTab.people) { peopleTab }
+                Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) { searchTab }
+            }
+        } else {
+            TabView(selection: $navigation.selectedTab) {
+                libraryTab
+                    .tabItem { Label("Library", systemImage: "photo.on.rectangle") }
+                    .tag(AppTab.library)
+                albumsTab
+                    .tabItem { Label("Albums", systemImage: "rectangle.stack") }
+                    .tag(AppTab.collections)
+                peopleTab
+                    .tabItem { Label("People", systemImage: "person.2") }
+                    .tag(AppTab.people)
+                searchTab
+                    .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                    .tag(AppTab.search)
+            }
+        }
+    }
+
+    private var libraryTab: some View {
+        LibraryScreen(
+            store: library,
+            onThisDay: onThisDay,
+            collections: collections,
+            smartAlbums: smartAlbums,
+            events: events,
+            review: review,
+            duplicates: duplicates,
+            scans: scans,
+            environment: environment,
+            theme: theme,
+            selectedTab: $navigation.selectedTab,
+            utility: $libraryUtility
+        )
+    }
+
+    private var albumsTab: some View {
+        CollectionsScreen(
+            store: collections,
+            smartAlbums: smartAlbums,
+            events: events,
+            people: people,
+            onThisDay: onThisDay,
+            review: review,
+            duplicates: duplicates,
+            curation: library.curation,
+            environment: environment,
+            theme: theme,
+            openUtility: { utility in
+                navigation.selectedTab = .library
+                libraryUtility = utility
+            },
+            openGearStats: { gearStatsPresented = true }
+        )
+    }
+
+    private var peopleTab: some View {
+        PeopleTabScreen(people: people, collections: collections, curation: library.curation, api: environment.api)
+    }
+
+    private var searchTab: some View {
+        SearchScreen(store: search, api: environment.api, collections: collections, smartAlbums: smartAlbums)
+    }
 
     var body: some View {
-        TabView(selection: $navigation.selectedTab) {
-            LibraryScreen(
-                store: library,
-                onThisDay: onThisDay,
-                collections: collections,
-                smartAlbums: smartAlbums,
-                review: review,
-                duplicates: duplicates,
-                scans: scans,
-                environment: environment,
-                theme: theme,
-                selectedTab: $navigation.selectedTab
-            )
-            .tabItem { Label("Library", systemImage: "photo.on.rectangle") }
-            .tag(AppTab.library)
-
-            CollectionsScreen(
-                store: collections,
-                smartAlbums: smartAlbums,
-                events: events,
-                people: people,
-                curation: library.curation,
-                environment: environment,
-                theme: theme
-            )
-            .tabItem { Label("Collections", systemImage: "rectangle.stack") }
-            .tag(AppTab.collections)
-
-            SearchScreen(store: search, api: environment.api, collections: collections, smartAlbums: smartAlbums)
-                .tabItem { Label("Search", systemImage: "magnifyingglass") }
-                .tag(AppTab.search)
-        }
+        tabs
         .sheet(item: $navigation.presentedRoute) { route in
             NavigationStack {
                 Group {
@@ -194,6 +237,12 @@ private struct RootTabView: View {
         }
         .environment(\.peopleStore, people)
         .environment(\.backupCoordinator, BackupRuntime.shared.coordinator)
+        .sheet(isPresented: $gearStatsPresented) {
+            GearStatsScreen(filters: library.filters, api: environment.api) { selection in
+                navigation.selectedTab = .library
+                library.showGear(selection)
+            }
+        }
         .environment(\.showInLibrary, ShowInLibraryAction { shortcut in
             navigation.selectedTab = .library
             library.show(shortcut)

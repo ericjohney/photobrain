@@ -144,19 +144,19 @@ class PhotoBrainUITestCase: XCTestCase {
     @MainActor
     func openLibrary() {
         app.tabBars.buttons["Library"].tap()
-        waitFor(app.staticTexts["Library"])
+        waitFor(navigationTitle("Library"))
     }
 
     @MainActor
     func openCollections() {
-        app.tabBars.buttons["Collections"].tap()
-        waitFor(navigationTitle("Collections"))
+        app.tabBars.buttons["Albums"].tap()
+        waitFor(navigationTitle("Albums"))
     }
 
-    /// Opens the Library's Browse menu (its label carries the duplicate-group count).
+    /// Opens the Library's More menu (its label carries review and duplicate counts).
     @MainActor
     func openBrowseMenu() {
-        waitFor(element(startingWith: "Browse")).tap()
+        waitFor(element(startingWith: "Library options")).tap()
     }
 
     @MainActor

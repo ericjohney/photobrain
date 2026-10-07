@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1000000000000000000003B /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000003B /* DesignSystem.swift */; };
 		A10000000000000000000001 /* PhotoBrainApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* PhotoBrainApp.swift */; };
 		A10000000000000000000002 /* RedactedFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* RedactedFixture.swift */; };
 		A10000000000000000000003 /* SpikeSignposts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* SpikeSignposts.swift */; };
@@ -70,7 +71,6 @@
 		A10000000000000000000024 /* PhotoPlaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* PhotoPlaces.swift */; };
 		A20000000000000000000018 /* PhotoPlacesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000018 /* PhotoPlacesTests.swift */; };
 		A10000000000000000000025 /* OnThisDay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* OnThisDay.swift */; };
-		A10000000000000000000026 /* OnThisDaySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* OnThisDaySection.swift */; };
 		A20000000000000000000019 /* OnThisDayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000019 /* OnThisDayTests.swift */; };
 		A10000000000000000000027 /* CaptureCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000027 /* CaptureCalendar.swift */; };
 		A10000000000000000000028 /* CaptureCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000028 /* CaptureCalendarView.swift */; };
@@ -123,6 +123,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B1000000000000000000003B /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		B00000000000000000000001 /* PhotoBrain.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoBrain.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000002 /* PhotoBrainTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoBrainTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0000000000000000000000A /* PhotoBrainUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoBrainUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -197,7 +198,6 @@
 		B10000000000000000000024 /* PhotoPlaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPlaces.swift; sourceTree = "<group>"; };
 		B20000000000000000000018 /* PhotoPlacesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPlacesTests.swift; sourceTree = "<group>"; };
 		B10000000000000000000025 /* OnThisDay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnThisDay.swift; sourceTree = "<group>"; };
-		B10000000000000000000026 /* OnThisDaySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnThisDaySection.swift; sourceTree = "<group>"; };
 		B20000000000000000000019 /* OnThisDayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnThisDayTests.swift; sourceTree = "<group>"; };
 		B10000000000000000000027 /* CaptureCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCalendar.swift; sourceTree = "<group>"; };
 		B10000000000000000000028 /* CaptureCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCalendarView.swift; sourceTree = "<group>"; };
@@ -262,6 +262,7 @@
 			isa = PBXGroup;
 			children = (
 				C00000000000000000000004 /* App */,
+				C0000000000000000000000E /* DesignSystem */,
 				C00000000000000000000005 /* Fixtures */,
 				C00000000000000000000006 /* Instrumentation */,
 				C00000000000000000000007 /* Library */,
@@ -276,6 +277,7 @@
 			sourceTree = "<group>";
 		};
 		C00000000000000000000004 /* App */ = {isa = PBXGroup; children = (B10000000000000000000001 /* PhotoBrainApp.swift */, B1000000000000000000000D /* AppEnvironment.swift */, B10000000000000000000015 /* AppLinkRouting.swift */, B10000000000000000000038 /* BackupRuntime.swift */,); path = App; sourceTree = "<group>"; };
+		C0000000000000000000000E /* DesignSystem */ = {isa = PBXGroup; children = (B1000000000000000000003B /* DesignSystem.swift */,); path = DesignSystem; sourceTree = "<group>"; };
 		C00000000000000000000005 /* Fixtures */ = {isa = PBXGroup; children = (B10000000000000000000002 /* RedactedFixture.swift */,); path = Fixtures; sourceTree = "<group>"; };
 		C00000000000000000000006 /* Instrumentation */ = {isa = PBXGroup; children = (B10000000000000000000003 /* SpikeSignposts.swift */,); path = Instrumentation; sourceTree = "<group>"; };
 		C00000000000000000000007 /* Library */ = {isa = PBXGroup; children = (B10000000000000000000004 /* PhotoDateResolver.swift */, B10000000000000000000005 /* PhotoIDAnchor.swift */, B1000000000000000000000E /* LibraryState.swift */, B1000000000000000000000F /* ScanCoordinator.swift */, B10000000000000000000017 /* PhotoCuration.swift */, B10000000000000000000018 /* CollectionsState.swift */, B1000000000000000000001A /* PhotoTags.swift */, B1000000000000000000001B /* JunkReview.swift */, B1000000000000000000001D /* SmartAlbumsState.swift */, B1000000000000000000001F /* DuplicatesState.swift */, B10000000000000000000021 /* PhotoPair.swift */, B10000000000000000000022 /* PhotoMap.swift */, B10000000000000000000024 /* PhotoPlaces.swift */, B10000000000000000000025 /* OnThisDay.swift */, B10000000000000000000027 /* CaptureCalendar.swift */, B10000000000000000000029 /* AutoEvents.swift */, B1000000000000000000002B /* GearStats.swift */, B1000000000000000000002E /* PhotoExport.swift */, B10000000000000000000030 /* VideoPlayback.swift */, B10000000000000000000031 /* PeopleState.swift */, B10000000000000000000032 /* FaceGeometry.swift */, B10000000000000000000034 /* Backup.swift */, B10000000000000000000035 /* BackupCoordinator.swift */, B10000000000000000000037 /* PhotoKitBackupLibrary.swift */, B1000000000000000000003A /* CountText.swift */,); path = Library; sourceTree = "<group>"; };
@@ -323,7 +325,7 @@
 		};
 		C0000000000000000000000B /* Products */ = {isa = PBXGroup; children = (B00000000000000000000001 /* PhotoBrain.app */, B00000000000000000000002 /* PhotoBrainTests.xctest */, B0000000000000000000000A /* PhotoBrainUITests.xctest */,); name = Products; sourceTree = "<group>"; };
 		C0000000000000000000000D /* PhotoBrainUITests */ = {isa = PBXGroup; children = (B40000000000000000000001 /* PhotoBrainUITestCase.swift */, B40000000000000000000002 /* LibraryFlowTests.swift */, B40000000000000000000003 /* CollectionsSearchFlowTests.swift */,); path = PhotoBrainUITests; sourceTree = "<group>"; };
-		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */, B1000000000000000000001E /* SmartAlbumViews.swift */, B10000000000000000000020 /* DuplicatesScreen.swift */, B10000000000000000000023 /* MapScreen.swift */, B10000000000000000000026 /* OnThisDaySection.swift */, B10000000000000000000028 /* CaptureCalendarView.swift */, B1000000000000000000002A /* EventViews.swift */, B1000000000000000000002C /* GearStatsScreen.swift */, B1000000000000000000002F /* ExportViews.swift */, B10000000000000000000033 /* PeopleViews.swift */, B10000000000000000000039 /* BackupSettingsSection.swift */,); path = Views; sourceTree = "<group>"; };
+		C0000000000000000000000C /* Views */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LibraryGrid.swift */, B10000000000000000000009 /* PagedLoupe.swift */, B1000000000000000000000A /* LoupeScreen.swift */, B10000000000000000000010 /* RemotePhotoImage.swift */, B10000000000000000000011 /* ActivityBar.swift */, B10000000000000000000012 /* SettingsView.swift */, B10000000000000000000013 /* LibraryScreen.swift */, B10000000000000000000014 /* SearchScreen.swift */, B10000000000000000000016 /* SimilarPhotosScreen.swift */, B10000000000000000000019 /* CollectionsScreen.swift */, B1000000000000000000001C /* ReviewScreen.swift */, B1000000000000000000001E /* SmartAlbumViews.swift */, B10000000000000000000020 /* DuplicatesScreen.swift */, B10000000000000000000023 /* MapScreen.swift */, B10000000000000000000028 /* CaptureCalendarView.swift */, B1000000000000000000002A /* EventViews.swift */, B1000000000000000000002C /* GearStatsScreen.swift */, B1000000000000000000002F /* ExportViews.swift */, B10000000000000000000033 /* PeopleViews.swift */, B10000000000000000000039 /* BackupSettingsSection.swift */,); path = Views; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -436,7 +438,6 @@
 				A10000000000000000000023 /* MapScreen.swift in Sources */,
 				A10000000000000000000024 /* PhotoPlaces.swift in Sources */,
 				A10000000000000000000025 /* OnThisDay.swift in Sources */,
-				A10000000000000000000026 /* OnThisDaySection.swift in Sources */,
 				A10000000000000000000027 /* CaptureCalendar.swift in Sources */,
 				A10000000000000000000028 /* CaptureCalendarView.swift in Sources */,
 				A10000000000000000000029 /* AutoEvents.swift in Sources */,
@@ -457,6 +458,7 @@
 				A10000000000000000000038 /* BackupRuntime.swift in Sources */,
 				A10000000000000000000039 /* BackupSettingsSection.swift in Sources */,
 				A1000000000000000000003A /* CountText.swift in Sources */,
+				A1000000000000000000003B /* DesignSystem.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

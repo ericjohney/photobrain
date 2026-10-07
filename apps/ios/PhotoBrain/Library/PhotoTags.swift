@@ -46,10 +46,13 @@ final class PhotoTagsStore: ObservableObject {
     }
 }
 
-/// What a loupe chip narrows the Library to.
+/// What a loupe chip, memory card, browse tile, or gear row narrows the Library to.
 enum LibraryShortcut: Equatable, Sendable {
     case tag(String)
     case place(PhotoPlaceDTO)
+    /// An On this day card's exact capture date, `YYYY-MM-DD`.
+    case capturedDate(String)
+    case gear(GearSelection)
 }
 
 /// Closes whatever loupe is presenting a photo and shows the Library filtered to a tag or place.

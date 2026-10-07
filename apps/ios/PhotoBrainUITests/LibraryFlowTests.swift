@@ -6,7 +6,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
     func testLibraryGridLabelsCurationPairsAndMotion() {
         openLibrary()
         // 23 rows: the ARW stacks under its JPEG and the Live Photo clip under its still.
-        waitFor(app.staticTexts["21 Items"])
+        waitFor(element("21 Items"))
         waitFor(gridCell("beach-waves.jpg, 5 stars, Pick"))
         waitFor(gridCell("beach-sunset.jpg, ARW plus JPG pair"))
         waitFor(gridCell("IMG_2001.HEIC, Live Photo"))
@@ -36,6 +36,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
     func testFindSimilarRanksSameSubjectFirst() {
         openLibrary()
         gridCell("dog-park-1.jpg").tap()
+        tap("More")
         tap("Find Similar")
         waitFor(navigationTitle("Similar Photos"))
         waitFor(app.staticTexts["Similar to dog-park-1.jpg"])
@@ -51,6 +52,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
     func testAddToExistingAndNewCollectionFromLoupe() async throws {
         openLibrary()
         gridCell("beach-waves.jpg, 5 stars, Pick").tap()
+        tap("More")
         tap("Add to Collection")
         waitFor(navigationTitle("Add to Collection"))
 
@@ -92,14 +94,15 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         tap("Photo info")
         scrollTo(element("Place, Lisbon, Portugal")).tap()
         waitFor(element(startingWith: "Edit filters, "))
-        waitFor(app.staticTexts["6 Items"])
+        waitFor(element("6 Items"))
         tap("Clear all filters")
-        waitFor(app.staticTexts["21 Items"])
+        waitFor(element("21 Items"))
     }
 
     @MainActor
     func testReviewRejectsAllCandidates() async throws {
         openLibrary()
+        openBrowseMenu()
         tap("Review, 4 photos")
         waitFor(navigationTitle("Review"))
         for label in ["All, 4", "Screenshots, 1", "Documents, 1", "Blurry, 1", "Too dark, 1"] {
@@ -120,7 +123,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
     @MainActor
     func testDuplicatesListsGroupsAndDismissesOne() {
         openLibrary()
-        waitFor(element("Browse, 2 duplicate groups"))
+        waitFor(element("Library options, 4 photos to review, 2 duplicate groups"))
         openBrowseMenu()
         tap("Duplicates, 2 groups")
         waitFor(navigationTitle("Duplicates"))
@@ -133,7 +136,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         app.buttons["Not duplicates"].firstMatch.tap()
         waitFor(app.staticTexts["No duplicates"])
         goBack()
-        waitFor(element("Browse, 1 duplicate group"))
+        waitFor(element("Library options, 4 photos to review, 1 duplicate group"))
     }
 
     @MainActor
@@ -145,7 +148,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         waitFor(app.staticTexts["June 2024"])
         tap("June 1, 2024, 1 photo")
         waitForAbsence(navigationTitle("Calendar"))
-        waitFor(app.staticTexts["1 Item"])
+        waitFor(element("1 Item"))
         waitFor(gridCell("IMG_2001.HEIC, Live Photo"))
     }
 
@@ -179,20 +182,21 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
 
     @MainActor
     func testOnThisDayCardFiltersToThatDate() {
-        openLibrary()
-        waitFor(app.staticTexts["On this day"])
+        openCollections()
+        waitFor(app.staticTexts["Memories"])
         let card = waitFor(element(startingWith: "5 years ago, "))
         XCTAssertTrue(card.label.hasSuffix(", 1 photo"), card.label)
         waitFor(element(startingWith: "8 years ago, "))
         card.tap()
-        waitFor(app.staticTexts["1 Item"])
+        waitFor(element("1 Item"))
         waitFor(gridCell("on-this-day-5-years.jpg"))
     }
 
     @MainActor
     func testVideoFilterSavesSmartAlbum() async throws {
         openLibrary()
-        tap("Library options")
+        openBrowseMenu()
+        tap("Library Options")
         waitFor(navigationTitle("Library Options"))
         waitFor(element(startingWith: "Filter")).tap()
         waitFor(navigationTitle("Filter"))
@@ -205,7 +209,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         tap("Done")
 
         waitFor(element("Edit filters, Video"))
-        waitFor(app.staticTexts["1 Item"])
+        waitFor(element("1 Item"))
         waitFor(gridCell("skate-park.mp4, Video, 12 seconds"))
 
         let albums = try await fixtureJSON("api/v1/smart-albums")["albums"] as? [[String: Any]] ?? []

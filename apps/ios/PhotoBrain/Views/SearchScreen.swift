@@ -6,7 +6,6 @@ struct SearchScreen: View {
     let collections: CollectionsStore
     let smartAlbums: SmartAlbumsStore
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var filtersPresented = false
     @State private var saveSmartAlbumPresented = false
 
@@ -16,19 +15,18 @@ struct SearchScreen: View {
                 content(width: geometry.size.width)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                if store.filters.isActive || savedQuery != nil { filterBar }
+                if store.state != .idle || store.filters.isActive { filterBar }
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
             .searchable(
                 text: $store.query,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search Photos"
+                prompt: "Describe a photo"
             )
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         saveSmartAlbumPresented = true
                     } label: {
@@ -37,20 +35,7 @@ struct SearchScreen: View {
                     .accessibilityLabel("Save as Smart Album")
                     .disabled(savedQuery == nil)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        filtersPresented = true
-                    } label: {
-                        Image(
-                            systemName: store.filters.isActive
-                                ? "line.3.horizontal.decrease.circle.fill"
-                                : "line.3.horizontal.decrease.circle"
-                        )
-                    }
-                    .accessibilityLabel(
-                        store.filters.isActive ? "Filters, \(store.filters.summary)" : "Filters"
-                    )
-                }
+
             }
         }
         .sheet(isPresented: $filtersPresented) {
@@ -90,20 +75,7 @@ struct SearchScreen: View {
     private func content(width: CGFloat) -> some View {
         switch store.state {
         case .idle:
-            ScrollView {
-                ContentUnavailableView {
-                    Label("Search your library", systemImage: "sparkles")
-                } description: {
-                    Text("Describe a place, subject, color, or moment. PhotoBrain searches by visual meaning.")
-                } actions: {
-                    VStack(spacing: 8) {
-                        example("sunset on the beach")
-                        example("red car")
-                        example("mountains in winter")
-                    }
-                }
-                .padding(.top, 40)
-            }
+            SearchBrowseView(store: store, width: width)
         case .waiting, .loading:
             ProgressView("Searching…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -127,14 +99,14 @@ struct SearchScreen: View {
                     .buttonStyle(.borderedProminent)
             }
         case .results:
-            PhotoResultsGrid(records: store.records, width: width) { store.activePhotoID = $0 }
+            PhotoResultsGrid(
+                records: store.records,
+                width: width,
+                featuresTopResult: true,
+                header: "Best matches for “\(savedQuery ?? "")” · \(store.records.count.formatted())"
+            ) { store.activePhotoID = $0 }
                 .scrollDismissesKeyboard(.interactively)
         }
-    }
-
-    private func example(_ query: String) -> some View {
-        Button(query) { store.query = query }
-            .buttonStyle(.bordered)
     }
 
     /// Filters button plus removable chips for each active filter, shown under the search bar.
@@ -142,56 +114,35 @@ struct SearchScreen: View {
     /// filters reachable without cancelling the query.
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Button {
+            HStack(spacing: PBSpacing.s) {
+                FilterChip(
+                    title: "Filters",
+                    systemImage: "line.3.horizontal.decrease",
+                    isOn: store.filters.isActive
+                ) {
                     filtersPresented = true
-                } label: {
-                    Label(
-                        "Filters",
-                        systemImage: store.filters.isActive
-                            ? "line.3.horizontal.decrease.circle.fill"
-                            : "line.3.horizontal.decrease.circle"
-                    )
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
                 }
-                .buttonStyle(.plain)
                 .accessibilityLabel(
                     store.filters.isActive ? "Edit filters, \(store.filters.summary)" : "Add filters"
                 )
-                ForEach(store.filters.activeFields) { entry in
-                    Button {
-                        store.applyFilters(store.filters.removing(entry.field))
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(entry.title).lineLimit(1)
-                            Image(systemName: "xmark")
-                                .font(.caption2.weight(.bold))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                ForEach(LibraryFilters.MediaKind.allCases.filter { $0 != .all }) { kind in
+                    FilterChip(title: kind == .standard ? "Photos" : kind.title, isOn: store.filters.mediaKind == kind) {
+                        var updated = store.filters
+                        updated.mediaKind = updated.mediaKind == kind ? .all : kind
+                        store.applyFilters(updated)
                     }
-                    .buttonStyle(.plain)
+                }
+                ForEach(store.filters.activeFields.filter { $0.field != .mediaKind }) { entry in
+                    FilterChip(title: entry.title, isOn: true, removable: true) {
+                        store.applyFilters(store.filters.removing(entry.field))
+                    }
                     .accessibilityLabel("Remove filter \(entry.title)")
                 }
-                if store.filters.isActive {
-                    Button("Clear All") { store.clearFilters() }
-                        .accessibilityLabel("Clear all filters")
-                }
             }
-            .font(.subheadline)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, PBSpacing.l)
+            .padding(.vertical, PBSpacing.s)
         }
-        .background {
-            if reduceTransparency {
-                Color(uiColor: .systemBackground)
-            } else {
-                Rectangle().fill(.ultraThinMaterial)
-            }
-        }
+        .background(.bar)
     }
 
     /// The trimmed search text a smart album would save; `nil` while the field is blank.
@@ -212,52 +163,83 @@ struct SearchScreen: View {
 struct PhotoResultsGrid: View {
     let records: [PhotoRecord]
     let width: CGFloat
+    /// Ranked results: the first match spans two columns and two rows at the top.
+    var featuresTopResult = false
+    var header: String?
     let onSelect: (Int) -> Void
 
     var body: some View {
-        let columns = Self.columnCount(width: width)
+        let columns = featuresTopResult ? 3 : Self.columnCount(width: width)
         let side = width / CGFloat(columns)
+        let featured = featuresTopResult && records.count >= 3 ? Array(records.prefix(3)) : []
+        let rest = Array(records.dropFirst(featured.count))
         ScrollView {
+            if let header {
+                Text(header)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, PBSpacing.l)
+                    .padding(.vertical, PBSpacing.s)
+            }
+            if featured.count == 3 {
+                HStack(spacing: 1) {
+                    tile(featured[0], side: side * 2)
+                        .frame(width: side * 2 - 1, height: side * 2)
+                    VStack(spacing: 1) {
+                        tile(featured[1], side: side)
+                            .frame(width: side, height: side - 0.5)
+                        tile(featured[2], side: side)
+                            .frame(width: side, height: side - 0.5)
+                    }
+                }
+                .padding(.bottom, 1)
+            }
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: columns),
                 spacing: 1
             ) {
-                ForEach(records) { photo in
-                    Button {
-                        onSelect(photo.id)
-                    } label: {
-                        Color(uiColor: SyntheticThumbnail.color(id: photo.id))
+                ForEach(rest) { photo in
+                    tile(photo, side: side)
                         .aspectRatio(1, contentMode: .fit)
-                        .overlay {
-                            RemotePhotoImage(
-                                photo: photo,
-                                url: photo.thumbnailURL,
-                                contentMode: .fill,
-                                showsRetry: false,
-                                targetSize: CGSize(width: side, height: side)
-                            ) {
-                                Color(uiColor: SyntheticThumbnail.color(id: photo.id))
-                            }
-                        }
-                        .clipped()
-                        .opacity(photo.isRejected ? 0.35 : 1)
-                        .overlay(alignment: .bottomTrailing) {
-                            VStack(alignment: .trailing, spacing: 0) {
-                                CurationBadge(rating: photo.rating, flag: photo.flag)
-                                photo.mediaBadge.map(MediaBadgeView.init)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        "Open \(photo.filename)"
-                            + (photo.mediaBadge.map { ", \($0.accessibilityText)" } ?? "")
-                            + CurationBadgeText.accessibilitySuffix(rating: photo.rating, flag: photo.flag)
-                    )
                 }
             }
         }
         .accessibilityIdentifier("photo-results")
+    }
+
+    private func tile(_ photo: PhotoRecord, side: CGFloat) -> some View {
+        Button {
+            onSelect(photo.id)
+        } label: {
+            Color(uiColor: SyntheticThumbnail.color(id: photo.id))
+                .overlay {
+                    RemotePhotoImage(
+                        photo: photo,
+                        url: photo.thumbnailURL,
+                        contentMode: .fill,
+                        showsRetry: false,
+                        targetSize: CGSize(width: side, height: side)
+                    ) {
+                        Color(uiColor: SyntheticThumbnail.color(id: photo.id))
+                    }
+                }
+                .clipped()
+                .opacity(photo.isRejected ? 0.35 : 1)
+                .overlay(alignment: .bottomTrailing) {
+                    VStack(alignment: .trailing, spacing: 0) {
+                        CurationBadge(rating: photo.rating, flag: photo.flag)
+                        photo.mediaBadge.map(MediaBadgeView.init)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Open \(photo.filename)"
+                + (photo.mediaBadge.map { ", \($0.accessibilityText)" } ?? "")
+                + CurationBadgeText.accessibilitySuffix(rating: photo.rating, flag: photo.flag)
+        )
     }
 
     static func columnCount(width: CGFloat) -> Int {
@@ -285,11 +267,11 @@ struct CurationBadge: View {
                 case nil: EmptyView()
                 }
             }
-            .font(.caption2)
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
-            .background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.72)))
+            .background(RoundedRectangle(cornerRadius: PBRadius.badge, style: .continuous).fill(PBColor.badgeBackground))
             .padding(4)
             .accessibilityHidden(true)
         }
@@ -309,8 +291,149 @@ struct MediaBadgeView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 4)
         .padding(.vertical, 1)
-        .background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.72)))
+        .background(RoundedRectangle(cornerRadius: PBRadius.badge, style: .continuous).fill(PBColor.badgeBackground))
         .padding(4)
         .accessibilityHidden(true)
+    }
+}
+
+/// Search's idle state: example prompts, then Places and Categories rows from the library's
+/// filter options. Prompts fill the query; places and tags open the Library filtered to them.
+private struct SearchBrowseView: View {
+    @ObservedObject var store: SearchStore
+    let width: CGFloat
+    @Environment(\.showInLibrary) private var showInLibrary
+
+    private static let examples = [
+        "dog on the beach", "sunset over water", "birthday cake",
+        "snowy mountains", "city at night", "red car",
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: PBSpacing.xl) {
+                VStack(alignment: .leading, spacing: PBSpacing.m) {
+                    PBSectionHeader(title: "Try describing a moment")
+                    Text("PhotoBrain searches by visual meaning: places, subjects, colors, or moods.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    FlowLayout(spacing: PBSpacing.s) {
+                        ForEach(Self.examples, id: \.self) { example in
+                            FilterChip(title: "“\(example)”") { store.query = example }
+                                .accessibilityLabel("Search for \(example)")
+                        }
+                    }
+                }
+                .padding(.horizontal, PBSpacing.l)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Search your library")
+
+                if let options = store.filterOptions {
+                    if !options.places.isEmpty {
+                        browseRow("Places", items: options.places.prefix(12).map { place in
+                            let country = options.countries.first { $0.code == place.countryCode }?.name ?? place.countryCode
+                            return BrowseItem(id: "p-\(place.id)", title: place.name, count: place.count) {
+                                showInLibrary?(.place(PhotoPlaceDTO(
+                                    id: place.id,
+                                    city: place.name,
+                                    region: place.region,
+                                    country: country,
+                                    countryCode: place.countryCode
+                                )))
+                            }
+                        })
+                    }
+                    if !options.tags.isEmpty {
+                        browseRow("Categories", items: options.tags.prefix(16).map { tag in
+                            BrowseItem(id: "t-\(tag.tag)", title: PhotoTagName.displayName(tag.tag), count: tag.count) {
+                                showInLibrary?(.tag(tag.tag))
+                            }
+                        })
+                    }
+                }
+            }
+            .padding(.vertical, PBSpacing.l)
+        }
+        .task { await store.loadFilterOptionsIfNeeded() }
+    }
+
+    private struct BrowseItem: Identifiable {
+        let id: String
+        let title: String
+        let count: Int
+        let action: () -> Void
+    }
+
+    private func browseRow(_ title: String, items: [BrowseItem]) -> some View {
+        VStack(alignment: .leading, spacing: PBSpacing.m) {
+            PBSectionHeader(title: title)
+                .padding(.horizontal, PBSpacing.l)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: PBSpacing.m) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        Button(action: item.action) {
+                            CoverCard(title: item.title, subtitle: CountText.photos(item.count), width: 120, height: 120) {
+                                LinearGradient(
+                                    colors: Self.gradient(index: index, seed: title),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(item.title), \(CountText.photos(item.count))")
+                        .accessibilityAddTraits(.isButton)
+                    }
+                }
+                .padding(.horizontal, PBSpacing.l)
+            }
+        }
+    }
+
+    /// A stable two-stop gradient per tile; browse tiles have no cover photo.
+    private static func gradient(index: Int, seed: String) -> [Color] {
+        let base = Double((index * 53 + seed.count * 29) % 360) / 360
+        return [
+            Color(hue: base, saturation: 0.55, brightness: 0.85),
+            Color(hue: (base + 0.08).truncatingRemainder(dividingBy: 1), saturation: 0.65, brightness: 0.6),
+        ]
+    }
+}
+
+/// Wraps children onto new lines, left-aligned.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, maxX: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            maxX = max(maxX, x - spacing)
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: min(maxX, width), height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

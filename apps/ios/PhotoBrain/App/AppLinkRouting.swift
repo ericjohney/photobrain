@@ -4,6 +4,7 @@ import Combine
 enum AppLinkRoute: String, Hashable, Identifiable, Sendable {
     case library
     case collections
+    case people
     case search
     case settings
     case about
@@ -29,6 +30,9 @@ struct AppLinkNavigationState: Equatable, Sendable {
             presentedRoute = nil
         case .collections:
             selectedTab = .collections
+            presentedRoute = nil
+        case .people:
+            selectedTab = .people
             presentedRoute = nil
         case .search:
             selectedTab = .search
@@ -71,7 +75,8 @@ enum AppLinkParser {
 
         switch route {
         case nil, "", "root", "library": return .library
-        case "collections": return .collections
+        case "collections", "albums": return .collections
+        case "people": return .people
         case "search": return .search
         case "preferences", "settings": return .settings
         case "about": return .about
