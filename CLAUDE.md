@@ -18,7 +18,7 @@ Read the guide for the area being changed:
 
 - [API and background jobs](apps/api/AGENTS.md)
 - [Web application](apps/web/AGENTS.md)
-- [Native iOS application source and XCTest](apps/ios)
+- [Native iOS application source and XCTest](apps/ios); [TestFlight distribution, signing, and secrets](docs/ios-distribution.md)
 - [Expo Android/web application](apps/mobile/AGENTS.md)
 - [Rust image processing](packages/image-processing/AGENTS.md)
 - [Database and migrations](packages/db/AGENTS.md)
@@ -420,7 +420,7 @@ There is no worker image and the mobile Docker target is not a static Expo web-e
 - Builds and pushes API, web, and mobile Docker targets.
 - Updates API/web/mobile image tags in the external ArgoCD repository on pushes to `main`.
 
-Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. The manual `.github/workflows/native-ios-release.yml` validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
+Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. The manual `.github/workflows/native-ios-release.yml` validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight. Apple identities, GitHub secrets, tester setup, and certificate renewal are recorded in [iOS distribution](docs/ios-distribution.md).
 
 The permanent `.github/workflows/build.yml` never publishes iOS OTA updates. Its EAS release work is explicitly Android-only for preview on `main` and production on version tags. `native-ios-release.yml` serializes on the `ios-production-release` concurrency group and uses `apps/ios/scripts/allocate-app-store-build.mjs`, which chooses a build number above both App Store Connect history and the run reservation floor; it enforces the production bundle/API contract and iOS 17.0 minimum.
 

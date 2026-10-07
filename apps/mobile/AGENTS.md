@@ -113,7 +113,7 @@ Metro watches the monorepo and redirects `@photobrain/image-processing` to `pack
 
 `app.json` keeps `expo-updates` configuration for the Expo application, but the permanent `.github/workflows/build.yml` release lane is Android-only. Pushes to `main` build an `android-preview` receiver and publish an Android preview update; version tags build an `android-production` receiver and publish an Android production update. Both verify that EAS environment values match the selected build profile. That workflow never publishes an iOS OTA update and does not export Expo web.
 
-iOS Production release belongs to `.github/workflows/native-ios-release.yml` in `apps/ios`; Expo has no iOS release path.
+iOS Production release belongs to `.github/workflows/native-ios-release.yml` in `apps/ios` (see [iOS distribution](../../docs/ios-distribution.md)); Expo has no iOS release path.
 
 Native iOS CI remains independent in `.github/workflows/native-ios.yml`, pinned to Xcode 26.6 and running the unsigned `PhotoBrain-Preview` configuration on an iPhone 17 Pro / iOS 26.5 simulator. The Docker `mobile` target still starts Expo on port 8081 rather than producing a static web image.
 
