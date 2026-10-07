@@ -45,7 +45,7 @@ struct LibraryScreen: View {
             content
                 .navigationTitle(store.isSelecting ? store.headerSubtitle : "Library")
                 .navigationBarTitleDisplayMode(store.isSelecting ? .inline : .large)
-                .pbNavigationSubtitle(store.isSelecting ? "" : store.headerSubtitle)
+                .pbNavigationSubtitle(store.isSelecting ? "" : store.itemCountText)
                 .toolbar { toolbarContent }
                 .safeAreaInset(edge: .top, spacing: 0) { topInsets }
                 .safeAreaInset(edge: .bottom, spacing: PBSpacing.s) {

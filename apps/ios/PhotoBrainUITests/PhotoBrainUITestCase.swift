@@ -126,15 +126,22 @@ class PhotoBrainUITestCase: XCTestCase {
     }
 
     /// Waits for the Library grid, then scrolls it until `label` is materialized and hittable.
+    /// The grid only materializes cells near the viewport, so a short wait is followed by
+    /// half-screen drags (no momentum, so nothing is skipped) toward the oldest photos, then
+    /// back toward the newest.
     @MainActor
     func gridCell(_ label: String, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
-        let cell = element(label)
-        if cell.waitForExistence(timeout: 10), cell.isHittable { return cell }
         let grid = app.collectionViews.firstMatch
-        for direction in [true, false] {
-            for _ in 0..<6 {
-                direction ? grid.swipeDown() : grid.swipeUp()
-                if cell.exists, cell.isHittable { return cell }
+        waitFor(grid, file: file, line: line)
+        let cell = grid.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+        if cell.waitForExistence(timeout: 2), cell.isHittable { return cell }
+        let upper = grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        let lower = grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+        for towardOldest in [true, false] {
+            for _ in 0..<12 {
+                let (start, end) = towardOldest ? (upper, lower) : (lower, upper)
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+                if cell.waitForExistence(timeout: 1), cell.isHittable { return cell }
             }
         }
         XCTFail("No grid cell labeled \(label)", file: file, line: line)

@@ -226,10 +226,11 @@ struct CoverCard<Cover: View>: View {
             }
             .overlay(alignment: .bottomLeading) {
                 VStack(alignment: .leading, spacing: 1) {
+                    // Shrinks rather than wrapping, so long single words never hyphenate.
                     Text(title)
                         .font(.headline)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                     if let subtitle {
                         Text(subtitle)
                             .font(.caption.weight(.medium))

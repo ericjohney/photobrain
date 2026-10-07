@@ -369,6 +369,12 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         return PhotoDateResolver.date(for: photo).formatted(.dateTime.year().month(.wide).day())
     }
 
+    /// `21 Items`; stable while scrolling (pinned section headers show the visible date), so
+    /// the navigation bar never resizes mid-scroll.
+    var itemCountText: String {
+        records.count == 1 ? "1 Item" : "\(records.count.formatted()) Items"
+    }
+
     var headerSubtitle: String {
         if isSelecting {
             switch selectedPhotoIDs.count {
