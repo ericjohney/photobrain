@@ -2,7 +2,7 @@
 
 The web application is a React/Vite browser client for the PhotoBrain API. It provides the primary grid/loupe library interface, folders, EXIF filters, CLIP search, metadata, scan progress, and keyboard navigation.
 
-Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../CLAUDE.md`](../../CLAUDE.md) for repository-wide rules.
+Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../AGENTS.md`](../../AGENTS.md) for repository-wide rules.
 
 ## Development
 

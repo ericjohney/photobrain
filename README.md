@@ -41,7 +41,7 @@ CPU-heavy import work runs behind one persistent worker thread inside the API pr
 
 Detailed implementation guidance is in:
 
-- [`CLAUDE.md`](CLAUDE.md): cross-repository architecture, commands, invariants, and documentation map.
+- [`AGENTS.md`](AGENTS.md): cross-repository architecture, commands, invariants, and documentation map.
 - [`apps/api/AGENTS.md`](apps/api/AGENTS.md): API, database orchestration, and Inngest jobs.
 - [`apps/web/AGENTS.md`](apps/web/AGENTS.md): browser routes, state, UI, and Playwright.
 - [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md): Expo Android/web behavior, EAS, and Jest.

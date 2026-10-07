@@ -2,7 +2,7 @@
 
 The API is a Hono/Bun server exposing typed tRPC procedures, REST image streaming routes, and Inngest functions for scanning and CLIP embedding generation.
 
-Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../CLAUDE.md`](../../CLAUDE.md) for repository-wide rules.
+Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../AGENTS.md`](../../AGENTS.md) for repository-wide rules.
 
 ## Development
 

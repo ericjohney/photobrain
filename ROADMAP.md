@@ -1,6 +1,6 @@
 # PhotoBrain Development Roadmap
 
-> **Accuracy note:** This file contains future work and historical implementation notes. Several older session sections describe an earlier BullMQ/worker/LibRaw design that is not present in the current checkout. The current implementation uses Inngest functions registered by `apps/api`, `exiftool` for EXIF and embedded RAW previews, and a native Rust N-API addon. Use `CLAUDE.md` and the scoped `AGENTS.md` guides as the source of truth for current behavior.
+> **Accuracy note:** This file contains future work and historical implementation notes. Several older session sections describe an earlier BullMQ/worker/LibRaw design that is not present in the current checkout. The current implementation uses Inngest functions registered by `apps/api`, `exiftool` for EXIF and embedded RAW previews, and a native Rust N-API addon. Use the root and scoped `AGENTS.md` guides as the source of truth for current behavior.
 
 ## Vision
 
@@ -45,7 +45,7 @@ The older RAW, worker, and queue plans below are historical. Do not select them 
 
 ## Historical Session Notes
 
-The following session records preserve earlier plans and implementation notes. They are historical and may describe code that was later replaced or removed. Use the source tree and `CLAUDE.md`/`AGENTS.md` guides for current behavior.
+The following session records preserve earlier plans and implementation notes. They are historical and may describe code that was later replaced or removed. Use the source tree and `AGENTS.md` guides for current behavior.
 
 These tasks are broken down into small, session-sized chunks that can each be completed in a single Claude Code session. Focus on delivering working, tested features incrementally.
 
@@ -534,7 +534,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [ ] **Documentation**
   - API documentation (OpenAPI/Swagger)
   - User guide
-  - [x] Developer setup and architecture guide (`README.md`, `CLAUDE.md`, and scoped `AGENTS.md` files)
+  - [x] Developer setup and architecture guide (`README.md`, root and scoped `AGENTS.md` files)
 - [ ] **Test coverage gaps**
   - [x] API filter integration tests
   - [x] Mobile Jest tests for core screens and hooks

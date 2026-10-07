@@ -2,7 +2,7 @@
 
 The mobile application is an Expo/React Native client for PhotoBrain targeting Android and web. The iOS app is the native `apps/ios` project.
 
-Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../CLAUDE.md`](../../CLAUDE.md) for repository-wide rules.
+Read [`AGENTS.md`](AGENTS.md) for implementation details and [`../../AGENTS.md`](../../AGENTS.md) for repository-wide rules.
 
 ## Active Entrypoint and Routes
 

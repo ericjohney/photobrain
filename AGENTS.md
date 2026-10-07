@@ -1,4 +1,4 @@
-# CLAUDE.md - PhotoBrain Agent Guide
+# AGENTS.md - PhotoBrain Agent Guide
 
 This is the current implementation guide for agents working in PhotoBrain. Prefer the source tree and the scoped guides linked below over older roadmap notes or generated artifacts.
 
@@ -481,7 +481,7 @@ The API and worker must not be described as separate services unless a future ch
 When changing architecture, update these locations in the same change:
 
 - The relevant scoped `AGENTS.md`.
-- Root `CLAUDE.md` if commands, boundaries, or cross-package invariants change.
+- Root `AGENTS.md` if commands, boundaries, or cross-package invariants change.
 - `README.md` or an app README if setup, deployment, or user-visible behavior changes.
 - `ROADMAP.md` only for roadmap status; do not use it as the implementation source of truth.
 
