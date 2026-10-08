@@ -117,32 +117,30 @@ struct PeopleSection<Header: View>: View {
         case .idle, .loading:
             EmptyView()
         case let .failed(message):
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PBSpacing.s) {
                 titleRow
-                ErrorBanner(message: message, retry: { Task { await store.load() } })
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, PBSpacing.l)
+                PBBanner(message: message, retry: { Task { await store.load() } })
             }
+        case .loaded where store.featured.isEmpty:
+            // Nothing to show until faces are scanned; the People tab explains why.
+            EmptyView()
         case .loaded:
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PBSpacing.m) {
                 titleRow
-                if store.featured.isEmpty {
-                    Text("Faces are grouped into people after photos are scanned.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 14) {
-                            ForEach(store.featured) { person in
-                                NavigationLink(value: PersonRoute(person: person)) {
-                                    PersonAvatarView(person: person, apiBaseURL: apiBaseURL, diameter: 72)
-                                        .frame(width: 80)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityHint("Shows this person’s photos")
+                    .padding(.horizontal, PBSpacing.l)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: PBSpacing.l) {
+                        ForEach(store.featured) { person in
+                            NavigationLink(value: PersonRoute(person: person)) {
+                                PersonAvatarView(person: person, apiBaseURL: apiBaseURL, diameter: PBSize.avatar)
+                                    .frame(width: PBSize.avatar + 12)
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Shows this person’s photos")
                         }
                     }
-                    .scrollClipDisabled()
+                    .padding(.horizontal, PBSpacing.l)
                 }
             }
         }
@@ -164,6 +162,8 @@ struct PeopleSection<Header: View>: View {
 struct PeopleScreen: View {
     @ObservedObject var store: PeopleStore
     let apiBaseURL: URL
+    /// Large title when hosted as the People tab's root; inline when pushed.
+    var largeTitle = false
 
     @State private var search = ""
     @State private var isSelecting = false
@@ -175,7 +175,7 @@ struct PeopleScreen: View {
     @State private var pendingMerge: MergePlan?
     @State private var mergePlan: MergePlan?
 
-    private let columns = [GridItem(.adaptive(minimum: 96, maximum: 140), spacing: 14, alignment: .top)]
+    private let columns = [GridItem(.adaptive(minimum: 92, maximum: 140), spacing: PBSpacing.l, alignment: .top)]
 
     private var visiblePeople: [PersonDTO] {
         store.matching(search)
@@ -184,7 +184,7 @@ struct PeopleScreen: View {
     var body: some View {
         content
             .navigationTitle(isSelecting ? selectionTitle : "People")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(largeTitle && !isSelecting ? .large : .inline)
             .searchable(text: $search, prompt: "Search by Name")
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let message = store.errorMessage {
@@ -741,5 +741,28 @@ struct FaceAssignSheet: View {
     private func choose(_ target: FaceAssignmentTarget, displayName: String?) {
         assign(target, displayName)
         dismiss()
+    }
+}
+
+/// People tab: the full People grid in its own navigation stack, with each person's photos.
+struct PeopleTabScreen: View {
+    @ObservedObject var people: PeopleStore
+    let collections: CollectionsStore
+    let curation: PhotoCurationCenter
+    let api: any PhotoBrainAPI
+
+    var body: some View {
+        NavigationStack {
+            PeopleScreen(store: people, apiBaseURL: api.baseURL, largeTitle: true)
+                .navigationDestination(for: PersonRoute.self) { route in
+                    PersonDetailScreen(
+                        person: route.person,
+                        people: people,
+                        collections: collections,
+                        curation: curation,
+                        api: api
+                    )
+                }
+        }
     }
 }

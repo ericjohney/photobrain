@@ -1,16 +1,24 @@
 import SwiftUI
 
-/// Collections tab: People avatars, a two-column grid of collection cards, then auto Events
-/// and Smart Albums sections, with create, rename, and delete for collections and
-/// rename/delete for smart albums.
+/// Albums tab: Memories (auto events and On this day), People avatars, My Albums and Smart
+/// Albums as horizontal tile rows, then the Library utilities (Review, Duplicates, Map, Gear
+/// Stats). Collections support create, rename, and delete; smart albums rename and delete.
 struct CollectionsScreen: View {
     @ObservedObject var store: CollectionsStore
     @ObservedObject var smartAlbums: SmartAlbumsStore
     @ObservedObject var events: EventsStore
     @ObservedObject var people: PeopleStore
+    @ObservedObject var onThisDay: OnThisDayStore
+    @ObservedObject var review: ReviewStore
+    @ObservedObject var duplicates: DuplicatesStore
     let curation: PhotoCurationCenter
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
+    /// Opens a Library utility screen on the Library tab.
+    let openUtility: (LibraryUtility) -> Void
+    /// Opens Gear Stats over the current Library filters.
+    let openGearStats: () -> Void
+    @Environment(\.showInLibrary) private var showInLibrary
 
     @State private var newNamePresented = false
     @State private var newName = ""
@@ -21,24 +29,19 @@ struct CollectionsScreen: View {
     @State private var albumRenameText = ""
     @State private var albumDeleteTarget: SmartAlbumDTO?
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 14),
-        GridItem(.flexible(), spacing: 14),
-    ]
-
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Collections")
+                .navigationTitle("Albums")
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if let message = store.errorMessage {
-                        ErrorBanner(message: message, dismiss: { store.dismissError() })
+                        PBBanner(message: message, dismiss: { store.dismissError() })
                     } else if let message = smartAlbums.errorMessage {
-                        ErrorBanner(message: message, dismiss: { smartAlbums.dismissError() })
+                        PBBanner(message: message, dismiss: { smartAlbums.dismissError() })
                     } else if let message = events.errorMessage {
-                        ErrorBanner(message: message, dismiss: { events.dismissError() })
+                        PBBanner(message: message, dismiss: { events.dismissError() })
                     } else if let message = people.errorMessage {
-                        ErrorBanner(message: message, dismiss: { people.dismissError() })
+                        PBBanner(message: message, dismiss: { people.dismissError() })
                     }
                 }
                 .toolbar {
@@ -102,6 +105,9 @@ struct CollectionsScreen: View {
         .task { await people.loadIfNeeded() }
         .task { await smartAlbums.loadIfNeeded() }
         .task { await events.loadIfNeeded() }
+        .task { if onThisDay.state == .idle { await onThisDay.load() } }
+        .task { await review.refreshCounts() }
+        .task { await duplicates.refreshCounts() }
         .alert("New Collection", isPresented: $newNamePresented) {
             TextField("Name", text: $newName)
             Button("Cancel", role: .cancel) {}
@@ -173,58 +179,156 @@ struct CollectionsScreen: View {
             }
         case .loaded:
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: PBSpacing.xl) {
+                    MemoriesSection(
+                        events: events,
+                        onThisDay: onThisDay,
+                        apiBaseURL: environment.api.baseURL,
+                        selectDate: { showInLibrary?(.capturedDate($0)) }
+                    )
                     PeopleSection(store: people, apiBaseURL: environment.api.baseURL) {
-                        sectionHeader("People")
+                        PBSectionHeader(title: "People")
                     }
-                    if store.collections.isEmpty {
-                        ContentUnavailableView {
-                            Label("No Collections", systemImage: "rectangle.stack")
-                        } description: {
-                            Text("Group photos into named collections. Deleting a collection never deletes its photos.")
-                        } actions: {
-                            Button("New Collection") { presentNewCollection() }
-                                .buttonStyle(.borderedProminent)
-                        }
-                        .padding(.top, 60)
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 18) {
-                            ForEach(store.collections) { collection in
-                                NavigationLink(value: CollectionRoute(collection: collection)) {
-                                    CollectionCard(collection: collection, apiBaseURL: environment.api.baseURL)
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    Button {
-                                        renameText = collection.name
-                                        renameTarget = collection
-                                    } label: {
-                                        Label("Rename", systemImage: "pencil")
-                                    }
-                                    Button(role: .destructive) {
-                                        deleteTarget = collection
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    EventsSection(store: events, apiBaseURL: environment.api.baseURL) {
-                        sectionHeader("Events")
-                    }
+                    myAlbumsSection
                     smartAlbumsSection
+                    utilitiesSection
                 }
-                .padding(16)
+                .padding(.vertical, PBSpacing.l)
             }
+            .background(Color(uiColor: .systemGroupedBackground))
             .refreshable {
                 async let collections: Void = store.load()
                 async let albums: Void = smartAlbums.load()
                 async let eventList: Void = events.load()
                 async let peopleList: Void = people.load()
-                _ = await (collections, albums, eventList, peopleList)
+                async let days: Void = onThisDay.load()
+                _ = await (collections, albums, eventList, peopleList, days)
+                await review.refreshCounts()
+                await duplicates.refreshCounts()
             }
         }
+    }
+
+    @ViewBuilder
+    private var myAlbumsSection: some View {
+        VStack(alignment: .leading, spacing: PBSpacing.m) {
+            PBSectionHeader(title: "My Albums")
+                .padding(.horizontal, PBSpacing.l)
+            if store.collections.isEmpty {
+                Button {
+                    presentNewCollection()
+                } label: {
+                    HStack(spacing: PBSpacing.m) {
+                        Image(systemName: "rectangle.stack.badge.plus")
+                            .font(.title2)
+                            .foregroundStyle(PBColor.accent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Create an album").font(.subheadline.weight(.semibold))
+                            Text("Deleting an album never deletes its photos.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(PBSpacing.m)
+                    .background(
+                        RoundedRectangle(cornerRadius: PBRadius.card, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, PBSpacing.l)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: PBSpacing.m) {
+                        ForEach(store.collections) { collection in
+                            NavigationLink(value: CollectionRoute(collection: collection)) {
+                                CollectionCard(collection: collection, apiBaseURL: environment.api.baseURL)
+                                    .frame(width: PBSize.albumTile)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    renameText = collection.name
+                                    renameTarget = collection
+                                } label: {
+                                    Label("Rename", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) {
+                                    deleteTarget = collection
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, PBSpacing.l)
+                }
+            }
+        }
+    }
+
+    /// Review, Duplicates, Map, and Gear Stats as an inset grouped list with counts.
+    private var utilitiesSection: some View {
+        VStack(alignment: .leading, spacing: PBSpacing.m) {
+            PBSectionHeader(title: "Utilities")
+                .padding(.horizontal, PBSpacing.l)
+            VStack(spacing: 0) {
+                utilityRow("Review", systemImage: "sparkles.rectangle.stack", count: review.counts.all,
+                           accessibility: "Review, \(CountText.photos(review.counts.all))") {
+                    openUtility(.review)
+                }
+                Divider().padding(.leading, 52)
+                utilityRow("Duplicates", systemImage: "square.on.square", count: duplicates.counts.total,
+                           accessibility: "Duplicates, \(CountText.of(duplicates.counts.total, "group", "groups"))") {
+                    openUtility(.duplicates)
+                }
+                Divider().padding(.leading, 52)
+                utilityRow("Map", systemImage: "map", count: nil, accessibility: "Map") {
+                    openUtility(.map)
+                }
+                Divider().padding(.leading, 52)
+                utilityRow("Gear Stats", systemImage: "chart.bar", count: nil, accessibility: "Gear Stats", action: openGearStats)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: PBRadius.card, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            )
+            .padding(.horizontal, PBSpacing.l)
+        }
+    }
+
+    private func utilityRow(
+        _ title: String,
+        systemImage: String,
+        count: Int?,
+        accessibility: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: PBSpacing.m) {
+                Image(systemName: systemImage)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(PBColor.accent)
+                    .frame(width: 28)
+                Text(title)
+                    .foregroundStyle(.primary)
+                Spacer()
+                if let count, count > 0 {
+                    Text(count.formatted())
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, PBSpacing.m)
+            .frame(minHeight: PBSize.control + 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibility)
     }
 
     /// Hidden until the list loads with at least one album, unless the first load failed.
@@ -234,20 +338,23 @@ struct CollectionsScreen: View {
         case .idle, .loading:
             EmptyView()
         case let .failed(message):
-            VStack(alignment: .leading, spacing: 8) {
-                sectionHeader("Smart Albums")
-                ErrorBanner(message: message, retry: { Task { await smartAlbums.load() } })
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: PBSpacing.s) {
+                PBSectionHeader(title: "Smart Albums")
+                    .padding(.horizontal, PBSpacing.l)
+                PBBanner(message: message, retry: { Task { await smartAlbums.load() } })
             }
         case .loaded where smartAlbums.albums.isEmpty:
             EmptyView()
         case .loaded:
-            VStack(alignment: .leading, spacing: 10) {
-                sectionHeader("Smart Albums")
-                LazyVGrid(columns: columns, spacing: 18) {
+            VStack(alignment: .leading, spacing: PBSpacing.m) {
+                PBSectionHeader(title: "Smart Albums")
+                    .padding(.horizontal, PBSpacing.l)
+                ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: PBSpacing.m) {
                     ForEach(smartAlbums.albums) { album in
                         NavigationLink(value: SmartAlbumRoute(album: album)) {
                             SmartAlbumCard(album: album, apiBaseURL: environment.api.baseURL)
+                                .frame(width: PBSize.albumTile)
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -265,14 +372,10 @@ struct CollectionsScreen: View {
                         }
                     }
                 }
+                .padding(.horizontal, PBSpacing.l)
+                }
             }
         }
-    }
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.title3.weight(.semibold))
-            .accessibilityAddTraits(.isHeader)
     }
 
     private func presentNewCollection() {
@@ -311,7 +414,7 @@ private struct CollectionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Color(uiColor: .secondarySystemBackground)
+            Color(uiColor: .tertiarySystemFill)
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if let cover = collection.cover, let url = collection.coverURL(apiBaseURL: apiBaseURL) {
@@ -322,10 +425,10 @@ private struct CollectionCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: PBRadius.card, style: .continuous))
             Text(collection.name)
                 .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+                .lineLimit(2)
             Text(collection.photoCount == 1 ? "1 Photo" : "\(collection.photoCount.formatted()) Photos")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -539,27 +642,7 @@ struct ErrorBanner: View {
     var dismiss: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-            Text(message)
-                .lineLimit(3)
-            Spacer(minLength: 4)
-            if let retry {
-                Button("Retry", action: retry)
-            }
-            if let dismiss {
-                Button(action: dismiss) {
-                    Image(systemName: "xmark")
-                        .frame(width: 32, height: 32)
-                }
-                .accessibilityLabel("Dismiss error")
-            }
-        }
-        .font(.caption)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.85))
+        PBBanner(message: message, retry: retry, dismiss: dismiss)
     }
 }
 

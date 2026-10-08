@@ -3,6 +3,7 @@ import SwiftUI
 enum AppTab: Hashable, Sendable {
     case library
     case collections
+    case people
     case search
 }
 extension LibraryFilters {
@@ -24,75 +25,35 @@ struct LibraryScreen: View {
     @ObservedObject var onThisDay: OnThisDayStore
     let collections: CollectionsStore
     let smartAlbums: SmartAlbumsStore
+    @ObservedObject var events: EventsStore
     @ObservedObject var review: ReviewStore
     @ObservedObject var duplicates: DuplicatesStore
     @ObservedObject var scans: ScanCoordinator
     let environment: AppEnvironment
     @ObservedObject var theme: ThemeController
     @Binding var selectedTab: AppTab
+    @Binding var utility: LibraryUtility?
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var optionsPresented = false
     @State private var addSelectionPresented = false
-    @State private var reviewPresented = false
-    @State private var duplicatesPresented = false
-    @State private var mapPresented = false
     @State private var calendarPresented = false
     @State private var gearStatsPresented = false
     @Environment(\.showInLibrary) private var showInLibrary
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                header
-                if store.filters.isActive { filterSummary }
-                if let error = store.refreshError { retainedContentError(error) }
-                if let message = scans.statusMessage {
-                    Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(Color.orange.opacity(0.18))
-                }
-                content
-            }
-            .navigationBarHidden(true)
-            .toolbar(store.showsCollapsedHistoryControls ? .hidden : .visible, for: .tabBar)
-            .safeAreaInset(edge: .bottom, spacing: 8) {
-                VStack(spacing: 8) {
+            content
+                .navigationTitle(store.isSelecting ? store.headerSubtitle : "Library")
+                .navigationBarTitleDisplayMode(store.isSelecting ? .inline : .large)
+                .pbNavigationSubtitle(store.isSelecting ? "" : store.itemCountText)
+                .toolbar { toolbarContent }
+                .safeAreaInset(edge: .top, spacing: 0) { topInsets }
+                .safeAreaInset(edge: .bottom, spacing: PBSpacing.s) {
                     ActivityBar(coordinator: scans)
-                    if store.showsCollapsedHistoryControls {
-                        historyControls
-                    }
                 }
-            }
-            .navigationDestination(isPresented: $reviewPresented) {
-                ReviewScreen(store: review, collections: collections)
-                    .environment(\.showInLibrary, showInLibrary.map { action in
-                        ShowInLibraryAction { shortcut in
-                            reviewPresented = false
-                            action(shortcut)
-                        }
-                    })
-            }
-            .navigationDestination(isPresented: $duplicatesPresented) {
-                DuplicatesScreen(store: duplicates, collections: collections)
-                    .environment(\.showInLibrary, showInLibrary.map { action in
-                        ShowInLibraryAction { shortcut in
-                            duplicatesPresented = false
-                            action(shortcut)
-                        }
-                    })
-            }
-            .navigationDestination(isPresented: $mapPresented) {
-                MapScreen(filters: store.filters, collections: collections, curation: store.curation, api: environment.api)
-                    .environment(\.showInLibrary, showInLibrary.map { action in
-                        ShowInLibraryAction { shortcut in
-                            mapPresented = false
-                            action(shortcut)
-                        }
-                    })
-            }
+                .navigationDestination(item: $utility) { destination in
+                    utilityScreen(destination)
+                }
         }
         .sheet(isPresented: $optionsPresented) {
             LibraryOptionsView(
@@ -150,8 +111,149 @@ struct LibraryScreen: View {
         .task {
             if onThisDay.state == .idle { await onThisDay.load() }
         }
+        .task { await events.loadIfNeeded() }
+        .task(id: events.events) {
+            await store.setEventTitles(EventDayIndex.titles(for: events.events))
+        }
         .task { await review.refreshCounts() }
         .task { await duplicates.refreshCounts() }
+    }
+
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if store.isSelecting {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Done") { store.endSelection() }
+                    .accessibilityLabel("Finish selecting photos")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    addSelectionPresented = true
+                } label: {
+                    Image(systemName: "rectangle.stack.badge.plus")
+                }
+                .accessibilityLabel("Add to Collection")
+                .disabled(store.selectedPhotoIDs.isEmpty)
+            }
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Select") { store.beginSelection() }
+                    .accessibilityLabel("Select photos")
+                    .disabled(store.records.isEmpty)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                moreMenu
+            }
+        }
+    }
+
+    /// Everything that used to crowd the header: grouping, sort, filters, browse screens, and
+    /// library maintenance. The label carries the review and duplicate counts for VoiceOver.
+    private var moreMenu: some View {
+        Menu {
+            Section {
+                Picker("Group By", selection: groupingBinding) {
+                    ForEach(LibraryGrouping.allCases) { grouping in
+                        Text(grouping.title).tag(grouping)
+                    }
+                }
+                Picker("Sort", selection: sortBinding) {
+                    ForEach(LibrarySort.allCases) { sort in
+                        Text(sort.title).tag(sort)
+                    }
+                }
+                Button {
+                    optionsPresented = true
+                } label: {
+                    Label("Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                }
+            }
+            Section {
+                Button {
+                    utility = .review
+                } label: {
+                    Label(
+                        review.counts.all > 0 ? "Review (\(review.counts.all.formatted()))" : "Review",
+                        systemImage: "sparkles.rectangle.stack"
+                    )
+                }
+                .accessibilityLabel("Review, \(CountText.photos(review.counts.all))")
+                Button {
+                    utility = .duplicates
+                } label: {
+                    Label(
+                        duplicates.counts.total > 0 ? "Duplicates (\(duplicates.counts.total.formatted()))" : "Duplicates",
+                        systemImage: "square.on.square"
+                    )
+                }
+                .accessibilityLabel("Duplicates, \(CountText.of(duplicates.counts.total, "group", "groups"))")
+                Button {
+                    calendarPresented = true
+                } label: {
+                    Label("Calendar", systemImage: "calendar")
+                }
+                .disabled(store.records.isEmpty)
+                Button {
+                    utility = .map
+                } label: {
+                    Label("Map", systemImage: "map")
+                }
+                Button {
+                    gearStatsPresented = true
+                } label: {
+                    Label("Gear Stats", systemImage: "chart.bar")
+                }
+            }
+            Section {
+                Button {
+                    optionsPresented = true
+                } label: {
+                    Label("Library Options", systemImage: "gearshape")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .overlay(alignment: .topTrailing) {
+                    if review.counts.all + duplicates.counts.total > 0 {
+                        Circle()
+                            .fill(PBColor.accent)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 6, y: -4)
+                    }
+                }
+        }
+        .accessibilityLabel(moreAccessibilityLabel)
+    }
+
+    private var moreAccessibilityLabel: String {
+        var parts = ["Library options"]
+        if review.counts.all > 0 { parts.append(CountText.of(review.counts.all, "photo to review", "photos to review")) }
+        if duplicates.counts.total > 0 {
+            parts.append(CountText.of(duplicates.counts.total, "duplicate group", "duplicate groups"))
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: Content
+
+    /// Quick-filter chips, an active-filter summary, and warnings, under the large title.
+    @ViewBuilder
+    private var topInsets: some View {
+        VStack(spacing: 0) {
+            if !store.isSelecting, !store.records.isEmpty || store.filters.isActive {
+                LibraryQuickFilters(store: store, presentFilters: { optionsPresented = true })
+            }
+            if let error = store.refreshError {
+                PBBanner(message: "Couldn’t refresh. Cached photos are still shown.", retry: { Task { await store.load() } })
+                    .accessibilityLabel("Could not refresh library. \(error)")
+            }
+            if let message = scans.statusMessage {
+                PBBanner(message: message)
+            }
+        }
+        .background(.bar)
     }
 
     @ViewBuilder
@@ -176,237 +278,58 @@ struct LibraryScreen: View {
                 description: Text(store.filters.isActive ? "Try clearing one or more filters." : "Scan your library to add photos.")
             )
         default:
-            VStack(spacing: 0) {
-                if !store.isSelecting, onThisDay.isVisible(scope: store.scope, filters: store.filters) {
-                    OnThisDaySection(cards: onThisDay.cards(apiBaseURL: environment.api.baseURL)) { card in
-                        store.showCapturedDate(card.capturedDate)
-                    }
+            LibraryGrid(
+                sections: store.sections,
+                selectedID: $store.activePhotoID,
+                selectedIDs: $store.selectedPhotoIDs,
+                isSelecting: store.isSelecting,
+                resetVersion: store.browsingResetVersion,
+                contentRevision: store.presentationRevision,
+                onLongPress: store.selectFromLongPress,
+                onVisibleChange: store.observeVisible,
+                onRefresh: {
+                    await scans.manualLibraryRefresh()
+                    await store.load()
+                    await onThisDay.load()
+                    await events.load()
+                    await review.refreshCounts()
+                    await duplicates.refreshCounts()
                 }
-                LibraryGrid(
-                    sections: store.sections,
-                    selectedID: $store.activePhotoID,
-                    selectedIDs: $store.selectedPhotoIDs,
-                    isSelecting: store.isSelecting,
-                    resetVersion: store.browsingResetVersion,
-                    contentRevision: store.presentationRevision,
-                    onLongPress: store.selectFromLongPress,
-                    onVisibleChange: store.observeVisible,
-                    onRefresh: {
-                        await scans.manualLibraryRefresh()
-                        await store.load()
-                        await onThisDay.load()
-                        await review.refreshCounts()
-                        await duplicates.refreshCounts()
-                    }
-                )
-                .ignoresSafeArea(edges: .horizontal)
-            }
+            )
+            .ignoresSafeArea(edges: .horizontal)
         }
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            Button {
-                optionsPresented = true
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.title2)
-                    .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("Library options")
-            .disabled(store.isSelecting)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Library")
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(store.headerSubtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .contentTransition(.numericText())
-            }
-            .fixedSize()
-            Spacer()
-            if store.isSelecting {
-                Button {
-                    addSelectionPresented = true
-                } label: {
-                    Image(systemName: "rectangle.stack.badge.plus")
-                        .font(.title2)
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Add to Collection")
-                .disabled(store.selectedPhotoIDs.isEmpty)
-                Button {
-                    store.endSelection()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Finish selecting photos")
-            } else {
-                Button {
-                    reviewPresented = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("Review")
-                        if review.counts.all > 0 {
-                            Text(review.counts.all.formatted())
-                                .font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(Capsule().fill(Color.accentColor))
-                                .contentTransition(.numericText())
-                        }
-                    }
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .frame(minHeight: 44)
-                }
-                .accessibilityLabel("Review, \(CountText.photos(review.counts.all))")
-                Menu {
-                    if duplicates.counts.total > 0 {
-                        Button {
-                            duplicatesPresented = true
-                        } label: {
-                            Label(
-                                "Duplicates (\(duplicates.counts.total.formatted()))",
-                                systemImage: "square.on.square"
-                            )
-                        }
-                        .accessibilityLabel("Duplicates, \(CountText.of(duplicates.counts.total, "group", "groups"))")
-                    }
-                    Button {
-                        calendarPresented = true
-                    } label: {
-                        Label("Calendar", systemImage: "calendar")
-                    }
-                    .disabled(store.records.isEmpty)
-                    Button {
-                        mapPresented = true
-                    } label: {
-                        Label("Map", systemImage: "map")
-                    }
-                    Button {
-                        gearStatsPresented = true
-                    } label: {
-                        Label("Gear Stats", systemImage: "chart.bar")
-                    }
-                } label: {
-                    Image(systemName: duplicates.counts.total > 0
-                        ? "square.grid.2x2.fill"
-                        : "square.grid.2x2")
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel(duplicates.counts.total > 0
-                    ? "Browse, \(CountText.of(duplicates.counts.total, "duplicate group", "duplicate groups"))"
-                    : "Browse")
-                Button("Select") {
-                    store.beginSelection()
-                }
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .fixedSize()
-                .accessibilityLabel("Select photos")
-                .disabled(store.records.isEmpty)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(headerBackground)
-    }
-
-    private var filterSummary: some View {
-        HStack(spacing: 8) {
-            Button {
-                optionsPresented = true
-            } label: {
-                Label(store.filters.summary, systemImage: "line.3.horizontal.decrease.circle.fill")
-                    .lineLimit(1)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Edit filters, \(store.filters.summary)")
-            Spacer()
-            Button {
-                store.clearFilters()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-            }
-            .accessibilityLabel("Clear all filters")
-        }
-        .font(.subheadline)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(headerBackground)
-    }
-
-    private func retainedContentError(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-            Text("Couldn’t refresh. Cached photos are still shown.")
-                .lineLimit(2)
-            Spacer()
-            Button("Retry") { Task { await store.load() } }
-        }
-        .font(.caption)
-        .padding(10)
-        .background(Color.orange.opacity(0.18))
-        .accessibilityLabel("Could not refresh library. \(message)")
-    }
-
-    private var historyControls: some View {
-        HStack(spacing: 8) {
-            Button {
-                selectedTab = .collections
-            } label: {
-                Image(systemName: "rectangle.stack")
-                    .frame(width: 40, height: 36)
-            }
-            .accessibilityLabel("Collections")
-
-            Picker("Time", selection: groupingBinding) {
-                ForEach(LibraryGrouping.allCases) { grouping in
-                    Text(grouping.title).tag(grouping)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Button {
-                selectedTab = .search
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .frame(width: 40, height: 36)
-            }
-            .accessibilityLabel("Search")
-        }
-        .padding(7)
-        .background {
-            if reduceTransparency {
-                RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground))
-            } else {
-                RoundedRectangle(cornerRadius: 16).fill(.regularMaterial)
-            }
-        }
-        .padding(.horizontal, 12)
     }
 
     @ViewBuilder
-    private var headerBackground: some View {
-        if reduceTransparency {
-            Color(uiColor: .systemBackground)
-        } else {
-            Rectangle().fill(.ultraThinMaterial)
+    private func utilityScreen(_ destination: LibraryUtility) -> some View {
+        let close = showInLibrary.map { action in
+            ShowInLibraryAction { shortcut in
+                utility = nil
+                action(shortcut)
+            }
+        }
+        switch destination {
+        case .review:
+            ReviewScreen(store: review, collections: collections)
+                .environment(\.showInLibrary, close)
+        case .duplicates:
+            DuplicatesScreen(store: duplicates, collections: collections)
+                .environment(\.showInLibrary, close)
+        case .map:
+            MapScreen(filters: store.filters, collections: collections, curation: store.curation, api: environment.api)
+                .environment(\.showInLibrary, close)
         }
     }
 
     private var groupingBinding: Binding<LibraryGrouping> {
         Binding(get: { store.grouping }, set: { value in
             Task { await store.setGrouping(value) }
+        })
+    }
+
+    private var sortBinding: Binding<LibrarySort> {
+        Binding(get: { store.sort }, set: { value in
+            Task { await store.setSort(value) }
         })
     }
 
@@ -422,6 +345,76 @@ struct LibraryScreen: View {
             get: { scans.requiresDuplicateRiskConfirmation },
             set: { if !$0 { scans.dismissDuplicateRiskPrompt() } }
         )
+    }
+}
+
+/// Library screens reachable from the More menu and the Albums tab's Utilities list.
+enum LibraryUtility: String, Hashable, Identifiable, Sendable {
+    case review
+    case duplicates
+    case map
+
+    var id: String { rawValue }
+}
+
+/// Horizontally scrolling chips under the Library title: common one-tap filters, then each
+/// other active filter as a removable chip, then Filters (the full sheet).
+private struct LibraryQuickFilters: View {
+    @ObservedObject var store: LibraryStore
+    let presentFilters: () -> Void
+
+    private var filters: LibraryFilters { store.filters }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: PBSpacing.s) {
+                FilterChip(title: "All", isOn: !filters.isActive) {
+                    store.clearFilters()
+                }
+                .accessibilityLabel(filters.isActive ? "Clear all filters" : "All photos")
+                FilterChip(title: "Picks", systemImage: "flag.fill", isOn: filters.flag == .pick) {
+                    toggle { $0.flag = $0.flag == .pick ? nil : .pick }
+                }
+                FilterChip(title: "4★+", isOn: filters.minRating == 4) {
+                    toggle { $0.minRating = $0.minRating == 4 ? nil : 4 }
+                }
+                .accessibilityLabel("4 or more stars")
+                FilterChip(title: "Videos", systemImage: "video.fill", isOn: filters.mediaKind == .video) {
+                    toggle { $0.mediaKind = $0.mediaKind == .video ? .all : .video }
+                }
+                FilterChip(title: "RAW", isOn: filters.mediaKind == .raw) {
+                    toggle { $0.mediaKind = $0.mediaKind == .raw ? .all : .raw }
+                }
+                ForEach(otherActive) { entry in
+                    FilterChip(title: entry.title, isOn: true, removable: true) {
+                        store.applyFilters(filters.removing(entry.field))
+                    }
+                    .accessibilityLabel("Remove filter \(entry.title)")
+                }
+                FilterChip(title: "Filters", systemImage: "line.3.horizontal.decrease", action: presentFilters)
+                    .accessibilityLabel(filters.isActive ? "Edit filters, \(filters.summary)" : "Add filters")
+            }
+            .padding(.horizontal, PBSpacing.l)
+            .padding(.vertical, PBSpacing.s)
+        }
+    }
+
+    /// Active filters the quick chips above don't already show.
+    private var otherActive: [LibraryFilters.ActiveFilter] {
+        filters.activeFields.filter { entry in
+            switch entry.field {
+            case .flag: filters.flag != .pick
+            case .minRating: filters.minRating != 4
+            case .mediaKind: filters.mediaKind != .video && filters.mediaKind != .raw
+            default: true
+            }
+        }
+    }
+
+    private func toggle(_ change: (inout LibraryFilters) -> Void) {
+        var updated = filters
+        change(&updated)
+        store.applyFilters(updated)
     }
 }
 

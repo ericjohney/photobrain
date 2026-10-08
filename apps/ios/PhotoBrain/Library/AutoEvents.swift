@@ -164,3 +164,37 @@ extension LibraryStore {
         LibraryStore(api: api, curation: curation, scope: .event, filters: LibraryFilters(event: filter))
     }
 }
+
+/// Maps capture days to the auto event covering them, for naming Library day sections. Only
+/// events with a place contribute (a date-range title would repeat the section's date); when
+/// two events cover one day, the one with more photos wins. Spans are capped at 31 days.
+enum EventDayIndex {
+    static func titles(for events: [EventDTO], locale: Locale = .autoupdatingCurrent) -> [String: String] {
+        let calendar = OnThisDayDate.utcCalendar
+        var winners: [String: (title: String, count: Int)] = [:]
+        for event in events {
+            guard let place = event.place,
+                  let start = EventFormatting.day(event.startAt),
+                  let end = EventFormatting.day(event.endAt) else { continue }
+            let title = EventFormatting.placeLabel(place)
+            var day = min(start, end)
+            let last = max(start, end)
+            var steps = 0
+            while day <= last, steps < 31 {
+                let parts = calendar.dateComponents([.year, .month, .day], from: day)
+                let key = key(year: parts.year ?? 1, month: parts.month ?? 1, day: parts.day ?? 1)
+                if (winners[key]?.count ?? -1) < event.photoCount {
+                    winners[key] = (title, event.photoCount)
+                }
+                guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+                day = next
+                steps += 1
+            }
+        }
+        return winners.mapValues(\.title)
+    }
+
+    static func key(year: Int, month: Int, day: Int) -> String {
+        String(format: "%04d-%02d-%02d", year, month, day)
+    }
+}

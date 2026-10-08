@@ -225,10 +225,12 @@ struct PhotoRecord: Identifiable, Hashable, Sendable {
 enum LibraryGrouping: String, CaseIterable, Identifiable, Sendable {
     case years
     case months
+    /// Moments: event days by place, other days by month.
+    case days
     case all
 
     var id: Self { self }
-    var title: String { rawValue.capitalized }
+    var title: String { self == .days ? "Moments" : rawValue.capitalized }
 }
 
 enum LibrarySort: String, CaseIterable, Identifiable, Sendable {
@@ -255,4 +257,6 @@ struct PhotoSection: Identifiable, Hashable, Sendable {
     let id: ID
     let title: String
     var photos: [PhotoRecord]
+    /// Secondary header text, e.g. `Thursday · 9`; `nil` shows the title alone.
+    var detail: String?
 }

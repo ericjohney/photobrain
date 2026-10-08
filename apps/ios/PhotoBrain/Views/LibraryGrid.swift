@@ -64,6 +64,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     private var currentIDs: [Int] = []
     private var sectionIDs: [PhotoSection.ID] = []
     private var sectionTitles: [PhotoSection.ID: String] = [:]
+    private var sectionDetails: [PhotoSection.ID: String] = [:]
     private var selectedIDs: Set<Int> = []
     private var appliedResetVersion = -1
     private var appliedContentRevision = -1
@@ -125,7 +126,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                   ) as? PhotoSectionHeader else {
                 return nil
             }
-            header.setTitle(sectionTitles[sectionID] ?? "")
+            header.setTitle(sectionTitles[sectionID] ?? "", detail: sectionDetails[sectionID])
             return header
         }
     }
@@ -173,10 +174,15 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             changedSelectionIDs: changedSelectionIDs
         )
         let nextTitles = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0.title) })
-        let layoutUnchanged = nextIDs == currentIDs && nextSectionIDs == sectionIDs && nextTitles == sectionTitles
+        let nextDetails = Dictionary(uniqueKeysWithValues: sections.compactMap { section in
+            section.detail.map { (section.id, $0) }
+        })
+        let layoutUnchanged = nextIDs == currentIDs && nextSectionIDs == sectionIDs
+            && nextTitles == sectionTitles && nextDetails == sectionDetails
 
         recordsByID = nextRecords
         sectionTitles = nextTitles
+        sectionDetails = nextDetails
 
         // Same items in the same order (e.g. a rating/flag edit): refresh only the changed
         // cells in place so the scroll position and layout are untouched.
@@ -272,7 +278,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             let width = environment.container.effectiveContentSize.width
             let columns: Int
             switch width {
-            case ..<560: columns = 5
+            case ..<560: columns = 4
             case ..<768: columns = 6
             case ..<1_024: columns = 7
             default: columns = 8
@@ -296,16 +302,16 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             if let self,
                let sectionID = sectionIDs[safe: sectionIndex],
                !(sectionTitles[sectionID] ?? "").isEmpty {
-                section.boundarySupplementaryItems = [
-                    NSCollectionLayoutBoundarySupplementaryItem(
-                        layoutSize: NSCollectionLayoutSize(
-                            widthDimension: .fractionalWidth(1),
-                            heightDimension: .estimated(38)
-                        ),
-                        elementKind: UICollectionView.elementKindSectionHeader,
-                        alignment: .top
+                let header = NSCollectionLayoutBoundarySupplementaryItem(
+                    layoutSize: NSCollectionLayoutSize(
+                        widthDimension: .fractionalWidth(1),
+                        heightDimension: .estimated(44)
                     ),
-                ]
+                    elementKind: UICollectionView.elementKindSectionHeader,
+                    alignment: .top
+                )
+                header.pinToVisibleBounds = true
+                section.boundarySupplementaryItems = [header]
             }
             return section
         }
@@ -370,30 +376,66 @@ private extension Collection {
 @MainActor
 private final class PhotoSectionHeader: UICollectionReusableView {
     static let reuseIdentifier = "PhotoSectionHeader"
+    private let background = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
     private let label = UILabel()
+    private let detailLabel = UILabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .systemBackground
-        label.font = .preferredFont(forTextStyle: .headline)
+        background.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(background)
+        label.font = UIFontMetrics(forTextStyle: .headline)
+            .scaledFont(for: .systemFont(ofSize: 17, weight: .bold))
         label.adjustsFontForContentSizeCategory = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        detailLabel.font = .preferredFont(forTextStyle: .footnote)
+        detailLabel.adjustsFontForContentSizeCategory = true
+        detailLabel.textColor = .secondaryLabel
+        detailLabel.setContentHuggingPriority(.required, for: .horizontal)
+        detailLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let stack = UIStackView(arrangedSubviews: [label, detailLabel])
+        stack.axis = .horizontal
+        stack.alignment = .firstBaseline
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            background.leadingAnchor.constraint(equalTo: leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: trailingAnchor),
+            background.topAnchor.constraint(equalTo: topAnchor),
+            background.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
         ])
+        directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+        isAccessibilityElement = true
+        accessibilityTraits = .header
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func setTitle(_ title: String) {
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyBackground()
+    }
+
+    /// Blurred unless Reduce Transparency is on or the app runs under UI tests.
+    private func applyBackground() {
+        let opaque = UIAccessibility.isReduceTransparencyEnabled || UITestMode.isActive
+        background.isHidden = opaque
+        backgroundColor = opaque ? .systemBackground : .clear
+    }
+
+    func setTitle(_ title: String, detail: String?) {
         label.text = title
-        accessibilityLabel = title
+        detailLabel.text = detail
+        detailLabel.isHidden = detail == nil
+        accessibilityLabel = detail.map { "\(title), \($0)" } ?? title
+        applyBackground()
     }
 }
 
@@ -424,18 +466,21 @@ private final class PhotoGridCell: UICollectionViewCell {
         imageView.clipsToBounds = true
         imageView.translatesAutoresizingMaskIntoConstraints = false
         checkmark.tintColor = .white
-        checkmark.backgroundColor = .systemBlue
+        checkmark.backgroundColor = .tintColor
         checkmark.layer.cornerRadius = 10
         checkmark.translatesAutoresizingMaskIntoConstraints = false
-        rawBadge.font = .preferredFont(forTextStyle: .caption2)
+        rawBadge.font = UIFontMetrics(forTextStyle: .caption2)
+            .scaledFont(for: .systemFont(ofSize: 10, weight: .semibold))
         rawBadge.adjustsFontForContentSizeCategory = true
         rawBadge.textColor = .white
-        rawBadge.backgroundColor = UIColor.black.withAlphaComponent(0.72)
-        rawBadge.layer.cornerRadius = 4
+        rawBadge.backgroundColor = PBColor.uiBadgeBackground
+        rawBadge.layer.cornerRadius = PBRadius.badge
+        rawBadge.layer.cornerCurve = .continuous
         rawBadge.clipsToBounds = true
         rawBadge.textAlignment = .center
         rawBadge.translatesAutoresizingMaskIntoConstraints = false
-        ratingLabel.font = .preferredFont(forTextStyle: .caption2)
+        ratingLabel.font = UIFontMetrics(forTextStyle: .caption2)
+            .scaledFont(for: .systemFont(ofSize: 10, weight: .semibold))
         ratingLabel.adjustsFontForContentSizeCategory = true
         ratingLabel.textColor = .white
         flagView.contentMode = .scaleAspectFit
@@ -445,8 +490,9 @@ private final class PhotoGridCell: UICollectionViewCell {
         curationBadge.alignment = .center
         curationBadge.isLayoutMarginsRelativeArrangement = true
         curationBadge.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4)
-        curationBadge.backgroundColor = UIColor.black.withAlphaComponent(0.72)
-        curationBadge.layer.cornerRadius = 4
+        curationBadge.backgroundColor = PBColor.uiBadgeBackground
+        curationBadge.layer.cornerRadius = PBRadius.badge
+        curationBadge.layer.cornerCurve = .continuous
         curationBadge.clipsToBounds = true
         curationBadge.translatesAutoresizingMaskIntoConstraints = false
         curationBadge.addArrangedSubview(ratingLabel)
@@ -465,8 +511,9 @@ private final class PhotoGridCell: UICollectionViewCell {
         mediaBadge.alignment = .center
         mediaBadge.isLayoutMarginsRelativeArrangement = true
         mediaBadge.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4)
-        mediaBadge.backgroundColor = UIColor.black.withAlphaComponent(0.72)
-        mediaBadge.layer.cornerRadius = 4
+        mediaBadge.backgroundColor = PBColor.uiBadgeBackground
+        mediaBadge.layer.cornerRadius = PBRadius.badge
+        mediaBadge.layer.cornerCurve = .continuous
         mediaBadge.clipsToBounds = true
         mediaBadge.addArrangedSubview(mediaBadgeIcon)
         mediaBadge.addArrangedSubview(mediaBadgeLabel)
@@ -492,8 +539,8 @@ private final class PhotoGridCell: UICollectionViewCell {
             checkmark.heightAnchor.constraint(equalToConstant: 20),
             rawBadge.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 5),
             rawBadge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -5),
-            rawBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 34),
-            rawBadge.heightAnchor.constraint(greaterThanOrEqualToConstant: 20),
+            rawBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 30),
+            rawBadge.heightAnchor.constraint(greaterThanOrEqualToConstant: 16),
             trailingBadges.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
             trailingBadges.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
             trailingBadges.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 4),

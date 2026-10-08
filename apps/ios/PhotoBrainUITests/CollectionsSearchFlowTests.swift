@@ -5,7 +5,7 @@ final class CollectionsSearchFlowTests: PhotoBrainUITestCase {
     @MainActor
     func testCollectionsShowsSeededSectionsAndOpensDetails() {
         openCollections()
-        waitFor(app.staticTexts["Faces are grouped into people after photos are scanned."])
+        waitFor(app.staticTexts["Memories"])
 
         tap("Lisbon Favorites, 3 photos")
         waitFor(navigationTitle("Lisbon Favorites"))
@@ -41,10 +41,10 @@ final class CollectionsSearchFlowTests: PhotoBrainUITestCase {
     @MainActor
     func testSemanticSearchOpensResultAndSavesAlbum() async throws {
         app.tabBars.buttons["Search"].tap()
-        waitFor(app.staticTexts["Search your library"])
+        waitFor(element("Search your library"))
         XCTAssertFalse(app.buttons["Save as Smart Album"].isEnabled)
 
-        let field = waitFor(app.searchFields["Search Photos"])
+        let field = waitFor(app.searchFields["Describe a photo"])
         field.tap()
         field.typeText("dog\n")
         let results = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open '"))

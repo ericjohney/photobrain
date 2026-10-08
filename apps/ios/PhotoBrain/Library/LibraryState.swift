@@ -304,7 +304,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     @Published private(set) var refreshError: String?
     @Published private(set) var filterOptionsError: String?
     @Published var filters = LibraryFilters()
-    @Published var grouping: LibraryGrouping = .all
+    @Published var grouping: LibraryGrouping = .days
     @Published var sort: LibrarySort = .captured
     @Published var selectedPhotoIDs: Set<Int> = []
     @Published var isSelecting = false
@@ -369,6 +369,12 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         return PhotoDateResolver.date(for: photo).formatted(.dateTime.year().month(.wide).day())
     }
 
+    /// `21 Items`; stable while scrolling (pinned section headers show the visible date), so
+    /// the navigation bar never resizes mid-scroll.
+    var itemCountText: String {
+        records.count == 1 ? "1 Item" : "\(records.count.formatted()) Items"
+    }
+
     var headerSubtitle: String {
         if isSelecting {
             switch selectedPhotoIDs.count {
@@ -381,8 +387,15 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         return records.count == 1 ? "1 Item" : "\(records.count.formatted()) Items"
     }
 
-    var showsCollapsedHistoryControls: Bool {
-        !records.isEmpty && !isSelecting && (isBrowsingHistory || grouping != .all)
+    /// Day key (`YYYY-MM-DD`) to the title of the auto event covering it; names day sections.
+    private(set) var eventTitlesByDay: [String: String] = [:]
+
+    /// Names day sections after events; rebuilds only when the titles change.
+    func setEventTitles(_ titles: [String: String]) async {
+        guard titles != eventTitlesByDay else { return }
+        eventTitlesByDay = titles
+        guard grouping == .days else { return }
+        await rebuildPresentation()
     }
 
     func load(retainingContent: Bool = true) async {
@@ -600,6 +613,12 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         switch shortcut {
         case let .tag(tag): showTag(tag)
         case let .place(place): showPlace(place)
+        case let .capturedDate(date):
+            activePhotoID = nil
+            showCapturedDate(date)
+        case let .gear(selection):
+            activePhotoID = nil
+            showGear(selection)
         }
     }
 
@@ -631,6 +650,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         let sort = sort
         let grouping = grouping
         let ranked = scope.isRanked
+        let eventTitles = eventTitlesByDay
         let presentation = await Task.detached(priority: .userInitiated) {
             let signpost = SpikeSignposts.beginCapturedPresentation(
                 recordCount: records.count,
@@ -642,7 +662,8 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
                 : LibraryPresentationBuilder.build(
                     records: records,
                     sort: sort,
-                    grouping: grouping
+                    grouping: grouping,
+                    eventTitles: eventTitles
                 )
             SpikeSignposts.endCapturedPresentation(
                 signpost,
@@ -674,7 +695,8 @@ enum LibraryPresentationBuilder {
     static func build(
         records: [PhotoRecord],
         sort: LibrarySort,
-        grouping: LibraryGrouping
+        grouping: LibraryGrouping,
+        eventTitles: [String: String] = [:]
     ) -> (ordered: [PhotoRecord], sections: [PhotoSection]) {
         if sort == .added {
             let ordered = records.sorted { $0.id < $1.id }
@@ -701,6 +723,9 @@ enum LibraryPresentationBuilder {
         }
         guard grouping != .all else {
             return (ordered, [allSection(ordered)])
+        }
+        if grouping == .days {
+            return (ordered, daySections(captured, eventTitles: eventTitles))
         }
 
         let monthSymbols = grouping == .months ? PhotoDateResolver.calendar.monthSymbols : []
@@ -742,6 +767,65 @@ enum LibraryPresentationBuilder {
             )
         }
         return (ordered, sections)
+    }
+
+    /// Moments: each day an auto event covers becomes its own section titled with the event's
+    /// place (detail `May 18, 2024 · 6`); runs of other days collapse into month sections
+    /// (`May 2024`, detail `9`). Dates use the GMT capture calendar like every capture date.
+    private static func daySections(
+        _ captured: [CapturedRecord],
+        eventTitles: [String: String]
+    ) -> [PhotoSection] {
+        let calendar = PhotoDateResolver.calendar
+        let dateStyle = Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: calendar.timeZone)
+        let monthSymbols = calendar.monthSymbols
+        var sections: [PhotoSection] = []
+        var currentID: PhotoSection.ID?
+        var currentTitle = ""
+        var currentDetailPrefix: String?
+        var currentPhotos: [PhotoRecord] = []
+
+        func flush() {
+            guard let currentID else { return }
+            let count = currentPhotos.count.formatted()
+            let detail = currentDetailPrefix.map { "\($0) · \(count)" } ?? count
+            sections.append(PhotoSection(id: currentID, title: currentTitle, photos: currentPhotos, detail: detail))
+        }
+
+        for item in captured {
+            let parts = calendar.dateComponents([.year, .month, .day], from: item.date)
+            let year = parts.year ?? 1, month = parts.month ?? 1, day = parts.day ?? 1
+            let key = EventDayIndex.key(year: year, month: month, day: day)
+            let id: PhotoSection.ID
+            let title: String
+            let prefix: String?
+            if let event = eventTitles[key] {
+                id = PhotoSection.ID(year: year, month: month, discriminator: "event-\(day)")
+                title = event
+                prefix = item.date.formatted(dateStyle)
+            } else {
+                id = PhotoSection.ID(year: year, month: month, discriminator: "month-after-\(sections.count)")
+                title = "\(monthSymbols[max(0, min(11, month - 1))]) \(year)"
+                prefix = nil
+            }
+            // Consecutive non-event photos in one month share a section regardless of the
+            // section count in their discriminator.
+            let continues = currentID.map { current in
+                current.year == id.year && current.month == id.month
+                    && (current.discriminator == id.discriminator
+                        || (current.discriminator.hasPrefix("month-") && id.discriminator.hasPrefix("month-")))
+            } ?? false
+            if !continues {
+                flush()
+                currentID = id
+                currentTitle = title
+                currentDetailPrefix = prefix
+                currentPhotos = []
+            }
+            currentPhotos.append(item.record)
+        }
+        flush()
+        return sections
     }
 
     /// Server order unchanged, as one section.

@@ -16,7 +16,7 @@ struct SmartAlbumCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Color(uiColor: .secondarySystemBackground)
+            Color(uiColor: .tertiarySystemFill)
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if let cover = album.cover, let url = album.coverURL(apiBaseURL: apiBaseURL) {
@@ -27,10 +27,10 @@ struct SmartAlbumCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: PBRadius.card, style: .continuous))
             Text(album.name)
                 .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+                .lineLimit(2)
             Group {
                 if let count = album.photoCount {
                     Text(count == 1 ? "1 Photo" : "\(count.formatted()) Photos")

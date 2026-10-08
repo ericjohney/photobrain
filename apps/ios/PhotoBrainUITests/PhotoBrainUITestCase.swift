@@ -23,6 +23,8 @@ class PhotoBrainUITestCase: XCTestCase {
         await MainActor.run {
             app = XCUIApplication()
             app.launchEnvironment["PHOTOBRAIN_API_URL"] = url.absoluteString
+            // Debug-only: no animations or blur, so idle waits settle fast on CI runners.
+            app.launchEnvironment["PHOTOBRAIN_UI_TESTS"] = "1"
             // Labels embed formatted dates and counts; pin the locale they are asserted in.
             app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
             app.launch()
@@ -126,15 +128,22 @@ class PhotoBrainUITestCase: XCTestCase {
     }
 
     /// Waits for the Library grid, then scrolls it until `label` is materialized and hittable.
+    /// The grid only materializes cells near the viewport, so a short wait is followed by
+    /// half-screen drags (no momentum, so nothing is skipped) toward the oldest photos, then
+    /// back toward the newest.
     @MainActor
     func gridCell(_ label: String, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
-        let cell = element(label)
-        if cell.waitForExistence(timeout: 10), cell.isHittable { return cell }
         let grid = app.collectionViews.firstMatch
-        for direction in [true, false] {
-            for _ in 0..<6 {
-                direction ? grid.swipeDown() : grid.swipeUp()
-                if cell.exists, cell.isHittable { return cell }
+        waitFor(grid, file: file, line: line)
+        let cell = grid.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+        if cell.waitForExistence(timeout: 2), cell.isHittable { return cell }
+        let upper = grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        let lower = grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+        for towardOldest in [true, false] {
+            for _ in 0..<12 {
+                let (start, end) = towardOldest ? (upper, lower) : (lower, upper)
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+                if cell.waitForExistence(timeout: 1), cell.isHittable { return cell }
             }
         }
         XCTFail("No grid cell labeled \(label)", file: file, line: line)
@@ -144,19 +153,19 @@ class PhotoBrainUITestCase: XCTestCase {
     @MainActor
     func openLibrary() {
         app.tabBars.buttons["Library"].tap()
-        waitFor(app.staticTexts["Library"])
+        waitFor(navigationTitle("Library"))
     }
 
     @MainActor
     func openCollections() {
-        app.tabBars.buttons["Collections"].tap()
-        waitFor(navigationTitle("Collections"))
+        app.tabBars.buttons["Albums"].tap()
+        waitFor(navigationTitle("Albums"))
     }
 
-    /// Opens the Library's Browse menu (its label carries the duplicate-group count).
+    /// Opens the Library's More menu (its label carries review and duplicate counts).
     @MainActor
     func openBrowseMenu() {
-        waitFor(element(startingWith: "Browse")).tap()
+        waitFor(element(startingWith: "Library options")).tap()
     }
 
     @MainActor

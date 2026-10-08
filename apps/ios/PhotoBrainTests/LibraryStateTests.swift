@@ -31,6 +31,39 @@ final class LibraryStateTests: XCTestCase {
     }
 
 
+    func testMomentsNameEventDaysAndGroupOtherDaysByMonth() {
+        let photos = [
+            TestModels.photo(id: 1, taken: "2024-05-02T10:00:00Z"),
+            TestModels.photo(id: 2, taken: "2024-05-18T10:00:00Z"),
+            TestModels.photo(id: 3, taken: "2024-05-18T11:00:00Z"),
+            TestModels.photo(id: 4, taken: "2024-05-25T09:00:00Z"),
+        ].map { PhotoRecord(dto: $0, apiBaseURL: URL(string: "https://example.test")!) }
+        let presentation = LibraryPresentationBuilder.build(
+            records: photos,
+            sort: .captured,
+            grouping: .days,
+            eventTitles: ["2024-05-18": "Lisbon, Portugal"]
+        )
+        XCTAssertEqual(presentation.sections.map(\.title), ["May 2024", "Lisbon, Portugal", "May 2024"])
+        XCTAssertEqual(presentation.sections.map { $0.photos.map(\.id) }, [[1], [2, 3], [4]])
+        XCTAssertEqual(presentation.sections[1].detail, "May 18, 2024 · 2")
+        XCTAssertEqual(Set(presentation.sections.map(\.id)).count, 3, "section IDs stay unique")
+    }
+
+    func testEventDayIndexCoversMultiDayEventsWithPlacesOnly() {
+        let cover = CollectionCoverDTO(photoId: 1, thumbnailUpdatedAt: nil)
+        let events = [
+            EventDTO(id: 1, startAt: "2024-05-17T20:00:00", endAt: "2024-05-19T09:00:00", photoCount: 6, cover: cover,
+                     place: EventPlaceDTO(city: "Lisbon", region: nil, country: "Portugal", countryCode: "PT")),
+            EventDTO(id: 2, startAt: "2024-06-01T10:00:00", endAt: "2024-06-01T12:00:00", photoCount: 8, cover: cover, place: nil),
+        ]
+        XCTAssertEqual(EventDayIndex.titles(for: events), [
+            "2024-05-17": "Lisbon, Portugal",
+            "2024-05-18": "Lisbon, Portugal",
+            "2024-05-19": "Lisbon, Portugal",
+        ])
+    }
+
     func testRecentlyAddedUsesAscendingIDsAndForcesAllGrouping() async {
         let api = TestAPI()
         await api.setPhotos(
