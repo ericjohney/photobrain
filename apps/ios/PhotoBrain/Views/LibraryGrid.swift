@@ -420,8 +420,14 @@ private final class PhotoSectionHeader: UICollectionReusableView {
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        background.isHidden = UIAccessibility.isReduceTransparencyEnabled
-        backgroundColor = UIAccessibility.isReduceTransparencyEnabled ? .systemBackground : .clear
+        applyBackground()
+    }
+
+    /// Blurred unless Reduce Transparency is on or the app runs under UI tests.
+    private func applyBackground() {
+        let opaque = UIAccessibility.isReduceTransparencyEnabled || UITestMode.isActive
+        background.isHidden = opaque
+        backgroundColor = opaque ? .systemBackground : .clear
     }
 
     func setTitle(_ title: String, detail: String?) {
@@ -429,8 +435,7 @@ private final class PhotoSectionHeader: UICollectionReusableView {
         detailLabel.text = detail
         detailLabel.isHidden = detail == nil
         accessibilityLabel = detail.map { "\(title), \($0)" } ?? title
-        background.isHidden = UIAccessibility.isReduceTransparencyEnabled
-        backgroundColor = UIAccessibility.isReduceTransparencyEnabled ? .systemBackground : .clear
+        applyBackground()
     }
 }
 

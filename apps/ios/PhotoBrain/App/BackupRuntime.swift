@@ -104,6 +104,7 @@ final class PhotoBrainAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         BackupRuntime.shared.registerProcessingTask()
+        if UITestMode.isActive { UIView.setAnimationsEnabled(false) }
         return true
     }
 

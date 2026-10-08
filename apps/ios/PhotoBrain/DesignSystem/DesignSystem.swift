@@ -53,7 +53,7 @@ enum PBSize {
 
 extension View {
     /// Liquid Glass on iOS 26, a material on earlier releases, and an opaque fill when
-    /// Reduce Transparency is on.
+    /// Reduce Transparency is on or the Debug app runs under UI tests.
     func pbGlass<S: Shape>(in shape: S, interactive: Bool = false, dark: Bool = false) -> some View {
         modifier(PBGlassModifier(shape: shape, interactive: interactive, dark: dark))
     }
@@ -66,10 +66,12 @@ private struct PBGlassModifier<S: Shape>: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
-        if reduceTransparency {
+        if reduceTransparency || UITestMode.isActive {
             content.background(shape.fill(dark ? Color.black.opacity(0.9) : Color(uiColor: .secondarySystemBackground)))
         } else if #available(iOS 26.0, *) {
-            content.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+            // Not `.interactive()`: its touch-driven shimmer kept XCUITest's idle wait from
+            // settling on CI runners, and these controls already give press feedback.
+            content.glassEffect(.regular, in: shape)
         } else {
             content.background(shape.fill(dark ? AnyShapeStyle(Color.black.opacity(0.45)) : AnyShapeStyle(.regularMaterial)))
         }
@@ -257,4 +259,17 @@ extension View {
             self
         }
     }
+}
+
+/// Debug builds launched by XCUITest (`PHOTOBRAIN_UI_TESTS=1`). Disables animations and
+/// translucency so the runner's idle detection settles quickly on slow CI machines. Release
+/// lanes never read it.
+enum UITestMode {
+    static let isActive: Bool = {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["PHOTOBRAIN_UI_TESTS"] == "1"
+        #else
+        false
+        #endif
+    }()
 }
