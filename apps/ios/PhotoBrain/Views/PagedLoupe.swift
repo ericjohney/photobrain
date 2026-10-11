@@ -14,6 +14,19 @@ struct PagedLoupe: UIViewControllerRepresentable {
     let onEmpty: () -> Void
     /// Face boxes drawn over each photo by id; empty when Show Faces is off.
     var faceBoxes: [Int: [FaceBoxDTO]] = [:]
+    /// A vertical drag-to-dismiss started (`true`) or sprang back (`false`).
+    var onDismissDragActive: ((Bool) -> Void)?
+    /// Drag released past the dismiss threshold: the image's on-screen frame (window
+    /// coordinates), its image, and the remaining backdrop opacity.
+    var onDismissRequest: ((CGRect?, UIImage?, Double) -> Void)?
+    /// Swipe up on an unzoomed photo (Photos opens the info panel).
+    var onSwipeUp: (() -> Void)?
+    /// A decoded image to show before a page's thumbnail loads (the grid cell's image).
+    var placeholder: ((Int) -> UIImage?)?
+    var bridge: LoupePagerBridge?
+    /// While the info panel is up, a downward swipe closes it instead of the loupe.
+    var infoVisible = false
+    var onSwipeDownToCloseInfo: (() -> Void)?
 
     func makeUIViewController(context: Context) -> PagedLoupeViewController {
         let controller = PagedLoupeViewController()
@@ -23,6 +36,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.attach(playback: playback)
         controller.chromeVisible = chromeVisible
         controller.faceBoxes = faceBoxes
+        assignGestureCallbacks(controller)
         controller.update(records: records, activeID: activeID)
         return controller
     }
@@ -34,12 +48,46 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.attach(playback: playback)
         controller.chromeVisible = chromeVisible
         controller.faceBoxes = faceBoxes
+        assignGestureCallbacks(controller)
         controller.update(records: records, activeID: activeID)
+    }
+
+    private func assignGestureCallbacks(_ controller: PagedLoupeViewController) {
+        controller.onDismissDragActive = onDismissDragActive
+        controller.onDismissRequest = onDismissRequest
+        controller.onSwipeUp = onSwipeUp
+        controller.placeholderProvider = placeholder
+        controller.infoVisible = infoVisible
+        controller.onSwipeDownToCloseInfo = onSwipeDownToCloseInfo
+        bridge?.controller = controller
+    }
+}
+
+/// Thresholds for the loupe's vertical gestures, shared by the pager and its tests.
+enum LoupeDismissGesture {
+    static func shouldDismiss(translationY: CGFloat, velocityY: CGFloat) -> Bool {
+        translationY > 100 || (translationY > 16 && velocityY > 800)
+    }
+
+    static func shouldShowInfo(translationY: CGFloat, velocityY: CGFloat) -> Bool {
+        translationY < -60 || (translationY < -16 && velocityY < -800)
+    }
+
+    /// 0 at rest, 1 after dragging 60% of the height.
+    static func progress(translationY: CGFloat, height: CGFloat) -> CGFloat {
+        guard height > 0 else { return 0 }
+        return min(1, max(0, translationY / (height * 0.6)))
+    }
+
+    /// Photos shrinks the page as it is pulled down, to at most 70%.
+    static func scale(progress: CGFloat) -> CGFloat {
+        1 - 0.3 * progress
     }
 }
 
 @MainActor
-final class PagedLoupeViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate {
+final class PagedLoupeViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate,
+    UIGestureRecognizerDelegate {
     private let layout = UICollectionViewFlowLayout()
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
     private let loader = RedirectAwareImageLoader()
@@ -49,6 +97,14 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
     var onActiveIDChanged: ((Int) -> Void)?
     var onTap: (() -> Void)?
     var onEmpty: (() -> Void)?
+    var onDismissDragActive: ((Bool) -> Void)?
+    var onDismissRequest: ((CGRect?, UIImage?, Double) -> Void)?
+    var onSwipeUp: (() -> Void)?
+    var placeholderProvider: ((Int) -> UIImage?)?
+    var infoVisible = false
+    var onSwipeDownToCloseInfo: (() -> Void)?
+    private lazy var verticalPan = UIPanGestureRecognizer(target: self, action: #selector(handleVerticalPan(_:)))
+    private var isDismissDragging = false
     private var lastLayoutSize = CGSize.zero
     private var playback: LoupePlaybackController?
     private var playbackSubscription: AnyCancellable?
@@ -74,11 +130,11 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        view.backgroundColor = .clear
         layout.scrollDirection = .horizontal
         layout.minimumLineSpacing = 0
         layout.minimumInteritemSpacing = 0
-        collectionView.backgroundColor = .black
+        collectionView.backgroundColor = .clear
         collectionView.isPagingEnabled = true
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.dataSource = self
@@ -92,6 +148,8 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        verticalPan.delegate = self
+        view.addGestureRecognizer(verticalPan)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleMemoryWarning),
@@ -184,6 +242,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         let photo = records[indexPath.item]
         cell.configure(
             photo: photo,
+            placeholder: placeholderProvider?(photo.id),
             loader: loader,
             onTap: { [weak self] in self?.onTap?() },
             onZoomChanged: { [weak self] _ in self?.updatePagingAvailability() }
@@ -263,6 +322,93 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             .compactMap { $0 as? ZoomPageCell }
             .contains { $0.zoomView.zoomScale > 1.001 }
         collectionView.isScrollEnabled = !zoomed
+    }
+
+    // MARK: Vertical gestures
+
+    private var activeCell: ZoomPageCell? {
+        guard let activeID else { return nil }
+        return collectionView.visibleCells
+            .compactMap { $0 as? ZoomPageCell }
+            .first { $0.representedID == activeID }
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === verticalPan else { return true }
+        let velocity = verticalPan.velocity(in: view)
+        guard abs(velocity.y) > abs(velocity.x) * 1.2 else { return false }
+        guard !collectionView.isDragging, !collectionView.isDecelerating else { return false }
+        return (activeCell?.zoomView.zoomScale ?? 1) <= 1.001
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer === verticalPan
+    }
+
+    @objc private func handleVerticalPan(_ pan: UIPanGestureRecognizer) {
+        let translation = pan.translation(in: view)
+        let velocity = pan.velocity(in: view)
+        switch pan.state {
+        case .changed:
+            if (translation.y > 0 && !infoVisible) || isDismissDragging {
+                if !isDismissDragging {
+                    isDismissDragging = true
+                    collectionView.isScrollEnabled = false
+                    onDismissDragActive?(true)
+                }
+                let progress = LoupeDismissGesture.progress(translationY: translation.y, height: view.bounds.height)
+                let scale = LoupeDismissGesture.scale(progress: progress)
+                collectionView.transform = CGAffineTransform(translationX: translation.x, y: max(0, translation.y) * 0.9 + min(0, translation.y) * 0.2)
+                    .scaledBy(x: scale, y: scale)
+                // The loupe's own backdrop is cleared for the drag; the pager draws the fade.
+                view.backgroundColor = UIColor.black.withAlphaComponent(1 - progress)
+            }
+        case .ended, .cancelled, .failed:
+            if isDismissDragging {
+                isDismissDragging = false
+                if pan.state == .ended,
+                   LoupeDismissGesture.shouldDismiss(translationY: translation.y, velocityY: velocity.y) {
+                    let progress = LoupeDismissGesture.progress(translationY: translation.y, height: view.bounds.height)
+                    let (frame, image) = activeImageFrame()
+                    onDismissRequest?(frame, image, Double(1 - progress))
+                    // The presenter hides the pager and flies the image itself; restore the
+                    // pager once it is no longer visible.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                        guard let self else { return }
+                        collectionView.transform = .identity
+                        view.backgroundColor = .clear
+                        collectionView.isScrollEnabled = true
+                    }
+                } else {
+                    UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0) {
+                        self.collectionView.transform = .identity
+                        self.view.backgroundColor = .clear
+                    } completion: { _ in
+                        self.updatePagingAvailability()
+                    }
+                    collectionView.isScrollEnabled = true
+                    onDismissDragActive?(false)
+                }
+            } else if pan.state == .ended, infoVisible,
+                      LoupeDismissGesture.shouldDismiss(translationY: translation.y, velocityY: velocity.y) {
+                onSwipeDownToCloseInfo?()
+            } else if pan.state == .ended,
+                      LoupeDismissGesture.shouldShowInfo(translationY: translation.y, velocityY: velocity.y) {
+                onSwipeUp?()
+            }
+        default:
+            break
+        }
+    }
+
+    /// The open photo's aspect-fit frame in window coordinates (following the drag transform).
+    func activeImageFrame() -> (CGRect?, UIImage?) {
+        guard let cell = activeCell, let image = cell.zoomView.image, image.size.width > 0 else { return (nil, nil) }
+        let fitted = AVMakeRect(aspectRatio: image.size, insideRect: cell.bounds)
+        return (cell.convert(fitted, to: nil), image)
     }
 
     // MARK: Playback
@@ -469,6 +615,7 @@ final class ZoomPageCell: UICollectionViewCell {
 
     func configure(
         photo: PhotoRecord,
+        placeholder: UIImage? = nil,
         loader: RedirectAwareImageLoader,
         onTap: @escaping () -> Void,
         onZoomChanged: @escaping (Bool) -> Void
@@ -483,8 +630,13 @@ final class ZoomPageCell: UICollectionViewCell {
         failureStack.isHidden = true
         zoomView.onSingleTap = onTap
         zoomView.onZoomStateChanged = onZoomChanged
-        zoomView.setImage(SyntheticThumbnail.image(id: photo.id, size: bounds.size))
-        setShowsPhotoImage(false)
+        if let placeholder {
+            zoomView.setImage(placeholder)
+            setShowsPhotoImage(true)
+        } else {
+            zoomView.setImage(nil)
+            setShowsPhotoImage(false)
+        }
 
         guard photo.largeThumbnailURL.host != "photos.example.invalid" else { return }
         let targetSize = bounds.size == .zero ? UIScreen.main.bounds.size : bounds.size
@@ -531,10 +683,7 @@ final class ZoomPageCell: UICollectionViewCell {
     func reloadDecodedImageIfNeeded() {
         guard decodedImageWasEvicted, let representedID else { return }
         decodedImageWasEvicted = false
-        zoomView.setImage(
-            SyntheticThumbnail.image(id: representedID, size: bounds.size),
-            resetsZoom: false
-        )
+        zoomView.setImage(nil, resetsZoom: false)
         setShowsPhotoImage(false)
         retry?()
     }
@@ -597,7 +746,7 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
         bouncesZoom = true
         showsHorizontalScrollIndicator = false
         showsVerticalScrollIndicator = false
-        backgroundColor = .black
+        backgroundColor = .clear
 
         imageView.contentMode = .scaleAspectFit
         imageView.translatesAutoresizingMaskIntoConstraints = false
@@ -636,6 +785,10 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
 
     var hasImage: Bool {
         imageView.image != nil
+    }
+
+    var image: UIImage? {
+        imageView.image
     }
 
     func resetZoom() {
@@ -709,5 +862,130 @@ final class FaceBoxOverlayView: UIView {
             }
         }
         CATransaction.commit()
+    }
+}
+
+/// Grid that a loupe zooms out of and back into: reports a photo's on-screen cell (scrolling it
+/// into view first) and can hide that cell while the photo is in flight.
+@MainActor
+protocol LoupeTransitionSource: AnyObject {
+    func loupeSourceFrame(for id: Int) -> CGRect?
+    func loupeSourceImage(for id: Int) -> UIImage?
+    func setLoupeHiddenID(_ id: Int?)
+    var loupeContainerBounds: CGRect { get }
+}
+
+/// Photos-style zoom between a grid cell and the loupe. The presenter owns one per grid; the
+/// loupe flies the cell's image itself because the cover is presented without animation.
+@MainActor
+final class LoupeZoomTransition {
+    weak var source: (any LoupeTransitionSource)?
+
+    func frame(for id: Int) -> CGRect? { source?.loupeSourceFrame(for: id) }
+    func image(for id: Int) -> UIImage? { source?.loupeSourceImage(for: id) }
+    func setHidden(_ id: Int?) { source?.setLoupeHiddenID(id) }
+    var containerBounds: CGRect { source?.loupeContainerBounds ?? UIScreen.main.bounds }
+
+    /// Presents or dismisses a loupe without the system cover animation.
+    static func withoutAnimation(_ change: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, change)
+    }
+}
+
+/// Lets the loupe ask its pager for the open photo's current frame and image.
+@MainActor
+final class LoupePagerBridge {
+    weak var controller: PagedLoupeViewController?
+}
+
+extension View {
+    /// Presents a zooming loupe over the full screen while keeping this view rendered behind it,
+    /// so the photo can shrink back into its grid cell. `fullScreenCover` removes the presenter
+    /// once presentation finishes, which would show black behind a drag-to-dismiss.
+    func loupeCover<Loupe: View>(isPresented: Bool, @ViewBuilder loupe: @escaping () -> Loupe) -> some View {
+        modifier(LoupeCoverModifier(isPresented: isPresented, loupe: loupe))
+    }
+}
+
+private struct LoupeCoverModifier<Loupe: View>: ViewModifier {
+    let isPresented: Bool
+    let loupe: () -> Loupe
+    @Environment(\.showInLibrary) private var showInLibrary
+    @Environment(\.peopleStore) private var people
+
+    func body(content: Content) -> some View {
+        content.background(
+            LoupeCoverHost(
+                isPresented: isPresented,
+                root: isPresented
+                    ? AnyView(
+                        loupe()
+                            .environment(\.showInLibrary, showInLibrary)
+                            .environment(\.peopleStore, people)
+                    )
+                    : nil
+            )
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+        )
+    }
+}
+
+private struct LoupeCoverHost: UIViewControllerRepresentable {
+    let isPresented: Bool
+    let root: AnyView?
+
+    func makeUIViewController(context: Context) -> LoupeCoverHostController {
+        LoupeCoverHostController()
+    }
+
+    func updateUIViewController(_ controller: LoupeCoverHostController, context: Context) {
+        controller.sync(root: isPresented ? root : nil)
+    }
+}
+
+@MainActor
+final class LoupeCoverHostController: UIViewController {
+    private var hosting: UIHostingController<AnyView>?
+    private var pendingRoot: AnyView?
+
+    func sync(root: AnyView?) {
+        if let root {
+            if let hosting {
+                hosting.rootView = root
+                return
+            }
+            pendingRoot = root
+            presentIfPossible()
+        } else {
+            pendingRoot = nil
+            guard let hosting else { return }
+            self.hosting = nil
+            hosting.presentingViewController?.dismiss(animated: false)
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        presentIfPossible()
+    }
+
+    private func presentIfPossible() {
+        guard hosting == nil, let root = pendingRoot, view.window != nil else { return }
+        var presenter: UIViewController = self
+        while let presented = presenter.presentedViewController, !presented.isBeingDismissed {
+            presenter = presented
+        }
+        let controller = UIHostingController(rootView: root)
+        controller.modalPresentationStyle = .overFullScreen
+        controller.modalPresentationCapturesStatusBarAppearance = true
+        controller.view.backgroundColor = .clear
+        hosting = controller
+        pendingRoot = nil
+        DispatchQueue.main.async {
+            presenter.present(controller, animated: false)
+        }
     }
 }

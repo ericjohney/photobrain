@@ -38,6 +38,7 @@ struct LibraryScreen: View {
     @State private var addSelectionPresented = false
     @State private var calendarPresented = false
     @State private var gearStatsPresented = false
+    @State private var loupeTransition = LoupeZoomTransition()
     @Environment(\.showInLibrary) private var showInLibrary
 
     var body: some View {
@@ -81,7 +82,7 @@ struct LibraryScreen: View {
                 completed: { store.endSelection() }
             )
         }
-        .fullScreenCover(isPresented: loupePresented) {
+        .loupeCover(isPresented: store.activePhotoID != nil) {
             if let activeID = store.activePhotoID {
                 LoupeScreen(
                     records: store.orderedRecords,
@@ -92,7 +93,8 @@ struct LibraryScreen: View {
                     api: environment.api,
                     curation: store.curation,
                     collections: collections,
-                    dismiss: { store.activePhotoID = nil }
+                    dismiss: { store.activePhotoID = nil },
+                    transition: loupeTransition
                 )
             }
         }
@@ -287,6 +289,7 @@ struct LibraryScreen: View {
                 contentRevision: store.presentationRevision,
                 onLongPress: store.selectFromLongPress,
                 onVisibleChange: store.observeVisible,
+                transition: loupeTransition,
                 onRefresh: {
                     await scans.manualLibraryRefresh()
                     await store.load()
@@ -333,12 +336,6 @@ struct LibraryScreen: View {
         })
     }
 
-    private var loupePresented: Binding<Bool> {
-        Binding(
-            get: { store.activePhotoID != nil },
-            set: { if !$0 { store.activePhotoID = nil } }
-        )
-    }
 
     private var duplicateRiskPresented: Binding<Bool> {
         Binding(

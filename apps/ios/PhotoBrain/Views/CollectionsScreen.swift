@@ -556,6 +556,7 @@ struct ScopedPhotoGrid: View {
     let emptyDescription: String
     /// Extra work after a pull-to-refresh reload, e.g. refreshing card counts.
     let onRefresh: () async -> Void
+    @State private var loupeTransition = LoupeZoomTransition()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -569,7 +570,7 @@ struct ScopedPhotoGrid: View {
         .task {
             if store.loadState == .idle { await store.load() }
         }
-        .fullScreenCover(isPresented: loupePresented) {
+        .loupeCover(isPresented: store.activePhotoID != nil) {
             if let activeID = store.activePhotoID {
                 LoupeScreen(
                     records: store.orderedRecords,
@@ -580,7 +581,8 @@ struct ScopedPhotoGrid: View {
                     api: api,
                     curation: store.curation,
                     collections: collections,
-                    dismiss: { store.activePhotoID = nil }
+                    dismiss: { store.activePhotoID = nil },
+                    transition: loupeTransition
                 )
             }
         }
@@ -618,6 +620,7 @@ struct ScopedPhotoGrid: View {
                 opensAtTop: store.scope.isRanked,
                 onLongPress: { _ in },
                 onVisibleChange: store.observeVisible,
+                transition: loupeTransition,
                 onRefresh: {
                     await store.load()
                     await onRefresh()
@@ -627,12 +630,6 @@ struct ScopedPhotoGrid: View {
         }
     }
 
-    private var loupePresented: Binding<Bool> {
-        Binding(
-            get: { store.activePhotoID != nil },
-            set: { if !$0 { store.activePhotoID = nil } }
-        )
-    }
 }
 
 /// Inline error with an optional Retry and/or dismiss control.

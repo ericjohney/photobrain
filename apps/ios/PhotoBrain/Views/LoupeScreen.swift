@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 struct LoupeScreen: View {
@@ -9,6 +10,8 @@ struct LoupeScreen: View {
     let dismiss: () -> Void
     /// Set when presented from Review: shows Reject/Keep instead of rating and flag controls.
     var review: LoupeReviewActions?
+    /// The grid this loupe zooms out of and back into; nil falls back to the cover animation.
+    var transition: LoupeZoomTransition?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var chromeVisible = true
@@ -21,6 +24,14 @@ struct LoupeScreen: View {
     /// Show Faces: boxes over the paged photos while on.
     @StateObject private var faceBoxes: LoupeFaceBoxesStore
     @Environment(\.showInLibrary) private var showInLibrary
+    @State private var bridge = LoupePagerBridge()
+    /// The image flying between the grid cell and the loupe; nil when settled.
+    @State private var flight: LoupeFlight?
+    @State private var backdropOpacity: Double = 1
+    /// True while the pager is hidden behind a flight or dragged toward dismissal.
+    @State private var transitioning = false
+    @State private var dismissDragging = false
+    @State private var didRunEntrance = false
 
     init(
         records: [PhotoRecord],
@@ -29,7 +40,8 @@ struct LoupeScreen: View {
         curation: PhotoCurationCenter,
         collections: CollectionsStore,
         dismiss: @escaping () -> Void,
-        review: LoupeReviewActions? = nil
+        review: LoupeReviewActions? = nil,
+        transition: LoupeZoomTransition? = nil
     ) {
         self.records = records
         _activeID = activeID
@@ -38,6 +50,7 @@ struct LoupeScreen: View {
         self.collections = collections
         self.dismiss = dismiss
         self.review = review
+        self.transition = transition
         _exports = StateObject(wrappedValue: ExportStore(api: api))
         _faceBoxes = StateObject(wrappedValue: LoupeFaceBoxesStore(api: api))
     }
@@ -60,9 +73,13 @@ struct LoupeScreen: View {
         }
     }
 
+    private var showsChrome: Bool {
+        chromeVisible && !transitioning && !dismissDragging
+    }
+
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black.opacity(dismissDragging ? 0 : backdropOpacity).ignoresSafeArea()
             PagedLoupe(
                 records: records,
                 activeID: $activeID,
@@ -78,11 +95,43 @@ struct LoupeScreen: View {
                     }
                 },
                 onEmpty: dismiss,
-                faceBoxes: faceBoxes.visibleBoxes
+                faceBoxes: faceBoxes.visibleBoxes,
+                onDismissDragActive: { active in
+                    withAnimation(.easeOut(duration: 0.15)) { dismissDragging = active }
+                },
+                onDismissRequest: { frame, image, opacity in
+                    close(from: frame, image: image, backdrop: opacity)
+                },
+                onSwipeUp: {
+                    guard activeRecord != nil else { return }
+                    showingInfo = true
+                },
+                placeholder: { id in transition?.image(for: id) },
+                bridge: bridge,
+                infoVisible: showingInfo,
+                onSwipeDownToCloseInfo: { showingInfo = false }
             )
             .ignoresSafeArea()
+            .opacity(transitioning ? 0 : 1)
 
-            if chromeVisible {
+            if let flight {
+                Color.clear
+                    .ignoresSafeArea()
+                    .overlay(alignment: .topLeading) {
+                        Image(uiImage: flight.image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: flight.frame.width, height: flight.frame.height)
+                            .clipped()
+                            .opacity(flight.opacity)
+                            .offset(x: flight.frame.minX, y: flight.frame.minY)
+                            .ignoresSafeArea()
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
+            if showsChrome {
                 VStack(spacing: PBSpacing.s) {
                     topChrome
                     if let message = review?.errorMessage {
@@ -112,13 +161,17 @@ struct LoupeScreen: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { playback.show(activeRecord) }
+        .presentationBackground(.clear)
+        .onAppear {
+            playback.show(activeRecord)
+            runEntrance()
+        }
         .onChange(of: activeID) { _, _ in
             playback.show(activeRecord)
             Task { await faceBoxes.load(activeRecord) }
         }
         .onDisappear { playback.release() }
-        .statusBarHidden(!chromeVisible)
+        .statusBarHidden(!showsChrome)
         .exportPresentation(exports)
         .sheet(isPresented: $showingInfo) {
             if let activeRecord {
@@ -135,6 +188,9 @@ struct LoupeScreen: View {
         .sheet(item: $collectionSheetPhotoID) { target in
             AddToCollectionSheet(photoID: target.id, collections: collections)
         }
+        .accessibilityAction(named: "Close photo") {
+            close(from: nil, image: nil, backdrop: 1)
+        }
         .accessibilityAction(named: chromeVisible ? "Hide controls" : "Show controls") {
             chromeVisible.toggle()
         }
@@ -143,7 +199,9 @@ struct LoupeScreen: View {
     /// Close, a centered title (place when known, else date; date and time beneath), and Info.
     private var topChrome: some View {
         HStack(spacing: PBSpacing.m) {
-            GlassIconButton(systemImage: "chevron.down", accessibilityLabel: "Close photo", dark: true, action: dismiss)
+            GlassIconButton(systemImage: "chevron.down", accessibilityLabel: "Close photo", dark: true) {
+                close(from: nil, image: nil, backdrop: 1)
+            }
             Spacer(minLength: 0)
             if let activeRecord {
                 LoupeTitle(photo: activeRecord, api: api, position: position)
@@ -157,6 +215,63 @@ struct LoupeScreen: View {
         }
         .padding(.horizontal, PBSpacing.m)
         .padding(.top, PBSpacing.xs)
+    }
+
+    // MARK: Zoom transition
+
+    /// Flies the grid cell's image to its fitted loupe frame, then reveals the pager.
+    private func runEntrance() {
+        guard !didRunEntrance else { return }
+        didRunEntrance = true
+        guard !reduceMotion,
+              let transition,
+              let image = transition.image(for: activeID),
+              let from = transition.frame(for: activeID) else { return }
+        let to = AVMakeRect(aspectRatio: image.size, insideRect: transition.containerBounds)
+        transition.setHidden(activeID)
+        flight = LoupeFlight(image: image, frame: from)
+        transitioning = true
+        backdropOpacity = 0
+        withAnimation(.spring(duration: 0.38, bounce: 0.12)) {
+            flight?.frame = to
+            backdropOpacity = 1
+        } completion: {
+            transitioning = false
+            flight = nil
+            transition.setHidden(nil)
+        }
+    }
+
+    /// Flies the open photo back into its grid cell (or off the bottom without a grid), then
+    /// dismisses without the cover animation.
+    private func close(from frame: CGRect?, image: UIImage?, backdrop: Double) {
+        let current = bridge.controller?.activeImageFrame()
+        guard !reduceMotion,
+              let image = image ?? current?.1,
+              let start = frame ?? current?.0 else {
+            dismissDragging = false
+            dismiss()
+            return
+        }
+        let target = transition?.frame(for: activeID)
+        let bounds = transition?.containerBounds ?? UIScreen.main.bounds
+        transition?.setHidden(activeID)
+        flight = LoupeFlight(image: image, frame: start)
+        transitioning = true
+        backdropOpacity = backdrop
+        dismissDragging = false
+        withAnimation(.spring(duration: 0.34, bounce: 0.06)) {
+            if let target {
+                flight?.frame = target
+            } else {
+                flight?.frame = start.offsetBy(dx: 0, dy: bounds.height * 0.4)
+                flight?.opacity = 0
+            }
+            backdropOpacity = 0
+        } completion: {
+            transition?.setHidden(nil)
+            LoupeZoomTransition.withoutAnimation { dismiss() }
+        }
     }
 
     /// `(index, count)` of the open photo, for the title's accessibility value.
@@ -321,7 +436,7 @@ struct LoupeScreen: View {
                                 showsRetry: false,
                                 targetSize: CGSize(width: height * 1.4, height: height)
                             ) {
-                                Color(uiColor: SyntheticThumbnail.color(id: photo.id))
+                                Color(white: 0.2)
                             }
                             .frame(width: isActive ? height * 1.4 : height * 0.62, height: height)
                             .clipped()
@@ -422,6 +537,12 @@ struct LoupeScreen: View {
         .accessibilityValue(playing ? "Playing" : "")
     }
 
+}
+
+private struct LoupeFlight {
+    let image: UIImage
+    var frame: CGRect
+    var opacity: Double = 1
 }
 
 private struct CollectionSheetTarget: Identifiable {
