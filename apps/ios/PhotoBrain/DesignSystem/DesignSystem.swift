@@ -98,11 +98,13 @@ struct GlassIconButton: View {
 struct GlassIconLabel: View {
     let systemImage: String
     var dark = false
+    /// Overrides the symbol color, e.g. a filled heart for a Pick.
+    var tint: Color?
 
     var body: some View {
         Image(systemName: systemImage)
             .font(.body.weight(.semibold))
-            .foregroundStyle(dark ? Color.white : Color.primary)
+            .foregroundStyle(tint ?? (dark ? Color.white : Color.primary))
             .frame(width: PBSize.control, height: PBSize.control)
             .pbGlass(in: Circle(), interactive: true, dark: dark)
             .contentShape(Circle())
