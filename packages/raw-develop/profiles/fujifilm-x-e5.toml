@@ -1,0 +1,68 @@
+# Camera profile: Fujifilm X-E5 (X-Trans 5 HR, 40 MP).
+#
+# Provenance
+# - color_matrix_* / forward_matrix_* / calibration illuminants: Adobe DNG Converter
+#   (Adobe Standard) output for DSCF0970.RAF, read with
+#   `exiftool -n -ColorMatrix1 -ColorMatrix2 -ForwardMatrix1 -ForwardMatrix2 ...`.
+# - white_level: the level Apple's RawCamera renders treat as clip for this camera, which
+#   matches the observed highlight shoulder of the fixtures (sensor saturates at ~16200).
+# - baseline_exposure, look_matrix_*, tone_curve: fitted by least squares against Apple
+#   CIRAWFilter renders of the 11 calibration fixtures (`tools/calibrate/`). These are
+#   our own fitted numbers; no Apple data or code is copied.
+
+make = "FUJIFILM"
+model = "X-E5"
+
+white_level = 16220.0
+
+# Lowest native ISO (X-Trans 5 HR). Noise reduction scales with ISO / base_iso.
+base_iso = 125.0
+
+# Standard light A (2856 K) and D65 (6504 K).
+calibration_illuminant_1 = 2856.0
+calibration_illuminant_2 = 6504.0
+
+color_matrix_1 = [1.324, -0.8203, 0.1401, -0.2281, 0.9572, 0.3184, 0.0329, 0.0141, 0.679]
+color_matrix_2 = [1.1809, -0.5358, -0.1141, -0.4248, 1.2164, 0.2343, -0.0514, 0.1097, 0.5848]
+forward_matrix_1 = [0.4116, 0.4388, 0.1138, 0.1488, 0.8203, 0.031, 0.0285, 0.0025, 0.7941]
+forward_matrix_2 = [0.4016, 0.4015, 0.1612, 0.215, 0.7362, 0.0489, 0.0955, 0.0026, 0.727]
+
+# Exposure applied before the look, in EV, in addition to -RawExposureBias. Fitted:
+# Apple renders every fixture at (this - RawExposureBias).
+#
+# black_render: linear value subtracted before exposure (a small flare/black offset;
+# renders lift shadows less than a pure gain would). Fitted.
+black_render = 0.003
+baseline_exposure = -0.4928
+
+# White-preserving 3x3 (rows sum to 1) applied in linear Display P3 after the DNG
+# forward-matrix transform, interpolated by 1/CCT like the DNG matrices. It carries the
+# rendering's saturation and hue differences from Adobe Standard.
+look_matrix_1 = [
+  1.664918, -0.630939, -0.033979,
+  -0.120286, 1.447166, -0.326880,
+  -0.138203, -0.258971, 1.397174,
+]
+look_matrix_2 = [
+  1.911015, -0.600960, -0.310055,
+  -0.183062, 1.708983, -0.525921,
+  -0.190129, -0.122339, 1.312468,
+]
+
+# Lens correction: Fuji GeometricDistortionParams are applied with this extra global
+# scale (fitted: renders fill the frame ~1% tighter than the raw curve alone).
+distortion_fill_scale = 1.0101
+
+# Per-channel tone curve: scene-linear Display P3 -> display-encoded value (sRGB transfer),
+# piecewise linear between knots. Fitted to Apple final renders.
+[tone_curve]
+input = [
+  0.0, 0.0009765625, 0.0013810679, 0.001953125, 0.0027621359, 0.00390625, 0.0055242717,
+  0.0078125, 0.011048543, 0.015625, 0.022097087, 0.03125, 0.044194174, 0.0625,
+  0.088388348, 0.125, 0.1767767, 0.25, 0.35355339, 0.5, 0.70710678, 1.0, 1.5, 2.0, 4.0,
+]
+output = [
+  0.0, 0.0139532, 0.0154999, 0.0210854, 0.0288176, 0.0400082, 0.0554786, 0.0749476,
+  0.099776, 0.130344, 0.169013, 0.217014, 0.277523, 0.35273, 0.443018, 0.544867,
+  0.649922, 0.747776, 0.835421, 0.907401, 0.965238, 0.997829, 0.997829, 1.0, 1.0,
+]

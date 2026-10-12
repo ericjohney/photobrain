@@ -4,7 +4,7 @@ This is the current implementation guide for agents working in PhotoBrain. Prefe
 
 ## Read First
 
-- This repository is a Bun/Turbo monorepo with three applications and four shared packages.
+- This repository is a Bun/Turbo monorepo with three applications and five shared packages.
 - There is no `apps/worker` directory, BullMQ consumer, or Redis requirement in the current implementation.
 - Background scan and embedding functions are Inngest functions registered by the API at `/api/inngest`.
 - Image processing is a native Rust N-API addon. It is not an active WASM implementation.
@@ -20,6 +20,7 @@ Read the guide for the area being changed:
 - [Web application](apps/web/AGENTS.md)
 - [Native iOS application source and XCTest](apps/ios); [TestFlight distribution, signing, and secrets](docs/ios-distribution.md)
 - [Rust image processing](packages/image-processing/AGENTS.md)
+- [Rust RAW development (standalone, not yet wired in)](packages/raw-develop/AGENTS.md)
 - [Database and migrations](packages/db/AGENTS.md)
 - [Shared utilities](packages/utils/AGENTS.md)
 - [Shared TypeScript configuration](packages/config/AGENTS.md)
@@ -38,6 +39,7 @@ packages/
   config/                 Shared TypeScript configuration package
   db/                     Drizzle schema and migration files
   image-processing/       Rust N-API addon and browser stub
+  raw-develop/            Standalone Rust X-Trans RAF -> Display P3 pipeline (not used by the API yet)
   utils/                  Shared TypeScript helpers and thumbnail configuration
 docs/
   superpowers/            Historical design specifications and implementation plans
@@ -102,7 +104,7 @@ The 7,961-file corpus needs at most 399 media completion windows and 498 embeddi
 8. Generate a double-gradient perceptual hash from the oriented source, then resize once to a `large` preview bounded at 1,600 pixels and derive smaller thumbnails from that preview using original-derived target dimensions. Bundled libwebp now applies lossy color quality 80/85/85/90 for tiny/small/medium/large, with lossless alpha encoding. Derived pixels are not lossless; originals, orientation handling, pHash input, and EXIF extraction are unchanged. Thumbnail errors fail the photo result rather than marking it ready.
 9. Defer CLIP image embeddings to the Inngest embedding function.
 
-RAW files are not demosaiced with LibRaw or `rsraw` in this checkout. There is no current histogram-matching implementation.
+Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a standalone, not-yet-integrated Fujifilm X-Trans developer (bit-exact Fuji decoder, Apple-calibrated rendering). There is no current histogram-matching implementation.
 
 ### Database and vectors
 
@@ -187,6 +189,7 @@ cd apps/web && bun run test:e2e:ui
 xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' CODE_SIGNING_ALLOWED=NO test # Xcode 26.6
 apps/ios/scripts/run-ui-tests.sh # XCUITest flows (Debug, PhotoBrain-UITests scheme) against the seeded fixture API; needs bun install + Homebrew sqlite
 cd packages/image-processing && cargo test
+cd packages/raw-develop && cargo test
 ```
 
 Web E2E tests use Playwright with mocked tRPC, image, and Inngest requests. Native iOS unit tests run in the iOS Simulator. Native iOS UI tests (`apps/ios/PhotoBrainUITests`) drive the Debug app through `apps/ios/scripts/run-ui-tests.sh`, which starts `apps/api/scripts/ui-test-server.ts` (the real `/api/v1` and `/api/photos` routes over a throwaway SQLite library seeded through the shared migrations, plus `POST /__fixture/reset`) and passes its origin to the app through the Debug-only `PHOTOBRAIN_API_URL` launch-environment override. API tests use an in-memory SQLite database and the shared migrations.
