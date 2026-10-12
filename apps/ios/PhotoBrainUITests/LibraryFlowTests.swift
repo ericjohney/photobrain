@@ -20,6 +20,8 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         gridCell("dog-park-1.jpg").tap()
         waitFor(element("Close photo"))
 
+        tap("More")
+        tap("Rating")
         tap("Rate 3 stars")
         tap("Pick")
         try await waitForPhoto(10) { $0["rating"] as? Int == 3 && $0["flag"] as? String == "pick" }
@@ -27,9 +29,41 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         tap("Photo info")
         waitFor(navigationTitle("Photo Info"))
         waitFor(element("Tag Dog"))
+        tap("Rate 4 stars")
+        try await waitForPhoto(10) { $0["rating"] as? Int == 4 }
         tap("Done")
         tap("Close photo")
-        waitFor(gridCell("dog-park-1.jpg, 3 stars, Pick"))
+        waitFor(gridCell("dog-park-1.jpg, 4 stars, Pick"))
+    }
+
+    @MainActor
+    func testLoupeSwipesUpForInfoAndDownToClose() {
+        openLibrary()
+        gridCell("dog-park-1.jpg").tap()
+        waitFor(element("Close photo"))
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)))
+        waitFor(navigationTitle("Photo Info"))
+        tap("Done")
+        waitForAbsence(navigationTitle("Photo Info"))
+        center.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
+        waitForAbsence(element("Close photo"))
+        waitFor(navigationTitle("Library"))
+    }
+
+    @MainActor
+    func testGroupingControlAndPinchChangeGrid() {
+        openLibrary()
+        waitFor(gridCell("beach-waves.jpg, 5 stars, Pick"))
+        let cell = gridCell("beach-waves.jpg, 5 stars, Pick")
+        let wide = cell.frame.width
+        app.collectionViews.firstMatch.pinch(withScale: 0.4, velocity: -1)
+        waitFor(app.collectionViews.firstMatch)
+        XCTAssertLessThan(gridCell("beach-waves.jpg, 5 stars, Pick").frame.width, wide * 0.8)
+
+        app.segmentedControls.buttons["Years"].tap()
+        waitFor(element(startingWith: "2024"))
+        app.segmentedControls.buttons["All Photos"].tap()
     }
 
     @MainActor
@@ -93,16 +127,14 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         gridCell("lisbon-1.jpg").tap()
         tap("Photo info")
         scrollTo(element("Place, Lisbon, Portugal")).tap()
-        waitFor(element(startingWith: "Edit filters, "))
-        waitFor(element("6 Items"))
-        tap("Clear all filters")
-        waitFor(element("21 Items"))
+        waitFor(navigationTitle("Search"))
+        waitFor(element(startingWith: "Remove filter Lisbon"))
+        waitFor(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH '· 6 photos'")).firstMatch)
     }
 
     @MainActor
     func testReviewRejectsAllCandidates() async throws {
-        openLibrary()
-        openBrowseMenu()
+        openCollections()
         tap("Review, 4 photos")
         waitFor(navigationTitle("Review"))
         for label in ["All, 4", "Screenshots, 1", "Documents, 1", "Blurry, 1", "Too dark, 1"] {
@@ -122,9 +154,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
 
     @MainActor
     func testDuplicatesListsGroupsAndDismissesOne() {
-        openLibrary()
-        waitFor(element("Library options, 4 photos to review, 2 duplicate groups"))
-        openBrowseMenu()
+        openCollections()
         tap("Duplicates, 2 groups")
         waitFor(navigationTitle("Duplicates"))
         waitFor(element("Bursts, 1 group"))
@@ -136,26 +166,25 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         app.buttons["Not duplicates"].firstMatch.tap()
         waitFor(app.staticTexts["No duplicates"])
         goBack()
-        waitFor(element("Library options, 4 photos to review, 1 duplicate group"))
+        openCollections()
+        waitFor(element("Duplicates, 1 group"))
     }
 
     @MainActor
-    func testCalendarDayFiltersLibrary() {
-        openLibrary()
-        openBrowseMenu()
+    func testCalendarDayFiltersSearch() {
+        openCollections()
         tap("Calendar")
         waitFor(navigationTitle("Calendar"))
         waitFor(app.staticTexts["June 2024"])
         tap("June 1, 2024, 1 photo")
         waitForAbsence(navigationTitle("Calendar"))
-        waitFor(element("1 Item"))
-        waitFor(gridCell("IMG_2001.HEIC, Live Photo"))
+        waitFor(navigationTitle("Search"))
+        waitFor(element(startingWith: "Open IMG_2001.HEIC"))
     }
 
     @MainActor
     func testMapShowsPhotosInVisibleArea() {
-        openLibrary()
-        openBrowseMenu()
+        openCollections()
         tap("Map")
         waitFor(navigationTitle("Map"))
         let show = waitFor(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Show ' AND label ENDSWITH 'Photos'")).firstMatch)
@@ -169,8 +198,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
 
     @MainActor
     func testGearStatsCountsCamerasAndLenses() {
-        openLibrary()
-        openBrowseMenu()
+        openCollections()
         tap("Gear Stats")
         waitFor(navigationTitle("Gear Stats"))
         waitFor(element("FUJIFILM X-T5: 7 photos"))
@@ -188,29 +216,45 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         XCTAssertTrue(card.label.hasSuffix(", 1 photo"), card.label)
         waitFor(element(startingWith: "8 years ago, "))
         card.tap()
-        waitFor(element("1 Item"))
-        waitFor(gridCell("on-this-day-5-years.jpg"))
+        waitFor(navigationTitle("Search"))
+        waitFor(element(startingWith: "Open on-this-day-5-years.jpg"))
     }
 
     @MainActor
-    func testVideoFilterSavesSmartAlbum() async throws {
+    func testFilterMenuReplacesFilterAndCapsuleClears() {
         openLibrary()
+        waitFor(element("21 Items"))
         openBrowseMenu()
-        tap("Library Options")
-        waitFor(navigationTitle("Library Options"))
-        waitFor(element(startingWith: "Filter")).tap()
+        tap("Filter")
+        tap("Videos")
+        waitFor(element("Clear all filters"))
+        waitFor(element("1 Item"))
+        waitFor(gridCell("skate-park.mp4, Video, 12 seconds"))
+
+        openBrowseMenu()
+        tap("Filter: Videos")
+        tap("Picks")
+        waitFor(gridCell("beach-waves.jpg, 5 stars, Pick"))
+        XCTAssertFalse(element(startingWith: "skate-park.mp4").exists, "Filters replace, never stack")
+
+        tap("Clear all filters")
+        waitFor(element("21 Items"))
+    }
+
+    @MainActor
+    func testSearchVideoFilterSavesSmartAlbum() async throws {
+        app.tabBars.buttons["Search"].tap()
+        waitFor(element("Search your library"))
+        tap("Add filters")
         waitFor(navigationTitle("Filter"))
         app.segmentedControls.buttons["Video"].tap()
 
         tap("Save as Smart Album…")
         replaceText(of: waitFor(app.textFields["Name"]), with: "Clips")
         tap("Save")
-        goBack()
+        waitForAbsence(navigationTitle("Save as Smart Album"))
         tap("Done")
-
-        waitFor(element("Edit filters, Video"))
-        waitFor(element("1 Item"))
-        waitFor(gridCell("skate-park.mp4, Video, 12 seconds"))
+        waitFor(element(startingWith: "Open skate-park.mp4"))
 
         let albums = try await fixtureJSON("api/v1/smart-albums")["albums"] as? [[String: Any]] ?? []
         let clips = try XCTUnwrap(albums.first { $0["name"] as? String == "Clips" })
