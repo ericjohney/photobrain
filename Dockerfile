@@ -24,7 +24,6 @@ COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
-COPY apps/mobile/package.json apps/mobile/
 
 # Install dependencies with cache mount
 RUN --mount=type=cache,target=/root/.bun/install/cache \
@@ -116,42 +115,3 @@ RUN echo '{"name":"photobrain-web","type":"module","dependencies":{"zod":"^4.2.1
 
 EXPOSE 3001
 CMD ["bun", "run", "serve.ts"]
-
-# =============================================================================
-# Stage 5: Mobile Expo Dev Server
-# Runs the Expo dev server so Expo Go on Android can connect to it.
-# =============================================================================
-FROM oven/bun:1.3.14-debian AS mobile
-
-WORKDIR /app
-
-# Copy all workspace package.json files (bun requires all workspace members present)
-COPY package.json bun.lock turbo.json ./
-COPY packages/utils/package.json packages/utils/
-COPY packages/config/package.json packages/config/
-COPY packages/db/package.json packages/db/
-COPY packages/image-processing/package.json packages/image-processing/
-COPY apps/api/package.json apps/api/
-COPY apps/web/package.json apps/web/
-COPY apps/mobile/package.json apps/mobile/
-
-# Install dependencies
-RUN --mount=type=cache,target=/root/.bun/install/cache \
-    bun install --frozen-lockfile --linker hoisted
-
-# Copy workspace packages needed by the mobile app
-COPY packages/utils packages/utils
-COPY packages/config packages/config
-COPY packages/db packages/db
-COPY packages/image-processing/browser.js packages/image-processing/browser.js
-COPY apps/api/src apps/api/src
-COPY apps/api/tsconfig.json apps/api/
-
-# Copy mobile app source
-COPY apps/mobile apps/mobile
-
-WORKDIR /app/apps/mobile
-ENV CI=1
-
-EXPOSE 8081
-CMD ["bunx", "expo", "start", "--port", "8081"]

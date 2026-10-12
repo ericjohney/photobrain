@@ -172,7 +172,7 @@ Performance (Apple M4 Pro, release addon): `detectFaces([path])` on 1600 px WebP
 
 ## Native and Browser Boundaries
 
-`browser.js` is a throwing stub used by Metro and browser builds. `apps/mobile/metro.config.js` redirects `@photobrain/image-processing` to this stub unconditionally. Keep the stub's exported names aligned with imports when adding client-facing native functions.
+`browser.js` is a throwing stub used by browser bundler builds. Keep the stub's exported names aligned with imports when adding client-facing native functions.
 
 `wasi-worker-browser.mjs` is scaffolding, not an active WASM build. There is no current WASM output or build script.
 

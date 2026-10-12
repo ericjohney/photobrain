@@ -1,6 +1,6 @@
 // Browser/non-Node stub for @photobrain/image-processing
 // Native Rust NAPI functions are not available in browser environments.
-// This stub prevents Metro/webpack from crashing when resolving the package.
+// This stub keeps browser bundlers from crashing when resolving the package.
 
 const notAvailable = (name) => () => {
 	throw new Error(`${name}() is not available in the browser`);

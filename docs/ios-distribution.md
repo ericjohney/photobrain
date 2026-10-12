@@ -1,6 +1,6 @@
 # iOS Distribution (TestFlight)
 
-The native app in `apps/ios` ships to TestFlight through the manually dispatched `.github/workflows/native-ios-release.yml`. Expo has no iOS release path.
+The native app in `apps/ios` ships to TestFlight through the manually dispatched `.github/workflows/native-ios-release.yml`.
 
 ## Apple identities
 

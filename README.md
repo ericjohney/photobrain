@@ -1,12 +1,11 @@
 # PhotoBrain
 
-PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interface, a native Swift iOS app, an Expo Android/web app, CLIP semantic search, EXIF metadata, RAW preview support, and Rust-powered thumbnail processing.
+PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interface, a native Swift iOS app, CLIP semantic search, EXIF metadata, RAW preview support, and Rust-powered thumbnail processing.
 
 ## Current Features
 
 - Web grid and loupe views with keyboard navigation, metadata, folders, and EXIF filters.
 - Native SwiftUI/UIKit iOS 17+ app in `apps/ios` with Library/Collections/Search tabs, a chronological grid and loupe, filters, semantic search, scan recovery, and Debug/Preview/Production configurations.
-- Expo/React Native Android/web app with Library/Collections/Search tabs, bottom Years/Months/All Photos browsing, captured/recently-added sorting, selection, debounced search, and Photos-inspired filters with searchable camera/lens/ISO/month lists and RAW/standard choices. It retains a paged loupe with a synchronized thumbnail filmstrip, theme preferences, and Android/web fallbacks. Expo has no iOS release path; `apps/ios` is the iOS app.
 - Four derived WebP preview sizes: `tiny`, `small`, `medium`, and `large`. Preview color is lossy; original photo files are untouched.
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
@@ -15,7 +14,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 - Perceptual hashes for duplicate and burst grouping.
 - Automatic face grouping into people (offline YuNet detection and SFace embeddings), with naming, hiding, merging, per-face correction, a person filter, and loupe face boxes on web and native iOS.
 - Phone and browser backup: native iOS backs up the camera roll in the background, and the web app uploads by picker or drag-and-drop. Originals land in `Uploads/{device}/{YYYY}/{MM}/`, are deduplicated by content and asset, and are imported by a debounced incremental scan. Off unless `UPLOADS_ENABLED=true`.
-- Incremental scans reuse unchanged media and recover embeddings separately. Confirmed **Reprocess all photos** controls in the web and mobile clients deliberately rebuild the library's derived media.
+- Incremental scans reuse unchanged media and recover embeddings separately. Confirmed **Reprocess all photos** controls in the web and native iOS clients deliberately rebuild the library's derived media.
 - SQLite/Drizzle persistence with runtime `sqlite-vec` vector search.
 
 ## Architecture
@@ -27,7 +26,6 @@ apps/
   api/                    Hono + tRPC API, REST file routes, Inngest functions
   web/                    React/Vite browser application
   ios/                    Native SwiftUI/UIKit iOS application (iOS 17+)
-  mobile/                 Expo/React Native Android/web app
 packages/
   config/                 Shared TypeScript configuration
   db/                     Drizzle schema and migrations
@@ -44,7 +42,6 @@ Detailed implementation guidance is in:
 - [`AGENTS.md`](AGENTS.md): cross-repository architecture, commands, invariants, and documentation map.
 - [`apps/api/AGENTS.md`](apps/api/AGENTS.md): API, database orchestration, and Inngest jobs.
 - [`apps/web/AGENTS.md`](apps/web/AGENTS.md): browser routes, state, UI, and Playwright.
-- [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md): Expo Android/web behavior, EAS, and Jest.
 - [`apps/ios`](apps/ios): native iOS app, project configurations, Swift sources, and XCTest suites.
 - [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md): Rust/N-API pipeline and native dependencies.
 - [`packages/db/AGENTS.md`](packages/db/AGENTS.md): schema, migrations, and persistence caveats.
@@ -97,11 +94,7 @@ bun run dev:api
 bun run dev:web
 ```
 
-The API is available at `http://localhost:3000` and the web app at `http://localhost:3001`. Start Expo separately for Android/web development:
-
-```bash
-bun run dev:mobile
-```
+The API is available at `http://localhost:3000` and the web app at `http://localhost:3001`.
 
 Start the Inngest Dev Server in another terminal:
 
@@ -109,7 +102,7 @@ Start the Inngest Dev Server in another terminal:
 bunx inngest-cli@1.45.1 dev -u http://localhost:3000/api/inngest
 ```
 
-Run the API with `INNGEST_DEV=1` for local development. For Expo phone progress, also set `INNGEST_REALTIME_BASE_URL=http://<your-host-LAN-address>:8288` on the API so the phone can reach the Dev Server. Running the API by itself does not execute queued events. Never use development mode in a deployed environment; it disables signature verification.
+Run the API with `INNGEST_DEV=1` for local development. Running the API by itself does not execute queued events. Never use development mode in a deployed environment; it disables signature verification.
 
 ## Commands
 
@@ -120,7 +113,6 @@ bun install
 bun run dev
 bun run dev:api
 bun run dev:web
-bun run dev:mobile
 bun run build
 bun run typecheck
 bun run lint
@@ -129,7 +121,7 @@ bun run check
 bun run ci:check
 ```
 
-`bun run dev` starts the API and web tasks defined for Turbo. Mobile defines `start`, not `dev`, so use `bun run dev:mobile` separately. `check` and `format` modify files; `ci:check` is the read-only Biome validation.
+`bun run dev` starts the API and web tasks defined for Turbo. `check` and `format` modify files; `ci:check` is the read-only Biome validation.
 
 Package/app validation:
 
@@ -138,8 +130,6 @@ cd apps/api && bun test
 cd apps/api && bun run typecheck
 cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui
-cd apps/mobile && bun run test
-cd apps/mobile && bun run typecheck
 cd packages/image-processing && cargo test
 xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' CODE_SIGNING_ALLOWED=NO test
 ```
@@ -180,7 +170,7 @@ For the incremental-scan cutover, drain old **scan and embedding** runs, rebuild
 
 Run `inngest start`, not `inngest dev`, with a persistent data directory and matching event/signing keys on both Inngest and the API. Use `INNGEST_DEV=0` and set the API's `INNGEST_BASE_URL` to the runtime's internal origin. Set `INNGEST_SERVE_ORIGIN` to the API origin reachable from the runtime; PhotoBrain passes it explicitly as the SDK `serveHost` so internal registration requests cannot publish a `localhost` callback. Register the API's `/api/inngest` endpoint with `--sdk-url`; `--poll-interval=60` picks up function changes after API deployments. Inngest v1.45.1 requires TypeScript SDK v3.54.0 or newer; this workspace uses v3.54.2.
 
-The API returns `INNGEST_REALTIME_BASE_URL` alongside the short-lived subscription token. Web and mobile attach a keyless SDK client pointing to that origin. If unset, the existing SDK endpoint defaults apply. For self-hosting, use an origin reachable by the phone/browser, not a Kubernetes service name; expose `/v1/realtime/connect` through the gateway. Event submission, token minting, registration, and the dashboard do not need client-facing routes. Never put the event or signing key in `EXPO_PUBLIC_*` or `VITE_*` variables.
+The API returns `INNGEST_REALTIME_BASE_URL` alongside the short-lived subscription token. The web client attaches a keyless SDK client pointing to that origin. If unset, the existing SDK endpoint defaults apply. For self-hosting, use an origin reachable by the browser, not a Kubernetes service name; expose `/v1/realtime/connect` through the gateway. Event submission, token minting, registration, and the dashboard do not need client-facing routes. Never put the event or signing key in `VITE_*` variables.
 
 The homelab manifests are maintained in the separate ArgoCD repository under `apps/photobrain-inngest` and `apps/photobrain/values-api.yaml`. They use a single-node runtime with a dedicated iSCSI volume, Vault-backed keys, internal API callbacks, and a subscription-only route on the existing API hostname. Inngest owns orchestration state, not the photo library or PhotoBrain SQLite database. Its embedded queue snapshots are not crash-proof delivery or an off-volume backup.
 
@@ -194,17 +184,9 @@ VITE_API_URL=http://localhost:3000
 
 The production Bun server reads `API_URL`, `HOST`, and `PORT`. It injects the API URL into the built HTML at runtime, so changing `API_URL` does not require rebuilding the web bundle. Optional `MAP_STYLE_URL` selects the MapLibre style for the map view (default: the OpenFreeMap `liberty` style, loaded by the browser from `tiles.openfreemap.org`).
 
-### Mobile clients
+### Native iOS
 
 The native app's `PhotoBrainAPIURL` comes from the selected file under `apps/ios/Config`. Debug uses `http://localhost:3000`; Preview and Production use the configured non-local HTTPS origin and reject local/insecure origins.
-
-For the Expo Android/web app, set `EXPO_PUBLIC_API_URL` in `apps/mobile/.env`:
-
-```env
-EXPO_PUBLIC_API_URL=http://localhost:3000
-```
-
-For an Android emulator use `http://10.0.2.2:3000`; EAS profiles configure `https://photobrain-api.ericj5.com`.
 
 ## API Overview
 
@@ -245,9 +227,9 @@ All current API routes are unauthenticated. Omitting private source/artifact ide
 
 `trpc.scan()` and `trpc.scan({})` request an incremental scan. It creates a durable `scan_jobs` row before sending an Inngest event, then freezes discovery, source identity, and work classification in SQLite. Unchanged photos with valid media and current vectors are left untouched; missing, failed, wrong-model, wrong-generation, or truncated vectors recover in a separate embedding phase without regenerating valid media. New or changed sources, obsolete media versions, and missing or invalid thumbnails require media processing. Missing EXIF alone does not cause endless retries.
 
-Use **Reprocess all photos** in the web toolbar or either mobile app's **Library Options**, then confirm the prompt to deliberately regenerate every discovered file, including unchanged files. Web/Expo submit `trpc.scan({ force: true })`; native iOS submits `{ "force": true }` to `/api/v1/scans` when its mutation gate is enabled. Both preserve photo IDs and original files while creating new derived-media generations and embeddings.
+Use **Reprocess all photos** in the web toolbar or native iOS **Library Options**, then confirm the prompt to deliberately regenerate every discovered file, including unchanged files. Web submits `trpc.scan({ force: true })`; native iOS submits `{ "force": true }` to `/api/v1/scans` when its mutation gate is enabled. Both preserve photo IDs and original files while creating new derived-media generations and embeddings.
 
-Media work enters a continuously fed pool with new paths first; workers do not wait for an input batch, and photos appear in clients as they finish and commit. Inngest checkpoints every 20 completed results while native work continues behind bounded queues. After media processing, one embedding job reads committed `large` WebP previews in batches of 16 and stores CLIP vectors. Embedding remains active work, not completion. Web/Expo combine Realtime with durable polling; native iOS recovers and polls durable scan status through `/api/v1`.
+Media work enters a continuously fed pool with new paths first; workers do not wait for an input batch, and photos appear in clients as they finish and commit. Inngest checkpoints every 20 completed results while native work continues behind bounded queues. After media processing, one embedding job reads committed `large` WebP previews in batches of 16 and stores CLIP vectors. Embedding remains active work, not completion. Web combines Realtime with durable polling; native iOS recovers and polls durable scan status through `/api/v1`.
 
 The native pipeline independently prefetches `exiftool` metadata (up to 20 photos per command), uses separate ExifTool commands for embedded RAW previews, `libheif-rs` for HEIF decoding, and the Rust `image` crate for standard formats. A shared Rayon pool defaults to available CPU capacity, with `PHOTO_PROCESSING_THREADS` as a memory/concurrency override. See [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md) for format and processing caveats.
 
@@ -269,17 +251,16 @@ Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare 
 
 ## Production Builds
 
-The Dockerfile has five targets:
+The Dockerfile has four targets (`builder`, `api`, `web-builder`, `web`); build the deployable ones with:
 
 ```bash
 docker build --target api -t photobrain-api .
 docker build --target web -t photobrain-web .
-docker build --target mobile -t photobrain-mobile .
 ```
 
-The API image applies shared migrations on startup and runs on port 3000. The web image serves the Vite SPA on port 3001. The mobile image runs the Expo development server on port 8081; it is not a static Expo web-export image.
+The API image applies shared migrations on startup and runs on port 3000. The web image serves the Vite SPA on port 3001.
 
-The permanent GitHub Actions build workflow runs API tests/typecheck, web Playwright tests, and Expo Jest tests. Its EAS release lane is Android-only: `main` builds an Android preview receiver and publishes an Android preview update; version tags build an Android production receiver and publish an Android production update. It never publishes an iOS OTA update. The workflow also builds API/web/mobile images and updates external ArgoCD image tags on `main`.
+The permanent GitHub Actions build workflow runs API tests/typecheck and web Playwright tests, builds and pushes API and web images, and updates their external ArgoCD image tags on pushes to `main`.
 
 Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator. The manually dispatched `.github/workflows/native-ios-release.yml` validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 

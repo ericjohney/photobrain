@@ -6,7 +6,7 @@ Scope: `apps/api`.
 
 - `src/index.ts`: Hono/Bun entrypoint and route registration.
 - `src/config.ts`: environment parsing and defaults.
-- `src/trpc/router.ts`: public tRPC transport contract for web and Expo clients.
+- `src/trpc/router.ts`: public tRPC transport contract for the web client.
 - `src/routes/v1.ts`, `v1-schemas.ts`, and `openapi-v1.json`: versioned JSON compatibility API, runtime DTO validation/serialization, and checked-in native-client contract.
 - `src/routes/photos.ts`: binary file and thumbnail routes. `/:id/file` answers single byte ranges through `services/byte-range.ts` (`parseByteRange`).
 - `src/routes/exports.ts`: binary export downloads (`/api/photos/:id/export`, `/api/collections/:id/export`) and the RFC 6266 `contentDisposition` helper; `services/exports.ts` (filenames, duplicate-name disambiguation, pull-based collection ZIP stream), `services/zip-writer.ts` (STORE/ZIP64 encoder), `services/photo-files.ts` (`originalFilePath`, shared with `/:id/file`).
@@ -104,7 +104,7 @@ The Hono server registers:
 - `GET /api/faces/:id/crop`
 - `GET|PUT|POST /api/inngest`
 
-There are no unversioned REST `GET /api/photos`, `GET /api/photos/:id`, `POST /api/scan`, or `GET /api/image/:filename` metadata routes. Web and Expo metadata/scan operations use tRPC; native Swift uses the `/api/v1` compatibility surface. Binary media remains under `/api/photos`.
+There are no unversioned REST `GET /api/photos`, `GET /api/photos/:id`, `POST /api/scan`, or `GET /api/image/:filename` metadata routes. Web metadata/scan operations use tRPC; native Swift uses the `/api/v1` compatibility surface. Binary media remains under `/api/photos`.
 
 ## `/api/v1` Compatibility API
 
@@ -160,11 +160,11 @@ All procedures use `publicProcedure`; authentication is not implemented.
 - `events({ folder? })`: returns `{ events }` newest first (cover `thumbnailUpdatedAt` is a `Date` or `null`). `photos`, `photoLocations`, `searchPhotos`, and `similarPhotos` accept `event` (positive integer, else `BAD_REQUEST`; unknown id → empty); smart-album filters reject it like `capturedDate`. See [Events](#events).
 - `junkReview({ reason?, limit?, cursor? })` and `resolveJunk({ photoIds, action })`: see [Junk Review](#junk-review).
 - `duplicateGroups({ kind?, limit?, cursor? })` and `resolveDuplicateGroup({ key, action, keepIds? })`: see [Duplicates and Bursts](#duplicates-and-bursts).
-- `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar and Expo Library Options expose a confirmed **Reprocess all photos** action for force mode; native iOS reaches the same shared scan service through gated `POST /api/v1/scans`.
+- `scan()` or `scan({})`: incrementally reuses current media and vectors. `scan({ force: true })` reprocesses every discovered file. Both create a durable queued `scan_jobs` row, send an idempotently keyed `photos/scan.requested` event, and return `{ success, jobId }` or `{ success: false, error, jobId? }`. Dispatch is attempted twice; a final failure marks only a still-queued row failed. A delayed event for a job already marked terminal exits before photo processing. The web toolbar exposes a confirmed **Reprocess all photos** action for force mode; native iOS reaches the same shared scan service through gated `POST /api/v1/scans`.
 - `scanStatus({ jobId })`: returns the durable scan row or `null` when the UUID is unknown.
 - `realtimeToken({ jobId })`: returns `{ token, baseUrl? }` for channel `job:{jobId}`, topic `progress`. `baseUrl` is the client-reachable `INNGEST_REALTIME_BASE_URL`; it must not be inferred from an internal service hostname.
 
-Keep the tRPC router as the source of TypeScript client types for web/Expo; `src/types.ts` exports `AppRouter` for workspace consumers. Keep reusable behavior in the shared services and the native contract in `v1-schemas.ts`/`openapi-v1.json`. Both transports use `publicPhotoColumns` to omit six internal identity fields (`sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, `thumbnailFingerprint`) plus the internal `junkDismissed` review state. Every public photo query also passes `extras: pairedPhotoExtras`, adding the nullable `pairedPhotoId`/`pairedFormat` fields that `PublicPhotoWithExif` declares.
+Keep the tRPC router as the source of TypeScript client types for web; `src/types.ts` exports `AppRouter` for workspace consumers. Keep reusable behavior in the shared services and the native contract in `v1-schemas.ts`/`openapi-v1.json`. Both transports use `publicPhotoColumns` to omit six internal identity fields (`sourceRoot`, `sourceFingerprint`, `mediaVersion`, `thumbnailKey`, `thumbnailRoot`, `thumbnailFingerprint`) plus the internal `junkDismissed` review state. Every public photo query also passes `extras: pairedPhotoExtras`, adding the nullable `pairedPhotoId`/`pairedFormat` fields that `PublicPhotoWithExif` declares.
 
 ## Inngest Flow
 
@@ -228,7 +228,7 @@ Maintenance function details:
 - `recover-queued-scans-v1`: `startScan` records the requested mode in `scan_jobs.force`. Queued jobs created more than `QUEUED_SCAN_RECOVERY_DELAY_MS` (5 min) ago are re-sent with their original force mode, using the job ID as the event ID so Inngest dedupes a delivery that did happen; queued jobs older than `QUEUED_SCAN_EXPIRY_MS` (24 h) are marked failed with "Scan was never started". A failed re-send leaves the job queued for the next run.
 - `collect-thumbnail-garbage-v1`: `collectThumbnailGarbage` scans the configured `THUMBNAILS_DIRECTORY` plus every distinct `photos.thumbnail_root`, deleting `{root}/{size}/.versions/{uuid}/` directories that no row references (`photos.thumbnail_key`, `photo_faces`, `photo_face_scan`, `photo_quality`, and `scan_items` current/previous keys) and whose mtime is older than `THUMBNAIL_GC_GRACE_MS` (6 h). It skips entirely while any `scan_manifests` row exists and never touches legacy mirrored thumbnails outside `.versions`.
 
-Web and Expo refresh library queries as committed processing counts advance: first advance immediately, then coalesced trailing refreshes at most once per second. They also refresh on `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web polls durable `scanStatus` every 1,500 ms while active; Expo retains its fallback/recovery polling. Native iOS uses `/api/v1` durable scan polling. Progress payloads retain their existing shape; the scan event adds optional `force`.
+Web refreshes library queries as committed processing counts advance: first advance immediately, then coalesced trailing refreshes at most once per second. It also refreshes on `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web polls durable `scanStatus` every 1,500 ms while active. Native iOS uses `/api/v1` durable scan polling. Progress payloads retain their existing shape; the scan event adds optional `force`.
 
 Embedding function details:
 
@@ -480,7 +480,7 @@ The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, an
 
 - Use `@photobrain/db/schema` for schema changes.
 - Migrations live at `packages/db/drizzle`.
-- `scan_jobs` is the durable source for web/Expo tRPC polling and native `/api/v1` recovery; preserve terminal-state monotonicity when changing job code.
+- `scan_jobs` is the durable source for web tRPC polling and native `/api/v1` recovery; preserve terminal-state monotonicity when changing job code.
 - Startup migration is opt-in with `RUN_DB_INIT=true` for direct API runs. The API Docker image enables it so deployed schema changes are applied before serving traffic.
 - Scans remove rows for files confirmed deleted from disk only through `deletePhotos`, which clears every sidecar explicitly; reuse it rather than relying on cascades.
 - Streaming scan transactions include photo/EXIF/pHash/status saves, item receipts, manifest counters, and scan progress. Embedding transactions include vectors and embedding statuses. Native work/network publication remain outside transactions; never put async callbacks inside Bun SQLite transactions. `clearScanWork` explicitly deletes items and manifests in one transaction because foreign-key enforcement is not guaranteed on every connection.

@@ -11,7 +11,7 @@ This document separates implemented optimizations from proposed architectural wo
 - Thumbnail encode/write errors fail the photo result rather than leaving it successful and marking thumbnails ready.
 - SQLite `scan_manifests`/`scan_items` freeze discovery, precise source identity, incremental action, and stable new-first dispatch ordering. New photos enter the queue first, but completion order is unrestricted: a slow new photo does not prevent other workers from starting existing photos. Default scans reuse valid unchanged media and recover embeddings separately; explicit force mode processes every discovered file.
 - `startPhotoProcessing` independently prefetches bounded EXIF chunks and continuously feeds media workers. Ready/results queues each hold at most twice the worker count; dispatch-channel waits never occupy Rayon workers. One completion at a time reaches the API and receives an ACK after its atomic persistence. `scan-photos-v5` checkpoints every 20 completed results without restarting the stream. Lost checkpoints or worker/process restarts resume pending receipts instead of repeating acknowledged work.
-- Web and mobile refresh library queries on advancing processing counts: the first advance immediately, then coalesced trailing refreshes at most once per second. They also refresh at `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web adds a 1,500 ms durable polling fallback; mobile retains its existing recovery polling.
+- Web refreshes library queries on advancing processing counts: the first advance immediately, then coalesced trailing refreshes at most once per second. It also refreshes at `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web adds a 1,500 ms durable polling fallback.
 - API discovery, continuous media processing, and CLIP image batches use one persistent `node:worker_threads` worker under Bun. At most eight requests are running/queued per process. One photo stream survives checkpoint windows; a job switch or other native operation first cancels/drains it. Load/completion callbacks preserve their caller's async context, including Inngest Realtime publication.
 - Canonical source-root identity, stat-based source fingerprints, manual media/model versions, and conservative one-time legacy adoption classify unchanged, media-repair, and embedding-only work. Missing EXIF alone is not an endless retry condition.
 - Unique immutable thumbnail generations and commit-time identity checks fence stale media and embedding results. Inference reads the committed thumbnail root; semantic search requires completed, current-model/current-generation vectors.
@@ -106,7 +106,7 @@ A broader release-build camera-corpus benchmark should still measure unchanged r
 
 ## Current Incremental Architecture
 
-`trpc.scan()` and `trpc.scan({})` are incremental. `trpc.scan({ force: true })` deliberately processes every discovered file; the web toolbar and mobile Library Options expose **Reprocess all photos** with confirmation. Force preserves photo IDs and originals while regenerating derived media and embeddings.
+`trpc.scan()` and `trpc.scan({})` are incremental. `trpc.scan({ force: true })` deliberately processes every discovered file; the web toolbar exposes **Reprocess all photos** with confirmation. Force preserves photo IDs and originals while regenerating derived media and embeddings.
 
 ### Source Identity and Legacy Adoption
 
@@ -166,7 +166,7 @@ Library photos already stream into clients after individual media commits. The p
 
 The preferred longer-term architecture is a durable producer/consumer pipeline: media saves enqueue generation-specific embedding tasks, a bounded consumer fills batches of 16 across producer chunks, and a coordinator owns final job completion. Completion requires discovery closed, media work terminal, and every required embedding task terminal.
 
-Do not emit the existing embedding event after each media batch unchanged: its child finalizes the entire job, so the first child could prematurely finish an ongoing scan. Mobile also assumes monotonic phase order, so alternating processing/embedding phases requires stage counters or a compatible overall phase. Measure time to first searchable photo separately from total throughput.
+Do not emit the existing embedding event after each media batch unchanged: its child finalizes the entire job, so the first child could prematurely finish an ongoing scan. Clients also assume monotonic phase order, so alternating processing/embedding phases requires stage counters or a compatible overall phase. Measure time to first searchable photo separately from total throughput.
 
 A separate native execution service is justified only when measured CPU/memory contention or fault isolation requires it. It introduces deployment and shared-storage ownership work and does not remove SQLite's single-writer boundary. The bounded in-process thread is already implemented; native process-crash isolation is not.
 

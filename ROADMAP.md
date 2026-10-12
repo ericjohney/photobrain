@@ -21,8 +21,7 @@ PhotoBrain aims to be a fast, AI-powered self-hosted photo management solution t
 - ✅ RAW preview support for 14+ formats via native Rust processing and `exiftool`
 - ✅ HEIF/HEIC support with magic byte detection
 - ✅ EXIF metadata extraction and display
-- ✅ Mobile app with core browsing, search, filters, loupe, and metadata features (React Native + Expo)
-- ✅ Expo web export capability for the mobile app
+- ✅ Native iOS app with browsing, search, filters, loupe, curation, collections, and backup
 - ✅ Docker multi-stage builds and CI/CD pipeline
 - ✅ Folder navigation
 - ✅ Light & dark theme support
@@ -33,11 +32,10 @@ PhotoBrain aims to be a fast, AI-powered self-hosted photo management solution t
 
 These are the next product and production-readiness priorities for the current checkout:
 
-1. **Expo collections** - manual collections and saved-filter smart albums ship on web and native iOS; the Expo Android collections screen remains.
-2. **Duplicate follow-ups** - a larger pHash for a looser threshold, side-by-side comparison, and the Expo Android duplicates screen. Groups, suggested keeper, and reject-based resolution ship on web and native iOS.
-3. **Map follow-ups** - photo thumbnails as markers and the Expo Android map. Clustered maps, area filtering, "show on map", and offline place names with country/city filters ship on web and native iOS.
-4. **Mobile backup follow-ups** - the Expo Android backup client, physical-device verification of iOS background upload, and offline thumbnail handling. Camera-roll backup with background upload ships on native iOS, and browser upload ships on web.
-5. **Production hardening** - add authentication, database/file backups, rate limiting, and REST/Inngest coverage.
+1. **Duplicate follow-ups** - a larger pHash for a looser threshold and side-by-side comparison. Groups, suggested keeper, and reject-based resolution ship on web and native iOS.
+2. **Map follow-ups** - photo thumbnails as markers. Clustered maps, area filtering, "show on map", and offline place names with country/city filters ship on web and native iOS.
+3. **Mobile backup follow-ups** - physical-device verification of iOS background upload, and offline thumbnail handling. Camera-roll backup with background upload ships on native iOS, and browser upload ships on web.
+4. **Production hardening** - add authentication, database/file backups, rate limiting, and REST/Inngest coverage.
 
 The older RAW, worker, and queue plans below are historical. Do not select them as current work unless the architecture is deliberately changed.
 
@@ -293,14 +291,13 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [ ] **Albums & Collections**
   - [x] Manual collections on web and native iOS (create/rename/delete, membership, scoped grid and search)
   - [x] Star ratings and pick/reject flags with filters on web and native iOS
-  - [ ] Collections screen in the Expo Android app
   - [x] Smart albums (saved filters plus optional semantic query, evaluated live) on web and native iOS
   - [ ] Nested album support
 - [x] **Date-grouped browsing on mobile**
 - [x] **Timeline and calendar views on web** (Years/Months/All grouping, capture/added sort, year rail, calendar popover; calendar sheet on native iOS)
 - [x] **Camera, lens, ISO, and month filtering**
 - [x] **RAW/standard filtering in the API**
-- [x] **RAW/standard filter controls in clients** (web Type control, native iOS Media Type picker, Expo filter sheet)
+- [x] **RAW/standard filter controls in clients** (web Type control, native iOS Media Type picker)
 - [x] **RAW+JPEG pairing** (one stacked photo per pair, combined badge, partner-wide curation on web and native iOS)
 - [ ] **Aperture and shutter-speed filtering**
 - [ ] **Dimension, orientation, and MIME-type filtering**
@@ -314,7 +311,6 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [ ] **Hierarchical tags**
   - Tag categories (people, places, events, things)
 - [x] **Face detection & recognition** (offline YuNet/SFace; automatic people clustering, naming, hide, merge, per-face assign/reject, person filter and smart albums, loupe face boxes on web and native iOS)
-  - [ ] Expo Android/web People UI
 
 ### 2.3 Duplicate Detection 🟡 **PARTIALLY COMPLETED**
 - [x] Generate and store a pHash during scanning
@@ -331,16 +327,12 @@ Lens corrections compensate for optical imperfections in camera lenses:
 ### 3.1 Mobile Applications 🟡 **PARTIALLY COMPLETED**
 **Inspired by Immich's automatic backup**
 
-- [x] **React Native mobile app** (iOS + Android) with core browsing and search
+- [x] **React Native mobile app** (iOS + Android) with core browsing and search (obsolete: the Expo app was removed; `apps/ios` is the mobile client)
   - LoupeView with swipe navigation
   - MetadataPanel with collapsible EXIF sections
   - ActivityBar for scan/embedding progress
   - Theme system with dark/light mode
   - Semantic search via SearchBar
-- [x] Expo web export capability
-- [ ] Collections screen
-- [ ] Functional share, favorite, delete, and overflow actions in the loupe
-- [ ] Functional display and behavior preferences beyond theme
 - [x] Native camera roll access (native iOS)
 - [x] Background photo upload (native iOS; browser upload on web)
 - [ ] Push notifications for upload completion
@@ -524,12 +516,11 @@ Lens corrections compensate for optical imperfections in camera lenses:
 
 ### DevOps
 - [x] **Docker containerization**
-  - Multi-stage Dockerfile with builder, API, web-builder, web, and mobile targets
-  - Mobile target runs the Expo development server; it is not a static web-export image
+  - Multi-stage Dockerfile with builder, API, web-builder, and web targets
 - [x] **CI/CD pipeline**
-  - GitHub Actions workflow tests web/mobile and builds API, web, and mobile images
+  - GitHub Actions workflow tests API/web and builds API and web images
   - Pushes to `registry.ericj5.com`
-  - ArgoCD GitOps tag updates for API, web, and mobile
+  - ArgoCD GitOps tag updates for API and web
 - [ ] **Docker Compose for easy local deployment**
 - [ ] **Documentation**
   - API documentation (OpenAPI/Swagger)
@@ -537,7 +528,6 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - [x] Developer setup and architecture guide (`README.md`, root and scoped `AGENTS.md` files)
 - [ ] **Test coverage gaps**
   - [x] API filter integration tests
-  - [x] Mobile Jest tests for core screens and hooks
   - [x] Web Playwright tests for main dashboard flows
   - [x] Rust tests for HEIF detection
   - [ ] REST, Inngest, vector-search, thumbnail, and broader fixture-based Rust coverage

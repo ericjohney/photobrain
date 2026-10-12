@@ -49,7 +49,7 @@ Variables are parsed in `src/config.ts`:
 
 `FASTEMBED_CACHE_DIR` is consumed by the native image-processing package.
 
-The Inngest SDK reads its server variables `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` directly. PhotoBrain parses `INNGEST_SERVE_ORIGIN` and passes it explicitly to the Hono handler as `serveHost`; set it to an API origin reachable from the runtime so internal registration requests cannot publish a `localhost` callback. Deployed/self-hosted runtimes require `INNGEST_DEV=0` and matching event/signing keys; local Dev Server use requires `INNGEST_DEV=1`. `INNGEST_REALTIME_BASE_URL` is the phone/browser-reachable origin returned alongside the subscription token, not the internal server-to-server URL. See [self-hosted setup](../../README.md#self-hosted-inngest). Neither key belongs in a mobile or web bundle.
+The Inngest SDK reads its server variables `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` directly. PhotoBrain parses `INNGEST_SERVE_ORIGIN` and passes it explicitly to the Hono handler as `serveHost`; set it to an API origin reachable from the runtime so internal registration requests cannot publish a `localhost` callback. Deployed/self-hosted runtimes require `INNGEST_DEV=0` and matching event/signing keys; local Dev Server use requires `INNGEST_DEV=1`. `INNGEST_REALTIME_BASE_URL` is the browser-reachable origin returned alongside the subscription token, not the internal server-to-server URL. See [self-hosted setup](../../README.md#self-hosted-inngest). Neither key belongs in a client bundle.
 
 ## HTTP API
 
@@ -62,7 +62,7 @@ Registered route families:
 - `GET /api/photos/:id/thumbnail/:size`
 - `GET|PUT|POST /api/inngest`
 
-Photo metadata, folders, filters, search, scans, durable scan status, and Realtime token creation remain available to the Expo/web clients as tRPC procedures in `src/trpc/router.ts`:
+Photo metadata, folders, filters, search, scans, durable scan status, and Realtime token creation remain available to the web client as tRPC procedures in `src/trpc/router.ts`:
 
 - `folders`
 - `filterOptions`

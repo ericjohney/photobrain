@@ -11,7 +11,7 @@ temp-photos
 *.db
 arw_*
 
-# Root-level test/screenshot images (not in apps/mobile/dist)
+# Root-level test/screenshot images
 /*.png
 /*.jpg
 /*.jpeg
