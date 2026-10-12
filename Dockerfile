@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1: Builder - Install dependencies and build the Rust N-API addon
 # =============================================================================
-FROM oven/bun:1.3.14-debian AS builder
+FROM oven/bun:1.4.3-debian AS builder
 WORKDIR /app
 
 # Install Rust toolchain and build dependencies
@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # =============================================================================
 # Stage 2: API Production Image
 # =============================================================================
-FROM oven/bun:1.3.14-slim AS api
+FROM oven/bun:1.4.3-slim AS api
 
 # Install CA certificates (for HTTPS model downloads), exiftool, ffmpeg/ffprobe (video posters) and native module dependencies
 RUN apt-get update && apt-get install -y \
@@ -101,7 +101,7 @@ RUN bun run build --filter=@photobrain/web
 # =============================================================================
 # Stage 4: Web Production Image
 # =============================================================================
-FROM oven/bun:1.3.14-slim AS web
+FROM oven/bun:1.4.3-slim AS web
 
 WORKDIR /app
 
