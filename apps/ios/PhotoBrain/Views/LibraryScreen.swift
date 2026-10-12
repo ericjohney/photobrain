@@ -419,14 +419,6 @@ private struct LibraryOptionsView: View {
                     }
                 }
 
-                Section {
-                    NavigationLink {
-                        FilterView(store: store, smartAlbums: smartAlbums)
-                    } label: {
-                        LabeledContent("Filter", value: store.filters.summary)
-                    }
-                }
-
                 Section("Library") {
                     Button {
                         dismiss()

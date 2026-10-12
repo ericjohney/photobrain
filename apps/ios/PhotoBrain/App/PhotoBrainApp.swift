@@ -241,8 +241,7 @@ private struct RootTabView: View {
         .environment(\.backupCoordinator, BackupRuntime.shared.coordinator)
         .sheet(isPresented: $gearStatsPresented) {
             GearStatsScreen(filters: library.filters, api: environment.api) { selection in
-                navigation.selectedTab = .library
-                library.showGear(selection)
+                showInSearch(.gear(selection))
             }
         }
         .sheet(isPresented: $calendarPresented) {
@@ -250,13 +249,11 @@ private struct RootTabView: View {
                 calendar: library.captureCalendar,
                 capturedDate: library.filters.capturedDate
             ) { date in
-                navigation.selectedTab = .library
-                library.showCapturedDate(date)
+                showInSearch(.capturedDate(date))
             }
         }
         .environment(\.showInLibrary, ShowInLibraryAction { shortcut in
-            navigation.selectedTab = .library
-            library.show(shortcut)
+            showInSearch(shortcut)
         })
         .preferredColorScheme(theme.preference.colorScheme)
         .onAppear {
@@ -279,6 +276,14 @@ private struct RootTabView: View {
                 break
             }
         }
+    }
+
+    /// Tags, places, dates, and gear narrow Search (Photos keeps the Library unfiltered and
+    /// browses categories from Search); the Library's own filter stays simple.
+    private func showInSearch(_ shortcut: LibraryShortcut) {
+        library.activePhotoID = nil
+        search.show(shortcut)
+        navigation.selectedTab = .search
     }
 
     private func applyPendingLink() {
