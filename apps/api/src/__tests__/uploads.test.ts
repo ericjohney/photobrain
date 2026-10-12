@@ -5,6 +5,7 @@ import {
 	expect,
 	type Mock,
 	mock,
+	setDefaultTimeout,
 	test,
 } from "bun:test";
 import {
@@ -32,6 +33,10 @@ import {
 	sanitizePathSegment,
 } from "../services/uploads";
 import { createTestDb } from "./setup";
+
+// Every upload fsyncs its body; shared CI runners take seconds per test where a laptop
+// takes milliseconds, and the 5 s default cut a test off mid-upload.
+setDefaultTimeout(30_000);
 
 const DEVICE = "0F8FAD5B-D9CB-469F-A165-70867728950E";
 const OTHER_DEVICE = "7C9E6679-7425-40DE-944B-E07FC1F90AE7";
