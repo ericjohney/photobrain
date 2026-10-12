@@ -212,7 +212,7 @@ test("rename saves on Enter, cancels on Escape, and clears an empty name", async
 	await page.getByLabel("Name for Bob").fill("  Robert ");
 	await page.getByLabel("Name for Bob").press("Enter");
 	await expect(card(page, 2).getByTestId("person-name")).toHaveText("Robert");
-	expect(calls.updatePerson).toEqual([{ id: 2, name: "Robert" }]);
+	await expect.poll(() => calls.updatePerson).toEqual([{ id: 2, name: "Robert" }]);
 
 	await cardAction(page, 2, "Rename");
 	await page.getByLabel("Name for Robert").fill("Bobby");
@@ -227,7 +227,7 @@ test("rename saves on Enter, cancels on Escape, and clears an empty name", async
 	await expect(
 		card(page, 2).getByRole("button", { name: "Add a name" }),
 	).toBeVisible();
-	expect(calls.updatePerson).toEqual([
+	await expect.poll(() => calls.updatePerson).toEqual([
 		{ id: 2, name: "Robert" },
 		{ id: 2, name: null },
 	]);
@@ -237,7 +237,7 @@ test("rename saves on Enter, cancels on Escape, and clears an empty name", async
 	await page.getByLabel("Name for Unnamed").fill("Eve");
 	await page.getByLabel("Name for Unnamed").press("Enter");
 	await expect(card(page, 5).getByTestId("person-name")).toHaveText("Eve");
-	expect(calls.updatePerson?.at(-1)).toEqual({ id: 5, name: "Eve" });
+	await expect.poll(() => calls.updatePerson?.at(-1)).toEqual({ id: 5, name: "Eve" });
 });
 
 test("a failed rename restores the name and shows the error", async ({
@@ -263,7 +263,7 @@ test("a failed rename restores the name and shows the error", async ({
 	await expect(page.getByRole("alert")).toHaveText(
 		"Couldn't rename Alice: Database is locked",
 	);
-	expect(calls.updatePerson).toEqual([{ id: 1, name: "Alicia" }]);
+	await expect.poll(() => calls.updatePerson).toEqual([{ id: 1, name: "Alicia" }]);
 	await page.getByRole("button", { name: "Dismiss error" }).click();
 	await expect(page.getByRole("alert")).toHaveCount(0);
 });
@@ -277,7 +277,7 @@ test("hide and unhide, with Show hidden listing hidden people", async ({
 
 	await cardAction(page, 4, "Hide");
 	await expect(card(page, 4)).toHaveCount(0);
-	expect(calls.updatePerson).toEqual([{ id: 4, hidden: true }]);
+	await expect.poll(() => calls.updatePerson).toEqual([{ id: 4, hidden: true }]);
 	await expect(peopleItem(page)).toContainText("4");
 
 	const showHidden = page.getByRole("button", { name: "Show hidden" });
@@ -289,7 +289,7 @@ test("hide and unhide, with Show hidden listing hidden people", async ({
 
 	await cardAction(page, 6, "Unhide");
 	await expect(card(page, 6)).not.toContainText("Hidden");
-	expect(calls.updatePerson?.at(-1)).toEqual({ id: 6, hidden: false });
+	await expect.poll(() => calls.updatePerson?.at(-1)).toEqual({ id: 6, hidden: false });
 
 	await showHidden.click();
 	await expect(showHidden).toHaveAttribute("aria-pressed", "false");
@@ -337,7 +337,7 @@ test("merge picks a target among the selection and confirms first", async ({
 	await picker.getByRole("option", { name: "Bob" }).click();
 	await dialog.getByRole("button", { name: "Merge people" }).click();
 	await expect(card(page, 1)).toHaveCount(0);
-	expect(calls.mergePeople).toEqual([{ targetId: 2, sourceIds: [1] }]);
+	await expect.poll(() => calls.mergePeople).toEqual([{ targetId: 2, sourceIds: [1] }]);
 	await expect(card(page, 2).getByTestId("person-count")).toHaveText(
 		"4 photos",
 	);
@@ -373,7 +373,7 @@ test("a failed merge restores the people and shows the error", async ({
 	await expect(page.getByRole("alert")).toHaveText(
 		"Couldn't merge into Carol: Database is locked",
 	);
-	expect(calls.mergePeople).toEqual([{ targetId: 4, sourceIds: [5] }]);
+	await expect.poll(() => calls.mergePeople).toEqual([{ targetId: 4, sourceIds: [5] }]);
 });
 
 function assignInput(page: Page, faceId: number) {
@@ -429,7 +429,7 @@ test("metadata People rows assign a new person, an existing one, or none", async
 		"Not assigned",
 	);
 
-	expect(calls.assignFace).toEqual([
+	await expect.poll(() => calls.assignFace).toEqual([
 		{ faceId: 104, name: "Eve" },
 		{ faceId: 110, personId: 1 },
 		{ faceId: 103, personId: null },
@@ -457,7 +457,7 @@ test("a failed face assignment rolls back and shows the error", async ({
 	await expect(
 		page.getByTestId("photo-people").getByRole("alert"),
 	).toHaveText("Couldn't update this face: Database is locked");
-	expect(calls.assignFace).toEqual([{ faceId: 101, personId: 4 }]);
+	await expect.poll(() => calls.assignFace).toEqual([{ faceId: 101, personId: 4 }]);
 });
 
 test("videos have no People section", async ({ page, mockBackend }) => {
