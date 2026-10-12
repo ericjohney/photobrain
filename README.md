@@ -262,7 +262,7 @@ The API image applies shared migrations on startup and runs on port 3000. The we
 
 The permanent GitHub Actions build workflow runs API tests/typecheck and web Playwright tests, builds and pushes API and web images, and updates their external ArgoCD image tags on pushes to `main`.
 
-Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator. The manually dispatched `.github/workflows/native-ios-release.yml` validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
+Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator. `.github/workflows/native-ios-release.yml` runs on every push to `main` (or by manual dispatch with custom inputs); it validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 
 The release workflow serializes on `ios-production-release`, uses `apps/ios/scripts/allocate-app-store-build.mjs` against App Store Connect plus a run reservation floor, and enforces iOS 17.0 plus the production bundle/API contract. See [iOS distribution](docs/ios-distribution.md) for releasing, signing secrets, and renewal.
 

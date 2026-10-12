@@ -1,6 +1,8 @@
 name: Native iOS Production Release
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       bundle_id:
@@ -37,10 +39,10 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 90
     env:
-      BUNDLE_ID: ${{ inputs.bundle_id }}
-      XCODE_SCHEME: ${{ inputs.xcode_scheme }}
-      MARKETING_VERSION: ${{ inputs.marketing_version }}
-      EXPECTED_API_URL: ${{ inputs.expected_api_url }}
+      BUNDLE_ID: ${{ inputs.bundle_id || 'com.photobrain.app' }}
+      XCODE_SCHEME: ${{ inputs.xcode_scheme || 'PhotoBrain-Production' }}
+      MARKETING_VERSION: ${{ inputs.marketing_version || '1.0.0' }}
+      EXPECTED_API_URL: ${{ inputs.expected_api_url || 'https://photobrain-api.ericj5.com' }}
       EXPECTED_URL_SCHEME: photobrain
       EXPECTED_MINIMUM_IOS_VERSION: "17.0"
       XCODE_PROJECT: apps/ios/PhotoBrain.xcodeproj
@@ -449,7 +451,7 @@ jobs:
       - name: Retain inspected archive, dSYMs, and IPA
         uses: actions/upload-artifact@v4
         with:
-          name: native-ios-production-${{ inputs.marketing_version }}-${{ steps.allocate.outputs.build_number }}
+          name: native-ios-production-${{ inputs.marketing_version || '1.0.0' }}-${{ steps.allocate.outputs.build_number }}
           path: ${{ runner.temp }}/retained
           if-no-files-found: error
           retention-days: 30
