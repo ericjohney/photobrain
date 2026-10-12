@@ -357,8 +357,9 @@ test("the Gear toggle is library-grid only and search or Review leave Gear", asy
 
 	// Review hides the toggle too.
 	await openGear(page);
-	// The cached stats are shown again and refetched once on remount.
-	await expect.poll(() => calls.gearStats?.length).toBe(2);
+	// The cached stats are still fresh, so they are shown without a refetch.
+	await expect(page.getByTestId("gear-stats")).toBeVisible();
+	expect(calls.gearStats).toHaveLength(1);
 	await page
 		.getByTestId("left-panel")
 		.getByRole("button", { name: /^Review/ })
@@ -366,5 +367,5 @@ test("the Gear toggle is library-grid only and search or Review leave Gear", asy
 	await expect(page.getByTestId("review-header")).toBeVisible();
 	await expect(gearToggle(page)).toHaveCount(0);
 	await expect(page.getByTestId("gear-stats")).toHaveCount(0);
-	expect(calls.gearStats).toHaveLength(2);
+	expect(calls.gearStats).toHaveLength(1);
 });

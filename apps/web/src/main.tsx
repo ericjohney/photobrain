@@ -6,7 +6,12 @@ import { trpcClient } from "./lib/trpc-client";
 import "./index.css";
 import App from "./App.tsx";
 
-const queryClient = new QueryClient();
+// Mutations, curation, and scan progress invalidate the queries they affect,
+// so data stays fresh for a minute instead of refetching (and re-parsing the
+// multi-MB library list) on every remount, view switch, or window focus.
+const queryClient = new QueryClient({
+	defaultOptions: { queries: { staleTime: 60_000 } },
+});
 
 createRoot(document.getElementById("root")!).render(
 	<StrictMode>

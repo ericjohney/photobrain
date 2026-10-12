@@ -173,8 +173,9 @@ test("clicking a person scopes the library, search, and smart albums to personId
 	// The saved album now heads the grid; the filter chip still clears the person.
 	await leftPanel(page).getByRole("button", { name: "Clear person" }).click();
 	await expect(page.getByTestId("smart-album-header")).toHaveCount(0);
+	// The unscoped library was loaded before and is still fresh, so it is
+	// shown from the cache rather than requested again.
 	await expectGrid(page, {});
-	expect(calls.photos?.at(-1)).toEqual({});
 });
 
 test("an unnamed person's scope label reads Unnamed", async ({
@@ -195,8 +196,9 @@ test("an unnamed person's scope label reads Unnamed", async ({
 	// Leaving the person clears the filter.
 	await page.getByRole("button", { name: "Leave person" }).click();
 	await expect(page.getByTestId("person-header")).toHaveCount(0);
+	// The unscoped library was loaded before and is still fresh, so it is
+	// shown from the cache rather than requested again.
 	await expectGrid(page, {});
-	expect(calls.photos?.at(-1)).toEqual({});
 });
 
 test("rename saves on Enter, cancels on Escape, and clears an empty name", async ({

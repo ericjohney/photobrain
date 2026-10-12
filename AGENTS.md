@@ -51,7 +51,7 @@ Dockerfile                Four targets: builder, api, web-builder, web
 
 The API entrypoint is `apps/api/src/index.ts`:
 
-1. Hono serves `/api/health`.
+1. Hono serves `/api/health`. JSON responses under `/api/trpc/*` and `/api/v1/*` of 1 KiB or more are gzip/deflate-compressed by `middleware/compress-json.ts` when the client accepts it (binary routes and the SSE stream never are).
 2. tRPC handles `/api/trpc/*` using the router in `apps/api/src/trpc/router.ts`.
 3. The compatibility JSON API is mounted at `/api/v1` for the native Swift client.
 4. REST routes under `/api/photos/*` stream original files and generated thumbnails.
@@ -180,6 +180,7 @@ bun run lint             # Turbo lint tasks where package scripts exist
 bun run typecheck        # Turbo TypeScript tasks
 cd apps/api && bun test
 cd apps/api && bun run bench:import # File-backed persistence benchmark, no native processing
+cd apps/api && bun run bench:catalog # Library listing (tRPC/v1 photos) size and time, with and without JSON compression
 cd apps/api && bun run bench:exif /path/to/photo1.jpg /path/to/photo2.heic # Read-only EXIF comparison; requires exiftool
 cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui

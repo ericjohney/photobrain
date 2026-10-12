@@ -280,7 +280,12 @@ test("changing a filter after applying an album deselects it", async ({
 		.getByRole("radiogroup", { name: "Photo type" })
 		.getByRole("radio", { name: "All" })
 		.click();
-	await expect.poll(() => calls.photos?.at(-1)).toEqual({ flag: "pick" });
+	// Shown from the still-fresh cached { flag: "pick" } listing.
+	await expect
+		.poll(() => gridIds(page))
+		.toEqual(
+			fixtureGridIds(filterFixturePhotos(FIXTURE_PHOTOS, { flag: "pick" })),
+		);
 	await expect(page.getByTestId("smart-album-header")).toHaveCount(0);
 });
 

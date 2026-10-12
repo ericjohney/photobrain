@@ -30,3 +30,4 @@ dist-ssr
 test-results/
 playwright-report/
 e2e/.auth/
+perf/results.jsonl
