@@ -143,6 +143,7 @@ private struct RootTabView: View {
     @State private var navigation = AppLinkNavigationState()
     @State private var libraryUtility: LibraryUtility?
     @State private var gearStatsPresented = false
+    @State private var calendarPresented = false
 
     @ViewBuilder
     private var tabs: some View {
@@ -204,7 +205,8 @@ private struct RootTabView: View {
                 navigation.selectedTab = .library
                 libraryUtility = utility
             },
-            openGearStats: { gearStatsPresented = true }
+            openGearStats: { gearStatsPresented = true },
+            openCalendar: { calendarPresented = true }
         )
     }
 
@@ -241,6 +243,15 @@ private struct RootTabView: View {
             GearStatsScreen(filters: library.filters, api: environment.api) { selection in
                 navigation.selectedTab = .library
                 library.showGear(selection)
+            }
+        }
+        .sheet(isPresented: $calendarPresented) {
+            CaptureCalendarView(
+                calendar: library.captureCalendar,
+                capturedDate: library.filters.capturedDate
+            ) { date in
+                navigation.selectedTab = .library
+                library.showCapturedDate(date)
             }
         }
         .environment(\.showInLibrary, ShowInLibraryAction { shortcut in

@@ -230,7 +230,96 @@ enum LibraryGrouping: String, CaseIterable, Identifiable, Sendable {
     case all
 
     var id: Self { self }
-    var title: String { self == .days ? "Moments" : rawValue.capitalized }
+    var title: String {
+        switch self {
+        case .years: "Years"
+        case .months: "Months"
+        case .days: "All Photos"
+        case .all: "All"
+        }
+    }
+
+    /// The Photos-style segments under the grid; `.all` is used only by Recently Added.
+    static let segments: [LibraryGrouping] = [.years, .months, .days]
+
+    /// Photos' density per zoom level: whole years read best tiny, days large.
+    var defaultPhoneColumns: Int {
+        switch self {
+        case .years: 9
+        case .months: 5
+        case .days, .all: 3
+        }
+    }
+}
+
+/// The single-choice filter in the Library's More menu, like Photos' Filter submenu.
+enum LibraryQuickFilter: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case picks
+    case rated
+    case photos
+    case videos
+    case raw
+    case rejected
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .all: "All Items"
+        case .picks: "Picks"
+        case .rated: "Rated 4★+"
+        case .photos: "Photos"
+        case .videos: "Videos"
+        case .raw: "RAW"
+        case .rejected: "Rejected"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: "photo.on.rectangle"
+        case .picks: "heart"
+        case .rated: "star"
+        case .photos: "photo"
+        case .videos: "video"
+        case .raw: "camera.aperture"
+        case .rejected: "xmark.bin"
+        }
+    }
+
+    /// The empty-state title when this filter matches nothing.
+    var emptyTitle: String {
+        switch self {
+        case .all: "No Photos"
+        case .picks: "No Picks"
+        case .rated: "No Rated Photos"
+        case .photos: "No Photos"
+        case .videos: "No Videos"
+        case .raw: "No RAW Photos"
+        case .rejected: "No Rejected Photos"
+        }
+    }
+
+    var filters: LibraryFilters {
+        var filters = LibraryFilters()
+        switch self {
+        case .all: break
+        case .picks: filters.flag = .pick
+        case .rated: filters.minRating = 4
+        case .photos: filters.mediaKind = .standard
+        case .videos: filters.mediaKind = .video
+        case .raw: filters.mediaKind = .raw
+        case .rejected: filters.flag = .reject
+        }
+        return filters
+    }
+
+    /// The quick filter exactly equal to `filters`, or nil for any other combination.
+    init?(matching filters: LibraryFilters) {
+        guard let match = Self.allCases.first(where: { $0.filters == filters }) else { return nil }
+        self = match
+    }
 }
 
 enum LibrarySort: String, CaseIterable, Identifiable, Sendable {

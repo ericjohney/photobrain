@@ -933,21 +933,23 @@ private struct LoupeCoverModifier<Loupe: View>: ViewModifier {
     }
 }
 
-private struct LoupeCoverHost: UIViewControllerRepresentable {
+/// A zero-size view (not a child view controller, which would take part in status bar and
+/// appearance forwarding) that presents the loupe from the window's topmost controller.
+private struct LoupeCoverHost: UIViewRepresentable {
     let isPresented: Bool
     let root: AnyView?
 
-    func makeUIViewController(context: Context) -> LoupeCoverHostController {
-        LoupeCoverHostController()
+    func makeUIView(context: Context) -> LoupeCoverHostView {
+        LoupeCoverHostView()
     }
 
-    func updateUIViewController(_ controller: LoupeCoverHostController, context: Context) {
-        controller.sync(root: isPresented ? root : nil)
+    func updateUIView(_ view: LoupeCoverHostView, context: Context) {
+        view.sync(root: isPresented ? root : nil)
     }
 }
 
 @MainActor
-final class LoupeCoverHostController: UIViewController {
+final class LoupeCoverHostView: UIView {
     private var hosting: UIHostingController<AnyView>?
     private var pendingRoot: AnyView?
 
@@ -967,24 +969,25 @@ final class LoupeCoverHostController: UIViewController {
         }
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
         presentIfPossible()
     }
 
     private func presentIfPossible() {
-        guard hosting == nil, let root = pendingRoot, view.window != nil else { return }
-        var presenter: UIViewController = self
-        while let presented = presenter.presentedViewController, !presented.isBeingDismissed {
-            presenter = presented
-        }
-        let controller = UIHostingController(rootView: root)
-        controller.modalPresentationStyle = .overFullScreen
-        controller.modalPresentationCapturesStatusBarAppearance = true
-        controller.view.backgroundColor = .clear
-        hosting = controller
-        pendingRoot = nil
-        DispatchQueue.main.async {
+        guard hosting == nil, pendingRoot != nil, window != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, hosting == nil, let root = pendingRoot,
+                  var presenter = window?.rootViewController else { return }
+            while let presented = presenter.presentedViewController, !presented.isBeingDismissed {
+                presenter = presented
+            }
+            let controller = UIHostingController(rootView: root)
+            controller.modalPresentationStyle = .overFullScreen
+            controller.modalPresentationCapturesStatusBarAppearance = true
+            controller.view.backgroundColor = .clear
+            hosting = controller
+            pendingRoot = nil
             presenter.present(controller, animated: false)
         }
     }

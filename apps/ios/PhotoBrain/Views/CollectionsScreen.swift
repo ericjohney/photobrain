@@ -18,6 +18,7 @@ struct CollectionsScreen: View {
     let openUtility: (LibraryUtility) -> Void
     /// Opens Gear Stats over the current Library filters.
     let openGearStats: () -> Void
+    let openCalendar: () -> Void
     @Environment(\.showInLibrary) private var showInLibrary
 
     @State private var newNamePresented = false
@@ -268,7 +269,7 @@ struct CollectionsScreen: View {
         }
     }
 
-    /// Review, Duplicates, Map, and Gear Stats as an inset grouped list with counts.
+    /// Review, Duplicates, Map, Calendar, and Gear Stats as an inset grouped list with counts.
     private var utilitiesSection: some View {
         VStack(alignment: .leading, spacing: PBSpacing.m) {
             PBSectionHeader(title: "Utilities")
@@ -287,6 +288,8 @@ struct CollectionsScreen: View {
                 utilityRow("Map", systemImage: "map", count: nil, accessibility: "Map") {
                     openUtility(.map)
                 }
+                Divider().padding(.leading, 52)
+                utilityRow("Calendar", systemImage: "calendar", count: nil, accessibility: "Calendar", action: openCalendar)
                 Divider().padding(.leading, 52)
                 utilityRow("Gear Stats", systemImage: "chart.bar", count: nil, accessibility: "Gear Stats", action: openGearStats)
             }

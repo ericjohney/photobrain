@@ -36,9 +36,9 @@ struct LibraryScreen: View {
 
     @State private var optionsPresented = false
     @State private var addSelectionPresented = false
-    @State private var calendarPresented = false
-    @State private var gearStatsPresented = false
     @State private var loupeTransition = LoupeZoomTransition()
+    /// Pinched column counts per grouping (`years:9,months:5,days:3`).
+    @AppStorage("com.photobrain.gridColumns") private var storedColumns = ""
     @Environment(\.showInLibrary) private var showInLibrary
 
     var body: some View {
@@ -46,11 +46,16 @@ struct LibraryScreen: View {
             content
                 .navigationTitle(store.isSelecting ? store.headerSubtitle : "Library")
                 .navigationBarTitleDisplayMode(store.isSelecting ? .inline : .large)
-                .pbNavigationSubtitle(store.isSelecting ? "" : store.itemCountText)
+                .pbNavigationSubtitle(store.isSelecting || store.loadState != .content ? "" : store.itemCountText)
                 .toolbar { toolbarContent }
-                .safeAreaInset(edge: .top, spacing: 0) { topInsets }
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if hasTopInsets { topInsets }
+                }
                 .safeAreaInset(edge: .bottom, spacing: PBSpacing.s) {
-                    ActivityBar(coordinator: scans)
+                    VStack(spacing: PBSpacing.s) {
+                        ActivityBar(coordinator: scans)
+                        if showsGroupingControl { groupingControl }
+                    }
                 }
                 .navigationDestination(item: $utility) { destination in
                     utilityScreen(destination)
@@ -64,16 +69,6 @@ struct LibraryScreen: View {
                 environment: environment,
                 theme: theme
             )
-        }
-        .sheet(isPresented: $calendarPresented) {
-            CaptureCalendarView(
-                calendar: store.captureCalendar,
-                capturedDate: store.filters.capturedDate,
-                select: store.showCapturedDate
-            )
-        }
-        .sheet(isPresented: $gearStatsPresented) {
-            GearStatsScreen(filters: store.filters, api: environment.api, select: store.showGear)
         }
         .sheet(isPresented: $addSelectionPresented) {
             AddSelectionToCollectionSheet(
@@ -151,61 +146,33 @@ struct LibraryScreen: View {
         }
     }
 
-    /// Everything that used to crowd the header: grouping, sort, filters, browse screens, and
-    /// library maintenance. The label carries the review and duplicate counts for VoiceOver.
+    /// Photos-style More menu: Sort and a single-choice Filter, then Library Options.
+    /// Review, Duplicates, Calendar, Map, and Gear Stats live in Albums › Utilities.
     private var moreMenu: some View {
         Menu {
             Section {
-                Picker("Group By", selection: groupingBinding) {
-                    ForEach(LibraryGrouping.allCases) { grouping in
-                        Text(grouping.title).tag(grouping)
-                    }
-                }
-                Picker("Sort", selection: sortBinding) {
+                Picker(selection: sortBinding) {
                     ForEach(LibrarySort.allCases) { sort in
                         Text(sort.title).tag(sort)
                     }
-                }
-                Button {
-                    optionsPresented = true
                 } label: {
-                    Label("Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                    Label("Sort", systemImage: "arrow.up.arrow.down")
                 }
-            }
-            Section {
-                Button {
-                    utility = .review
-                } label: {
-                    Label(
-                        review.counts.all > 0 ? "Review (\(review.counts.all.formatted()))" : "Review",
-                        systemImage: "sparkles.rectangle.stack"
-                    )
-                }
-                .accessibilityLabel("Review, \(CountText.photos(review.counts.all))")
-                Button {
-                    utility = .duplicates
+                .pickerStyle(.menu)
+                Menu {
+                    Picker("Filter", selection: quickFilterBinding) {
+                        ForEach(LibraryQuickFilter.allCases) { filter in
+                            Label(filter.title, systemImage: filter.systemImage).tag(Optional(filter))
+                        }
+                    }
+                    .pickerStyle(.inline)
                 } label: {
                     Label(
-                        duplicates.counts.total > 0 ? "Duplicates (\(duplicates.counts.total.formatted()))" : "Duplicates",
-                        systemImage: "square.on.square"
+                        store.filters.isActive ? "Filter: \(filterTitle)" : "Filter",
+                        systemImage: store.filters.isActive
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle"
                     )
-                }
-                .accessibilityLabel("Duplicates, \(CountText.of(duplicates.counts.total, "group", "groups"))")
-                Button {
-                    calendarPresented = true
-                } label: {
-                    Label("Calendar", systemImage: "calendar")
-                }
-                .disabled(store.records.isEmpty)
-                Button {
-                    utility = .map
-                } label: {
-                    Label("Map", systemImage: "map")
-                }
-                Button {
-                    gearStatsPresented = true
-                } label: {
-                    Label("Gear Stats", systemImage: "chart.bar")
                 }
             }
             Section {
@@ -217,25 +184,58 @@ struct LibraryScreen: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .overlay(alignment: .topTrailing) {
-                    if review.counts.all + duplicates.counts.total > 0 {
-                        Circle()
-                            .fill(PBColor.accent)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 6, y: -4)
-                    }
-                }
         }
-        .accessibilityLabel(moreAccessibilityLabel)
+        .accessibilityLabel("Library options")
     }
 
-    private var moreAccessibilityLabel: String {
-        var parts = ["Library options"]
-        if review.counts.all > 0 { parts.append(CountText.of(review.counts.all, "photo to review", "photos to review")) }
-        if duplicates.counts.total > 0 {
-            parts.append(CountText.of(duplicates.counts.total, "duplicate group", "duplicate groups"))
+    private var quickFilterBinding: Binding<LibraryQuickFilter?> {
+        Binding(
+            get: { LibraryQuickFilter(matching: store.filters) },
+            set: { filter in store.applyFilters(filter?.filters ?? LibraryFilters()) }
+        )
+    }
+
+    /// The active filter's name, or the summary for filters set elsewhere (e.g. a calendar day).
+    private var filterTitle: String {
+        LibraryQuickFilter(matching: store.filters)?.title ?? store.filters.summary
+    }
+
+    // MARK: Grouping and density
+
+    private var showsGroupingControl: Bool {
+        !store.isSelecting && store.sort == .captured && !store.records.isEmpty
+    }
+
+    /// Floating Years · Months · All Photos control above the tab bar.
+    private var groupingControl: some View {
+        Picker("Group By", selection: groupingBinding) {
+            ForEach(LibraryGrouping.segments) { grouping in
+                Text(grouping.title).tag(grouping)
+            }
         }
-        return parts.joined(separator: ", ")
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 300)
+        .padding(4)
+        .pbGlass(in: Capsule())
+        .padding(.bottom, PBSpacing.xs)
+    }
+
+    private var columnsByGrouping: [String: Int] {
+        Dictionary(uniqueKeysWithValues: storedColumns.split(separator: ",").compactMap { pair -> (String, Int)? in
+            let parts = pair.split(separator: ":")
+            guard parts.count == 2, let value = Int(parts[1]) else { return nil }
+            return (String(parts[0]), value)
+        })
+    }
+
+    private var currentColumns: Int {
+        columnsByGrouping[store.grouping.rawValue] ?? store.grouping.defaultPhoneColumns
+    }
+
+    private func storeColumns(_ columns: Int) {
+        var values = columnsByGrouping
+        values[store.grouping.rawValue] = columns
+        storedColumns = values.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")
     }
 
     // MARK: Content
@@ -244,8 +244,26 @@ struct LibraryScreen: View {
     @ViewBuilder
     private var topInsets: some View {
         VStack(spacing: 0) {
-            if !store.isSelecting, !store.records.isEmpty || store.filters.isActive {
-                LibraryQuickFilters(store: store, presentFilters: { optionsPresented = true })
+            if !store.isSelecting, store.filters.isActive {
+                Button {
+                    store.clearFilters()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "line.3.horizontal.decrease")
+                        Text("Filtered: \(filterTitle)")
+                            .lineLimit(1)
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .pbGlass(in: Capsule(), interactive: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear all filters")
+                .accessibilityValue(filterTitle)
+                .padding(.vertical, PBSpacing.xs)
             }
             if let error = store.refreshError {
                 PBBanner(message: "Couldn’t refresh. Cached photos are still shown.", retry: { Task { await store.load() } })
@@ -255,7 +273,10 @@ struct LibraryScreen: View {
                 PBBanner(message: message)
             }
         }
-        .background(.bar)
+    }
+
+    private var hasTopInsets: Bool {
+        (!store.isSelecting && store.filters.isActive) || store.refreshError != nil || scans.statusMessage != nil
     }
 
     @ViewBuilder
@@ -274,11 +295,25 @@ struct LibraryScreen: View {
                     .buttonStyle(.borderedProminent)
             }
         case .empty:
-            ContentUnavailableView(
-                store.filters.isActive ? "No Matching Photos" : "No Photos",
-                systemImage: "photo.on.rectangle.angled",
-                description: Text(store.filters.isActive ? "Try clearing one or more filters." : "Scan your library to add photos.")
-            )
+            if store.filters.isActive {
+                ContentUnavailableView {
+                    Label(
+                        LibraryQuickFilter(matching: store.filters)?.emptyTitle ?? "No Matching Photos",
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    )
+                } description: {
+                    Text("Nothing in your library matches this filter.")
+                } actions: {
+                    Button("Show All Items") { store.clearFilters() }
+                        .buttonStyle(.borderedProminent)
+                }
+            } else {
+                ContentUnavailableView(
+                    "No Photos",
+                    systemImage: "photo.on.rectangle.angled",
+                    description: Text("Scan your library to add photos.")
+                )
+            }
         default:
             LibraryGrid(
                 sections: store.sections,
@@ -290,6 +325,8 @@ struct LibraryScreen: View {
                 onLongPress: store.selectFromLongPress,
                 onVisibleChange: store.observeVisible,
                 transition: loupeTransition,
+                columns: currentColumns,
+                onPinchColumns: storeColumns,
                 onRefresh: {
                     await scans.manualLibraryRefresh()
                     await store.load()
@@ -352,67 +389,6 @@ enum LibraryUtility: String, Hashable, Identifiable, Sendable {
     case map
 
     var id: String { rawValue }
-}
-
-/// Horizontally scrolling chips under the Library title: common one-tap filters, then each
-/// other active filter as a removable chip, then Filters (the full sheet).
-private struct LibraryQuickFilters: View {
-    @ObservedObject var store: LibraryStore
-    let presentFilters: () -> Void
-
-    private var filters: LibraryFilters { store.filters }
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: PBSpacing.s) {
-                FilterChip(title: "All", isOn: !filters.isActive) {
-                    store.clearFilters()
-                }
-                .accessibilityLabel(filters.isActive ? "Clear all filters" : "All photos")
-                FilterChip(title: "Picks", systemImage: "flag.fill", isOn: filters.flag == .pick) {
-                    toggle { $0.flag = $0.flag == .pick ? nil : .pick }
-                }
-                FilterChip(title: "4★+", isOn: filters.minRating == 4) {
-                    toggle { $0.minRating = $0.minRating == 4 ? nil : 4 }
-                }
-                .accessibilityLabel("4 or more stars")
-                FilterChip(title: "Videos", systemImage: "video.fill", isOn: filters.mediaKind == .video) {
-                    toggle { $0.mediaKind = $0.mediaKind == .video ? .all : .video }
-                }
-                FilterChip(title: "RAW", isOn: filters.mediaKind == .raw) {
-                    toggle { $0.mediaKind = $0.mediaKind == .raw ? .all : .raw }
-                }
-                ForEach(otherActive) { entry in
-                    FilterChip(title: entry.title, isOn: true, removable: true) {
-                        store.applyFilters(filters.removing(entry.field))
-                    }
-                    .accessibilityLabel("Remove filter \(entry.title)")
-                }
-                FilterChip(title: "Filters", systemImage: "line.3.horizontal.decrease", action: presentFilters)
-                    .accessibilityLabel(filters.isActive ? "Edit filters, \(filters.summary)" : "Add filters")
-            }
-            .padding(.horizontal, PBSpacing.l)
-            .padding(.vertical, PBSpacing.s)
-        }
-    }
-
-    /// Active filters the quick chips above don't already show.
-    private var otherActive: [LibraryFilters.ActiveFilter] {
-        filters.activeFields.filter { entry in
-            switch entry.field {
-            case .flag: filters.flag != .pick
-            case .minRating: filters.minRating != 4
-            case .mediaKind: filters.mediaKind != .video && filters.mediaKind != .raw
-            default: true
-            }
-        }
-    }
-
-    private func toggle(_ change: (inout LibraryFilters) -> Void) {
-        var updated = filters
-        change(&updated)
-        store.applyFilters(updated)
-    }
 }
 
 private struct LibraryOptionsView: View {
