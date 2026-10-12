@@ -6,8 +6,7 @@
 # Starts apps/api/scripts/ui-test-server.ts on a free loopback port, passes its origin
 # to the UI-test runner (TEST_RUNNER_ variables reach the runner without the prefix),
 # and stops the server on exit. A test that hangs (seen on shared CI runners after a
-# teardown) is killed after 5 minutes instead of consuming the job, and a failed test
-# is retried once. Requires `bun install` at the repository root; the
+# teardown) is killed after 5 minutes instead of consuming the job. Requires `bun install` at the repository root; the
 # Rust addon is not needed.
 set -euo pipefail
 
@@ -46,6 +45,4 @@ TEST_RUNNER_PHOTOBRAIN_FIXTURE_URL="$origin" xcodebuild \
 	-test-timeouts-enabled YES \
 	-default-test-execution-time-allowance 300 \
 	-maximum-test-execution-time-allowance 600 \
-	-retry-tests-on-failure \
-	-test-iterations 2 \
 	test "$@"

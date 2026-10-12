@@ -249,7 +249,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
 
     @MainActor
     func testSearchVideoFilterSavesSmartAlbum() async throws {
-        app.tabBars.buttons["Search"].tap()
+        waitFor(app.tabBars.buttons["Search"], timeout: 30).tap()
         waitFor(element("Search your library"))
         tap("Add filters")
         waitFor(navigationTitle("Filter"))

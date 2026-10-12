@@ -40,7 +40,7 @@ final class CollectionsSearchFlowTests: PhotoBrainUITestCase {
 
     @MainActor
     func testSemanticSearchOpensResultAndSavesAlbum() async throws {
-        app.tabBars.buttons["Search"].tap()
+        waitFor(app.tabBars.buttons["Search"], timeout: 30).tap()
         waitFor(element("Search your library"))
         XCTAssertFalse(app.buttons["Save as Smart Album"].isEnabled)
 

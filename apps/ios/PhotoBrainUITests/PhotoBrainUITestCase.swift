@@ -28,6 +28,9 @@ class PhotoBrainUITestCase: XCTestCase {
             // Labels embed formatted dates and counts; pin the locale they are asserted in.
             app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
             app.launch()
+            // A cold launch on a shared CI runner can take 20 s or more; wait for the tab bar
+            // so the first tap of every test lands on a ready app.
+            XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 60), "App never showed its tab bar")
         }
     }
 
@@ -152,13 +155,13 @@ class PhotoBrainUITestCase: XCTestCase {
 
     @MainActor
     func openLibrary() {
-        app.tabBars.buttons["Library"].tap()
+        waitFor(app.tabBars.buttons["Library"], timeout: 30).tap()
         waitFor(app.staticTexts["library-title"])
     }
 
     @MainActor
     func openCollections() {
-        app.tabBars.buttons["Collections"].tap()
+        waitFor(app.tabBars.buttons["Collections"], timeout: 30).tap()
         waitFor(navigationTitle("Collections"))
     }
 
