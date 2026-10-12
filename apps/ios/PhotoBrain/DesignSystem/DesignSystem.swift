@@ -274,4 +274,11 @@ enum UITestMode {
         false
         #endif
     }()
+
+    /// Clears view preferences an earlier test persisted (pinch-chosen grid columns), so every
+    /// test starts from the defaults.
+    static func resetPersistedViewState() {
+        guard isActive else { return }
+        UserDefaults.standard.removeObject(forKey: "com.photobrain.gridColumns")
+    }
 }

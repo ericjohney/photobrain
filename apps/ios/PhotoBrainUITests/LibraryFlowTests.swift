@@ -57,15 +57,19 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         waitFor(gridCell("beach-waves.jpg, 5 stars, Pick"))
         let cell = gridCell("beach-waves.jpg, 5 stars, Pick")
         let wide = cell.frame.width
-        app.collectionViews.firstMatch.pinch(withScale: 0.4, velocity: -1)
-        waitFor(app.collectionViews.firstMatch)
+        pinchGrid(scale: 0.4, velocity: -1)
         XCTAssertLessThan(gridCell("beach-waves.jpg, 5 stars, Pick").frame.width, wide * 0.8)
+        // Pinching out restores the wide grid, tall enough to scroll back in time.
+        pinchGrid(scale: 3, velocity: 1)
+        XCTAssertEqual(gridCell("beach-waves.jpg, 5 stars, Pick").frame.width, wide, accuracy: 1)
 
         // Scrolling back in time swaps the tab bar for Photos' Years · Months · All switcher.
         app.collectionViews.firstMatch.swipeDown()
         tap("Years")
         waitFor(element(startingWith: "2024"))
-        tap("All")
+        // The fixture's Years grid fits on screen, so the library is back at its newest edge
+        // and the tab bar replaces the switcher.
+        waitFor(app.tabBars.buttons["Collections"])
     }
 
     @MainActor
@@ -261,6 +265,27 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         let albums = try await fixtureJSON("api/v1/smart-albums")["albums"] as? [[String: Any]] ?? []
         let clips = try XCTUnwrap(albums.first { $0["name"] as? String == "Clips" })
         XCTAssertEqual((clips["filters"] as? [String: String])?["filterRaw"], "video")
+    }
+
+    /// Pinches the Library grid on a photo well inside the screen. The full-bleed grid spans
+    /// the whole screen, so a pinch over the whole grid starts a finger on the floating title
+    /// or the tab bar and the grid sees a single touch.
+    @MainActor
+    private func pinchGrid(scale: CGFloat, velocity: CGFloat, file: StaticString = #filePath, line: UInt = #line) {
+        let grid = app.collectionViews.firstMatch
+        waitFor(grid, file: file, line: line)
+        let bounds = app.windows.firstMatch.frame
+        guard let target = grid.cells.allElementsBoundByIndex.first(where: { cell in
+            let frame = cell.frame
+            return frame.minY > bounds.minY + 180 && frame.maxY < bounds.maxY - 180
+                && frame.minX >= bounds.minX && frame.maxX <= bounds.maxX
+        }) else {
+            XCTFail("No grid photo in the middle of the screen", file: file, line: line)
+            return
+        }
+        // Index-bound elements re-resolve to other cells once the grid relayouts; pin by label.
+        grid.cells.matching(NSPredicate(format: "label == %@", target.label)).firstMatch
+            .pinch(withScale: scale, velocity: velocity)
     }
 
     /// Polls the fixture until photo `id` satisfies `predicate`; curation saves are optimistic.

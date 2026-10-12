@@ -5,6 +5,10 @@ struct PhotoBrainApp: App {
     @UIApplicationDelegateAdaptor(PhotoBrainAppDelegate.self) private var appDelegate
     @StateObject private var bootstrap = AppBootstrap()
 
+    init() {
+        UITestMode.resetPersistedViewState()
+    }
+
     var body: some Scene {
         WindowGroup {
             BootstrapView(bootstrap: bootstrap)

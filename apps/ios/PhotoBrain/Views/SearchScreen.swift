@@ -14,9 +14,8 @@ struct SearchScreen: View {
             GeometryReader { geometry in
                 content(width: geometry.size.width)
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if store.state != .idle || store.filters.isActive { filterBar }
-            }
+            // Always shown: filters alone (no query) are a way to browse, so idle Search needs them.
+            .safeAreaInset(edge: .top, spacing: 0) { filterBar }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
             .searchable(

@@ -520,8 +520,10 @@ final class BackupCoordinatorTests: XCTestCase {
 /// is descheduled (a stalled CI VM), the awaited work could not run either, so the stall must
 /// not use up the budget and fail the first check after the host resumes.
 @MainActor
+/// Polls `condition`. The timeout only bounds failures (passing waits return as soon as the
+/// condition holds); shared CI runners can starve the main actor for seconds.
 private func waitUntil(
-    timeout: Duration = .seconds(3),
+    timeout: Duration = .seconds(10),
     file: StaticString = #filePath,
     line: UInt = #line,
     _ condition: @MainActor () async -> Bool

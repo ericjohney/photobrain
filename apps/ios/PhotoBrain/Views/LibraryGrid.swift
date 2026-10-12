@@ -87,6 +87,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     private var selectedIDs: Set<Int> = []
     private var appliedResetVersion = -1
     private var appliedContentRevision = -1
+    private var pendingContentReset = false
     private var didInitialPosition = false
     private let refreshControl = UIRefreshControl()
     private var refreshTask: Task<Void, Never>?
@@ -194,9 +195,13 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     ) {
         loadViewIfNeeded()
         let changedSelectionIDs = selectedIDs.symmetricDifference(nextSelectedIDs)
-        let shouldReset = appliedResetVersion != resetVersion
+        let resetRequested = appliedResetVersion != resetVersion
         selectedIDs = nextSelectedIDs
         appliedResetVersion = resetVersion
+        // A filter change resets before its reload lands; keep the reset pending so the new
+        // content opens at its newest edge too, instead of at the old list's offset.
+        if resetRequested { pendingContentReset = true }
+        let shouldReset = resetRequested || (pendingContentReset && appliedContentRevision != contentRevision)
 
         if appliedContentRevision == contentRevision {
             guard !changedSelectionIDs.isEmpty || shouldReset else { return }
@@ -216,6 +221,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         }
 
         appliedContentRevision = contentRevision
+        pendingContentReset = false
         let nextIDs = sections.flatMap(\.photos).map(\.id)
         let nextSectionIDs = sections.map(\.id)
         let nextRecords = Dictionary(uniqueKeysWithValues: sections.flatMap(\.photos).map { ($0.id, $0) })
