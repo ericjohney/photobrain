@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { scanJobs, scanManifests } from "../../db/schema";
+import { removeMissingPhotos } from "../../services/library-reconciliation";
 import { nativeExecutor } from "../../services/native-executor";
 import { createScanPlan } from "../../services/scan-planner";
 import {
@@ -225,10 +226,11 @@ export const scanPhotosFunction = inngest.createFunction(
 				};
 		}
 
-		const result = {
-			processed: progress.processed,
-			successful: progress.successful,
-		};
+		const result: { processed: number; successful: number; removed?: number } =
+			{
+				processed: progress.processed,
+				successful: progress.successful,
+			};
 		if (result.processed > 0 && result.successful === 0) {
 			await step.run("mark-scan-failed-v5", async () => {
 				await nativeExecutor.cancelPhotos(jobId);
@@ -247,6 +249,32 @@ export const scanPhotosFunction = inngest.createFunction(
 			});
 			return result;
 		}
+
+		// Delete rows whose source file is gone, while the frozen manifest still
+		// says what this scan discovered. A force scan ("Reprocess all") is the
+		// deliberate override for the mass-removal guard.
+		const reconciliation = await step.run(
+			"remove-missing-photos-v1",
+			async () => {
+				if (!scanActive(jobId)) return null;
+				const outcome = await removeMissingPhotos(db, jobId, {
+					allowMassRemoval: force,
+				});
+				if (
+					outcome.skipped === "mass-removal" ||
+					outcome.skipped === "empty-discovery"
+				)
+					console.warn(
+						`Scan ${jobId}: kept ${outcome.retained} undiscovered photos (${outcome.skipped}); run "Reprocess all" to remove them deliberately`,
+					);
+				else if (outcome.removed > 0)
+					console.log(
+						`Scan ${jobId}: removed ${outcome.removed} missing photos`,
+					);
+				return outcome;
+			},
+		);
+		if (reconciliation?.removed) result.removed = reconciliation.removed;
 
 		// Checkpoint IDs before terminal progress or dispatch; retain receipts until
 		// the event checkpoint succeeds, including retries after a lost response.

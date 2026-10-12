@@ -172,8 +172,6 @@ The native iOS command requires Xcode 26.6 and matches the unsigned Preview simu
 | `INNGEST_SERVE_ORIGIN` | inferred | Optional callback origin parsed by the API and passed to Inngest as `serveHost` |
 | `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable HTTP(S) Inngest origin for WebSocket subscriptions |
 
-`DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are parsed legacy values and are not used by the current image pipeline.
-
 More photo workers use more decoded-image memory. Reduce `PHOTO_PROCESSING_THREADS` on memory-constrained hosts; storage, ExifTool, startup, and the final few photos can still leave CPUs idle. See [historical measured CPU, memory, and throughput](docs/import-performance.md#continuous-pool--2026-09-19).
 
 For the incremental-scan cutover, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006_incremental_scan.sql` (and any earlier unapplied migrations) before starting `scan-photos-v5` and `generate-embeddings-v3`. Their function/checkpoint graphs are replay-sensitive. `RUN_DB_INIT=true` performs migrations on startup; the API Docker image enables it.
@@ -241,8 +239,6 @@ Binary routes use REST:
 - `GET /api/photos/:id/thumbnail/:size`
 - `GET|PUT|POST /api/inngest`
 
-Two one-off maintenance POST routes remain under `/api/photos`: `reprocess-heic` and `backfill-thumbnail-timestamps`. They should not become part of new client behavior and should be removed after their operational work is complete.
-
 All current API routes are unauthenticated. Omitting private source/artifact identity from public tRPC and `/api/v1` photo DTOs is a required privacy boundary, not authentication.
 
 ## Image and Job Flow
@@ -263,11 +259,13 @@ Existing untracked photos get one conservative legacy-adoption opportunity. All 
 
 Every media attempt writes a unique `.versions/<UUID>/photo.image` key, producing `{thumbnailRoot}/{size}/.versions/<UUID>/photo.webp`. The photo row commits its thumbnail root, key, and fingerprint only after source/attempt/previous-generation checks succeed; stale results cannot replace a newer committed generation. Embedding saves check the generation too, inference uses its committed thumbnail root, and semantic search excludes noncompleted, wrong-model, or wrong-generation vectors. Cache-busting timestamps advance monotonically in whole seconds even within one second or after a backwards clock change.
 
-Retired and abandoned artifact generations remain on disk. This avoids overwriting a generation being served or embedded, but repeated repairs and force reprocessing consume additional storage; there is no artifact garbage collector yet. Scans also do not reconcile deleted source files.
+Superseded and abandoned artifact generations stay on disk until an hourly maintenance job (`library-maintenance-v1`) deletes managed `.versions/<UUID>` directories that no database row references and that are older than six hours; it skips while any scan is in progress and never touches legacy mirrored thumbnails. The same job re-sends scans left queued by a crash before their event was sent and fails queued scans older than 24 hours.
+
+After media processing, a scan removes catalog rows (with their EXIF, vectors, tags, faces, and collection membership) for photos under the scanned root that were not discovered and whose file is confirmed missing. Collections themselves are never deleted, and files are never touched. If the directory looks empty, or more than half of the root's photos (and more than 20) would disappear, an incremental scan removes nothing, protecting against an unmounted share; **Reprocess all photos** lifts that guard.
 
 Each streamed completion commits photo/EXIF/pHash data, its durable receipt, counters, and scan progress atomically. A failed transaction leaves the photo pending; an acknowledged receipt prevents duplicate work after checkpoint loss or restart. Embedding writes remain transactional batches. `bun run bench:import` from `apps/api` still benchmarks the shared batch-persistence helper against legacy writes; it does not measure the rolling scheduler or end-to-end import speed.
 
-Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare batched metadata extraction with per-file extraction without modifying photos. It requires ExifTool, not the native addon. [Import performance and architecture](docs/import-performance.md) records historical continuous-pool measurements and current incremental-scan smoke evidence, and separates implemented identity/classification/generation fencing from future outbox delivery, garbage collection, distributed ownership, and streamed embeddings.
+Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare batched metadata extraction with per-file extraction without modifying photos. It requires ExifTool, not the native addon. [Import performance and architecture](docs/import-performance.md) records historical continuous-pool measurements and current incremental-scan smoke evidence, and separates implemented identity/classification/generation fencing from future distributed ownership, content hashing, and streamed embeddings.
 
 ## Production Builds
 

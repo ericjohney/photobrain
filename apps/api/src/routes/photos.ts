@@ -5,25 +5,11 @@ import {
 	type ThumbnailSize,
 } from "@photobrain/utils";
 import type { BunFile } from "bun";
-import { like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { config } from "../config";
 import { db } from "../db";
-import { photos, scanJobs } from "../db/schema";
-import { inngest } from "../inngest/client";
-import { failJob, updateJobProgress } from "../inngest/progress";
 import { parseByteRange } from "../services/byte-range";
-import { nativeExecutor } from "../services/native-executor";
 import { originalFilePath } from "../services/photo-files";
-import { createScanPlan } from "../services/scan-planner";
-import {
-	clearScanWork,
-	commitScanResult,
-	getScanWorkProgress,
-	initializeScanWork,
-	pendingScanWork,
-	scanEmbeddingPhotoIds,
-} from "../services/scan-work";
 
 const router = new Hono();
 
@@ -205,131 +191,6 @@ router.get("/:id/thumbnail/:size", async (c) => {
 	} catch (error) {
 		console.error("Error serving thumbnail:", error);
 		return c.json({ error: "Failed to serve thumbnail" }, 500);
-	}
-});
-
-// One-off endpoint to re-process HEIC thumbnails with the orientation fix.
-// Call via: POST /api/photos/reprocess-heic
-// Remove this endpoint after running it once.
-router.post("/reprocess-heic", async (c) => {
-	const jobId = crypto.randomUUID();
-	try {
-		const heicPhotos = db
-			.select({ path: photos.path })
-			.from(photos)
-			.where(
-				or(
-					like(photos.path, "%.heic"),
-					like(photos.path, "%.HEIC"),
-					like(photos.path, "%.heif"),
-					like(photos.path, "%.HEIF"),
-				),
-			)
-			.all();
-		if (heicPhotos.length === 0)
-			return c.json({ message: "No HEIC photos found", count: 0 });
-		const now = new Date();
-		db.insert(scanJobs)
-			.values({
-				id: jobId,
-				phase: "processing",
-				status: "running",
-				createdAt: now,
-				updatedAt: now,
-			})
-			.run();
-		const plan = await createScanPlan(
-			db,
-			{
-				filePaths: heicPhotos.map((photo) =>
-					join(config.PHOTO_DIRECTORY, photo.path),
-				),
-				relativePaths: heicPhotos.map((photo) => photo.path),
-			},
-			config.PHOTO_DIRECTORY,
-			config.THUMBNAILS_DIRECTORY,
-			true,
-		);
-		let progress = initializeScanWork(db, jobId, plan);
-		while (progress.pending > 0) {
-			await nativeExecutor.consumePhotos(
-				jobId,
-				config.THUMBNAILS_DIRECTORY,
-				() => pendingScanWork(db, jobId),
-				async (id, result, thumbnailKey) => {
-					const saved = await commitScanResult(
-						db,
-						jobId,
-						id,
-						result,
-						thumbnailKey,
-					);
-					if (!saved.active) throw new Error("HEIC reprocess became terminal");
-				},
-			);
-			progress = getScanWorkProgress(db, jobId);
-		}
-		if (progress.successful === 0)
-			throw new Error("No HEIC photos could be processed");
-		const photoIds = scanEmbeddingPhotoIds(db, jobId);
-		await updateJobProgress(
-			jobId,
-			photoIds.length ? "scan-complete" : "completed",
-			progress.processed,
-			progress.total,
-		);
-		if (photoIds.length)
-			await inngest.send({
-				id: `heic-embeddings-${jobId}`,
-				name: "photos/embeddings.requested",
-				data: { jobId, photoIds, thumbnailsDir: config.THUMBNAILS_DIRECTORY },
-			});
-		return c.json({
-			message: `Re-processed ${progress.successful} HEIC photos`,
-			count: progress.successful,
-			jobId,
-		});
-	} catch (error) {
-		await failJob(
-			jobId,
-			error instanceof Error ? error : new Error(String(error)),
-		);
-		console.error("HEIC reprocess error:", error);
-		return c.json(
-			{ error: error instanceof Error ? error.message : "Unknown error" },
-			500,
-		);
-	} finally {
-		try {
-			await nativeExecutor.cancelPhotos(jobId);
-		} catch (error) {
-			console.error("Failed to drain HEIC reprocess", error);
-		}
-		clearScanWork(db, jobId);
-	}
-});
-
-// One-off: backfill thumbnailUpdatedAt for photos that have completed
-// thumbnails but no timestamp. Remove after running once.
-router.post("/backfill-thumbnail-timestamps", async (c) => {
-	try {
-		const updatedPhotos = db
-			.update(photos)
-			.set({ thumbnailUpdatedAt: new Date() })
-			.where(
-				sql`${photos.thumbnailStatus} = 'completed' AND ${photos.thumbnailUpdatedAt} IS NULL`,
-			)
-			.returning({ id: photos.id })
-			.all();
-		return c.json({
-			message: `Updated ${updatedPhotos.length} photos with thumbnailUpdatedAt`,
-			count: updatedPhotos.length,
-		});
-	} catch (error) {
-		return c.json(
-			{ error: error instanceof Error ? error.message : "Unknown error" },
-			500,
-		);
 	}
 });
 

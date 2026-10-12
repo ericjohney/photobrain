@@ -83,7 +83,9 @@ type FailureContext = Omit<Context, "event"> & {
 	error: Error;
 };
 type ScanFunction = {
-	handler(context: Context): Promise<{ processed: number; successful: number }>;
+	handler(
+		context: Context,
+	): Promise<{ processed: number; successful: number; removed?: number }>;
 	onFailure(context: FailureContext): Promise<void>;
 };
 
@@ -978,4 +980,99 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 			expect(JSON.stringify(value).length).toBeLessThan(120);
 		}
 	}, 30_000);
+
+	test("removes photos whose source file was deleted, with their sidecars", async () => {
+		paths = ["keep.jpg", "gone.jpg", "nested/gone.jpg"];
+		await harness().execute();
+		const gone = db
+			.select()
+			.from(photos)
+			.all()
+			.filter((photo) => photo.path !== "keep.jpg");
+		saveEmbeddingBatch(
+			db,
+			gone.map((photo) => ({ id: photo.id, thumbnailKey: photo.thumbnailKey })),
+			gone.map(() => Array(512).fill(0.25)),
+		);
+		rmSync(join(sourceRoot, "gone.jpg"));
+		rmSync(join(sourceRoot, "nested"), { recursive: true });
+		paths = ["keep.jpg"];
+		jobId = crypto.randomUUID();
+		db.insert(scanJobs)
+			.values({ id: jobId, createdAt: new Date(), updatedAt: new Date() })
+			.run();
+		expect(await harness().execute()).toEqual({
+			processed: 1,
+			successful: 1,
+			removed: 2,
+		});
+		expect(
+			db
+				.select({ path: photos.path })
+				.from(photos)
+				.all()
+				.map((photo) => photo.path),
+		).toEqual(["keep.jpg"]);
+		const keepId = db.select().from(photos).get()?.id;
+		for (const table of [photoExif, photoPhash, photoEmbedding])
+			expect(
+				db
+					.select({ photoId: table.photoId })
+					.from(table)
+					.all()
+					.every((row) => row.photoId === keepId),
+			).toBe(true);
+		// keep.jpg still needs its vector, so the scan hands off to embeddings.
+		expect(job()).toMatchObject({ phase: "scan-complete" });
+	});
+
+	test("keeps undiscovered photos whose source still exists", async () => {
+		paths = ["a.jpg", "hidden.jpg"];
+		await harness().execute();
+		// Discovery stops returning it (e.g. it became hidden), but the file stays.
+		paths = ["a.jpg"];
+		jobId = crypto.randomUUID();
+		db.insert(scanJobs)
+			.values({ id: jobId, createdAt: new Date(), updatedAt: new Date() })
+			.run();
+		expect(await harness().execute()).toEqual({ processed: 1, successful: 1 });
+		expect(db.select().from(photos).all()).toHaveLength(2);
+	});
+
+	test("an empty discovery (unmounted library) removes nothing", async () => {
+		paths = ["a.jpg", "b.jpg"];
+		await harness().execute();
+		rmSync(sourceRoot, { recursive: true });
+		mkdirSync(sourceRoot);
+		paths = [];
+		jobId = crypto.randomUUID();
+		db.insert(scanJobs)
+			.values({ id: jobId, createdAt: new Date(), updatedAt: new Date() })
+			.run();
+		await harness().execute();
+		expect(db.select().from(photos).all()).toHaveLength(2);
+	});
+
+	test("refuses to remove most of the library unless the scan is forced", async () => {
+		paths = Array.from({ length: 30 }, (_, index) => `${index}.jpg`);
+		await harness().execute();
+		for (const path of paths.slice(1)) rmSync(join(sourceRoot, path));
+		paths = ["0.jpg"];
+		jobId = crypto.randomUUID();
+		db.insert(scanJobs)
+			.values({ id: jobId, createdAt: new Date(), updatedAt: new Date() })
+			.run();
+		expect(await harness().execute()).toEqual({ processed: 1, successful: 1 });
+		expect(db.select().from(photos).all()).toHaveLength(30);
+		jobId = crypto.randomUUID();
+		db.insert(scanJobs)
+			.values({ id: jobId, createdAt: new Date(), updatedAt: new Date() })
+			.run();
+		expect(await harness(true).execute()).toEqual({
+			processed: 1,
+			successful: 1,
+			removed: 29,
+		});
+		expect(db.select().from(photos).all()).toHaveLength(1);
+	});
 }

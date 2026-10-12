@@ -103,6 +103,7 @@ Current migrations:
 18. `0017_video_support.sql`: three `ALTER TABLE photos ADD` columns (`media_type` default `'photo'`, `duration_ms`, `video_codec`), `CREATE INDEX idx_photos_media_type`, and a drop/recreate of `idx_photos_pair_stem` with its covering columns; no table is rebuilt, so existing rows become photos untouched. Drizzle Kit emits a mixed expression/column index with each comma-separated fragment of the expression backtick-quoted; the committed SQL was corrected by hand to the bare expression (the snapshot was already correct). If a future generation touches this index, review that line again. `bun run db:generate` reports no drift afterward.
 19. `0018_faces.sql`: pure `CREATE TABLE people`, `CREATE TABLE photo_faces`, `CREATE TABLE photo_face_scan`, and the two `photo_faces` indexes; no table is rebuilt or altered, so existing rows are untouched and every stack-representative still with a completed thumbnail becomes eligible for `detect-faces-v1`. `bun run db:generate` reports no drift afterward.
 20. `0019_uploads.sql`: pure `CREATE TABLE upload_assets`, `CREATE TABLE uploads`, and the two `uploads` unique indexes; no existing table is touched. `bun run db:generate` reports no drift afterward.
+21. `0020_scan_job_force.sql`: `ALTER TABLE scan_jobs ADD force integer DEFAULT false NOT NULL`, recording each job's requested mode so maintenance can re-send stranded queued scans unchanged; existing rows read as incremental.
 
 Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006` after preceding migrations. New function IDs do not protect against old code still publishing unfenced writes.
 
@@ -137,8 +138,9 @@ Any change to embedding serialization must be coordinated across `apps/api/src/i
 - Foreign-key cascade behavior is defined in Drizzle relations/schema and should be preserved in migrations.
 - Scan progress updates must not transition a `completed` or `failed` job back to a running phase.
 - Keep receipts until final IDs and the embedding event have been checkpointed. Success/terminal cleanup explicitly deletes item rows and their manifest in one transaction, even when SQLite foreign-key enforcement is disabled. Do not depend on an in-memory stream cursor for restart correctness.
-- Committed roots prevent configuration changes or a stale embedding event root from silently redirecting artifact reads; untracked legacy rows still use configured/event-root fallbacks. The HEIC maintenance route uses the same force planner and fenced ledger. Timestamp backfill only fills null cache tokens on completed thumbnails; it does not establish provenance.
-- Retired and abandoned artifact generations remain on disk; there is no artifact GC, deletion reconciliation, content hashing, distributed lease, native process-crash isolation, or outbox/reconciler. A process crash between queued-job insertion and event dispatch can still leave a queued row.
+- Committed roots prevent configuration changes or a stale embedding event root from silently redirecting artifact reads; untracked legacy rows still use configured/event-root fallbacks.
+- Retired and abandoned managed artifact generations remain on disk until `library-maintenance-v1` deletes `.versions` generations no row references (photos, faces, face scans, quality, scan items) after a 6 h grace, and never while a `scan_manifests` row exists.
+- Scans delete rows for undiscovered sources confirmed missing through `deletePhotos`, which explicitly clears every sidecar table and collection membership (not collections) because foreign-key enforcement is not guaranteed. There is no content hashing, distributed lease, native process-crash isolation, or transactional outbox: a process crash between queued-job insertion and event dispatch leaves a queued row until maintenance re-sends it using the stored `scan_jobs.force` mode (or fails it after 24 h).
 
 ## Tests
 

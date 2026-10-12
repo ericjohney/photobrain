@@ -47,7 +47,7 @@ Variables are parsed in `src/config.ts`:
 
 `DATABASE_URL`, `PHOTO_DIRECTORY`, and `THUMBNAILS_DIRECTORY` are relative to the API process working directory. Set `RUN_DB_INIT=true` to apply migrations from `packages/db/drizzle` on startup, or use the database package scripts directly.
 
-`FASTEMBED_CACHE_DIR` is consumed by the native image-processing package. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and are not active RAW dependencies.
+`FASTEMBED_CACHE_DIR` is consumed by the native image-processing package.
 
 The Inngest SDK reads its server variables `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` directly. PhotoBrain parses `INNGEST_SERVE_ORIGIN` and passes it explicitly to the Hono handler as `serveHost`; set it to an API origin reachable from the runtime so internal registration requests cannot publish a `localhost` callback. Deployed/self-hosted runtimes require `INNGEST_DEV=0` and matching event/signing keys; local Dev Server use requires `INNGEST_DEV=1`. `INNGEST_REALTIME_BASE_URL` is the phone/browser-reachable origin returned alongside the subscription token, not the internal server-to-server URL. See [self-hosted setup](../../README.md#self-hosted-inngest). Neither key belongs in a mobile or web bundle.
 
@@ -60,8 +60,6 @@ Registered route families:
 - `GET|POST /api/v1/*`
 - `GET /api/photos/:id/file`
 - `GET /api/photos/:id/thumbnail/:size`
-- `POST /api/photos/reprocess-heic` (one-off maintenance)
-- `POST /api/photos/backfill-thumbnail-timestamps` (one-off maintenance)
 - `GET|PUT|POST /api/inngest`
 
 Photo metadata, folders, filters, search, scans, durable scan status, and Realtime token creation remain available to the Expo/web clients as tRPC procedures in `src/trpc/router.ts`:
@@ -104,7 +102,9 @@ Setting the flag true enables only the v1 scan mutation; it is not an authentica
 
 ## Background Processing
 
-The legacy tRPC `scan` mutation and enabled v1 scan mutation share the same scan-start service. A request defaults to incremental work, creates a durable queued job, and dispatches `photos/scan.requested`. The registered `scan-photos-v5` function freezes discovery and work classification in durable manifests/items, streams pending media through the bounded native executor, atomically commits current-generation results and progress, and checkpoints every 20 completions. It dispatches only photos needing current embeddings to `generate-embeddings-v3`.
+The legacy tRPC `scan` mutation and enabled v1 scan mutation share the same scan-start service. A request defaults to incremental work, creates a durable queued job, and dispatches `photos/scan.requested`. The registered `scan-photos-v5` function freezes discovery and work classification in durable manifests/items, streams pending media through the bounded native executor, atomically commits current-generation results and progress, and checkpoints every 20 completions. After media processing it removes catalog rows for undiscovered photos under the scanned root whose files are confirmed missing (skipped for empty discovery, and for mass removal unless the scan is forced). It dispatches only photos needing current embeddings to `generate-embeddings-v3`.
+
+The hourly `library-maintenance-v1` function (also on `photos/maintenance.requested`) re-sends scans stuck in `queued`, fails queued scans older than 24 hours, and deletes unreferenced managed thumbnail generations older than six hours.
 
 The embedding function reads committed `large` WebP thumbnails in batches of 16, generation-checks vector writes, and publishes `embedding`/`completed` progress. Both functions persist durable `scan_jobs` state and publish Realtime progress on `job:{jobId}`. Clients obtain subscription tokens through `realtimeToken`; the native v1 client uses durable status and active-scan recovery rather than that tRPC token procedure.
 

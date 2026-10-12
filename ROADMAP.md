@@ -37,7 +37,7 @@ These are the next product and production-readiness priorities for the current c
 2. **Duplicate follow-ups** - a larger pHash for a looser threshold, side-by-side comparison, and the Expo Android duplicates screen. Groups, suggested keeper, and reject-based resolution ship on web and native iOS.
 3. **Map follow-ups** - photo thumbnails as markers and the Expo Android map. Clustered maps, area filtering, "show on map", and offline place names with country/city filters ship on web and native iOS.
 4. **Mobile backup follow-ups** - the Expo Android backup client, physical-device verification of iOS background upload, and offline thumbnail handling. Camera-roll backup with background upload ships on native iOS, and browser upload ships on web.
-5. **Production hardening** - add authentication, database/file backups, deleted-file reconciliation, rate limiting, and REST/Inngest coverage.
+5. **Production hardening** - add authentication, database/file backups, rate limiting, and REST/Inngest coverage.
 
 The older RAW, worker, and queue plans below are historical. Do not select them as current work unless the architecture is deliberately changed.
 
@@ -267,7 +267,7 @@ Lens corrections compensate for optical imperfections in camera lenses:
 - [x] CLIP embeddings generated from the RAW's large preview thumbnail
 - [ ] Reprocess RAW endpoint for failed conversions
 - [x] RAW/standard filtering in the API
-- [ ] RAW/standard filter controls in the web and mobile clients
+- [x] RAW/standard filter controls in the web and mobile clients
 - [x] HEIF/HEIC support via `libheif-rs`
 
 **Technical Implementation:**
@@ -375,10 +375,10 @@ Lens corrections compensate for optical imperfections in camera lenses:
   - Search within date ranges
   - Search by location radius
 - [x] AND combination for ordinary folder and EXIF filters
-- [ ] Combine EXIF/folder filters with semantic search
+- [x] Combine EXIF/folder filters with semantic search
 - [ ] OR logic for multiple filters
-- [ ] Saved searches
-- [ ] Debounced search input
+- [x] Saved searches (smart albums with an optional CLIP query)
+- [x] Debounced search input (Expo, 350 ms; web searches on Enter)
 - [ ] **OCR (Optical Character Recognition)**
   - Extract text from images
   - Search photos by text content (signs, documents, screenshots)

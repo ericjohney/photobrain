@@ -8,7 +8,7 @@ Scope: `apps/api`.
 - `src/config.ts`: environment parsing and defaults.
 - `src/trpc/router.ts`: public tRPC transport contract for web and Expo clients.
 - `src/routes/v1.ts`, `v1-schemas.ts`, and `openapi-v1.json`: versioned JSON compatibility API, runtime DTO validation/serialization, and checked-in native-client contract.
-- `src/routes/photos.ts`: binary file and thumbnail routes plus one-off maintenance routes. `/:id/file` answers single byte ranges through `services/byte-range.ts` (`parseByteRange`).
+- `src/routes/photos.ts`: binary file and thumbnail routes. `/:id/file` answers single byte ranges through `services/byte-range.ts` (`parseByteRange`).
 - `src/routes/exports.ts`: binary export downloads (`/api/photos/:id/export`, `/api/collections/:id/export`) and the RFC 6266 `contentDisposition` helper; `services/exports.ts` (filenames, duplicate-name disambiguation, pull-based collection ZIP stream), `services/zip-writer.ts` (STORE/ZIP64 encoder), `services/photo-files.ts` (`originalFilePath`, shared with `/:id/file`).
 - `src/routes/faces.ts`: binary face crops (`/api/faces/:id/crop`) for people avatars; see [Faces and People](#faces-and-people).
 - `src/routes/uploads.ts`: phone backup uploads (`/api/v1/uploads`, `/config`, `/known`), mounted before the generic v1 router; binary bodies are unsuitable for tRPC. `services/uploads.ts` holds streaming receipt, SHA-256/asset-key dedupe, sanitization, placement, `knownUploads`, and `.incoming` cleanup; see [Uploads](#uploads).
@@ -20,6 +20,7 @@ Scope: `apps/api`.
 - `src/inngest/functions/places.ts`: `place-photos-v1` backfill geocoding valid locations lacking a current place and deleting places whose location became invalid or remote.
 - `src/inngest/functions/events.ts`: `detect-events-v1` single-step full recompute of automatic events.
 - `src/inngest/functions/faces.ts`: `detect-faces-v1` face detection batches plus the final `cluster-faces-v1` grouping step.
+- `src/inngest/functions/maintenance.ts`: `library-maintenance-v1` (concurrency 1, hourly cron `17 * * * *` or `photos/maintenance.requested`): `recover-queued-scans-v1` then `collect-thumbnail-garbage-v1`.
 - `src/inngest/functions/uploads.ts`: `scan-after-upload-v1`, debounced (60 s) `photos/uploaded` handler calling the shared `startScan` with `force: false`.
 - `src/services/photo-quality.ts`: quality backfill eligibility, generation-fenced writes, and `analyzeQualityBatch`; native measurement is injected.
 - `src/services/junk-review.ts`: junk-review reasons, thresholds, candidate paging/counts, and `resolveJunk`, shared by tRPC and `/api/v1`.
@@ -39,7 +40,9 @@ Scope: `apps/api`.
 - `src/services/collections.ts`: shared manual-album operations (list/create/rename/delete, add/remove membership, collections for a photo) and the `CollectionError` (`NAME_TAKEN`/`NOT_FOUND`) used by tRPC and `/api/v1`.
 - `src/services/smart-albums.ts`: shared smart-album operations (list/create/update/delete), filter canonicalization, live counts/covers, and the `SmartAlbumError` (`NAME_TAKEN`/`NOT_FOUND`/`EMPTY`) used by tRPC and `/api/v1`.
 - `src/services/photo-search.ts`: shared search response orchestration used by both transports.
-- `src/services/scan-jobs.ts`: shared durable scan creation/status/recovery operations used by both transports.
+- `src/services/scan-jobs.ts`: shared durable scan creation/status/recovery operations used by both transports, plus `recoverQueuedScans` for jobs stranded in `queued`.
+- `src/services/library-reconciliation.ts`: `removeMissingPhotos` (deleted-source reconciliation with mass-removal guard) and `deletePhotos` (explicit sidecar cleanup).
+- `src/services/thumbnail-gc.ts`: `collectThumbnailGarbage`, deleting unreferenced managed thumbnail generations after `THUMBNAIL_GC_GRACE_MS`.
 - `src/services/import-persistence.ts`: synchronous transactional scan and embedding batch writes.
 - `src/services/scan-planner.ts`: source/artifact freshness checks and conservative legacy adoption.
 - `src/services/processing-versions.ts`: manual media, embedding-model, image-quality (`QUALITY_VERSION`), and face-model (`FACE_MODEL_VERSION`) invalidation constants.
@@ -62,7 +65,7 @@ cd apps/api && bun run bench:exif /path/to/photo1.jpg /path/to/photo2.heic
 bun scripts/ui-test-server.ts   # Seeded fixture API for native XCUITest; prints `READY <origin>`
 ```
 
-The API package has no separately deployed worker or build script. Inngest functions are registered in this API process at `/api/inngest`; a separate Inngest runtime invokes that endpoint. A lazy `node:worker_threads` worker offloads discovery, streaming media, thumbnail validation, HEIC maintenance, and CLIP image batches. It admits at most eight running/queued requests and owns one native photo stream. A completion window returns after 20 finished results, not 20 particular inputs; the stream remains alive and bounded between windows. Job/destination switches and other native operations cancel/drain an existing stream before replacement. Worker failures reject outstanding requests; resumed scans reload pending SQLite receipts. The worker is not a native process-crash boundary or a distributed lease; source/attempt/committed-generation checks fence publication separately. Direct text search remains synchronous.
+The API package has no separately deployed worker or build script. Inngest functions are registered in this API process at `/api/inngest`; a separate Inngest runtime invokes that endpoint. A lazy `node:worker_threads` worker offloads discovery, streaming media, thumbnail validation, and CLIP image batches. It admits at most eight running/queued requests and owns one native photo stream. A completion window returns after 20 finished results, not 20 particular inputs; the stream remains alive and bounded between windows. Job/destination switches and other native operations cancel/drain an existing stream before replacement. Worker failures reject outstanding requests; resumed scans reload pending SQLite receipts. The worker is not a native process-crash boundary or a distributed lease; source/attempt/committed-generation checks fence publication separately. Direct text search remains synchronous.
 
 ## HTTP Surface
 
@@ -99,8 +102,6 @@ The Hono server registers:
 - `GET /api/photos/:id/file`
 - `GET /api/photos/:id/thumbnail/:size`
 - `GET /api/faces/:id/crop`
-- `POST /api/photos/reprocess-heic` (one-off maintenance)
-- `POST /api/photos/backfill-thumbnail-timestamps` (one-off maintenance)
 - `GET|PUT|POST /api/inngest`
 
 There are no unversioned REST `GET /api/photos`, `GET /api/photos/:id`, `POST /api/scan`, or `GET /api/image/:filename` metadata routes. Web and Expo metadata/scan operations use tRPC; native Swift uses the `/api/v1` compatibility surface. Binary media remains under `/api/photos`.
@@ -193,6 +194,9 @@ photos/faces.requested
 
 photos/uploaded
   {}
+
+photos/maintenance.requested
+  {}
 ```
 
 Scan function details:
@@ -215,7 +219,14 @@ Scan function details:
 - `scan-complete` is persisted before dispatching the embedding child; the parent performs no progress writes after dispatch, preventing it from overwriting a fast child completion.
 - A full-media scan of the 7,961-file library needs 399 completed-result windows; embedding all files needs 498 batch steps. Each function remains below the documented 1,000-step ceiling including fixed overhead. Incremental scans reduce media windows. Discovery/planning arrays and the final embedding ID list still grow with the library.
 - Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006_incremental_scan.sql` (after prior migrations). New function IDs alone do not fence old code.
-- Receipts remain until final IDs/dispatch are checkpointed; success and terminal failure clean them up. Cancellation failure cannot leave an exhausted job running. Retired and abandoned artifact generations are retained: there is no artifact GC, deletion reconciliation, content hashing, outbox/reconciler, distributed lease, or native process-crash isolation.
+- Receipts remain until final IDs/dispatch are checkpointed; success and terminal failure clean them up. Cancellation failure cannot leave an exhausted job running. There is no content hashing, distributed lease, or native process-crash isolation.
+- `remove-missing-photos-v1` runs after media processing and the all-failed check, before `completed-scan-photo-ids-v5`. `removeMissingPhotos(db, jobId, { allowMassRemoval: force })` considers photos whose `source_root` equals the manifest's canonical root (or is null, for legacy rows) and whose path is absent from this job's `scan_items`, then confirms each with `stat`: only ENOENT/ENOTDIR counts as missing, so permission and I/O errors keep the row. It removes nothing without a manifest or after empty discovery, and, unless the scan is forced, when more than `MASS_REMOVAL_FRACTION` (50%) of the root's catalog and more than `MASS_REMOVAL_MIN` (20) rows would go, protecting against unmounted shares. `deletePhotos` deletes in one transaction, 500 IDs per statement, explicitly clearing `photo_exif`, `photo_embedding`, `photo_phash`, `collection_photos`, `photo_tags`, `photo_quality`, `photo_places`, `event_photos`, `photo_faces`, and `photo_face_scan` before `photos`, because connections may run without foreign-key enforcement. Collections are never deleted; events are recomputed by the next `detect-events-v1`, faceless unnamed people are dropped by the next cluster step, and thumbnails are left for GC. The scan result includes `removed` only when it is positive.
+
+Maintenance function details:
+
+- `library-maintenance-v1` (concurrency 1) runs hourly on cron `17 * * * *` and on `photos/maintenance.requested`.
+- `recover-queued-scans-v1`: `startScan` records the requested mode in `scan_jobs.force`. Queued jobs created more than `QUEUED_SCAN_RECOVERY_DELAY_MS` (5 min) ago are re-sent with their original force mode, using the job ID as the event ID so Inngest dedupes a delivery that did happen; queued jobs older than `QUEUED_SCAN_EXPIRY_MS` (24 h) are marked failed with "Scan was never started". A failed re-send leaves the job queued for the next run.
+- `collect-thumbnail-garbage-v1`: `collectThumbnailGarbage` scans the configured `THUMBNAILS_DIRECTORY` plus every distinct `photos.thumbnail_root`, deleting `{root}/{size}/.versions/{uuid}/` directories that no row references (`photos.thumbnail_key`, `photo_faces`, `photo_face_scan`, `photo_quality`, and `scan_items` current/previous keys) and whose mtime is older than `THUMBNAIL_GC_GRACE_MS` (6 h). It skips entirely while any `scan_manifests` row exists and never touches legacy mirrored thumbnails outside `.versions`.
 
 Web and Expo refresh library queries as committed processing counts advance: first advance immediately, then coalesced trailing refreshes at most once per second. They also refresh on `scan-complete`/first embedding progress and terminal progress; embedding remains nonterminal, and terminal progress refreshes search. Web polls durable `scanStatus` every 1,500 ms while active; Expo retains its fallback/recovery polling. Native iOS uses `/api/v1` durable scan polling. Progress payloads retain their existing shape; the scan event adds optional `force`.
 
@@ -461,7 +472,7 @@ Active API variables are parsed in `src/config.ts`:
 
 `DATABASE_URL`, `PHOTO_DIRECTORY`, and `THUMBNAILS_DIRECTORY` are relative to the process working directory. The normal `bun run dev:api` script runs from `apps/api`.
 
-`FASTEMBED_CACHE_DIR`, `FACE_MODEL_DIR`, and `PHOTO_PROCESSING_THREADS` are read by Rust, not parsed here. The media pool defaults to `available_parallelism()`; the override must be a positive integer and is read once when the pool initializes. Larger pools increase decoded-image memory; lower the override when needed. `DARKTABLE_CLI_PATH` and `RAW_CONVERSION_TIMEOUT` are legacy parsed values and do not control the current pipeline.
+`FASTEMBED_CACHE_DIR`, `FACE_MODEL_DIR`, and `PHOTO_PROCESSING_THREADS` are read by Rust, not parsed here. The media pool defaults to `available_parallelism()`; the override must be a positive integer and is read once when the pool initializes. Larger pools increase decoded-image memory; lower the override when needed.
 
 The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` directly. PhotoBrain parses `INNGEST_SERVE_ORIGIN` and passes it to the Hono handler as `serveHost`; set it to an API origin reachable from the runtime so internal registration requests cannot publish a `localhost` callback. For self-hosting, use production mode (`INNGEST_DEV=0`), matching server-only keys on the runtime/API, and an internal base URL. Set `INNGEST_REALTIME_BASE_URL` separately to the client-reachable HTTP(S) origin exposing `/v1/realtime/connect`. Never return either server key to clients. Register `/api/inngest` with the runtime and enable periodic app sync. SDK v3.54.2 is compatible with the self-hosted v1.45.1 server, which rejects vulnerable SDK releases below v3.54.0. The Hono handler must continue to allow only GET/PUT/POST.
 
@@ -471,8 +482,7 @@ The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, an
 - Migrations live at `packages/db/drizzle`.
 - `scan_jobs` is the durable source for web/Expo tRPC polling and native `/api/v1` recovery; preserve terminal-state monotonicity when changing job code.
 - Startup migration is opt-in with `RUN_DB_INIT=true` for direct API runs. The API Docker image enables it so deployed schema changes are applied before serving traffic.
-- The standalone `src/db/migrate.ts` is not the normal migration path and currently points at an API-local `./drizzle` directory that does not exist.
-- Do not assume scan removes rows for files deleted from disk.
+- Scans remove rows for files confirmed deleted from disk only through `deletePhotos`, which clears every sidecar explicitly; reuse it rather than relying on cascades.
 - Streaming scan transactions include photo/EXIF/pHash/status saves, item receipts, manifest counters, and scan progress. Embedding transactions include vectors and embedding statuses. Native work/network publication remain outside transactions; never put async callbacks inside Bun SQLite transactions. `clearScanWork` explicitly deletes items and manifests in one transaction because foreign-key enforcement is not guaranteed on every connection.
 
 ## Exports
@@ -509,8 +519,6 @@ Phone backup uploads write originals into the library and leave importing to the
 - Validate numeric IDs and thumbnail sizes before filesystem work.
 - Preserve path normalization and do not expose arbitrary filesystem paths.
 
-The two POST maintenance routes are operational leftovers. HEIC reprocessing force-plans existing HEIC/HEIF rows from the configured source root and uses the same generation-aware ledger, commit fence, and embedding dispatch; it does not overwrite committed artifacts in place. Timestamp backfill only fills null timestamps on completed-thumbnail rows; it does not establish source/artifact provenance or adopt legacy rows. Do not add new callers to these routes; remove them after confirming their one-off migration work is complete.
-
 ## Tests
 
 Wall-clock budgets in performance tests go through `perfBudgetMs(ms)` from `setup.ts`. Budgets are calibrated on a developer machine; `PHOTOBRAIN_PERF_BUDGET_SCALE` (number >= 1, default 1) multiplies them, and the Build workflow sets it to `3` for shared runners. `EXPLAIN QUERY PLAN` assertions are never scaled and remain the regression guard for index use. The CI API job does not build the native addon, so any suite whose import graph reaches a value import of `@photobrain/image-processing` (for example through `../inngest`) must `mock.module` it.
@@ -545,9 +553,11 @@ Wall-clock budgets in performance tests go through `perfBudgetMs(ms)` from `setu
 
 `src/__tests__/on-this-day.test.ts` runs in an isolated child process (mocked CLIP text embedding and Inngest client, real sqlite-vec). It covers year ordering and `yearsAgo` across tRPC, v1, and the service; current/future years excluded; both stored date formats; NULL/empty/malformed/pre-1900/impossible dates ignored; invalid or missing `date` (`BAD_REQUEST`, v1 400, service `RangeError`); the Feb 29 rule in both directions (non-leap Feb 28 picks up Feb 29 with the documented `capturedDate`; leap-year Feb 28, Feb 29, and Mar 1 match exactly); rejects excluded from count and cover; pair stacking matching `listPhotos`; cover precedence and the v1 ISO/null token; the 20-group cap; `capturedDate` on photos/locations/search/similar for tRPC and v1 with invalid values rejected; smart-album transports rejecting it while the service canonicalizer drops it; OpenAPI parity; migration `0015` over a database at `0014` with rows; and the 20,000-photo budgets with EXPLAIN plans.
 
-`src/__tests__/scan.test.ts` exercises real SQLite manifests/receipts with controlled native/Inngest dependencies: new-first dispatch with free completion order, early visibility, partial ACK restart, lost checkpoints, atomic rollback, publication failure, final dispatch/fast-child ordering, empty and terminal jobs, cleanup, the 7,961-input checkpoint budget, and persistence of video `mediaType`/`durationMs`/`videoCodec` beside a still. These are not actual Inngest delivery or native integration tests.
+`src/__tests__/scan.test.ts` exercises real SQLite manifests/receipts with controlled native/Inngest dependencies: new-first dispatch with free completion order, early visibility, partial ACK restart, lost checkpoints, atomic rollback, publication failure, final dispatch/fast-child ordering, empty and terminal jobs, cleanup, the 7,961-input checkpoint budget, and persistence of video `mediaType`/`durationMs`/`videoCodec` beside a still, and deleted-source reconciliation (sidecar removal, retained existing files, empty discovery, and the forced-only mass-removal guard). These are not actual Inngest delivery or native integration tests.
 
 `src/__tests__/video.test.ts` runs in an isolated child process (real sqlite-vec, mocked CLIP text embedding). It covers the `parseByteRange` table (`a-b`, `a-`, `-n`, `-0`, start at/after size, end clamping, multi-range, other units, `a > b`, garbage); `/file` 200/206/416/HEAD with exact bytes and headers for a video and a RAW WebP; the four `filterRaw` values with motion clips excluded from `video`, and tRPC rejecting unknown values; Live Photo stacking (HEIC+MOV ≤ 4 s, the 4,001 ms boundary, unknown duration, other folder, two same-stem stills, two videos, RAW+JPEG+MOV, a lone RAW, clip fetchable by ID); folder counts, gear stats, search, similar, and map excluding clips; videos excluded from junk, quality backfill, and duplicate/burst groups; and smart albums saving and evaluating `video` while rejecting unknown values. `v1.test.ts` asserts the new DTO fields against the OpenAPI document, and `exports.test.ts` covers video originals for every export size and in collection ZIPs.
+
+`src/__tests__/library-maintenance.test.ts` covers `deletePhotos` (every sidecar cleared with foreign keys disabled, chunked deletes), `removeMissingPhotos` (only undiscovered missing files, other source roots untouched, empty discovery and missing manifest, the mass-removal override and minimum, unreadable directories retained), `collectThumbnailGarbage` (only old unreferenced managed generations, skipping while a manifest exists, missing directory), and `recoverQueuedScans` (recorded force mode, stale re-send and expiry, failed re-send stays queued).
 
 `src/__tests__/scan-planner.test.ts` uses temporary source/artifact files and SQLite with controlled native validation to cover unchanged reuse, embedding-only recovery, conservative legacy adoption, stat changes, artifact repair, root changes, and stale source/attempt/generation rejection. Rust tests exercise actual WebP decoding and output-key behavior.
 
@@ -555,7 +565,7 @@ Wall-clock budgets in performance tests go through `perfBudgetMs(ms)` from `setu
 
 `bun run bench:import` compares legacy per-photo writes with the shared transactional batch helper using 200 synthetic results, three repeats, and isolated file-backed databases. It checks persisted-data equivalence and reports fresh-import, rescan, and embedding-write medians with SQLite pragmas. It does not exercise streaming receipts, native work, or end-to-end import latency; use the real-photo/runtime measurements for those boundaries.
 
-`src/__tests__/native-executor.test.ts` uses real worker threads with a controlled TypeScript fixture. It covers persistent completion windows, persistence ACK backpressure, per-checkpoint async context, session switching, early stream termination/invalid indices, restart, bounded admission, and shutdown. The release addon and actual local Inngest/API/web flow were also exercised on Apple M4 Pro/macOS 26.5.1, including interrupted-import receipt recovery and real HEIC maintenance; see [measurement boundaries and results](../../docs/import-performance.md). Revalidate the deployed Bun/native environment during rollout.
+`src/__tests__/native-executor.test.ts` uses real worker threads with a controlled TypeScript fixture. It covers persistent completion windows, persistence ACK backpressure, per-checkpoint async context, session switching, early stream termination/invalid indices, restart, bounded admission, and shutdown. The release addon and actual local Inngest/API/web flow were also exercised on Apple M4 Pro/macOS 26.5.1, including interrupted-import receipt recovery; see [measurement boundaries and results](../../docs/import-performance.md). Revalidate the deployed Bun/native environment during rollout.
 
 `bun run bench:exif <1-20 distinct photo paths>` requires ExifTool but not the addon, reads the Rust metadata flags, and compares batched versus four-concurrent per-file metadata extraction with exact JSON equivalence checks. `EXIFTOOL_BIN` selects an executable for this benchmark only. See [import architecture and measurements](../../docs/import-performance.md) for historical measurements, locally verified incremental behavior, and remaining architectural options.
 
