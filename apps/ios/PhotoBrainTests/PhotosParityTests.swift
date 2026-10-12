@@ -39,7 +39,7 @@ final class PhotosParityTests: XCTestCase {
     }
 
     func testGroupingSegmentsMatchPhotos() {
-        XCTAssertEqual(LibraryGrouping.segments.map(\.title), ["Years", "Months", "All Photos"])
+        XCTAssertEqual(LibraryGrouping.segments.map(\.title), ["Years", "Months", "All"])
         XCTAssertEqual(LibraryGrouping.segments.map(\.defaultPhoneColumns), [9, 5, 3])
     }
 

@@ -234,8 +234,7 @@ enum LibraryGrouping: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .years: "Years"
         case .months: "Months"
-        case .days: "All Photos"
-        case .all: "All"
+        case .days, .all: "All"
         }
     }
 

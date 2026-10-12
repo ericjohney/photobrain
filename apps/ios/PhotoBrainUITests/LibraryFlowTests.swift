@@ -48,7 +48,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         waitForAbsence(navigationTitle("Photo Info"))
         center.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
         waitForAbsence(element("Close photo"))
-        waitFor(navigationTitle("Library"))
+        waitFor(app.staticTexts["library-title"])
     }
 
     @MainActor
@@ -61,9 +61,11 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         waitFor(app.collectionViews.firstMatch)
         XCTAssertLessThan(gridCell("beach-waves.jpg, 5 stars, Pick").frame.width, wide * 0.8)
 
-        app.segmentedControls.buttons["Years"].tap()
+        // Scrolling back in time swaps the tab bar for Photos' Years · Months · All switcher.
+        app.collectionViews.firstMatch.swipeDown()
+        tap("Years")
         waitFor(element(startingWith: "2024"))
-        app.segmentedControls.buttons["All Photos"].tap()
+        tap("All")
     }
 
     @MainActor

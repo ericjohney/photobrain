@@ -19,6 +19,12 @@ struct LibraryGrid: UIViewControllerRepresentable {
     /// scale it up. Pinching steps it and reports the new value.
     var columns: Int?
     var onPinchColumns: ((Int) -> Void)?
+    /// Photos-style full-bleed library: the grid runs under the status bar and floating
+    /// chrome, with these insets, a dark top scrim, and section headers that scroll away.
+    /// Nil keeps the system's automatic insets and pinned headers.
+    var fullBleedInsets: EdgeInsets?
+    /// Bumped to scroll back to the newest photos (the collapsed bar's Library button).
+    var scrollToNewestVersion = 0
     let onRefresh: () async -> Void
 
     func makeUIViewController(context: Context) -> LibraryGridViewController {
@@ -61,6 +67,10 @@ struct LibraryGrid: UIViewControllerRepresentable {
         controller.onRefresh = onRefresh
         controller.onPinchColumns = onPinchColumns
         controller.setPhoneColumns(columns)
+        controller.setFullBleedInsets(fullBleedInsets.map {
+            UIEdgeInsets(top: $0.top, left: 0, bottom: $0.bottom, right: 0)
+        })
+        controller.scrollToNewest(version: scrollToNewestVersion)
     }
 }
 
@@ -90,6 +100,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     var onPinchColumns: ((Int) -> Void)?
     private let topScrim = GradientScrimView()
     private var phoneColumns: Int?
+    private var fullBleed: UIEdgeInsets?
     private var pinchHandled = false
     /// The first positioning ran before the grid had a size; redo it on the next layout.
     private var needsInitialEdgeScroll = false
@@ -121,11 +132,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         collectionView.addGestureRecognizer(longPress)
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
         collectionView.addGestureRecognizer(pinch)
-        if #available(iOS 26.0, *) {
-            // Photos darkens the top edge instead of frosting it, keeping the white status
-            // bar and title readable over photos.
-            collectionView.topEdgeEffect.isHidden = true
-        }
+
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
         NSLayoutConstraint.activate([
@@ -136,13 +143,13 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         ])
         topScrim.translatesAutoresizingMaskIntoConstraints = false
         topScrim.isUserInteractionEnabled = false
-        topScrim.alpha = 0
+        topScrim.isHidden = true
         view.addSubview(topScrim)
         NSLayoutConstraint.activate([
             topScrim.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             topScrim.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             topScrim.topAnchor.constraint(equalTo: view.topAnchor),
-            topScrim.heightAnchor.constraint(equalToConstant: 140),
+            topScrim.heightAnchor.constraint(equalToConstant: 170),
         ])
 
         dataSource = UICollectionViewDiffableDataSource<PhotoSection.ID, Int>(collectionView: collectionView) {
@@ -295,6 +302,57 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         onLongPress?(id)
     }
 
+    // MARK: Full bleed
+
+    func setFullBleedInsets(_ insets: UIEdgeInsets?) {
+        loadViewIfNeeded()
+        guard insets != fullBleed else { return }
+        let wasFullBleed = fullBleed != nil
+        let wasAtNewest = distanceFromNewest <= 2
+        fullBleed = insets
+        if let insets {
+            collectionView.contentInsetAdjustmentBehavior = .never
+            collectionView.contentInset = insets
+            collectionView.verticalScrollIndicatorInsets = insets
+            if #available(iOS 26.0, *) {
+                // Photos darkens the top edge instead of frosting it, keeping the white status
+                // bar and title readable over photos.
+                collectionView.topEdgeEffect.isHidden = true
+                collectionView.bottomEdgeEffect.isHidden = true
+            }
+        } else {
+            collectionView.contentInsetAdjustmentBehavior = .automatic
+            collectionView.contentInset = .zero
+            collectionView.verticalScrollIndicatorInsets = .zero
+        }
+        topScrim.isHidden = insets == nil
+        if wasFullBleed != (insets != nil) {
+            collectionView.collectionViewLayout.invalidateLayout()
+        }
+        if didInitialPosition, wasAtNewest, !opensAtTop {
+            collectionView.layoutIfNeeded()
+            scrollToInitialEdge()
+        }
+        publishVisibleState()
+    }
+
+    private var appliedScrollToNewest = 0
+
+    func scrollToNewest(version: Int) {
+        guard version != appliedScrollToNewest else { return }
+        appliedScrollToNewest = version
+        let bottom = collectionView.contentSize.height - collectionView.bounds.height
+            + collectionView.adjustedContentInset.bottom
+        collectionView.setContentOffset(CGPoint(x: 0, y: max(-collectionView.adjustedContentInset.top, bottom)), animated: true)
+    }
+
+    private var distanceFromNewest: CGFloat {
+        let visibleNewestEdge = collectionView.contentOffset.y
+            + collectionView.bounds.height
+            - collectionView.adjustedContentInset.bottom
+        return max(0, collectionView.contentSize.height - visibleNewestEdge)
+    }
+
     // MARK: Column zoom
 
     static let phoneColumnSteps = [3, 5, 9]
@@ -400,23 +458,10 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         collectionView.scrollToItem(at: indexPath, at: .bottom, animated: false)
     }
 
-    /// Fades the top scrim in once photos scroll under the bars.
-    private func updateTopScrim() {
-        let scrolledUnder = collectionView.contentOffset.y > -collectionView.adjustedContentInset.top + 4
-        let alpha: CGFloat = scrolledUnder ? 1 : 0
-        guard topScrim.alpha != alpha else { return }
-        UIView.animate(withDuration: 0.2) { self.topScrim.alpha = alpha }
-    }
-
     private func publishVisibleState() {
-        updateTopScrim()
         let visible = collectionView.indexPathsForVisibleItems.sorted()
         let firstID = visible.first.flatMap { dataSource.itemIdentifier(for: $0) }
-        let visibleNewestEdge = collectionView.contentOffset.y
-            + collectionView.bounds.height
-            - collectionView.adjustedContentInset.bottom
-        let contentNewestEdge = collectionView.contentSize.height
-        onVisibleChange?(firstID, max(0, contentNewestEdge - visibleNewestEdge))
+        onVisibleChange?(firstID, distanceFromNewest)
     }
 
     /// Phone widths use the chosen count; wider screens add columns in proportion.
@@ -464,7 +509,8 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                     elementKind: UICollectionView.elementKindSectionHeader,
                     alignment: .top
                 )
-                header.pinToVisibleBounds = true
+                // Under floating chrome (Photos), headers scroll with their photos.
+                header.pinToVisibleBounds = self.fullBleed == nil
                 section.boundarySupplementaryItems = [header]
             }
             return section

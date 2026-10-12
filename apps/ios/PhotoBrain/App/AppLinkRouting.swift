@@ -32,7 +32,8 @@ struct AppLinkNavigationState: Equatable, Sendable {
             selectedTab = .collections
             presentedRoute = nil
         case .people:
-            selectedTab = .people
+            // People lives in Collections, as in Photos.
+            selectedTab = .collections
             presentedRoute = nil
         case .search:
             selectedTab = .search

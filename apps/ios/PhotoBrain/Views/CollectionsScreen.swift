@@ -33,7 +33,7 @@ struct CollectionsScreen: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Albums")
+                .navigationTitle("Collections")
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if let message = store.errorMessage {
                         PBBanner(message: message, dismiss: { store.dismissError() })

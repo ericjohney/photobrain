@@ -3,7 +3,6 @@ import SwiftUI
 enum AppTab: Hashable, Sendable {
     case library
     case collections
-    case people
     case search
 }
 extension LibraryFilters {
@@ -40,26 +39,36 @@ struct LibraryScreen: View {
     /// Pinched column counts per grouping (`years:9,months:5,days:3`).
     @AppStorage("com.photobrain.gridColumns") private var storedColumns = ""
     @Environment(\.showInLibrary) private var showInLibrary
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Safe-area insets with the tab bar showing; kept while it is collapsed so the grid's
+    /// insets never jump.
+    @State private var chromeInsets = EdgeInsets()
+    @State private var scrollToNewestVersion = 0
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle(store.isSelecting ? store.headerSubtitle : "Library")
-                .navigationBarTitleDisplayMode(store.isSelecting ? .inline : .large)
-                .pbNavigationSubtitle(store.isSelecting || store.loadState != .content ? "" : store.itemCountText)
-                .toolbar { toolbarContent }
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    if hasTopInsets { topInsets }
-                }
-                .safeAreaInset(edge: .bottom, spacing: PBSpacing.s) {
-                    VStack(spacing: PBSpacing.s) {
-                        ActivityBar(coordinator: scans)
-                        if showsGroupingControl { groupingControl }
+            GeometryReader { proxy in
+                ZStack(alignment: .top) {
+                    if store.loadState == .content {
+                        content
+                            .ignoresSafeArea()
+                    } else {
+                        content
+                            .padding(.top, 64)
                     }
+                    header
                 }
-                .navigationDestination(item: $utility) { destination in
-                    utilityScreen(destination)
-                }
+                .overlay(alignment: .bottom) { bottomChrome }
+                .onAppear { updateChromeInsets(proxy.safeAreaInsets) }
+                .onChange(of: proxy.safeAreaInsets) { _, insets in updateChromeInsets(insets) }
+            }
+            .toolbar(.hidden, for: .navigationBar)
+
+            .toolbar(isBrowsingCollapsed ? .hidden : .visible, for: .tabBar)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: isBrowsingCollapsed)
+            .navigationDestination(item: $utility) { destination in
+                utilityScreen(destination)
+            }
         }
         .sheet(isPresented: $optionsPresented) {
             LibraryOptionsView(
@@ -116,34 +125,158 @@ struct LibraryScreen: View {
         .task { await duplicates.refreshCounts() }
     }
 
-    // MARK: Toolbar
+    // MARK: Floating chrome
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if store.isSelecting {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Done") { store.endSelection() }
-                    .accessibilityLabel("Finish selecting photos")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    addSelectionPresented = true
-                } label: {
-                    Image(systemName: "rectangle.stack.badge.plus")
+    /// True while photos fill the screen, so the title and glass buttons sit over the scrim.
+    private var overPhotos: Bool {
+        store.loadState == .content
+    }
+
+    /// Scrolled back in time: Photos swaps the tab bar for the Years · Months · All switcher.
+    private var isBrowsingCollapsed: Bool {
+        store.isBrowsingHistory && showsGroupingControl
+    }
+
+    private func updateChromeInsets(_ insets: EdgeInsets) {
+        guard !isBrowsingCollapsed || chromeInsets == EdgeInsets() else { return }
+        if insets != chromeInsets { chromeInsets = insets }
+    }
+
+    /// Grid insets: below the title at the oldest edge, above the tab bar at the newest.
+    private var gridInsets: EdgeInsets {
+        EdgeInsets(top: chromeInsets.top + 64, leading: 0, bottom: chromeInsets.bottom + PBSpacing.s, trailing: 0)
+    }
+
+    /// Photos' title block over the scrim: Library, the visible date or item count, and glass
+    /// buttons; then the Filtered capsule and warnings.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: PBSpacing.s) {
+            HStack(alignment: .top, spacing: PBSpacing.s) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(store.isSelecting ? store.headerSubtitle : "Library")
+                        .font(.largeTitle.bold())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .accessibilityIdentifier("library-title")
+                        .accessibilityAddTraits(.isHeader)
+                    if !store.isSelecting, overPhotos {
+                        Text(store.headerSubtitle)
+                            .font(.subheadline.weight(.semibold))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                    }
                 }
-                .accessibilityLabel("Add to Collection")
-                .disabled(store.selectedPhotoIDs.isEmpty)
+                .shadow(color: overPhotos ? .black.opacity(0.35) : .clear, radius: 6)
+                Spacer(minLength: 0)
+                headerButtons
             }
-        } else {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Select") { store.beginSelection() }
-                    .accessibilityLabel("Select photos")
-                    .disabled(store.records.isEmpty)
+            if !store.isSelecting, store.filters.isActive {
+                filteredCapsule
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                moreMenu
+            if let error = store.refreshError {
+                PBBanner(message: "Couldn’t refresh. Cached photos are still shown.", retry: { Task { await store.load() } })
+                    .accessibilityLabel("Could not refresh library. \(error)")
+            }
+            if let message = scans.statusMessage {
+                PBBanner(message: message)
             }
         }
+        .padding(.horizontal, PBSpacing.l)
+        .padding(.top, PBSpacing.xs)
+        .foregroundStyle(overPhotos ? Color.white : Color.primary)
+        .environment(\.colorScheme, overPhotos ? .dark : colorSchemeOutsidePhotos)
+    }
+
+    @Environment(\.colorScheme) private var colorSchemeOutsidePhotos
+
+    @ViewBuilder
+    private var headerButtons: some View {
+        if store.isSelecting {
+            Button {
+                addSelectionPresented = true
+            } label: {
+                GlassIconLabel(systemImage: "rectangle.stack.badge.plus")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add to Collection")
+            .disabled(store.selectedPhotoIDs.isEmpty)
+            glassTextButton("Done") { store.endSelection() }
+                .accessibilityLabel("Finish selecting photos")
+        } else {
+            moreMenu
+            glassTextButton("Select") { store.beginSelection() }
+                .accessibilityLabel("Select photos")
+                .disabled(store.records.isEmpty)
+        }
+    }
+
+    private func glassTextButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .padding(.horizontal, PBSpacing.l)
+                .frame(height: PBSize.control)
+                .pbGlass(in: Capsule(), interactive: true)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var filteredCapsule: some View {
+        Button {
+            store.clearFilters()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease")
+                Text("Filtered: \(filterTitle)")
+                    .lineLimit(1)
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .pbGlass(in: Capsule(), interactive: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Clear all filters")
+        .accessibilityValue(filterTitle)
+    }
+
+    /// Scan activity, then (scrolled back in time) Library · Years/Months/All · Search in
+    /// place of the tab bar.
+    private var bottomChrome: some View {
+        VStack(spacing: PBSpacing.s) {
+            ActivityBar(coordinator: scans)
+            if isBrowsingCollapsed {
+                collapsedBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .padding(.bottom, isBrowsingCollapsed ? 0 : PBSpacing.s)
+    }
+
+    private var collapsedBar: some View {
+        HStack(spacing: PBSpacing.s) {
+            Button {
+                scrollToNewestVersion += 1
+            } label: {
+                GlassIconLabel(systemImage: "photo.on.rectangle", tint: PBColor.accent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Library")
+            .accessibilityHint("Scrolls to the newest photos")
+            groupingSwitcher
+            Button {
+                selectedTab = .search
+            } label: {
+                GlassIconLabel(systemImage: "magnifyingglass")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Search")
+        }
+        .padding(.horizontal, PBSpacing.l)
+        .padding(.bottom, PBSpacing.xs)
     }
 
     /// Photos-style More menu: Sort and a single-choice Filter, then Library Options.
@@ -183,7 +316,7 @@ struct LibraryScreen: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis")
+            GlassIconLabel(systemImage: "line.3.horizontal.decrease")
         }
         .accessibilityLabel("Library options")
     }
@@ -206,18 +339,34 @@ struct LibraryScreen: View {
         !store.isSelecting && store.sort == .captured && !store.records.isEmpty
     }
 
-    /// Floating Years · Months · All Photos control above the tab bar.
-    private var groupingControl: some View {
-        Picker("Group By", selection: groupingBinding) {
+    /// Photos' glass Years · Months · All switcher.
+    private var groupingSwitcher: some View {
+        HStack(spacing: 0) {
             ForEach(LibraryGrouping.segments) { grouping in
-                Text(grouping.title).tag(grouping)
+                let selected = store.grouping == grouping
+                Button {
+                    groupingBinding.wrappedValue = grouping
+                } label: {
+                    Text(grouping.title)
+                        .font(.subheadline.weight(selected ? .semibold : .regular))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: PBSize.control - 8)
+                        .background {
+                            if selected {
+                                Capsule().fill(Color.primary.opacity(0.14))
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        .pickerStyle(.segmented)
-        .frame(maxWidth: 300)
         .padding(4)
-        .pbGlass(in: Capsule())
-        .padding(.bottom, PBSpacing.xs)
+        .frame(maxWidth: 280)
+        .pbGlass(in: Capsule(), interactive: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Group By")
     }
 
     private var columnsByGrouping: [String: Int] {
@@ -239,45 +388,6 @@ struct LibraryScreen: View {
     }
 
     // MARK: Content
-
-    /// Quick-filter chips, an active-filter summary, and warnings, under the large title.
-    @ViewBuilder
-    private var topInsets: some View {
-        VStack(spacing: 0) {
-            if !store.isSelecting, store.filters.isActive {
-                Button {
-                    store.clearFilters()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "line.3.horizontal.decrease")
-                        Text("Filtered: \(filterTitle)")
-                            .lineLimit(1)
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .pbGlass(in: Capsule(), interactive: true)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear all filters")
-                .accessibilityValue(filterTitle)
-                .padding(.vertical, PBSpacing.xs)
-            }
-            if let error = store.refreshError {
-                PBBanner(message: "Couldn’t refresh. Cached photos are still shown.", retry: { Task { await store.load() } })
-                    .accessibilityLabel("Could not refresh library. \(error)")
-            }
-            if let message = scans.statusMessage {
-                PBBanner(message: message)
-            }
-        }
-    }
-
-    private var hasTopInsets: Bool {
-        (!store.isSelecting && store.filters.isActive) || store.refreshError != nil || scans.statusMessage != nil
-    }
 
     @ViewBuilder
     private var content: some View {
@@ -327,6 +437,8 @@ struct LibraryScreen: View {
                 transition: loupeTransition,
                 columns: currentColumns,
                 onPinchColumns: storeColumns,
+                fullBleedInsets: gridInsets,
+                scrollToNewestVersion: scrollToNewestVersion,
                 onRefresh: {
                     await scans.manualLibraryRefresh()
                     await store.load()
@@ -336,7 +448,6 @@ struct LibraryScreen: View {
                     await duplicates.refreshCounts()
                 }
             )
-            .ignoresSafeArea(edges: .horizontal)
         }
     }
 

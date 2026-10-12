@@ -743,26 +743,3 @@ struct FaceAssignSheet: View {
         dismiss()
     }
 }
-
-/// People tab: the full People grid in its own navigation stack, with each person's photos.
-struct PeopleTabScreen: View {
-    @ObservedObject var people: PeopleStore
-    let collections: CollectionsStore
-    let curation: PhotoCurationCenter
-    let api: any PhotoBrainAPI
-
-    var body: some View {
-        NavigationStack {
-            PeopleScreen(store: people, apiBaseURL: api.baseURL, largeTitle: true)
-                .navigationDestination(for: PersonRoute.self) { route in
-                    PersonDetailScreen(
-                        person: route.person,
-                        people: people,
-                        collections: collections,
-                        curation: curation,
-                        api: api
-                    )
-                }
-        }
-    }
-}
