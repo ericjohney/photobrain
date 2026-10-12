@@ -5,6 +5,7 @@ import { serve } from "inngest/hono";
 import { config } from "./config";
 import { db } from "./db";
 import { functions, inngest } from "./inngest";
+import { compressJson } from "./middleware/compress-json";
 import { createExportsRouter } from "./routes/exports";
 import { createFacesRouter } from "./routes/faces";
 import photosRouter from "./routes/photos";
@@ -21,6 +22,9 @@ export const app = new Hono();
 
 // CORS middleware
 app.use("*", cors());
+// JSON responses only (binary routes and SSE are left as is).
+app.use("/api/trpc/*", compressJson());
+app.use("/api/v1/*", compressJson());
 
 // Health check endpoint
 app.get("/api/health", (c) => {

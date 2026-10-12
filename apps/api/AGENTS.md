@@ -62,6 +62,7 @@ cd apps/api && bun test
 cd apps/api && bun run typecheck
 cd apps/api && bun run bench:import
 cd apps/api && bun run bench:exif /path/to/photo1.jpg /path/to/photo2.heic
+cd apps/api && bun run bench:catalog [photoCount]
 bun scripts/ui-test-server.ts   # Seeded fixture API for native XCUITest; prints `READY <origin>`
 ```
 
@@ -566,6 +567,8 @@ Wall-clock budgets in performance tests go through `perfBudgetMs(ms)` from `setu
 `bun run bench:import` compares legacy per-photo writes with the shared transactional batch helper using 200 synthetic results, three repeats, and isolated file-backed databases. It checks persisted-data equivalence and reports fresh-import, rescan, and embedding-write medians with SQLite pragmas. It does not exercise streaming receipts, native work, or end-to-end import latency; use the real-photo/runtime measurements for those boundaries.
 
 `src/__tests__/native-executor.test.ts` uses real worker threads with a controlled TypeScript fixture. It covers persistent completion windows, persistence ACK backpressure, per-checkpoint async context, session switching, early stream termination/invalid indices, restart, bounded admission, and shutdown. The release addon and actual local Inngest/API/web flow were also exercised on Apple M4 Pro/macOS 26.5.1, including interrupted-import receipt recovery; see [measurement boundaries and results](../../docs/import-performance.md). Revalidate the deployed Bun/native environment during rollout.
+
+`bun run bench:catalog [photoCount=8000]` seeds an in-memory library and times the tRPC `photos` query and `/api/v1/photos` through Hono with and without `compressJson` (`src/middleware/compress-json.ts`), reporting body size and median time. That middleware gzip/deflate-compresses `application/json` responses of at least 1 KiB under `/api/trpc/*` and `/api/v1/*` and always adds `Vary: Accept-Encoding`; media, HEAD, and `text/event-stream` responses pass through unchanged.
 
 `bun run bench:exif <1-20 distinct photo paths>` requires ExifTool but not the addon, reads the Rust metadata flags, and compares batched versus four-concurrent per-file metadata extraction with exact JSON equivalence checks. `EXIFTOOL_BIN` selects an executable for this benchmark only. See [import architecture and measurements](../../docs/import-performance.md) for historical measurements, locally verified incremental behavior, and remaining architectural options.
 
