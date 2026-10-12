@@ -1,4 +1,3 @@
-import { Info } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import {
 	Card,
@@ -13,7 +12,11 @@ export function About() {
 		<Layout title="About">
 			<div className="max-w-2xl mx-auto space-y-6">
 				<div className="flex flex-col items-center text-center mb-8">
-					<Info className="w-16 h-16 mb-4 text-primary" />
+					<img
+						src="/favicon.svg"
+						alt=""
+						className="w-20 h-20 mb-4 drop-shadow-md"
+					/>
 					<h2 className="text-3xl font-bold mb-2">PhotoBrain</h2>
 					<p className="text-muted-foreground">
 						A modern photo gallery application
