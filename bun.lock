@@ -123,6 +123,10 @@
         "typescript": "^5.9.2",
       },
     },
+    "packages/raw-develop": {
+      "name": "@photobrain/raw-develop",
+      "version": "0.1.0",
+    },
     "packages/utils": {
       "name": "@photobrain/utils",
       "version": "0.1.0",
@@ -737,6 +741,8 @@
     "@photobrain/db": ["@photobrain/db@workspace:packages/db"],
 
     "@photobrain/image-processing": ["@photobrain/image-processing@workspace:packages/image-processing"],
+
+    "@photobrain/raw-develop": ["@photobrain/raw-develop@workspace:packages/raw-develop"],
 
     "@photobrain/utils": ["@photobrain/utils@workspace:packages/utils"],
 

@@ -1,0 +1,34 @@
+//! raw-develop: Fujifilm X-Trans RAF to Display P3, following the stage order of
+//! Apple's RawCamera pipeline (decode, linearise, white balance, demosaic, crop, noise
+//! reduction, lens correction, highlight recovery, camera to linear colour, exposure,
+//! sharpening, look, output).
+//!
+//! The crate is standalone: it is not yet wired into `image-processing` scans.
+//!
+//! ```no_run
+//! use raw_develop::{Negative, DevelopSettings, Options, develop};
+//! let neg = Negative::open("DSCF0970.RAF")?;               // decode once, cache
+//! let out = develop(&neg, &DevelopSettings::default(), &Options::default())?;
+//! raw_develop::encode::write(&out.image, "out.png".as_ref(), raw_develop::encode::Format::Png16)?;
+//! # Ok::<(), raw_develop::Error>(())
+//! ```
+
+#![allow(clippy::needless_range_loop)]
+
+pub mod cfa;
+pub mod encode;
+pub mod error;
+pub mod image;
+pub mod math;
+pub mod negative;
+pub mod pipeline;
+pub mod profile;
+pub mod raf;
+pub mod settings;
+pub mod stages;
+pub mod unpack;
+
+pub use error::{Error, Result};
+pub use negative::Negative;
+pub use pipeline::{Developed, Options, PIPELINE_VERSION, Quality, develop};
+pub use settings::DevelopSettings;
