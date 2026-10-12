@@ -427,55 +427,15 @@ struct LoupeScreen: View {
     }
 
     /// Compact Photos-style strip: narrow frames with the open photo widened and outlined.
+    /// Dragging it scrubs through the photos.
     private var filmstrip: some View {
-        let height: CGFloat = dynamicTypeSize.isAccessibilitySize ? 56 : 40
-        return ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 2) {
-                    ForEach(records) { photo in
-                        let isActive = photo.id == activeID
-                        Button {
-                            activeID = photo.id
-                        } label: {
-                            RemotePhotoImage(
-                                photo: photo,
-                                url: photo.thumbnailURL,
-                                contentMode: .fill,
-                                showsRetry: false,
-                                targetSize: CGSize(width: height * 1.4, height: height)
-                            ) {
-                                Color(white: 0.2)
-                            }
-                            .frame(width: isActive ? height * 1.4 : height * 0.62, height: height)
-                            .clipped()
-                            .opacity(photo.isRejected ? 0.35 : 1)
-                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .stroke(isActive ? Color.white : Color.clear, lineWidth: 2)
-                            }
-                            .padding(.horizontal, isActive ? 4 : 0)
-                        }
-                        .buttonStyle(.plain)
-                        .id(photo.id)
-                        .accessibilityLabel("Open \(photo.filename)")
-                        .accessibilityAddTraits(isActive ? .isSelected : [])
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .contentMargins(.horizontal, 160, for: .scrollContent)
-            .frame(height: height + 4)
-            .onAppear { proxy.scrollTo(activeID, anchor: .center) }
-            .onChange(of: activeID) { _, newID in
-                if reduceMotion {
-                    proxy.scrollTo(newID, anchor: .center)
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(newID, anchor: .center)
-                    }
-                }
-            }
+        LoupeFilmstrip(
+            records: records,
+            activeID: activeID,
+            height: dynamicTypeSize.isAccessibilitySize ? 56 : 40,
+            reduceMotion: reduceMotion
+        ) { id in
+            activeID = id
         }
     }
 

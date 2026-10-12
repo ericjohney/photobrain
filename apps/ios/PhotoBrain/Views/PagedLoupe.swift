@@ -194,6 +194,17 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
 
     func update(records nextRecords: [PhotoRecord], activeID requestedID: Int) {
         loadViewIfNeeded()
+        // SwiftUI re-passes the same array on every activeID change (each filmstrip scrub
+        // step); skip the O(n) record diff then.
+        if nextRecords.sharesStorage(with: records) {
+            guard requestedID != activeID else { return }
+            activeID = requestedID
+            if records.contains(where: { $0.id == requestedID }) {
+                // Photos jumps straight to a scrubbed or tapped photo instead of sliding.
+                scrollToActiveID(animated: false)
+            }
+            return
+        }
         let previousIDs = records.map(\.id)
         let nextIDs = nextRecords.map(\.id)
         let anchoredID = PhotoIDAnchor.resolve(

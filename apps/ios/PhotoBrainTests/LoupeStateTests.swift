@@ -80,4 +80,35 @@ final class LoupeStateTests: XCTestCase {
         cell.configure(photo: photo, loader: loader, onTap: {}, onZoomChanged: { _ in })
         return cell
     }
+
+    func testFilmstripCentersEachIndexWidenedAndSnapsToNearest() {
+        let geometry = FilmstripGeometry(itemHeight: 40, viewWidth: 400, count: 100)
+        for index in [0, 1, 50, 99] {
+            let offset = geometry.offset(forIndex: index)
+            let frame = geometry.frame(forIndex: index, offset: offset)
+            XCTAssertEqual(frame.width, geometry.wideWidth)
+            XCTAssertEqual(frame.midX - offset, 200, accuracy: 0.5, "Index \(index) is centered")
+            XCTAssertEqual(geometry.nearestIndex(forOffset: offset + geometry.unit * 0.4), index)
+            XCTAssertEqual(geometry.frame(forIndex: index + 1, offset: offset).width, geometry.narrowWidth)
+        }
+        XCTAssertEqual(geometry.nearestIndex(forOffset: -500), 0)
+        XCTAssertEqual(geometry.nearestIndex(forOffset: 1e6), 99)
+    }
+
+    func testFilmstripFramesNeverOverlapMidScroll() {
+        let geometry = FilmstripGeometry(itemHeight: 40, viewWidth: 400, count: 20)
+        for step in 0...40 {
+            let offset = geometry.offset(forIndex: 5) + geometry.unit * CGFloat(step) / 40
+            for index in 0..<19 {
+                let lhs = geometry.frame(forIndex: index, offset: offset)
+                let rhs = geometry.frame(forIndex: index + 1, offset: offset)
+                XCTAssertGreaterThanOrEqual(rhs.minX - lhs.maxX, geometry.spacing - 0.001)
+            }
+            let visible = geometry.indexes(in: offset, offset + 400)!
+            for index in 0..<20 where !visible.contains(index) {
+                let frame = geometry.frame(forIndex: index, offset: offset)
+                XCTAssertFalse(frame.intersects(CGRect(x: offset, y: 0, width: 400, height: 40)))
+            }
+        }
+    }
 }
