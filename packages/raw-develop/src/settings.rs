@@ -23,12 +23,13 @@ pub struct LensSettings {
 }
 
 impl Default for LensSettings {
-  /// Matches Apple's as-shot rendering, which corrects distortion and chromatic
-  /// aberration but leaves the camera's vignetting curve unapplied.
+  /// Matches Apple's as-shot rendering, which corrects distortion only (its graph has
+  /// `radialLens`, never the per-channel `radialLensRB`), leaving the camera's
+  /// chromatic aberration and vignetting curves unapplied.
   fn default() -> Self {
     Self {
       distortion: true,
-      chromatic_aberration: true,
+      chromatic_aberration: false,
       vignetting: false,
     }
   }

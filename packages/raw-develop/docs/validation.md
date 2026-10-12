@@ -14,7 +14,7 @@ RawCamera) on one file and writes everything we compare against:
 | File | Content |
 |---|---|
 | `params.json` | CIRAWFilter properties: neutral temp/tint, baselineExposure, NR and sharpness defaults, lens support, orientation, size |
-| `graph.txt` | the Core Image render graph (`CI_PRINT_TREE=1`), with every kernel's parameters |
+| `graph.txt` | the Core Image render graph (`CI_PRINT_TREE=1`), with every kernel's parameters; the source of the profile's `[[noise]]` tables |
 | `cfa.u16`, `cfa.json` | RawCamera's decoded mosaic, full readout, little-endian `u16` |
 | `default.lin.{q,crop}.f32` | scene-linear P3 at the `linearSpaceFilter` hook (after colour and exposure, before the look) |
 | `nonr.lin.*.f32` | the same with NR and sharpening off |
@@ -55,7 +55,7 @@ RAW_DEVELOP_FIXTURES=~/raw-develop-fixtures RAW_DEVELOP_REFS=~/raw-develop-refs 
 
 - `decoder_is_bit_exact_with_rawcamera`: our mosaic equals `cfa.u16` for every fixture.
 - `final_render_close_to_apple`: mean absolute encoded difference against `final.q.f32` is
-  below 0.03 (a coarse guard; use `raw-compare` for real numbers).
+  below 0.006 on every fixture (observed maximum 0.0032). Use `raw-compare` for ΔE00.
 
 The fixture tests print `skipped` when the variables are unset, so CI and other machines
 pass without RAW files.
@@ -74,7 +74,9 @@ for exposure or white-balance bias).
 
 Compare `linear` to isolate everything before the look (decode, demosaic, NR, lens,
 highlights, colour, exposure). Compare `final` for the whole pipeline. Comparing
-`nonr.lin` with `--settings` that disable NR and sharpening isolates demosaic.
+`nonr.lin` with `--settings` that disable NR and sharpening
+(`{"luma_noise_reduction": 0, "chroma_noise_reduction": 0, "sharpening": 0}`) isolates
+demosaic.
 
 ### Separating colour from texture
 
@@ -87,7 +89,7 @@ Other useful diagnostics (one-off Python, see `tools/calibrate/fit.py` for loade
 
 - **Ratio by radius** (ours/Apple, by distance from centre): reveals vignetting or
   distortion mismatches. This is how we found that Apple does not apply vignetting.
-- **Error by lightness, chroma and hue band**: reveals tone-curve or look-matrix problems.
+- **Error by lightness, chroma and hue band**: reveals exposure or look-matrix problems.
 - **Luma and chroma power spectra** on the `.crop` images: reveal over- or under-sharpening
   and NR strength.
 - **Error heatmaps**: error concentrated on edges means texture/demosaic; error in smooth
@@ -103,45 +105,43 @@ fixture metadata with exiftool and the profile from `RAW_DEVELOP_PROFILE`. Order
    mosaic (block means), through our DNG forward matrices, to Apple's linear capture. It
    reports the median relative error per fixture; about 0.3–2% is good, and above 4% points
    at a WB or clipping problem in that file.
-2. `fit_tone.py`: a monotone per-channel curve from Apple's linear capture to Apple's final
-   render, both from Apple, so this isolates the look exactly. A good fit has mean encoded
-   error around 0.003.
-3. `fit_distortion.py <stem>`: compares the Fuji curve, the Fuji curve × scale, and a free
+2. `fit_distortion.py <stem>`: compares the Fuji curve, the Fuji curve × scale, and a free
    curve against the `nolens` → `default` warp. Copy the `fuji*scale` value.
 
-Fitting against Apple's own data at each boundary (mosaic → linear, linear → final) keeps
-the stages independent: an error in our demosaic cannot leak into the colour fit.
+The look after the linear capture is a port, not a fit, so `fit_tone.py` is no longer used.
+The `[[noise]]` tables are transcribed from `graph.txt`, not fitted (see
+[adding a camera](adding-a-camera.md#8-transcribe-the-noise-tables)).
+
+Fitting against Apple's own data at a stage boundary (mosaic → linear) keeps the stages
+independent: an error in our demosaic cannot leak into the colour fit.
 
 After editing a profile: run `cargo test`, run the fixture tests, run `raw-compare` across
 all fixtures, and bump `PIPELINE_VERSION`.
 
 ## Current results
 
-X-E5, 11 fixtures, `raw-compare final` (quarter scale):
+X-E5, 11 fixtures, `raw-compare final` (quarter scale), `PIPELINE_VERSION` 2:
 
-| Fixture | ISO | Notes | ΔE00 mean | p95 | blurred mean |
-|---|---|---|---|---|---|
-| DSCF0686 | 64 | tungsten, DR (+0.28 bias) | 0.69 | 1.51 | 0.44 |
-| DSCF0867 | 125 | 15 mm | 0.51 | 0.96 | 0.37 |
-| DSCF0945-2 | 125 | 15 mm, highlights | 1.35 | 2.74 | 1.07 |
-| DSCF0970 | 125 | 23 mm, portrait orientation | 1.86 | 5.56 | 0.72 |
-| DSCF0604 | 125 | foliage/water texture | 3.08 | 9.05 | 0.75 |
-| DSCF0928 | 640 | 15 mm, highlights | 1.70 | 4.90 | 1.19 |
-| DSCF0672 | 1600 | tungsten | 2.20 | 6.12 | 1.28 |
-| DSCF1073 | 3200 | warm, saturated | 2.56 | 6.59 | 1.86 |
-| DSCF0229 | 10000 | | 3.00 | 8.42 | 1.81 |
-| DSCF1093 | 12800 | | 3.13 | 6.74 | 2.61 |
-| DSCF0711 | 125 | almost fully clipped | 0.00 | 0.00 | – |
+| Fixture | ISO | Notes | ΔE00 mean | p95 |
+|---|---|---|---|---|
+| DSCF0686 | 64 | tungsten, DR (+0.28 bias) | 0.11 | 0.21 |
+| DSCF0867 | 125 | 15 mm | 0.14 | 0.22 |
+| DSCF0945-2 | 125 | 15 mm, highlights | 0.11 | 0.22 |
+| DSCF0970 | 125 | 23 mm, portrait orientation | 0.27 | 0.89 |
+| DSCF0604 | 125 | foliage/water texture | 0.41 | 1.47 |
+| DSCF0711 | 125 | almost fully clipped | 0.00 | 0.00 |
+| DSCF0928 | 640 | 15 mm, highlights | 0.10 | 0.20 |
+| DSCF0672 | 1600 | tungsten | 0.18 | 0.52 |
+| DSCF1073 | 3200 | warm, saturated | 0.10 | 0.24 |
+| DSCF0229 | 10000 | | 0.38 | 1.12 |
+| DSCF1093 | 12800 | | 0.13 | 0.54 |
 
-The decoder is bit-exact on all of them.
+Every fixture is at most 0.41 mean, below visibility. The decoder is bit-exact on all of
+them.
 
-### Known gaps, largest first
+### Remaining differences
 
-1. **Fine texture** (demosaic, NR, sharpening). Apple's demosaic (`deXtrans_v8` plus its
-   gradient-pyramid detail reconstruction) has more mid-frequency luma detail and less
-   high-frequency chroma than ours. This dominates DSCF0604 (3.1 overall, 0.75 blurred).
-2. **High-ISO NR**: our chroma NR is a strength/radius heuristic. Apple's is a multi-pass
-   edge-aware "powerBlur" with a per-ISO noise model.
-3. **Saturated reds and yellows at high ISO** (DSCF0229, DSCF1073): small hue rotations,
-   likely from gamut-mapping details we approximate with simple compression, plus Apple's
-   hue magnet.
+The largest residuals are fine texture in the busiest frames (DSCF0604, DSCF0229). The ported
+kernels run in `f32` on the CPU, while Apple renders on the GPU in half-float tiles
+(`RGBAh`/`Rh`), and `exposureFactor` and the colour/lens fits are approximations, so small
+per-pixel differences remain.

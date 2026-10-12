@@ -108,7 +108,11 @@ impl LensCorrection {
   }
 
   fn distortion_scale(&self, r: f32) -> f32 {
-    let d = self.distortion.as_ref().map_or(0.0, |d| d.eval(r, 0.0));
+    // Constant inside the first knot, like RawCamera's radial scale table.
+    let d = self
+      .distortion
+      .as_ref()
+      .map_or(0.0, |d| d.eval(r.max(d.knots[0]), 0.0));
     (1.0 + d / 100.0) * self.fill_scale
   }
 
@@ -147,7 +151,7 @@ impl LensCorrection {
               2 if do_ca => self.ca_scale(&self.ca_blue, r),
               _ => 1.0,
             };
-          row[x * 3 + c] = src.sample_bilinear(cx + px * sc, cy + py * sc, c) * gain;
+          row[x * 3 + c] = sample_bicubic(src, cx + px * sc, cy + py * sc, c) * gain;
         }
       }
     });
@@ -155,9 +159,62 @@ impl LensCorrection {
   }
 }
 
+/// RawCamera's `radialLens` resampler: a separable 4-tap cubic (Catmull-Rom, a = -0.5)
+/// at a continuous coordinate (pixel centres at i + 0.5), clamped at the edges. Apple
+/// evaluates it with nine bilinear taps; this is the equivalent direct form.
+#[inline]
+fn sample_bicubic(img: &RgbImage, x: f32, y: f32, c: usize) -> f32 {
+  let weights = |t: f32| {
+    // t = fractional offset of the sample from the left/upper of the two inner taps.
+    let u = 1.0 - t;
+    let w0 = 0.5 * u * u * u - 0.5 * u * u;
+    let w2 = 1.5 * u * u * u - 2.5 * u * u + 1.0;
+    let w12 = -0.5 * u * u + 0.5 * u + 1.0;
+    let w1 = w12 - w2;
+    let w3 = 1.0 - w0 - w12;
+    [w0, w1, w2, w3]
+  };
+  let (dx, dy) = (x - 0.5, y - 0.5);
+  let (fx, fy) = (dx.floor(), dy.floor());
+  let (wx, wy) = (weights(dx - fx), weights(dy - fy));
+  let (ix, iy) = (fx as isize, fy as isize);
+  let (w, h) = (img.width as isize, img.height as isize);
+  let mut acc = 0.0f32;
+  for j in 0..4 {
+    let yy = (iy - 1 + j as isize).clamp(0, h - 1) as usize;
+    let mut row = 0.0f32;
+    for i in 0..4 {
+      let xx = (ix - 1 + i as isize).clamp(0, w - 1) as usize;
+      row += wx[i] * img.data[(yy * img.width + xx) * 3 + c];
+    }
+    acc += wy[j] * row;
+  }
+  acc
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn bicubic_matches_rawcamera_weights_and_is_exact_on_grid() {
+    let mut im = RgbImage::new(8, 8);
+    for (i, v) in im.data.iter_mut().enumerate() {
+      *v = ((i * 37) % 17) as f32;
+    }
+    for y in 1..7 {
+      for x in 1..7 {
+        let a = sample_bicubic(&im, x as f32 + 0.5, y as f32 + 0.5, 1);
+        assert!((a - im.data[(y * 8 + x) * 3 + 1]).abs() < 1e-4);
+      }
+    }
+    // Catmull-Rom halfway weights: -1/16, 9/16, 9/16, -1/16.
+    let mut row = RgbImage::new(4, 1);
+    for (x, v) in [0.0, 0.0, 1.0, 0.0].iter().enumerate() {
+      row.data[x * 3] = *v;
+    }
+    assert!((sample_bicubic(&row, 2.0, 0.5, 0) - 0.5625).abs() < 1e-5);
+  }
 
   fn params(dist: [f64; 9], vig: [f64; 9]) -> LensParams {
     let knots = [
@@ -192,7 +249,8 @@ mod tests {
       ),
       1.0,
     );
-    assert!((lc.distortion_scale(0.0) - 1.0).abs() < 1e-6);
+    // Constant inside the first knot (r < 0.1 here), like RawCamera.
+    assert!((lc.distortion_scale(0.0) - 0.997).abs() < 1e-6);
     assert!((lc.distortion_scale(1.0) - 0.965).abs() < 1e-6);
     assert!((lc.distortion_scale(2.0) - 0.96).abs() < 1e-6);
   }

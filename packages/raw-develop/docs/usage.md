@@ -19,7 +19,8 @@ let jpeg_bytes = encode::encode(&preview.image, encode::Format::Jpeg(90))?;
 - **`image`**: display-oriented, encoded Display P3, values 0–1.
 - **`linear`**: scene-linear P3 before the look, when `keep_linear` is set. It is in sensor
   orientation, not rotated.
-- **`info`**: the neutral used, its CCT, the total exposure in EV, and the luma NR amount.
+- **`info`**: the neutral used, its CCT, the total exposure in EV, and the luma NR amount
+  actually used.
 
 `Negative::read_metadata(&bytes)` parses metadata without decoding the sensor data, which
 is cheap. Use it for dimensions, orientation and white balance.
@@ -39,14 +40,18 @@ optional on input and defaults to the as-shot (Apple-like) rendering:
   "chroma_noise_reduction": 0.5,
   "sharpening": 1.0,
   "tone_amount": 1.0,
-  "lens": { "distortion": true, "chromatic_aberration": true, "vignetting": false },
+  "lens": { "distortion": true, "chromatic_aberration": false, "vignetting": false },
   "crop": { "x": 0.1, "y": 0.05, "width": 0.8, "height": 0.9 },
   "quarter_turns": 1
 }
 ```
 
 - `white_balance`: `{"mode": "as-shot"}` or `{"mode": "temperature", "kelvin", "tint"}`.
-- `luma_noise_reduction: null` means the ISO-based default.
+- `luma_noise_reduction: null` means RawCamera's default for the ISO (0 to about 0.13 on the
+  X-E5); `chroma_noise_reduction` 0.5 is RawCamera's default and scales the chroma
+  thresholds linearly; `sharpening` multiplies the luma pyramid's sharpening (see
+  [noise-reduction.md](noise-reduction.md)).
+- `lens` defaults to distortion only, like Apple's render.
 - `crop` is normalised to the display-oriented image after `quarter_turns`.
 - Unknown fields are rejected and ranges are validated (`DevelopSettings::validate`), so
   stored settings fail loudly rather than being silently reinterpreted.
@@ -59,7 +64,9 @@ optional on input and defaults to the as-shot (Apple-like) rendering:
   way the API uses `MEDIA_VERSION`.
 - A `Negative` depends only on the file bytes, so it can be cached by content hash.
 - For interactive editing, keep the `Negative` in memory, render `Quality::Preview` on every
-  change (about 80 ms at 40 MP), and render `Full` once the user stops changing settings.
+  change (about 0.12 s at 40 MP), and render `Full` (about 2.5 s) once the user stops
+  changing settings. Preview uses the generic NR/sharpening filters, so its fine texture
+  differs slightly from the full render.
 
 ## CLI
 

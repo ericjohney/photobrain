@@ -8,6 +8,7 @@ Code: `src/profile.rs`, `src/math.rs`, `src/pipeline.rs` (stage 6), `src/stages/
 |---|---|
 | after linearise | camera RGB, white-balanced (a white object = 1,1,1) |
 | after stage 6 | **scene-linear Display P3** (D65), unbounded |
+| after the look | display-referred linear Display P3, 0–1 |
 | output | display-encoded Display P3 (sRGB transfer), 0–1, tagged with a P3 ICC profile |
 
 Display P3 is the output space because that is what Apple's RawCamera produces: its graph
@@ -71,24 +72,32 @@ p3_exposed = (p3 − black_render) × 2^(baseline_exposure − RawExposureBias +
 
 ## Look
 
-1. **Gamut compression** (`look::compress_gamut`): scene-linear P3 can contain negative
-   components for very saturated camera colours. They are moved toward the luminance axis
-   until the minimum component is 0, keeping luminance and hue direction.
-2. **Tone curve** (`ToneCurve::eval`): a per-channel piecewise-linear curve from
-   scene-linear values to *encoded* values, with knots every half stop from 2⁻¹⁰ to 1 plus
-   a shoulder to 4. It reproduces Apple's `boost` contrast curve composed with the sRGB
-   transfer. Middle grey (0.18) maps to about 0.65 encoded. Values above about 1.0 linear
-   saturate to 1.
+`stages/look.rs` is a port of the three kernels RawCamera runs after the exposure node:
 
-`tone_amount < 1` blends toward a flat `srgb_encode`, which an edit UI can expose as
-"contrast/look strength".
+1. **`hue_magnet`** (`RAWHueMagnetMR`, `amt` 0.03): nudges orange hues (r > b > g) towards
+   red.
+2. **`gamut_map`** (`gmKernel_v7`): scene-linear P3 can be negative or above 1 for very
+   saturated or bright colours. It compresses colours towards a luminance anchor so every
+   component lands in 0–1, with extra desaturation for saturated blues and magentas and a
+   green push that keeps bright yellows yellow.
+3. **`boost`** (`boost_v7`): a piecewise-cubic tone curve applied per channel (breaks at
+   0.1, 0.2, 0.5, 1.0), then partly re-mixed to the input's hue. The coefficients in
+   `look::Boost::default` were the same on every file and camera observed, so they are
+   constants, not profile data.
+
+The look outputs linear values; the pipeline then applies the sRGB transfer function.
+`tone_amount < 1` blends the look with the clamped linear input, which an edit UI can expose
+as "contrast/look strength".
+
+The earlier fitted per-channel tone curve (`[tone_curve]` in the profile) is gone: the port
+reproduces Apple's look exactly instead of approximating it.
 
 ## Things to know when changing colour
 
-- Changing `look_matrix_*`, `baseline_exposure`, `black_render` or `tone_curve` changes
+- Changing `look_matrix_*`, `baseline_exposure`, `black_render` or the look kernels changes
   output, so bump `PIPELINE_VERSION`.
-- Refit these values together. They are not independent: exposure and the tone curve trade
-  off against each other, and the look matrix and gamut compression interact on saturated
-  colours. See [validation.md](validation.md#refitting-a-profile).
+- Refit the look matrices and exposure together, against Apple's linear capture (before
+  the look). The look itself is a port and is not fitted. See
+  [validation.md](validation.md#refitting-a-profile).
 - `ColorMatrix` and `ForwardMatrix` are measured camera data. Do not tune them; tune the
   look matrices instead.

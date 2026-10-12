@@ -93,8 +93,10 @@ Copy `profiles/fujifilm-x-e5.toml` to `profiles/fujifilm-<model>.toml`, then:
   Histogram the raw values of a clipped fixture: the clip spike usually sits a little below
   the maximum (about 16200 on the X-E5). Use the level where clipping begins, so blown
   highlights reach 1.0 in every channel after white balance,
-- leave the fitted fields (look matrices, exposure, black render, tone curve, fill scale) as
-  the X-E5 values to start with.
+- leave the fitted fields (look matrices, exposure, black render, fill scale) as the X-E5
+  values to start with,
+- remove the X-E5 `[[noise]]` entries until step 8 (without a table, `Full` uses the
+  generic demosaic and NR); do not ship another camera's noise tables.
 
 Register it in `src/profile.rs`:
 
@@ -107,33 +109,54 @@ const BUILTIN: &[(&str, &str)] = &[
 
 The key must equal the `model` string reported by `raw-develop info` (the EXIF IFD0 Model).
 
-### 7. Fit the look
+### 7. Fit colour and lens
 
 ```bash
 cd tools/calibrate
 export RAW_DEVELOP_FIXTURES=~/raw-develop-fixtures/x-t5 RAW_DEVELOP_REFS=~/raw-develop-refs/x-t5
 export RAW_DEVELOP_PROFILE=../../profiles/fujifilm-x-t5.toml RAW_DEVELOP_CALIB_OUT=/tmp/x-t5-calib
 python fit_color.py         # → baseline_exposure, look_matrix_1/2  ($RAW_DEVELOP_CALIB_OUT/colorfit3.json)
-python fit_tone.py          # → tone_curve knots/values             (curve_per-channel.npy, printed)
 python fit_distortion.py DSCFxxxx   # with a lens that reports distortion → fuji*scale = distortion_fill_scale
 ```
 
 The scripts read sensor geometry, black level, CFA layout and WB from each file (with
 exiftool) and read the colour matrices and white level from the profile set in
-`RAW_DEVELOP_PROFILE`. Copy the printed results into the profile. The tone curve is likely
-to be shared across Fuji bodies (it describes Apple's rendering rather than the sensor), so
-check whether refitting it improves the result before replacing it.
+`RAW_DEVELOP_PROFILE`. Copy the printed results into the profile.
+
+The look after exposure (`RAWHueMagnetMR`, `gmKernel_v7`, `boost_v7`) is a port with fixed
+parameters. Check the new body's `graph.txt` for the same `amt=0.03` and `boost_v7`
+coefficients; if they differ, they must become profile data.
 
 `black_render` has been 0.003 in Apple's graphs for every X-E5 file. Read it from each
 reference graph (`bias / scale` of the exposure `color_matrix` node) to confirm before
 reusing it.
 
-### 8. Check `base_iso` and the NR defaults
+### 8. Transcribe the noise tables
 
-`stages/detail.rs::default_luma_nr` and the chroma NR scaling were fitted to the X-E5. Compare
-Apple's `luminanceNoiseReductionAmount` in each fixture's `params.json` with ours
-(`raw-develop develop` prints `luma NR`). If they differ a lot, make the NR curve a profile
-field instead of a constant.
+The `[[noise]]` table is read from RawCamera's render graphs, one entry per 1/3-stop ISO.
+
+1. Shoot (or collect) one RAF at every 1/3-stop ISO the camera offers, including extended
+   ISOs. Scene content does not matter; the parameters depend only on the camera and ISO.
+2. Run `target/apple-reference` on each. Its `graph.txt` is the `CI_PRINT_TREE` output.
+3. For each file, write one `[[noise]]` entry (field mapping in
+   [camera-profiles.md](camera-profiles.md#noise)):
+   - `iso` from the file, `demosaic_noise` from `deXtrans_v8`'s `rn`,
+   - `moire_detect = true` when the graph has `extractHRGBHF` rather than `extractHRGB`,
+   - one `[[noise.chroma_passes]]` per `powerBlur*` node, from the one nearest the extract
+     upwards (the graph prints bottom-up, innermost last): `kind` from the kernel name,
+     `scale = params[3]`, `threshold = params2`, `interpolant`, and `params3`–`params6`
+     into `despeckle`,
+   - four `[[noise.luma]]` levels, finest first: `expandPlusDThruG3`/`G2` first, then the
+     `expandPlusD*` nodes below it. For each `thru_g*` level take `parms`, `roparms`,
+     `omparms[0..2]`, and from the mask subgraph feeding its `grad` input the `DIRToC`
+     `params[0..3]`, `annealGAndC`/`annealG` `threshmodel[0..3]` and `cfactor`. `sharpen`
+     lists that level's `smoothDSharpen` nodes as `parms ++ parms2`, step 1 first. For
+     `thru_g2`, `gabor` is `gaborToSYAndG` `[smoothAmt, f1…, f2[0], f2[1]]`.
+
+The X-E5 tables were transcribed with a throwaway parser; any script that follows this
+mapping will do. Do not commit the graphs themselves. Record the RawCamera version in the
+provenance comment. `cargo test` checks the table's structure; `raw-compare` per ISO checks
+the values.
 
 ### 9. Validate
 
@@ -142,8 +165,8 @@ cargo test
 RAW_DEVELOP_FIXTURES=… RAW_DEVELOP_REFS=… cargo test --release --test fixtures -- --nocapture
 ```
 
-Then run `raw-compare` per file (see [validation.md](validation.md)). Targets: mean ΔE00
-under 2 at base ISO and no worse than the X-E5 numbers at high ISO. Look at a few
+Then run `raw-compare` per file (see [validation.md](validation.md)). Target: mean ΔE00
+around the X-E5 numbers (≤ 0.5) at every ISO. Look at a few
 side-by-side renders as well; the numbers do not catch everything (moiré, halos, colour
 fringes).
 
@@ -155,7 +178,8 @@ fringes).
 ## Case B: decoder differences (older X-Trans, other compression)
 
 - **Different X-Trans layout**: the pattern is read from `0x131`, so nothing should be
-  needed. If `from_raf_xtrans_layout` rejects it (it requires 20 greens), dump the 36 bytes
+  needed. `dextrans::phase` must also find the pattern's phase relative to the kernel's
+  tile; it returns `None` (and the pipeline falls back) for other layouts. If `from_raf_xtrans_layout` rejects it (it requires 20 greens), dump the 36 bytes
   and check for a different encoding.
 - **Different compressed header** (version ≠ 1, unusual block widths): `Header::parse`
   rejects implausible headers. Find the first differing pixel against Apple's `cfa.u16` (see
@@ -177,8 +201,9 @@ Needed:
 2. `unpack::fuji_compressed`: the Bayer variant (`raw_type == 0`) uses
    `line_width = block_width / 2` and a different pass table. The header code already
    accepts it, but `decode` rejects it. Implement the Bayer passes and validate bit for bit.
-3. `stages/demosaic`: add a Bayer path (for example AHD or RCD for `full`, 2×2 binning for
-   `Preview`) and dispatch on `cfa.is_xtrans()`.
+3. `stages/demosaic`: add a Bayer path (2×2 binning for `Preview`; for `Full`, port
+   RawCamera's Bayer demosaic kernel the same way `deXtrans_v8` was ported) and dispatch on
+   `cfa.is_xtrans()`. The noise tables come from that camera's graphs as in step 8.
 4. Black levels: the 36-value array becomes per 2×2 position; `pipeline.rs` indexes it by
    `(row % 6) * 6 + col % 6`, so generalise that to the pattern size.
 

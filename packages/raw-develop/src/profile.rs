@@ -4,41 +4,105 @@ use crate::error::{Error, Result};
 use crate::math::Mat3;
 use serde::Deserialize;
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct ToneCurve {
-  pub input: Vec<f32>,
-  pub output: Vec<f32>,
+/// One chroma noise-reduction pass (see `stages::chroma_nr`).
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PassKind {
+  Plain,
+  EarlyOut,
+  Hf,
+  HfEarlyOut,
+  /// Early-out average with a second, stricter threshold (`params3 = [t2 factor, range
+  /// factor]`) preferred for already-saturated pixels.
+  EarlyOut2,
+  Despeckle,
 }
 
-impl ToneCurve {
-  #[inline]
-  pub fn eval(&self, x: f32) -> f32 {
-    let k = &self.input;
-    let v = &self.output;
-    if x <= k[0] {
-      return v[0];
-    }
-    // Knots are few (~25): binary search.
-    let i = k.partition_point(|&t| t < x);
-    if i >= k.len() {
-      return v[v.len() - 1];
-    }
-    let (x0, x1, y0, y1) = (k[i - 1], k[i], v[i - 1], v[i]);
-    y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-  }
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChromaNrPass {
+  pub kind: PassKind,
+  /// Tap spacing in half-resolution pixels.
+  pub scale: u32,
+  /// `[c0, c1, c2, moire]`: neighbour accepted when its weighted squared colour
+  /// difference is below `c0 + c1*Y + c2*Y^2`; `moire` sets the moire threshold.
+  pub threshold: [f32; 4],
+  /// `hf_early_out` only: blend between the plain and moire-aware averages.
+  #[serde(default)]
+  pub interpolant: f32,
+  /// `despeckle`: speckle detector parameters (13 values); `early_out2`: [t2 factor,
+  /// range factor].
+  #[serde(default)]
+  pub despeckle: Vec<f32>,
+}
 
-  fn validate(&self) -> Result<()> {
-    let ok = self.input.len() >= 2
-      && self.input.len() == self.output.len()
-      && self.input.windows(2).all(|w| w[1] > w[0])
-      && self.output.windows(2).all(|w| w[1] >= w[0]);
-    if ok {
-      Ok(())
-    } else {
-      Err(Error::Settings(
-        "tone curve knots must be increasing".into(),
-      ))
-    }
+/// How a luma pyramid level adds its detail band back (see `stages::luma`).
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LevelKind {
+  /// expandPlusDWithOverdrive: detail unchanged.
+  Plain,
+  /// expandPlusDThruG: noise coring outside a structure mask.
+  ThruG,
+  /// expandPlusDThruG2: full-resolution coring and sharpening, simple gradient mask.
+  ThruG2,
+  /// expandPlusDThruG3: full-resolution coring and directional sharpening.
+  ThruG3,
+}
+
+/// One level of the luma pyramid, finest first. Parameter names follow the kernels.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LumaLevel {
+  pub kind: LevelKind,
+  #[serde(default)]
+  pub overdrive: f32,
+  #[serde(default)]
+  pub parms: [f32; 4],
+  #[serde(default)]
+  pub roparms: [f32; 4],
+  #[serde(default)]
+  pub omparms: [f32; 2],
+  /// DIRToC curvature threshold model (c0 + c1*Y + c2*Y^2).
+  #[serde(default)]
+  pub dir_to_c: [f32; 3],
+  /// annealGAndC / annealG gradient threshold model.
+  #[serde(default)]
+  pub anneal: [f32; 3],
+  #[serde(default)]
+  pub cfactor: f32,
+  /// smoothDSharpen passes: [step, curvature min, mix, hf gain, perp step, hf thresh, hf slope].
+  #[serde(default)]
+  pub sharpen: Vec<[f32; 7]>,
+  /// thru_g2 only: gaborToSYAndG [smoothAmt, f1 (4), f2 (2)].
+  #[serde(default)]
+  pub gabor: Vec<f32>,
+}
+
+/// Noise tuning at one ISO.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NoiseIso {
+  pub iso: f32,
+  /// Demosaic noise model `rn`: raw variance ~ rn[1] + v * rn[2].
+  pub demosaic_noise: [f32; 3],
+  /// Chroma NR: use the moire-detecting extract (fine green texture alpha).
+  pub moire_detect: bool,
+  /// Chroma NR pass chain.
+  pub chroma_passes: Vec<ChromaNrPass>,
+  /// Luma pyramid recipe: full resolution first, then three coarser levels.
+  pub luma: Vec<LumaLevel>,
+}
+
+impl CameraProfile {
+  /// The noise entry nearest to `iso` in log2 (ISO 100 when unknown).
+  pub fn noise_for_iso(&self, iso: Option<u32>) -> Option<&NoiseIso> {
+    let iso = iso.unwrap_or(100).max(1) as f32;
+    self.noise.iter().min_by(|a, b| {
+      let da = (a.iso.log2() - iso.log2()).abs();
+      let db = (b.iso.log2() - iso.log2()).abs();
+      da.total_cmp(&db)
+    })
   }
 }
 
@@ -61,7 +125,9 @@ pub struct CameraProfile {
   pub base_iso: f32,
   pub look_matrix_1: [f64; 9],
   pub look_matrix_2: [f64; 9],
-  pub tone_curve: ToneCurve,
+  /// Per-ISO noise tuning (demosaic noise model, chroma NR), any order.
+  #[serde(default)]
+  pub noise: Vec<NoiseIso>,
   pub distortion_fill_scale: f64,
 }
 
@@ -74,7 +140,6 @@ const BUILTIN: &[(&str, &str)] = &[("X-E5", include_str!("../profiles/fujifilm-x
 impl CameraProfile {
   pub fn from_toml(text: &str) -> Result<Self> {
     let p: Self = toml::from_str(text).map_err(|e| Error::Settings(format!("profile: {e}")))?;
-    p.tone_curve.validate()?;
     Ok(p)
   }
 
@@ -209,9 +274,6 @@ mod tests {
   fn builtin_xe5_loads() {
     let p = CameraProfile::builtin("X-E5").unwrap();
     assert_eq!(p.model, "X-E5");
-    assert!((p.tone_curve.eval(0.18) - 0.65).abs() < 0.02);
-    assert_eq!(p.tone_curve.eval(-1.0), 0.0);
-    assert!((p.tone_curve.eval(100.0) - 1.0).abs() < 1e-6);
   }
 
   #[test]
@@ -220,6 +282,26 @@ mod tests {
       let p = CameraProfile::builtin(model).unwrap();
       assert!(p.model.eq_ignore_ascii_case(model), "{model}: model field");
       assert!(p.white_level > 1000.0 && p.base_iso > 0.0, "{model}");
+      assert!(!p.noise.is_empty(), "{model}: noise table");
+      for c in &p.noise {
+        assert_eq!(c.luma.len(), 4, "{model}: luma levels at ISO {}", c.iso);
+        assert!(
+          matches!(c.luma[0].kind, LevelKind::ThruG2 | LevelKind::ThruG3),
+          "{model}: full-resolution luma level"
+        );
+        if c.luma[0].kind == LevelKind::ThruG2 {
+          assert_eq!(c.luma[0].gabor.len(), 7, "{model}: gabor parameters");
+        }
+        for pass in &c.chroma_passes {
+          assert!(pass.scale >= 1, "{model}: chroma NR pass scale");
+          if pass.kind == PassKind::Despeckle {
+            assert_eq!(pass.despeckle.len(), 13, "{model}: despeckle parameters");
+          }
+          if pass.kind == PassKind::EarlyOut2 {
+            assert_eq!(pass.despeckle.len(), 2, "{model}: early_out2 parameters");
+          }
+        }
+      }
       for cct in [2800.0, 4000.0, 6500.0] {
         let v = p.look_matrix(cct).mul_vec([1.0, 1.0, 1.0]);
         assert!(

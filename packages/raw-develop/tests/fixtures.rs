@@ -96,6 +96,6 @@ fn final_render_close_to_apple() {
       .sum::<f64>()
       / r.len() as f64;
     eprintln!("{stem}: mean |Δ| {mad:.4}");
-    assert!(mad < 0.03, "{stem}: mean |Δ| {mad:.4} vs Apple");
+    assert!(mad < 0.006, "{stem}: mean |Δ| {mad:.4} vs Apple");
   }
 }

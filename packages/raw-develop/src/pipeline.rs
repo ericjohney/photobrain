@@ -9,7 +9,7 @@
 //!  7. highlight reconstruction                                      (RAWRecoverHighlightsV2)
 //!  8. camera -> scene-linear Display P3, exposure                   (colour matrices)
 //!  9. sharpening
-//! 10. gamut compression + tone curve -> encoded Display P3          (gmKernel, boost)
+//! 10. hue magnet, gamut map, tone boost -> encoded Display P3       (RAWHueMagnetMR, gmKernel_v7, boost_v7)
 //! 11. orientation, user rotation and crop
 //!
 //! `develop` is a pure function of a `Negative` and `DevelopSettings`.
@@ -17,13 +17,16 @@
 use crate::Negative;
 use crate::error::Result;
 use crate::image::RgbImage;
+use crate::math::srgb_encode;
 use crate::profile::CameraProfile;
 use crate::settings::{DevelopSettings, WhiteBalance};
-use crate::stages::{demosaic, detail, highlights, lens::LensCorrection, look};
+use crate::stages::{
+  chroma_nr, demosaic, detail, dextrans, highlights, lens::LensCorrection, look, luma,
+};
 use rayon::prelude::*;
 
 /// Bumped whenever developed output changes for the same input and settings.
-pub const PIPELINE_VERSION: u32 = 1;
+pub const PIPELINE_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Quality {
@@ -70,6 +73,8 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   settings.validate()?;
   let meta = &neg.meta;
   let profile = CameraProfile::builtin(&meta.model)?;
+
+  let noise = profile.noise_for_iso(meta.iso);
 
   // White balance: as-shot multipliers come from WB_GRBLevels (G/R, 1, G/B).
   let as_shot = [
@@ -120,8 +125,15 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   // 3-4. Demosaic and crop to the exact active area.
   let (mut img, scale) = match opts.quality {
     Quality::Full => {
-      let mut d = demosaic::full(&mosaic);
-      demosaic::refine_luma_chroma(&mosaic, &mut d, 1);
+      let d = match noise {
+        Some(n) => full_dextrans(neg, profile.white_level, wb, n),
+        None => None,
+      };
+      let d = d.unwrap_or_else(|| {
+        let mut d = demosaic::full(&mosaic);
+        demosaic::refine_luma_chroma(&mosaic, &mut d, 1);
+        d
+      });
       (d, 1.0f32)
     }
     Quality::Preview => {
@@ -137,20 +149,53 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   };
   drop(lin);
 
-  // 5. Noise reduction (white-balanced camera space).
-  let luma_nr = settings
-    .luma_noise_reduction
-    .unwrap_or_else(|| detail::default_luma_nr(meta.iso));
-  detail::apply(
-    &mut img,
-    &detail::DetailParams {
-      luma_nr,
-      chroma_nr: settings.chroma_noise_reduction,
-      sharpen: 0.0,
-      scale,
-      noise: detail::noise_level(meta.iso, profile.base_iso),
-    },
-  );
+  // 5. Noise reduction (white-balanced camera space): RawCamera's chroma NR and luma
+  // pyramid when the profile has a noise table for this ISO, else the generic filters.
+  let mut luma_nr = settings.luma_noise_reduction.unwrap_or(0.0);
+  match noise {
+    Some(n) if opts.quality == Quality::Full => {
+      let default = luma::default_lnr(&n.luma);
+      luma_nr = settings.luma_noise_reduction.unwrap_or(default);
+      chroma_nr::apply(
+        &mut img,
+        wb.map(|v| v as f32),
+        n,
+        settings.chroma_noise_reduction,
+        Some(luma::Amounts {
+          lnr: luma_nr,
+          sharpness: settings.sharpening,
+        }),
+      );
+    }
+    _ => {
+      if settings.luma_noise_reduction.is_none() {
+        luma_nr = detail::default_luma_nr(meta.iso);
+      }
+      if let Some(n) = noise {
+        chroma_nr::apply(
+          &mut img,
+          wb.map(|v| v as f32),
+          n,
+          settings.chroma_noise_reduction,
+          None,
+        );
+      }
+      detail::apply(
+        &mut img,
+        &detail::DetailParams {
+          luma_nr,
+          chroma_nr: if noise.is_some() {
+            0.0
+          } else {
+            settings.chroma_noise_reduction
+          },
+          sharpen: 0.0,
+          scale,
+          noise: detail::noise_level(meta.iso, profile.base_iso),
+        },
+      );
+    }
+  }
 
   // 6. Lens correction.
   let lc = LensCorrection::from_params(&meta.lens, profile.distortion_fill_scale);
@@ -161,7 +206,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
 
   // 7. Highlights: channels clip at wb[c] in balanced units.
   if settings.highlight_recovery {
-    highlights::recover(&mut img, highlights::clip_levels(wb.map(|v| v as f32)));
+    highlights::recover(&mut img, highlights::thresholds(wb.map(|v| v as f32)));
   }
 
   // 8. Camera -> linear Display P3, exposure.
@@ -179,24 +224,26 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     ]
   });
 
-  // 9. Sharpening (scene-linear P3).
-  detail::apply(
-    &mut img,
-    &detail::DetailParams {
-      luma_nr: 0.0,
-      chroma_nr: 0.0,
-      sharpen: settings.sharpening,
-      scale,
-      noise: 1.0,
-    },
-  );
+  // 9. Sharpening (scene-linear P3), when the luma pyramid did not already sharpen.
+  if noise.is_none() || opts.quality != Quality::Full {
+    detail::apply(
+      &mut img,
+      &detail::DetailParams {
+        luma_nr: 0.0,
+        chroma_nr: 0.0,
+        sharpen: settings.sharpening,
+        scale,
+        noise: 1.0,
+      },
+    );
+  }
 
   let linear = opts.keep_linear.then(|| img.clone());
 
   // 10. Look.
-  let curve = &profile.tone_curve;
+  let boost = look::Boost::default();
   let amount = settings.tone_amount;
-  img.map_pixels(|p| look::tone(look::compress_gamut(p), curve, amount).map(|v| v.clamp(0.0, 1.0)));
+  img.map_pixels(|p| look::render(p, amount, &boost).map(|v| srgb_encode(v.clamp(0.0, 1.0))));
 
   // 11. Geometry.
   let orientation = rotate_orientation(meta.orientation, settings.quarter_turns);
@@ -219,6 +266,45 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
       luma_nr,
     },
   })
+}
+
+/// Full-resolution X-Trans demosaic (RawCamera's deXtrans_v8 port) of the active area,
+/// returned white-balanced like the rest of the pipeline expects.
+fn full_dextrans(
+  neg: &Negative,
+  white: f32,
+  wb: [f64; 3],
+  noise: &crate::profile::NoiseIso,
+) -> Option<RgbImage> {
+  let meta = &neg.meta;
+  let black = meta.black_levels.iter().map(|&b| b as f32).sum::<f32>()
+    / meta.black_levels.len().max(1) as f32;
+  // RawCamera's exposureFactor (only gates the demosaic noise mixer in deep shadows)
+  // tracks its baseline exposure, -RawExposureBias - 0.5; fitted log-linear relation.
+  let be = -meta.raw_exposure_bias.unwrap_or(-0.72) - 0.5;
+  let prm = dextrans::Params {
+    black: black / 65535.0,
+    range: 65535.0 / (white - black),
+    rn: noise.demosaic_noise,
+    exposure_factor: 2f64.powf(1.0146 + 0.452 * be) as f32,
+    wb: wb.map(|v| v as f32),
+  };
+  let mut img = dextrans::demosaic(
+    &neg.mosaic,
+    meta.raw_width,
+    meta.raw_height,
+    &meta.cfa,
+    (
+      meta.crop_left,
+      meta.crop_top,
+      meta.crop_width,
+      meta.crop_height,
+    ),
+    &prm,
+  )?;
+  let wbf = wb.map(|v| v as f32);
+  img.map_pixels(|p| [p[0] * wbf[0], p[1] * wbf[1], p[2] * wbf[2]]);
+  Some(img)
 }
 
 /// Compose an EXIF orientation with additional clockwise quarter turns.
