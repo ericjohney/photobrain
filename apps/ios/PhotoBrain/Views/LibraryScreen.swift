@@ -3,7 +3,6 @@ import SwiftUI
 enum AppTab: Hashable, Sendable {
     case library
     case collections
-    case people
     case search
 }
 extension LibraryFilters {
@@ -36,24 +35,40 @@ struct LibraryScreen: View {
 
     @State private var optionsPresented = false
     @State private var addSelectionPresented = false
-    @State private var calendarPresented = false
-    @State private var gearStatsPresented = false
+    @State private var loupeTransition = LoupeZoomTransition()
+    /// Pinched column counts per grouping (`years:9,months:5,days:3`).
+    @AppStorage("com.photobrain.gridColumns") private var storedColumns = ""
     @Environment(\.showInLibrary) private var showInLibrary
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Safe-area insets with the tab bar showing; kept while it is collapsed so the grid's
+    /// insets never jump.
+    @State private var chromeInsets = EdgeInsets()
+    @State private var scrollToNewestVersion = 0
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle(store.isSelecting ? store.headerSubtitle : "Library")
-                .navigationBarTitleDisplayMode(store.isSelecting ? .inline : .large)
-                .pbNavigationSubtitle(store.isSelecting ? "" : store.itemCountText)
-                .toolbar { toolbarContent }
-                .safeAreaInset(edge: .top, spacing: 0) { topInsets }
-                .safeAreaInset(edge: .bottom, spacing: PBSpacing.s) {
-                    ActivityBar(coordinator: scans)
+            GeometryReader { proxy in
+                ZStack(alignment: .top) {
+                    if store.loadState == .content {
+                        content
+                            .ignoresSafeArea()
+                    } else {
+                        content
+                            .padding(.top, 64)
+                    }
+                    header
                 }
-                .navigationDestination(item: $utility) { destination in
-                    utilityScreen(destination)
-                }
+                .overlay(alignment: .bottom) { bottomChrome }
+                .onAppear { updateChromeInsets(proxy.safeAreaInsets) }
+                .onChange(of: proxy.safeAreaInsets) { _, insets in updateChromeInsets(insets) }
+            }
+            .toolbar(.hidden, for: .navigationBar)
+
+            .toolbar(isBrowsingCollapsed ? .hidden : .visible, for: .tabBar)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: isBrowsingCollapsed)
+            .navigationDestination(item: $utility) { destination in
+                utilityScreen(destination)
+            }
         }
         .sheet(isPresented: $optionsPresented) {
             LibraryOptionsView(
@@ -64,16 +79,6 @@ struct LibraryScreen: View {
                 theme: theme
             )
         }
-        .sheet(isPresented: $calendarPresented) {
-            CaptureCalendarView(
-                calendar: store.captureCalendar,
-                capturedDate: store.filters.capturedDate,
-                select: store.showCapturedDate
-            )
-        }
-        .sheet(isPresented: $gearStatsPresented) {
-            GearStatsScreen(filters: store.filters, api: environment.api, select: store.showGear)
-        }
         .sheet(isPresented: $addSelectionPresented) {
             AddSelectionToCollectionSheet(
                 photoIDs: store.orderedRecords.map(\.id).filter(store.selectedPhotoIDs.contains),
@@ -81,7 +86,7 @@ struct LibraryScreen: View {
                 completed: { store.endSelection() }
             )
         }
-        .fullScreenCover(isPresented: loupePresented) {
+        .loupeCover(isPresented: store.activePhotoID != nil) {
             if let activeID = store.activePhotoID {
                 LoupeScreen(
                     records: store.orderedRecords,
@@ -92,7 +97,8 @@ struct LibraryScreen: View {
                     api: environment.api,
                     curation: store.curation,
                     collections: collections,
-                    dismiss: { store.activePhotoID = nil }
+                    dismiss: { store.activePhotoID = nil },
+                    transition: loupeTransition
                 )
             }
         }
@@ -119,91 +125,187 @@ struct LibraryScreen: View {
         .task { await duplicates.refreshCounts() }
     }
 
-    // MARK: Toolbar
+    // MARK: Floating chrome
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if store.isSelecting {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Done") { store.endSelection() }
-                    .accessibilityLabel("Finish selecting photos")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    addSelectionPresented = true
-                } label: {
-                    Image(systemName: "rectangle.stack.badge.plus")
+    /// True while photos fill the screen, so the title and glass buttons sit over the scrim.
+    private var overPhotos: Bool {
+        store.loadState == .content
+    }
+
+    /// Scrolled back in time: Photos swaps the tab bar for the Years · Months · All switcher.
+    private var isBrowsingCollapsed: Bool {
+        store.isBrowsingHistory && showsGroupingControl
+    }
+
+    private func updateChromeInsets(_ insets: EdgeInsets) {
+        guard !isBrowsingCollapsed || chromeInsets == EdgeInsets() else { return }
+        if insets != chromeInsets { chromeInsets = insets }
+    }
+
+    /// Grid insets: below the title at the oldest edge, above the tab bar at the newest.
+    private var gridInsets: EdgeInsets {
+        EdgeInsets(top: chromeInsets.top + 64, leading: 0, bottom: chromeInsets.bottom + PBSpacing.s, trailing: 0)
+    }
+
+    /// Photos' title block over the scrim: Library, the visible date or item count, and glass
+    /// buttons; then the Filtered capsule and warnings.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: PBSpacing.s) {
+            HStack(alignment: .top, spacing: PBSpacing.s) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(store.isSelecting ? store.headerSubtitle : "Library")
+                        .font(.largeTitle.bold())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .accessibilityIdentifier("library-title")
+                        .accessibilityAddTraits(.isHeader)
+                    if !store.isSelecting, overPhotos {
+                        Text(store.headerSubtitle)
+                            .font(.subheadline.weight(.semibold))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                    }
                 }
-                .accessibilityLabel("Add to Collection")
-                .disabled(store.selectedPhotoIDs.isEmpty)
+                .shadow(color: overPhotos ? .black.opacity(0.35) : .clear, radius: 6)
+                Spacer(minLength: 0)
+                headerButtons
             }
+            if !store.isSelecting, store.filters.isActive {
+                filteredCapsule
+            }
+            if let error = store.refreshError {
+                PBBanner(message: "Couldn’t refresh. Cached photos are still shown.", retry: { Task { await store.load() } })
+                    .accessibilityLabel("Could not refresh library. \(error)")
+            }
+            if let message = scans.statusMessage {
+                PBBanner(message: message)
+            }
+        }
+        .padding(.horizontal, PBSpacing.l)
+        .padding(.top, PBSpacing.xs)
+        .foregroundStyle(overPhotos ? Color.white : Color.primary)
+        .environment(\.colorScheme, overPhotos ? .dark : colorSchemeOutsidePhotos)
+    }
+
+    @Environment(\.colorScheme) private var colorSchemeOutsidePhotos
+
+    @ViewBuilder
+    private var headerButtons: some View {
+        if store.isSelecting {
+            Button {
+                addSelectionPresented = true
+            } label: {
+                GlassIconLabel(systemImage: "rectangle.stack.badge.plus")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add to Collection")
+            .disabled(store.selectedPhotoIDs.isEmpty)
+            glassTextButton("Done") { store.endSelection() }
+                .accessibilityLabel("Finish selecting photos")
         } else {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Select") { store.beginSelection() }
-                    .accessibilityLabel("Select photos")
-                    .disabled(store.records.isEmpty)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                moreMenu
-            }
+            moreMenu
+            glassTextButton("Select") { store.beginSelection() }
+                .accessibilityLabel("Select photos")
+                .disabled(store.records.isEmpty)
         }
     }
 
-    /// Everything that used to crowd the header: grouping, sort, filters, browse screens, and
-    /// library maintenance. The label carries the review and duplicate counts for VoiceOver.
+    private func glassTextButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .padding(.horizontal, PBSpacing.l)
+                .frame(height: PBSize.control)
+                .pbGlass(in: Capsule(), interactive: true)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var filteredCapsule: some View {
+        Button {
+            store.clearFilters()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease")
+                Text("Filtered: \(filterTitle)")
+                    .lineLimit(1)
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .pbGlass(in: Capsule(), interactive: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Clear all filters")
+        .accessibilityValue(filterTitle)
+    }
+
+    /// Scan activity, then (scrolled back in time) Library · Years/Months/All · Search in
+    /// place of the tab bar.
+    private var bottomChrome: some View {
+        VStack(spacing: PBSpacing.s) {
+            ActivityBar(coordinator: scans)
+            if isBrowsingCollapsed {
+                collapsedBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .padding(.bottom, isBrowsingCollapsed ? 0 : PBSpacing.s)
+    }
+
+    private var collapsedBar: some View {
+        HStack(spacing: PBSpacing.s) {
+            Button {
+                scrollToNewestVersion += 1
+            } label: {
+                GlassIconLabel(systemImage: "photo.on.rectangle", tint: PBColor.accent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Library")
+            .accessibilityHint("Scrolls to the newest photos")
+            groupingSwitcher
+            Button {
+                selectedTab = .search
+            } label: {
+                GlassIconLabel(systemImage: "magnifyingglass")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Search")
+        }
+        .padding(.horizontal, PBSpacing.l)
+        .padding(.bottom, PBSpacing.xs)
+    }
+
+    /// Photos-style More menu: Sort and a single-choice Filter, then Library Options.
+    /// Review, Duplicates, Calendar, Map, and Gear Stats live in Albums › Utilities.
     private var moreMenu: some View {
         Menu {
             Section {
-                Picker("Group By", selection: groupingBinding) {
-                    ForEach(LibraryGrouping.allCases) { grouping in
-                        Text(grouping.title).tag(grouping)
-                    }
-                }
-                Picker("Sort", selection: sortBinding) {
+                Picker(selection: sortBinding) {
                     ForEach(LibrarySort.allCases) { sort in
                         Text(sort.title).tag(sort)
                     }
-                }
-                Button {
-                    optionsPresented = true
                 } label: {
-                    Label("Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                    Label("Sort", systemImage: "arrow.up.arrow.down")
                 }
-            }
-            Section {
-                Button {
-                    utility = .review
-                } label: {
-                    Label(
-                        review.counts.all > 0 ? "Review (\(review.counts.all.formatted()))" : "Review",
-                        systemImage: "sparkles.rectangle.stack"
-                    )
-                }
-                .accessibilityLabel("Review, \(CountText.photos(review.counts.all))")
-                Button {
-                    utility = .duplicates
+                .pickerStyle(.menu)
+                Menu {
+                    Picker("Filter", selection: quickFilterBinding) {
+                        ForEach(LibraryQuickFilter.allCases) { filter in
+                            Label(filter.title, systemImage: filter.systemImage).tag(Optional(filter))
+                        }
+                    }
+                    .pickerStyle(.inline)
                 } label: {
                     Label(
-                        duplicates.counts.total > 0 ? "Duplicates (\(duplicates.counts.total.formatted()))" : "Duplicates",
-                        systemImage: "square.on.square"
+                        store.filters.isActive ? "Filter: \(filterTitle)" : "Filter",
+                        systemImage: store.filters.isActive
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle"
                     )
-                }
-                .accessibilityLabel("Duplicates, \(CountText.of(duplicates.counts.total, "group", "groups"))")
-                Button {
-                    calendarPresented = true
-                } label: {
-                    Label("Calendar", systemImage: "calendar")
-                }
-                .disabled(store.records.isEmpty)
-                Button {
-                    utility = .map
-                } label: {
-                    Label("Map", systemImage: "map")
-                }
-                Button {
-                    gearStatsPresented = true
-                } label: {
-                    Label("Gear Stats", systemImage: "chart.bar")
                 }
             }
             Section {
@@ -214,47 +316,78 @@ struct LibraryScreen: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .overlay(alignment: .topTrailing) {
-                    if review.counts.all + duplicates.counts.total > 0 {
-                        Circle()
-                            .fill(PBColor.accent)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 6, y: -4)
-                    }
-                }
+            GlassIconLabel(systemImage: "line.3.horizontal.decrease")
         }
-        .accessibilityLabel(moreAccessibilityLabel)
+        .accessibilityLabel("Library options")
     }
 
-    private var moreAccessibilityLabel: String {
-        var parts = ["Library options"]
-        if review.counts.all > 0 { parts.append(CountText.of(review.counts.all, "photo to review", "photos to review")) }
-        if duplicates.counts.total > 0 {
-            parts.append(CountText.of(duplicates.counts.total, "duplicate group", "duplicate groups"))
+    private var quickFilterBinding: Binding<LibraryQuickFilter?> {
+        Binding(
+            get: { LibraryQuickFilter(matching: store.filters) },
+            set: { filter in store.applyFilters(filter?.filters ?? LibraryFilters()) }
+        )
+    }
+
+    /// The active filter's name, or the summary for filters set elsewhere (e.g. a calendar day).
+    private var filterTitle: String {
+        LibraryQuickFilter(matching: store.filters)?.title ?? store.filters.summary
+    }
+
+    // MARK: Grouping and density
+
+    private var showsGroupingControl: Bool {
+        !store.isSelecting && store.sort == .captured && !store.records.isEmpty
+    }
+
+    /// Photos' glass Years · Months · All switcher.
+    private var groupingSwitcher: some View {
+        HStack(spacing: 0) {
+            ForEach(LibraryGrouping.segments) { grouping in
+                let selected = store.grouping == grouping
+                Button {
+                    groupingBinding.wrappedValue = grouping
+                } label: {
+                    Text(grouping.title)
+                        .font(.subheadline.weight(selected ? .semibold : .regular))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: PBSize.control - 8)
+                        .background {
+                            if selected {
+                                Capsule().fill(Color.primary.opacity(0.14))
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
         }
-        return parts.joined(separator: ", ")
+        .padding(4)
+        .frame(maxWidth: 280)
+        .pbGlass(in: Capsule(), interactive: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Group By")
+    }
+
+    private var columnsByGrouping: [String: Int] {
+        Dictionary(uniqueKeysWithValues: storedColumns.split(separator: ",").compactMap { pair -> (String, Int)? in
+            let parts = pair.split(separator: ":")
+            guard parts.count == 2, let value = Int(parts[1]) else { return nil }
+            return (String(parts[0]), value)
+        })
+    }
+
+    private var currentColumns: Int {
+        columnsByGrouping[store.grouping.rawValue] ?? store.grouping.defaultPhoneColumns
+    }
+
+    private func storeColumns(_ columns: Int) {
+        var values = columnsByGrouping
+        values[store.grouping.rawValue] = columns
+        storedColumns = values.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")
     }
 
     // MARK: Content
-
-    /// Quick-filter chips, an active-filter summary, and warnings, under the large title.
-    @ViewBuilder
-    private var topInsets: some View {
-        VStack(spacing: 0) {
-            if !store.isSelecting, !store.records.isEmpty || store.filters.isActive {
-                LibraryQuickFilters(store: store, presentFilters: { optionsPresented = true })
-            }
-            if let error = store.refreshError {
-                PBBanner(message: "Couldn’t refresh. Cached photos are still shown.", retry: { Task { await store.load() } })
-                    .accessibilityLabel("Could not refresh library. \(error)")
-            }
-            if let message = scans.statusMessage {
-                PBBanner(message: message)
-            }
-        }
-        .background(.bar)
-    }
 
     @ViewBuilder
     private var content: some View {
@@ -272,11 +405,25 @@ struct LibraryScreen: View {
                     .buttonStyle(.borderedProminent)
             }
         case .empty:
-            ContentUnavailableView(
-                store.filters.isActive ? "No Matching Photos" : "No Photos",
-                systemImage: "photo.on.rectangle.angled",
-                description: Text(store.filters.isActive ? "Try clearing one or more filters." : "Scan your library to add photos.")
-            )
+            if store.filters.isActive {
+                ContentUnavailableView {
+                    Label(
+                        LibraryQuickFilter(matching: store.filters)?.emptyTitle ?? "No Matching Photos",
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    )
+                } description: {
+                    Text("Nothing in your library matches this filter.")
+                } actions: {
+                    Button("Show All Items") { store.clearFilters() }
+                        .buttonStyle(.borderedProminent)
+                }
+            } else {
+                ContentUnavailableView(
+                    "No Photos",
+                    systemImage: "photo.on.rectangle.angled",
+                    description: Text("Scan your library to add photos.")
+                )
+            }
         default:
             LibraryGrid(
                 sections: store.sections,
@@ -287,6 +434,11 @@ struct LibraryScreen: View {
                 contentRevision: store.presentationRevision,
                 onLongPress: store.selectFromLongPress,
                 onVisibleChange: store.observeVisible,
+                transition: loupeTransition,
+                columns: currentColumns,
+                onPinchColumns: storeColumns,
+                fullBleedInsets: gridInsets,
+                scrollToNewestVersion: scrollToNewestVersion,
                 onRefresh: {
                     await scans.manualLibraryRefresh()
                     await store.load()
@@ -296,7 +448,6 @@ struct LibraryScreen: View {
                     await duplicates.refreshCounts()
                 }
             )
-            .ignoresSafeArea(edges: .horizontal)
         }
     }
 
@@ -333,12 +484,6 @@ struct LibraryScreen: View {
         })
     }
 
-    private var loupePresented: Binding<Bool> {
-        Binding(
-            get: { store.activePhotoID != nil },
-            set: { if !$0 { store.activePhotoID = nil } }
-        )
-    }
 
     private var duplicateRiskPresented: Binding<Bool> {
         Binding(
@@ -355,67 +500,6 @@ enum LibraryUtility: String, Hashable, Identifiable, Sendable {
     case map
 
     var id: String { rawValue }
-}
-
-/// Horizontally scrolling chips under the Library title: common one-tap filters, then each
-/// other active filter as a removable chip, then Filters (the full sheet).
-private struct LibraryQuickFilters: View {
-    @ObservedObject var store: LibraryStore
-    let presentFilters: () -> Void
-
-    private var filters: LibraryFilters { store.filters }
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: PBSpacing.s) {
-                FilterChip(title: "All", isOn: !filters.isActive) {
-                    store.clearFilters()
-                }
-                .accessibilityLabel(filters.isActive ? "Clear all filters" : "All photos")
-                FilterChip(title: "Picks", systemImage: "flag.fill", isOn: filters.flag == .pick) {
-                    toggle { $0.flag = $0.flag == .pick ? nil : .pick }
-                }
-                FilterChip(title: "4★+", isOn: filters.minRating == 4) {
-                    toggle { $0.minRating = $0.minRating == 4 ? nil : 4 }
-                }
-                .accessibilityLabel("4 or more stars")
-                FilterChip(title: "Videos", systemImage: "video.fill", isOn: filters.mediaKind == .video) {
-                    toggle { $0.mediaKind = $0.mediaKind == .video ? .all : .video }
-                }
-                FilterChip(title: "RAW", isOn: filters.mediaKind == .raw) {
-                    toggle { $0.mediaKind = $0.mediaKind == .raw ? .all : .raw }
-                }
-                ForEach(otherActive) { entry in
-                    FilterChip(title: entry.title, isOn: true, removable: true) {
-                        store.applyFilters(filters.removing(entry.field))
-                    }
-                    .accessibilityLabel("Remove filter \(entry.title)")
-                }
-                FilterChip(title: "Filters", systemImage: "line.3.horizontal.decrease", action: presentFilters)
-                    .accessibilityLabel(filters.isActive ? "Edit filters, \(filters.summary)" : "Add filters")
-            }
-            .padding(.horizontal, PBSpacing.l)
-            .padding(.vertical, PBSpacing.s)
-        }
-    }
-
-    /// Active filters the quick chips above don't already show.
-    private var otherActive: [LibraryFilters.ActiveFilter] {
-        filters.activeFields.filter { entry in
-            switch entry.field {
-            case .flag: filters.flag != .pick
-            case .minRating: filters.minRating != 4
-            case .mediaKind: filters.mediaKind != .video && filters.mediaKind != .raw
-            default: true
-            }
-        }
-    }
-
-    private func toggle(_ change: (inout LibraryFilters) -> Void) {
-        var updated = filters
-        change(&updated)
-        store.applyFilters(updated)
-    }
 }
 
 private struct LibraryOptionsView: View {
@@ -443,14 +527,6 @@ private struct LibraryOptionsView: View {
                         }
                         .foregroundStyle(.primary)
                         .accessibilityAddTraits(store.sort == sort ? .isSelected : [])
-                    }
-                }
-
-                Section {
-                    NavigationLink {
-                        FilterView(store: store, smartAlbums: smartAlbums)
-                    } label: {
-                        LabeledContent("Filter", value: store.filters.summary)
                     }
                 }
 

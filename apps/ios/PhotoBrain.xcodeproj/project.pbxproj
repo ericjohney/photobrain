@@ -54,6 +54,7 @@
 		A20000000000000000000011 /* CollectionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* CollectionsTests.swift */; };
 		A1000000000000000000001A /* PhotoTags.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* PhotoTags.swift */; };
 		A20000000000000000000012 /* PhotoTagsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000012 /* PhotoTagsTests.swift */; };
+		A200000000000000000000F1 /* PhotosParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000000000000000000F1 /* PhotosParityTests.swift */; };
 		A1000000000000000000001B /* JunkReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001B /* JunkReview.swift */; };
 		A1000000000000000000001C /* ReviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001C /* ReviewScreen.swift */; };
 		A20000000000000000000013 /* JunkReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* JunkReviewTests.swift */; };
@@ -181,6 +182,7 @@
 		B20000000000000000000011 /* CollectionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionsTests.swift; sourceTree = "<group>"; };
 		B1000000000000000000001A /* PhotoTags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoTags.swift; sourceTree = "<group>"; };
 		B20000000000000000000012 /* PhotoTagsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoTagsTests.swift; sourceTree = "<group>"; };
+		B200000000000000000000F1 /* PhotosParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosParityTests.swift; sourceTree = "<group>"; };
 		B1000000000000000000001B /* JunkReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JunkReview.swift; sourceTree = "<group>"; };
 		B1000000000000000000001C /* ReviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewScreen.swift; sourceTree = "<group>"; };
 		B20000000000000000000013 /* JunkReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JunkReviewTests.swift; sourceTree = "<group>"; };
@@ -304,6 +306,7 @@
 				B20000000000000000000010 /* PhotoCurationTests.swift */,
 				B20000000000000000000011 /* CollectionsTests.swift */,
 				B20000000000000000000012 /* PhotoTagsTests.swift */,
+				B200000000000000000000F1 /* PhotosParityTests.swift */,
 				B20000000000000000000013 /* JunkReviewTests.swift */,
 				B20000000000000000000014 /* SmartAlbumsTests.swift */,
 				B20000000000000000000015 /* DuplicatesTests.swift */,
@@ -484,6 +487,7 @@
 				A20000000000000000000010 /* PhotoCurationTests.swift in Sources */,
 				A20000000000000000000011 /* CollectionsTests.swift in Sources */,
 				A20000000000000000000012 /* PhotoTagsTests.swift in Sources */,
+				A200000000000000000000F1 /* PhotosParityTests.swift in Sources */,
 				A20000000000000000000013 /* JunkReviewTests.swift in Sources */,
 				A20000000000000000000014 /* SmartAlbumsTests.swift in Sources */,
 				A20000000000000000000015 /* DuplicatesTests.swift in Sources */,

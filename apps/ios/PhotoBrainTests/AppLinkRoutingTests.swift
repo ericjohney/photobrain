@@ -57,6 +57,6 @@ final class AppLinkRoutingTests: XCTestCase {
         XCTAssertNil(state.presentedRoute)
 
         state.apply(.people)
-        XCTAssertEqual(state.selectedTab, .people)
+        XCTAssertEqual(state.selectedTab, .collections, "People lives in Collections")
     }
 }

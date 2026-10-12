@@ -46,7 +46,7 @@ final class PhotoTagsStore: ObservableObject {
     }
 }
 
-/// What a loupe chip, memory card, browse tile, or gear row narrows the Library to.
+/// What a loupe chip, memory card, browse tile, or gear row narrows Search to.
 enum LibraryShortcut: Equatable, Sendable {
     case tag(String)
     case place(PhotoPlaceDTO)
@@ -55,7 +55,8 @@ enum LibraryShortcut: Equatable, Sendable {
     case gear(GearSelection)
 }
 
-/// Closes whatever loupe is presenting a photo and shows the Library filtered to a tag or place.
+/// Closes whatever loupe is presenting a photo and shows Search filtered to a tag, place, date,
+/// or camera/lens (the name predates the move from the Library).
 /// Installed at the app root; presenters that stack extra modals wrap it to close them too.
 struct ShowInLibraryAction {
     let handler: @MainActor (LibraryShortcut) -> Void

@@ -143,14 +143,14 @@ private struct RootTabView: View {
     @State private var navigation = AppLinkNavigationState()
     @State private var libraryUtility: LibraryUtility?
     @State private var gearStatsPresented = false
+    @State private var calendarPresented = false
 
     @ViewBuilder
     private var tabs: some View {
         if #available(iOS 18.0, *) {
             TabView(selection: $navigation.selectedTab) {
                 Tab("Library", systemImage: "photo.on.rectangle", value: AppTab.library) { libraryTab }
-                Tab("Albums", systemImage: "rectangle.stack", value: AppTab.collections) { albumsTab }
-                Tab("People", systemImage: "person.2", value: AppTab.people) { peopleTab }
+                Tab("Collections", systemImage: "rectangle.stack", value: AppTab.collections) { albumsTab }
                 Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) { searchTab }
             }
         } else {
@@ -159,11 +159,8 @@ private struct RootTabView: View {
                     .tabItem { Label("Library", systemImage: "photo.on.rectangle") }
                     .tag(AppTab.library)
                 albumsTab
-                    .tabItem { Label("Albums", systemImage: "rectangle.stack") }
+                    .tabItem { Label("Collections", systemImage: "rectangle.stack") }
                     .tag(AppTab.collections)
-                peopleTab
-                    .tabItem { Label("People", systemImage: "person.2") }
-                    .tag(AppTab.people)
                 searchTab
                     .tabItem { Label("Search", systemImage: "magnifyingglass") }
                     .tag(AppTab.search)
@@ -204,12 +201,9 @@ private struct RootTabView: View {
                 navigation.selectedTab = .library
                 libraryUtility = utility
             },
-            openGearStats: { gearStatsPresented = true }
+            openGearStats: { gearStatsPresented = true },
+            openCalendar: { calendarPresented = true }
         )
-    }
-
-    private var peopleTab: some View {
-        PeopleTabScreen(people: people, collections: collections, curation: library.curation, api: environment.api)
     }
 
     private var searchTab: some View {
@@ -239,13 +233,19 @@ private struct RootTabView: View {
         .environment(\.backupCoordinator, BackupRuntime.shared.coordinator)
         .sheet(isPresented: $gearStatsPresented) {
             GearStatsScreen(filters: library.filters, api: environment.api) { selection in
-                navigation.selectedTab = .library
-                library.showGear(selection)
+                showInSearch(.gear(selection))
+            }
+        }
+        .sheet(isPresented: $calendarPresented) {
+            CaptureCalendarView(
+                calendar: library.captureCalendar,
+                capturedDate: library.filters.capturedDate
+            ) { date in
+                showInSearch(.capturedDate(date))
             }
         }
         .environment(\.showInLibrary, ShowInLibraryAction { shortcut in
-            navigation.selectedTab = .library
-            library.show(shortcut)
+            showInSearch(shortcut)
         })
         .preferredColorScheme(theme.preference.colorScheme)
         .onAppear {
@@ -268,6 +268,14 @@ private struct RootTabView: View {
                 break
             }
         }
+    }
+
+    /// Tags, places, dates, and gear narrow Search (Photos keeps the Library unfiltered and
+    /// browses categories from Search); the Library's own filter stays simple.
+    private func showInSearch(_ shortcut: LibraryShortcut) {
+        library.activePhotoID = nil
+        search.show(shortcut)
+        navigation.selectedTab = .search
     }
 
     private func applyPendingLink() {

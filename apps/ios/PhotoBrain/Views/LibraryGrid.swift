@@ -13,6 +13,18 @@ struct LibraryGrid: UIViewControllerRepresentable {
     var opensAtTop = false
     let onLongPress: (Int) -> Void
     let onVisibleChange: (Int?, CGFloat) -> Void
+    /// Zoom transition for this grid's loupe; selection then presents without the cover animation.
+    var transition: LoupeZoomTransition?
+    /// Phone column count (3, 5, or 9); nil keeps the width-based default. Wider screens
+    /// scale it up. Pinching steps it and reports the new value.
+    var columns: Int?
+    var onPinchColumns: ((Int) -> Void)?
+    /// Photos-style full-bleed library: the grid runs under the status bar and floating
+    /// chrome, with these insets, a dark top scrim, and section headers that scroll away.
+    /// Nil keeps the system's automatic insets and pinned headers.
+    var fullBleedInsets: EdgeInsets?
+    /// Bumped to scroll back to the newest photos (the collapsed bar's Library button).
+    var scrollToNewestVersion = 0
     let onRefresh: () async -> Void
 
     func makeUIViewController(context: Context) -> LibraryGridViewController {
@@ -48,15 +60,22 @@ struct LibraryGrid: UIViewControllerRepresentable {
                 selectedID = id
             }
         }
+        transition?.source = controller
         controller.onLongPress = onLongPress
         controller.opensAtTop = opensAtTop
         controller.onVisibleChange = onVisibleChange
         controller.onRefresh = onRefresh
+        controller.onPinchColumns = onPinchColumns
+        controller.setPhoneColumns(columns)
+        controller.setFullBleedInsets(fullBleedInsets.map {
+            UIEdgeInsets(top: $0.top, left: 0, bottom: $0.bottom, right: 0)
+        })
+        controller.scrollToNewest(version: scrollToNewestVersion)
     }
 }
 
 @MainActor
-final class LibraryGridViewController: UIViewController, UICollectionViewDelegate {
+final class LibraryGridViewController: UIViewController, UICollectionViewDelegate, LoupeTransitionSource {
     private let loader = RedirectAwareImageLoader()
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
     private var dataSource: UICollectionViewDiffableDataSource<PhotoSection.ID, Int>!
@@ -76,6 +95,24 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     var onVisibleChange: ((Int?, CGFloat) -> Void)?
     var onRefresh: (() async -> Void)?
     var opensAtTop = false
+    /// Photo whose cell is hidden while the loupe flies it in or out.
+    private var loupeHiddenID: Int?
+    var onPinchColumns: ((Int) -> Void)?
+    private let topScrim = GradientScrimView()
+    private var phoneColumns: Int?
+    private var fullBleed: UIEdgeInsets?
+    private var pinchHandled = false
+    /// The first positioning ran before the grid had a size; redo it on the next layout.
+    private var needsInitialEdgeScroll = false
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard needsInitialEdgeScroll, collectionView.bounds.height > 0 else { return }
+        needsInitialEdgeScroll = false
+        collectionView.layoutIfNeeded()
+        scrollToInitialEdge()
+        publishVisibleState()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -93,6 +130,9 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         )
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
         collectionView.addGestureRecognizer(longPress)
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
+        collectionView.addGestureRecognizer(pinch)
+
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
         NSLayoutConstraint.activate([
@@ -100,6 +140,16 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        topScrim.translatesAutoresizingMaskIntoConstraints = false
+        topScrim.isUserInteractionEnabled = false
+        topScrim.isHidden = true
+        view.addSubview(topScrim)
+        NSLayoutConstraint.activate([
+            topScrim.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            topScrim.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            topScrim.topAnchor.constraint(equalTo: view.topAnchor),
+            topScrim.heightAnchor.constraint(equalToConstant: 170),
         ])
 
         dataSource = UICollectionViewDiffableDataSource<PhotoSection.ID, Int>(collectionView: collectionView) {
@@ -113,6 +163,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                 return nil
             }
             cell.configure(photo: photo, selected: selectedIDs.contains(photoID), loader: loader)
+            cell.contentView.alpha = loupeHiddenID == photoID ? 0 : 1
             return cell
         }
         dataSource.supplementaryViewProvider = { [weak self] collectionView, kind, indexPath in
@@ -251,7 +302,151 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         onLongPress?(id)
     }
 
+    // MARK: Full bleed
+
+    func setFullBleedInsets(_ insets: UIEdgeInsets?) {
+        loadViewIfNeeded()
+        guard insets != fullBleed else { return }
+        let wasFullBleed = fullBleed != nil
+        let wasAtNewest = distanceFromNewest <= 2
+        fullBleed = insets
+        if let insets {
+            collectionView.contentInsetAdjustmentBehavior = .never
+            collectionView.contentInset = insets
+            collectionView.verticalScrollIndicatorInsets = insets
+            if #available(iOS 26.0, *) {
+                // Photos darkens the top edge instead of frosting it, keeping the white status
+                // bar and title readable over photos.
+                collectionView.topEdgeEffect.isHidden = true
+                collectionView.bottomEdgeEffect.isHidden = true
+            }
+        } else {
+            collectionView.contentInsetAdjustmentBehavior = .automatic
+            collectionView.contentInset = .zero
+            collectionView.verticalScrollIndicatorInsets = .zero
+        }
+        topScrim.isHidden = insets == nil
+        if wasFullBleed != (insets != nil) {
+            collectionView.collectionViewLayout.invalidateLayout()
+        }
+        if didInitialPosition, wasAtNewest, !opensAtTop {
+            collectionView.layoutIfNeeded()
+            scrollToInitialEdge()
+        }
+        publishVisibleState()
+    }
+
+    private var appliedScrollToNewest = 0
+
+    func scrollToNewest(version: Int) {
+        guard version != appliedScrollToNewest else { return }
+        appliedScrollToNewest = version
+        let bottom = collectionView.contentSize.height - collectionView.bounds.height
+            + collectionView.adjustedContentInset.bottom
+        collectionView.setContentOffset(CGPoint(x: 0, y: max(-collectionView.adjustedContentInset.top, bottom)), animated: true)
+    }
+
+    private var distanceFromNewest: CGFloat {
+        let visibleNewestEdge = collectionView.contentOffset.y
+            + collectionView.bounds.height
+            - collectionView.adjustedContentInset.bottom
+        return max(0, collectionView.contentSize.height - visibleNewestEdge)
+    }
+
+    // MARK: Column zoom
+
+    static let phoneColumnSteps = [3, 5, 9]
+
+    /// The next denser (`pinchingIn`) or looser column count, or nil at the end of the range.
+    static func nextColumns(from current: Int, pinchingIn: Bool) -> Int? {
+        let steps = phoneColumnSteps
+        let index = steps.firstIndex { $0 >= current } ?? steps.count - 1
+        let next = pinchingIn ? index + 1 : index - 1
+        return steps.indices.contains(next) ? steps[next] : nil
+    }
+
+    func setPhoneColumns(_ columns: Int?) {
+        loadViewIfNeeded()
+        guard columns != phoneColumns else { return }
+        let animated = phoneColumns != nil && view.window != nil
+        phoneColumns = columns
+        let anchor = pinchAnchorID ?? collectionView.indexPathsForVisibleItems.sorted().dropFirst(
+            collectionView.indexPathsForVisibleItems.count / 2
+        ).first.flatMap { dataSource.itemIdentifier(for: $0) }
+        pinchAnchorID = nil
+        let layout = makeLayout()
+        collectionView.setCollectionViewLayout(layout, animated: animated) { [weak self] _ in
+            self?.scrollToAnchor(anchor)
+        }
+        if !animated { scrollToAnchor(anchor) }
+    }
+
+    private var pinchAnchorID: Int?
+
+    private func scrollToAnchor(_ id: Int?) {
+        guard let id, let indexPath = dataSource.indexPath(for: id) else { return }
+        collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
+        publishVisibleState()
+    }
+
+    @objc private func pinched(_ pinch: UIPinchGestureRecognizer) {
+        switch pinch.state {
+        case .began:
+            pinchHandled = false
+        case .changed:
+            guard !pinchHandled, abs(pinch.scale - 1) > 0.2 else { return }
+            pinchHandled = true
+            let current = phoneColumns ?? 5
+            guard let next = Self.nextColumns(from: current, pinchingIn: pinch.scale < 1) else { return }
+            let point = pinch.location(in: collectionView)
+            pinchAnchorID = collectionView.indexPathForItem(at: point).flatMap { dataSource.itemIdentifier(for: $0) }
+            UISelectionFeedbackGenerator().selectionChanged()
+            onPinchColumns?(next)
+        default:
+            break
+        }
+    }
+
+    // MARK: Loupe transition source
+
+    var loupeContainerBounds: CGRect {
+        view.window?.bounds ?? UIScreen.main.bounds
+    }
+
+    func loupeSourceFrame(for id: Int) -> CGRect? {
+        guard view.window != nil, let indexPath = dataSource.indexPath(for: id) else { return nil }
+        guard var attributes = collectionView.layoutAttributesForItem(at: indexPath) else { return nil }
+        let visible = collectionView.bounds.inset(by: collectionView.adjustedContentInset)
+        if !visible.contains(attributes.frame) {
+            collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
+            collectionView.layoutIfNeeded()
+            attributes = collectionView.layoutAttributesForItem(at: indexPath) ?? attributes
+        }
+        return collectionView.convert(attributes.frame, to: nil)
+    }
+
+    func loupeSourceImage(for id: Int) -> UIImage? {
+        guard let indexPath = dataSource.indexPath(for: id),
+              let cell = collectionView.cellForItem(at: indexPath) as? PhotoGridCell else { return nil }
+        return cell.loadedImage
+    }
+
+    func setLoupeHiddenID(_ id: Int?) {
+        let previous = loupeHiddenID
+        loupeHiddenID = id
+        for changed in [previous, id].compactMap({ $0 }) {
+            guard let indexPath = dataSource.indexPath(for: changed),
+                  let cell = collectionView.cellForItem(at: indexPath) else { continue }
+            cell.contentView.alpha = changed == id ? 0 : 1
+        }
+    }
+
     private func scrollToInitialEdge() {
+        guard collectionView.bounds.height > 0, view.window != nil else {
+            needsInitialEdgeScroll = true
+            view.setNeedsLayout()
+            return
+        }
         if opensAtTop {
             collectionView.setContentOffset(
                 CGPoint(x: 0, y: -collectionView.adjustedContentInset.top),
@@ -266,23 +461,27 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     private func publishVisibleState() {
         let visible = collectionView.indexPathsForVisibleItems.sorted()
         let firstID = visible.first.flatMap { dataSource.itemIdentifier(for: $0) }
-        let visibleNewestEdge = collectionView.contentOffset.y
-            + collectionView.bounds.height
-            - collectionView.adjustedContentInset.bottom
-        let contentNewestEdge = collectionView.contentSize.height
-        onVisibleChange?(firstID, max(0, contentNewestEdge - visibleNewestEdge))
+        onVisibleChange?(firstID, distanceFromNewest)
+    }
+
+    /// Phone widths use the chosen count; wider screens add columns in proportion.
+    static func columnCount(width: CGFloat, phoneColumns: Int?) -> Int {
+        guard let phoneColumns else {
+            switch width {
+            case ..<560: return 4
+            case ..<768: return 6
+            case ..<1_024: return 7
+            default: return 8
+            }
+        }
+        guard width >= 560 else { return phoneColumns }
+        return max(phoneColumns, Int((CGFloat(phoneColumns) * width / 400).rounded()))
     }
 
     private func makeLayout() -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { [weak self] sectionIndex, environment in
             let width = environment.container.effectiveContentSize.width
-            let columns: Int
-            switch width {
-            case ..<560: columns = 4
-            case ..<768: columns = 6
-            case ..<1_024: columns = 7
-            default: columns = 8
-            }
+            let columns = Self.columnCount(width: width, phoneColumns: self?.phoneColumns)
             let item = NSCollectionLayoutItem(
                 layoutSize: NSCollectionLayoutSize(
                     widthDimension: .fractionalWidth(1 / CGFloat(columns)),
@@ -310,7 +509,8 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                     elementKind: UICollectionView.elementKindSectionHeader,
                     alignment: .top
                 )
-                header.pinToVisibleBounds = true
+                // Under floating chrome (Photos), headers scroll with their photos.
+                header.pinToVisibleBounds = self.fullBleed == nil
                 section.boundarySupplementaryItems = [header]
             }
             return section
@@ -460,10 +660,16 @@ private final class PhotoGridCell: UICollectionViewCell {
     /// reconfigures keep the loaded image instead of flashing the placeholder.
     private var displayedURL: URL?
 
+    /// The decoded thumbnail, or nil while the placeholder shows.
+    var loadedImage: UIImage? {
+        displayedURL == nil ? nil : imageView.image
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
+        imageView.backgroundColor = .secondarySystemFill
         imageView.translatesAutoresizingMaskIntoConstraints = false
         checkmark.tintColor = .white
         checkmark.backgroundColor = .tintColor
@@ -583,7 +789,7 @@ private final class PhotoGridCell: UICollectionViewCell {
         guard !keepsImage else { return }
         loadTask?.cancel()
         displayedURL = nil
-        imageView.image = SyntheticThumbnail.image(id: photo.id, size: bounds.size)
+        imageView.image = nil
         guard photo.thumbnailURL.host != "photos.example.invalid" else { return }
         loadTask = Task { @MainActor [weak self] in
             let target = self?.bounds.size ?? CGSize(width: 160, height: 160)
@@ -630,14 +836,31 @@ private final class PhotoGridCell: UICollectionViewCell {
     }
 }
 
+/// A black-to-clear gradient behind the status bar and toolbar while photos scroll under them.
+@MainActor
+private final class GradientScrimView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        let gradient = layer as! CAGradientLayer
+        gradient.colors = [
+            UIColor.black.withAlphaComponent(0.55).cgColor,
+            UIColor.black.withAlphaComponent(0.25).cgColor,
+            UIColor.clear.cgColor,
+        ]
+        gradient.locations = [0, 0.55, 1]
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
+/// Neutral placeholder shown until a thumbnail loads, like Photos' grey tiles.
 enum SyntheticThumbnail {
     static func color(id: Int) -> UIColor {
-        UIColor(
-            hue: CGFloat((id * 47) % 360) / 360,
-            saturation: 0.48 + CGFloat(id % 4) * 0.08,
-            brightness: 0.58 + CGFloat(id % 3) * 0.1,
-            alpha: 1
-        )
+        .secondarySystemFill
     }
 
     static func image(id: Int, size: CGSize) -> UIImage {

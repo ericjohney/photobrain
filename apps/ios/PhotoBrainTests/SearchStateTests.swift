@@ -135,9 +135,12 @@ final class SearchStateTests: XCTestCase {
         let store = SearchStore(api: api)
 
         store.applyFilters(Self.raw)
-        XCTAssertEqual(store.state, .idle, "filters alone never search without a query")
+        // Filters alone browse the listing; they never run a semantic search.
+        await settle(store)
         let initialRequests = await api.recordedSearchRequests()
         XCTAssertTrue(initialRequests.isEmpty)
+        let browseQueries = await api.recordedPhotoQueries()
+        XCTAssertEqual(browseQueries.last?.camera, "Sony A7 IV")
 
         store.query = "beach"
         await settle(store)

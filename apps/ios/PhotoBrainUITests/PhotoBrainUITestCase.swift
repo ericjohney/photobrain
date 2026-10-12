@@ -153,13 +153,13 @@ class PhotoBrainUITestCase: XCTestCase {
     @MainActor
     func openLibrary() {
         app.tabBars.buttons["Library"].tap()
-        waitFor(navigationTitle("Library"))
+        waitFor(app.staticTexts["library-title"])
     }
 
     @MainActor
     func openCollections() {
-        app.tabBars.buttons["Albums"].tap()
-        waitFor(navigationTitle("Albums"))
+        app.tabBars.buttons["Collections"].tap()
+        waitFor(navigationTitle("Collections"))
     }
 
     /// Opens the Library's More menu (its label carries review and duplicate counts).

@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 struct LoupeScreen: View {
@@ -9,6 +10,8 @@ struct LoupeScreen: View {
     let dismiss: () -> Void
     /// Set when presented from Review: shows Reject/Keep instead of rating and flag controls.
     var review: LoupeReviewActions?
+    /// The grid this loupe zooms out of and back into; nil falls back to the cover animation.
+    var transition: LoupeZoomTransition?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var chromeVisible = true
@@ -21,6 +24,14 @@ struct LoupeScreen: View {
     /// Show Faces: boxes over the paged photos while on.
     @StateObject private var faceBoxes: LoupeFaceBoxesStore
     @Environment(\.showInLibrary) private var showInLibrary
+    @State private var bridge = LoupePagerBridge()
+    /// The image flying between the grid cell and the loupe; nil when settled.
+    @State private var flight: LoupeFlight?
+    @State private var backdropOpacity: Double = 1
+    /// True while the pager is hidden behind a flight or dragged toward dismissal.
+    @State private var transitioning = false
+    @State private var dismissDragging = false
+    @State private var didRunEntrance = false
 
     init(
         records: [PhotoRecord],
@@ -29,7 +40,8 @@ struct LoupeScreen: View {
         curation: PhotoCurationCenter,
         collections: CollectionsStore,
         dismiss: @escaping () -> Void,
-        review: LoupeReviewActions? = nil
+        review: LoupeReviewActions? = nil,
+        transition: LoupeZoomTransition? = nil
     ) {
         self.records = records
         _activeID = activeID
@@ -38,6 +50,7 @@ struct LoupeScreen: View {
         self.collections = collections
         self.dismiss = dismiss
         self.review = review
+        self.transition = transition
         _exports = StateObject(wrappedValue: ExportStore(api: api))
         _faceBoxes = StateObject(wrappedValue: LoupeFaceBoxesStore(api: api))
     }
@@ -60,9 +73,13 @@ struct LoupeScreen: View {
         }
     }
 
+    private var showsChrome: Bool {
+        chromeVisible && !transitioning && !dismissDragging
+    }
+
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black.opacity(dismissDragging ? 0 : backdropOpacity).ignoresSafeArea()
             PagedLoupe(
                 records: records,
                 activeID: $activeID,
@@ -78,11 +95,43 @@ struct LoupeScreen: View {
                     }
                 },
                 onEmpty: dismiss,
-                faceBoxes: faceBoxes.visibleBoxes
+                faceBoxes: faceBoxes.visibleBoxes,
+                onDismissDragActive: { active in
+                    withAnimation(.easeOut(duration: 0.15)) { dismissDragging = active }
+                },
+                onDismissRequest: { frame, image, opacity in
+                    close(from: frame, image: image, backdrop: opacity)
+                },
+                onSwipeUp: {
+                    guard activeRecord != nil else { return }
+                    showingInfo = true
+                },
+                placeholder: { id in transition?.image(for: id) },
+                bridge: bridge,
+                infoVisible: showingInfo,
+                onSwipeDownToCloseInfo: { showingInfo = false }
             )
             .ignoresSafeArea()
+            .opacity(transitioning ? 0 : 1)
 
-            if chromeVisible {
+            if let flight {
+                Color.clear
+                    .ignoresSafeArea()
+                    .overlay(alignment: .topLeading) {
+                        Image(uiImage: flight.image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: flight.frame.width, height: flight.frame.height)
+                            .clipped()
+                            .opacity(flight.opacity)
+                            .offset(x: flight.frame.minX, y: flight.frame.minY)
+                            .ignoresSafeArea()
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
+            if showsChrome {
                 VStack(spacing: PBSpacing.s) {
                     topChrome
                     if let message = review?.errorMessage {
@@ -112,17 +161,21 @@ struct LoupeScreen: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { playback.show(activeRecord) }
+        .presentationBackground(.clear)
+        .onAppear {
+            playback.show(activeRecord)
+            runEntrance()
+        }
         .onChange(of: activeID) { _, _ in
             playback.show(activeRecord)
             Task { await faceBoxes.load(activeRecord) }
         }
         .onDisappear { playback.release() }
-        .statusBarHidden(!chromeVisible)
+        .statusBarHidden(!showsChrome)
         .exportPresentation(exports)
         .sheet(isPresented: $showingInfo) {
             if let activeRecord {
-                PhotoMetadataView(photo: activeRecord, api: api, onSelect: librarySelection)
+                PhotoMetadataView(photo: activeRecord, api: api, onSelect: librarySelection, curation: review == nil ? curation : nil)
                     .id(activeRecord.id)
             }
         }
@@ -135,28 +188,98 @@ struct LoupeScreen: View {
         .sheet(item: $collectionSheetPhotoID) { target in
             AddToCollectionSheet(photoID: target.id, collections: collections)
         }
+        .accessibilityAction(named: "Close photo") {
+            close(from: nil, image: nil, backdrop: 1)
+        }
         .accessibilityAction(named: chromeVisible ? "Hide controls" : "Show controls") {
             chromeVisible.toggle()
         }
     }
 
-    /// Close, a centered title (place when known, else date; date and time beneath), and Info.
+    /// Photos-style top bar: back, a centered place/date title, and More.
     private var topChrome: some View {
         HStack(spacing: PBSpacing.m) {
-            GlassIconButton(systemImage: "chevron.down", accessibilityLabel: "Close photo", dark: true, action: dismiss)
+            GlassIconButton(systemImage: "chevron.backward", accessibilityLabel: "Close photo", dark: true) {
+                close(from: nil, image: nil, backdrop: 1)
+            }
             Spacer(minLength: 0)
             if let activeRecord {
                 LoupeTitle(photo: activeRecord, api: api, position: position)
                     .id(activeRecord.id)
             }
             Spacer(minLength: 0)
-            GlassIconButton(systemImage: "info", accessibilityLabel: "Photo info", dark: true) {
-                showingInfo = true
+            if review == nil {
+                moreMenu
+            } else {
+                infoButton
             }
-            .disabled(activeRecord == nil)
         }
         .padding(.horizontal, PBSpacing.m)
         .padding(.top, PBSpacing.xs)
+    }
+
+    private var infoButton: some View {
+        GlassIconButton(systemImage: "info", accessibilityLabel: "Photo info", dark: true) {
+            showingInfo = true
+        }
+        .disabled(activeRecord == nil)
+    }
+
+    // MARK: Zoom transition
+
+    /// Flies the grid cell's image to its fitted loupe frame, then reveals the pager.
+    private func runEntrance() {
+        guard !didRunEntrance else { return }
+        didRunEntrance = true
+        guard !reduceMotion,
+              let transition,
+              let image = transition.image(for: activeID),
+              let from = transition.frame(for: activeID) else { return }
+        let to = AVMakeRect(aspectRatio: image.size, insideRect: transition.containerBounds)
+        transition.setHidden(activeID)
+        flight = LoupeFlight(image: image, frame: from)
+        transitioning = true
+        backdropOpacity = 0
+        withAnimation(.spring(duration: 0.38, bounce: 0.12)) {
+            flight?.frame = to
+            backdropOpacity = 1
+        } completion: {
+            transitioning = false
+            flight = nil
+            transition.setHidden(nil)
+        }
+    }
+
+    /// Flies the open photo back into its grid cell (or off the bottom without a grid), then
+    /// dismisses without the cover animation.
+    private func close(from frame: CGRect?, image: UIImage?, backdrop: Double) {
+        let current = bridge.controller?.activeImageFrame()
+        guard !reduceMotion,
+              let image = image ?? current?.1,
+              let start = frame ?? current?.0 else {
+            dismissDragging = false
+            dismiss()
+            return
+        }
+        let target = transition?.frame(for: activeID)
+        let bounds = transition?.containerBounds ?? UIScreen.main.bounds
+        transition?.setHidden(activeID)
+        flight = LoupeFlight(image: image, frame: start)
+        transitioning = true
+        backdropOpacity = backdrop
+        dismissDragging = false
+        withAnimation(.spring(duration: 0.34, bounce: 0.06)) {
+            if let target {
+                flight?.frame = target
+            } else {
+                flight?.frame = start.offsetBy(dx: 0, dy: bounds.height * 0.4)
+                flight?.opacity = 0
+            }
+            backdropOpacity = 0
+        } completion: {
+            transition?.setHidden(nil)
+            LoupeZoomTransition.withoutAnimation { dismiss() }
+        }
     }
 
     /// `(index, count)` of the open photo, for the title's accessibility value.
@@ -168,6 +291,25 @@ struct LoupeScreen: View {
     private var moreMenu: some View {
         Menu {
             if let activeRecord {
+                let current = PhotoCuration(activeRecord)
+                Section {
+                    Menu {
+                        ForEach((0...5).reversed(), id: \.self) { stars in
+                            Button {
+                                curation.update(activeRecord, patch: CurationPatch(rating: stars))
+                            } label: {
+                                if current.rating == stars {
+                                    Label(Self.ratingTitle(stars), systemImage: "checkmark")
+                                } else {
+                                    Text(Self.ratingTitle(stars))
+                                }
+                            }
+                            .accessibilityLabel(stars == 0 ? "Clear rating" : stars == 1 ? "Rate 1 star" : "Rate \(stars) stars")
+                        }
+                    } label: {
+                        Label(current.rating > 0 ? "Rating: \(Self.ratingTitle(current.rating))" : "Rating", systemImage: "star")
+                    }
+                }
                 Section {
                     Button {
                         collectionSheetPhotoID = CollectionSheetTarget(id: activeRecord.id)
@@ -199,6 +341,10 @@ struct LoupeScreen: View {
         .accessibilityLabel("More")
     }
 
+    static func ratingTitle(_ stars: Int) -> String {
+        stars == 0 ? "None" : String(repeating: "★", count: stars)
+    }
+
     private var shareMenu: some View {
         Menu {
             if let activeRecord {
@@ -217,58 +363,35 @@ struct LoupeScreen: View {
         .accessibilityLabel("Share")
     }
 
-    /// Share, a glass capsule with stars and Pick/Reject, and More.
+    /// Photos-style bottom bar: Share, Favorite (Pick), Info, and Reject (in place of Delete).
     private func curationBar(_ photo: PhotoRecord) -> some View {
         let current = PhotoCuration(photo)
-        return HStack(spacing: PBSpacing.s) {
+        let picked = current.flag == .pick
+        let rejected = current.flag == .reject
+        return HStack {
             shareMenu
             Spacer(minLength: 0)
-            HStack(spacing: 0) {
-                ForEach(1...5, id: \.self) { stars in
-                    Button {
-                        curation.update(photo, patch: .toggledRating(stars, current: current))
-                    } label: {
-                        Image(systemName: stars <= current.rating ? "star.fill" : "star")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(stars <= current.rating ? PBColor.rating : Color.white.opacity(0.85))
-                            .frame(width: 30, height: PBSize.control)
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel(stars == 1 ? "Rate 1 star" : "Rate \(stars) stars")
-                    .accessibilityAddTraits(current.rating == stars ? .isSelected : [])
-                }
-                Divider()
-                    .frame(height: 20)
-                    .overlay(Color.white.opacity(0.3))
-                    .padding(.horizontal, PBSpacing.xs)
-                flagButton(photo, current: current, flag: .pick)
-                flagButton(photo, current: current, flag: .reject)
+            Button {
+                curation.update(photo, patch: .toggledFlag(.pick, current: current))
+            } label: {
+                GlassIconLabel(systemImage: picked ? "heart.fill" : "heart", dark: true, tint: picked ? .pink : nil)
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, PBSpacing.s)
-            .pbGlass(in: Capsule(), dark: true)
-            .fixedSize()
+            .accessibilityLabel("Pick")
+            .accessibilityAddTraits(picked ? .isSelected : [])
             Spacer(minLength: 0)
-            moreMenu
+            infoButton
+            Spacer(minLength: 0)
+            Button {
+                curation.update(photo, patch: .toggledFlag(.reject, current: current))
+            } label: {
+                GlassIconLabel(systemImage: rejected ? "xmark.bin.fill" : "xmark.bin", dark: true, tint: rejected ? PBColor.reject : nil)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Reject")
+            .accessibilityAddTraits(rejected ? .isSelected : [])
         }
-        .padding(.horizontal, PBSpacing.m)
-    }
-
-    private func flagButton(_ photo: PhotoRecord, current: PhotoCuration, flag: PhotoFlag) -> some View {
-        let isOn = current.flag == flag
-        let symbol = flag == .pick ? "flag" : "xmark.circle"
-        let color = flag == .pick ? PBColor.pick : PBColor.reject
-        return Button {
-            curation.update(photo, patch: .toggledFlag(flag, current: current))
-        } label: {
-            Image(systemName: isOn ? "\(symbol).fill" : symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isOn ? color : Color.white.opacity(0.85))
-                .frame(width: 36, height: PBSize.control)
-                .contentShape(Rectangle())
-        }
-        .accessibilityLabel(flag == .pick ? "Pick" : "Reject")
-        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .padding(.horizontal, PBSpacing.l)
     }
 
     private func reviewBar(_ photo: PhotoRecord, review: LoupeReviewActions) -> some View {
@@ -321,7 +444,7 @@ struct LoupeScreen: View {
                                 showsRetry: false,
                                 targetSize: CGSize(width: height * 1.4, height: height)
                             ) {
-                                Color(uiColor: SyntheticThumbnail.color(id: photo.id))
+                                Color(white: 0.2)
                             }
                             .frame(width: isActive ? height * 1.4 : height * 0.62, height: height)
                             .clipped()
@@ -424,6 +547,41 @@ struct LoupeScreen: View {
 
 }
 
+/// Five tappable stars; tapping the current rating clears it.
+private struct InfoRatingRow: View {
+    let photo: PhotoRecord
+    @ObservedObject var curation: PhotoCurationCenter
+
+    var body: some View {
+        let current = PhotoCuration(curation.overlay([photo]).first ?? photo)
+        HStack {
+            Text("Rating")
+            Spacer()
+            HStack(spacing: 2) {
+                ForEach(1...5, id: \.self) { stars in
+                    Button {
+                        curation.update(photo, patch: .toggledRating(stars, current: current))
+                    } label: {
+                        Image(systemName: stars <= current.rating ? "star.fill" : "star")
+                            .foregroundStyle(stars <= current.rating ? PBColor.rating : Color.secondary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(stars == 1 ? "Rate 1 star" : "Rate \(stars) stars")
+                    .accessibilityAddTraits(current.rating == stars ? .isSelected : [])
+                }
+            }
+        }
+    }
+}
+
+private struct LoupeFlight {
+    let image: UIImage
+    var frame: CGRect
+    var opacity: Double = 1
+}
+
 private struct CollectionSheetTarget: Identifiable {
     let id: Int
 }
@@ -446,10 +604,13 @@ private struct PhotoMetadataView: View {
     @State private var assigningFace: PhotoFaceDTO?
     @Environment(\.peopleStore) private var people
     @Environment(\.dismiss) private var dismiss
+    /// Rates the photo from the sheet; nil (Review) hides the rating row.
+    let curation: PhotoCurationCenter?
 
-    init(photo: PhotoRecord, api: any PhotoBrainAPI, onSelect: ShowInLibraryAction?) {
+    init(photo: PhotoRecord, api: any PhotoBrainAPI, onSelect: ShowInLibraryAction?, curation: PhotoCurationCenter? = nil) {
         self.photo = photo
         self.onSelect = onSelect
+        self.curation = curation
         _tags = StateObject(wrappedValue: PhotoTagsStore(photoID: photo.id, api: api))
         _place = StateObject(wrappedValue: PhotoPlaceStore(photoID: photo.id, api: api))
         _pair = StateObject(wrappedValue: PhotoPairStore(photo: photo, api: api))
@@ -462,6 +623,9 @@ private struct PhotoMetadataView: View {
                 Section {
                     PhotoInfoSummary(photo: photo)
                         .listRowInsets(EdgeInsets(top: PBSpacing.m, leading: PBSpacing.l, bottom: PBSpacing.m, trailing: PBSpacing.l))
+                    if let curation {
+                        InfoRatingRow(photo: photo, curation: curation)
+                    }
                 }
                 Section("Tags") {
                     tagContent
@@ -698,6 +862,12 @@ private struct LoupeTitle: View {
                 Text(date, format: .dateTime.hour().minute())
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.75))
+            }
+            if photo.rating > 0 {
+                Text(String(repeating: "★", count: photo.rating))
+                    .font(.caption2)
+                    .foregroundStyle(PBColor.rating)
+                    .accessibilityLabel(photo.rating == 1 ? "1 star" : "\(photo.rating) stars")
             }
         }
         .lineLimit(1)

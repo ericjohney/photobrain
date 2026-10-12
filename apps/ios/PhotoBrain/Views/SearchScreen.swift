@@ -33,7 +33,7 @@ struct SearchScreen: View {
                         Image(systemName: "rectangle.stack.badge.plus")
                     }
                     .accessibilityLabel("Save as Smart Album")
-                    .disabled(savedQuery == nil)
+                    .disabled(savedQuery == nil && store.filters.savableCriteria == LibraryFilters())
                 }
 
             }
@@ -50,9 +50,7 @@ struct SearchScreen: View {
             .task { await store.loadFilterOptionsIfNeeded() }
         }
         .sheet(isPresented: $saveSmartAlbumPresented) {
-            if let savedQuery {
-                SaveSmartAlbumSheet(store: smartAlbums, filters: store.filters, query: savedQuery)
-            }
+            SaveSmartAlbumSheet(store: smartAlbums, filters: store.filters, query: savedQuery)
         }
         .fullScreenCover(isPresented: loupePresented) {
             if let activeID = store.activePhotoID {
@@ -77,7 +75,7 @@ struct SearchScreen: View {
         case .idle:
             SearchBrowseView(store: store, width: width)
         case .waiting, .loading:
-            ProgressView("Searching…")
+            ProgressView(savedQuery.map { "Searching for “\($0)”…" } ?? "Loading…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .empty:
             ContentUnavailableView(
@@ -102,8 +100,8 @@ struct SearchScreen: View {
             PhotoResultsGrid(
                 records: store.records,
                 width: width,
-                featuresTopResult: true,
-                header: "Best matches for “\(savedQuery ?? "")” · \(store.records.count.formatted())"
+                featuresTopResult: !store.isBrowsingFilters,
+                header: resultsHeader
             ) { store.activePhotoID = $0 }
                 .scrollDismissesKeyboard(.interactively)
         }
@@ -125,14 +123,7 @@ struct SearchScreen: View {
                 .accessibilityLabel(
                     store.filters.isActive ? "Edit filters, \(store.filters.summary)" : "Add filters"
                 )
-                ForEach(LibraryFilters.MediaKind.allCases.filter { $0 != .all }) { kind in
-                    FilterChip(title: kind == .standard ? "Photos" : kind.title, isOn: store.filters.mediaKind == kind) {
-                        var updated = store.filters
-                        updated.mediaKind = updated.mediaKind == kind ? .all : kind
-                        store.applyFilters(updated)
-                    }
-                }
-                ForEach(store.filters.activeFields.filter { $0.field != .mediaKind }) { entry in
+                ForEach(store.filters.activeFields) { entry in
                     FilterChip(title: entry.title, isOn: true, removable: true) {
                         store.applyFilters(store.filters.removing(entry.field))
                     }
@@ -143,6 +134,15 @@ struct SearchScreen: View {
             .padding(.vertical, PBSpacing.s)
         }
         .background(.bar)
+    }
+
+    /// "Best matches for “dog”" for a query; the filter summary when browsing filters alone.
+    private var resultsHeader: String {
+        let count = CountText.photos(store.records.count)
+        if let savedQuery {
+            return "Best matches for “\(savedQuery)” · \(store.records.count.formatted())"
+        }
+        return "\(store.filters.summary) · \(count)"
     }
 
     /// The trimmed search text a smart album would save; `nil` while the field is blank.
@@ -343,6 +343,13 @@ private struct SearchBrowseView: View {
                             }
                         })
                     }
+                    if !options.cameras.isEmpty {
+                        browseRow("Cameras", items: options.cameras.prefix(12).map { camera in
+                            BrowseItem(id: "c-\(camera)", title: camera, count: nil) {
+                                showInLibrary?(.gear(.camera(camera)))
+                            }
+                        })
+                    }
                     if !options.tags.isEmpty {
                         browseRow("Categories", items: options.tags.prefix(16).map { tag in
                             BrowseItem(id: "t-\(tag.tag)", title: PhotoTagName.displayName(tag.tag), count: tag.count) {
@@ -360,8 +367,12 @@ private struct SearchBrowseView: View {
     private struct BrowseItem: Identifiable {
         let id: String
         let title: String
-        let count: Int
+        /// Photo count when the options carry one (tags and places; cameras do not).
+        let count: Int?
         let action: () -> Void
+
+        var subtitle: String? { count.map(CountText.photos) }
+        var accessibilityText: String { [title, subtitle].compactMap { $0 }.joined(separator: ", ") }
     }
 
     private func browseRow(_ title: String, items: [BrowseItem]) -> some View {
@@ -372,7 +383,7 @@ private struct SearchBrowseView: View {
                 LazyHStack(spacing: PBSpacing.m) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         Button(action: item.action) {
-                            CoverCard(title: item.title, subtitle: CountText.photos(item.count), width: 120, height: 120) {
+                            CoverCard(title: item.title, subtitle: item.subtitle, width: 120, height: 120) {
                                 LinearGradient(
                                     colors: Self.gradient(index: index, seed: title),
                                     startPoint: .topLeading,
@@ -382,7 +393,7 @@ private struct SearchBrowseView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(item.title), \(CountText.photos(item.count))")
+                        .accessibilityLabel(item.accessibilityText)
                         .accessibilityAddTraits(.isButton)
                     }
                 }

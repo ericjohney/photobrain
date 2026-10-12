@@ -855,6 +855,31 @@ final class SearchStore: ObservableObject, FilterEditingStore, CurationApplying 
 
     static let resultLimit = 50
 
+    /// True when results come from filters alone, not a text query.
+    var isBrowsingFilters: Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && filters.isActive
+    }
+
+    private static func newestFirst(_ photos: [PhotoDTO]) -> [PhotoDTO] {
+        photos.reversed()
+    }
+
+    /// Opens Search filtered to a Library shortcut (tag, place, date, or gear), replacing the
+    /// query and any previous filters.
+    func show(_ shortcut: LibraryShortcut) {
+        activePhotoID = nil
+        query = ""
+        var updated = LibraryFilters()
+        switch shortcut {
+        case let .tag(tag): updated.tag = tag
+        case let .place(place): updated = updated.selectingPlace(place)
+        case let .capturedDate(date): updated.capturedDate = date
+        case let .gear(.camera(camera)): updated.camera = camera
+        case let .gear(.lens(lens)): updated.lens = lens
+        }
+        applyFilters(updated)
+    }
+
     @Published var query = "" {
         didSet { schedule() }
     }
@@ -935,24 +960,29 @@ final class SearchStore: ObservableObject, FilterEditingStore, CurationApplying 
         let currentGeneration = generation
         task?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        // Browse mode: with no text, active filters list matching photos (newest first),
+        // the way Photos narrows search by camera, place, or category without a query.
+        guard !trimmed.isEmpty || filters.isActive else {
             task = nil
             records = []
             state = .idle
             return
         }
         let request = filters.photoQuery
-        state = immediate ? .loading : .waiting
+        let browsing = trimmed.isEmpty
+        state = immediate || browsing ? .loading : .waiting
         task = Task { [api] in
             do {
-                if !immediate {
+                if !immediate, !browsing {
                     try await Task.sleep(for: .milliseconds(350))
                 }
                 guard !Task.isCancelled, currentGeneration == generation else { return }
                 state = .loading
-                let response = try await api.search(query: trimmed, limit: Self.resultLimit, filters: request)
+                let photos = browsing
+                    ? Self.newestFirst(try await api.photos(query: request).photos)
+                    : try await api.search(query: trimmed, limit: Self.resultLimit, filters: request).photos
                 guard !Task.isCancelled, currentGeneration == generation else { return }
-                records = curation.overlay(response.photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
+                records = curation.overlay(photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
                 state = records.isEmpty ? .empty : .results
             } catch is CancellationError {
                 return

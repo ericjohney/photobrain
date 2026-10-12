@@ -18,6 +18,7 @@ struct CollectionsScreen: View {
     let openUtility: (LibraryUtility) -> Void
     /// Opens Gear Stats over the current Library filters.
     let openGearStats: () -> Void
+    let openCalendar: () -> Void
     @Environment(\.showInLibrary) private var showInLibrary
 
     @State private var newNamePresented = false
@@ -32,7 +33,7 @@ struct CollectionsScreen: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Albums")
+                .navigationTitle("Collections")
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if let message = store.errorMessage {
                         PBBanner(message: message, dismiss: { store.dismissError() })
@@ -268,7 +269,7 @@ struct CollectionsScreen: View {
         }
     }
 
-    /// Review, Duplicates, Map, and Gear Stats as an inset grouped list with counts.
+    /// Review, Duplicates, Map, Calendar, and Gear Stats as an inset grouped list with counts.
     private var utilitiesSection: some View {
         VStack(alignment: .leading, spacing: PBSpacing.m) {
             PBSectionHeader(title: "Utilities")
@@ -287,6 +288,8 @@ struct CollectionsScreen: View {
                 utilityRow("Map", systemImage: "map", count: nil, accessibility: "Map") {
                     openUtility(.map)
                 }
+                Divider().padding(.leading, 52)
+                utilityRow("Calendar", systemImage: "calendar", count: nil, accessibility: "Calendar", action: openCalendar)
                 Divider().padding(.leading, 52)
                 utilityRow("Gear Stats", systemImage: "chart.bar", count: nil, accessibility: "Gear Stats", action: openGearStats)
             }
@@ -556,6 +559,7 @@ struct ScopedPhotoGrid: View {
     let emptyDescription: String
     /// Extra work after a pull-to-refresh reload, e.g. refreshing card counts.
     let onRefresh: () async -> Void
+    @State private var loupeTransition = LoupeZoomTransition()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -569,7 +573,7 @@ struct ScopedPhotoGrid: View {
         .task {
             if store.loadState == .idle { await store.load() }
         }
-        .fullScreenCover(isPresented: loupePresented) {
+        .loupeCover(isPresented: store.activePhotoID != nil) {
             if let activeID = store.activePhotoID {
                 LoupeScreen(
                     records: store.orderedRecords,
@@ -580,7 +584,8 @@ struct ScopedPhotoGrid: View {
                     api: api,
                     curation: store.curation,
                     collections: collections,
-                    dismiss: { store.activePhotoID = nil }
+                    dismiss: { store.activePhotoID = nil },
+                    transition: loupeTransition
                 )
             }
         }
@@ -618,6 +623,7 @@ struct ScopedPhotoGrid: View {
                 opensAtTop: store.scope.isRanked,
                 onLongPress: { _ in },
                 onVisibleChange: store.observeVisible,
+                transition: loupeTransition,
                 onRefresh: {
                     await store.load()
                     await onRefresh()
@@ -627,12 +633,6 @@ struct ScopedPhotoGrid: View {
         }
     }
 
-    private var loupePresented: Binding<Bool> {
-        Binding(
-            get: { store.activePhotoID != nil },
-            set: { if !$0 { store.activePhotoID = nil } }
-        )
-    }
 }
 
 /// Inline error with an optional Retry and/or dismiss control.
