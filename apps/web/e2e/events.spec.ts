@@ -8,6 +8,13 @@ import {
 	fixtureGridIds,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import {
+	appHeader,
+	breadcrumb,
+	clearAllFilters,
+	filterRadio,
+	saveSmartAlbumButton,
+} from "./fixtures/ui";
 
 // UTC+14: a wall-clock timestamp read as UTC (or converted to local time)
 // would land on another calendar day, so the expected text proves none is.
@@ -178,9 +185,9 @@ test("an event filters the grid with a chip; clicking again or clearing returns 
 	await expectEventGrid(page, 6);
 	expect(calls.photos?.at(-1)).toEqual({ event: 6 });
 	await expect(eventRow(page, 6)).toHaveAttribute("aria-pressed", "true");
-	const chip = leftPanel(page).getByTestId("event-chip");
+	const chip = appHeader(page).getByTestId("event-chip");
 	await expect(chip).toHaveText("United States");
-	await expect(leftPanel(page).getByText("Filters active")).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
 
 	// Clicking the selected event clears it.
 	await eventRow(page, 6).click();
@@ -205,7 +212,7 @@ test("an event filters the grid with a chip; clicking again or clearing returns 
 	await eventRow(page, 1).click();
 	await expectEventGrid(page, 1);
 	await expect(chip).toHaveText("San Francisco, United States");
-	await leftPanel(page).getByRole("button", { name: "Clear all" }).click();
+	await clearAllFilters(page).click();
 	await expect(chip).toHaveCount(0);
 	await expect
 		.poll(() => gridIds(page))
@@ -253,17 +260,11 @@ test("Save as Smart Album never saves the event", async ({
 	await openLibrary(page);
 	await eventRow(page, 6).click();
 	await expectEventGrid(page, 6);
-	const save = leftPanel(page).getByRole("button", {
-		name: "Save as Smart Album…",
-	});
+	const save = saveSmartAlbumButton(page);
 	// An event alone is not savable.
 	await expect(save).toHaveCount(0);
 
-	await leftPanel(page).getByText("Filter By").click();
-	await leftPanel(page)
-		.getByRole("radiogroup", { name: "Photo type" })
-		.getByRole("radio", { name: "Standard" })
-		.click();
+	await (await filterRadio(page, "Type", "Standard")).click();
 	await save.click();
 	const dialog = page.getByRole("dialog", { name: "Save as Smart Album" });
 	await expect(dialog).toContainText("Standard only");
@@ -277,7 +278,7 @@ test("Save as Smart Album never saves the event", async ({
 	]);
 	// The event still narrows the album, so the album is not selected.
 	await expect(page.getByTestId("smart-album-header")).toHaveCount(0);
-	await expect(leftPanel(page).getByTestId("event-chip")).toBeVisible();
+	await expect(appHeader(page).getByTestId("event-chip")).toBeVisible();
 });
 
 test("events are requested for the selected folder", async ({
@@ -297,7 +298,9 @@ test("events are requested for the selected folder", async ({
 	);
 
 	await leftPanel(page).getByText("2024", { exact: true }).click();
-	await expect(leftPanel(page).getByText("Showing: photos/2024")).toBeVisible();
+	await expect(
+		breadcrumb(page).getByText("2024", { exact: true }),
+	).toBeVisible();
 	await expect
 		.poll(() => calls.events?.at(-1))
 		.toEqual({

@@ -816,9 +816,7 @@ export function filterFixturePhotos(
 		}
 		if (
 			filters.personId !== undefined &&
-			!faces.some(
-				(f) => f.photoId === p.id && f.personId === filters.personId,
-			)
+			!faces.some((f) => f.photoId === p.id && f.personId === filters.personId)
 		) {
 			return false;
 		}

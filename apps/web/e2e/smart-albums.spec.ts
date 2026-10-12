@@ -8,6 +8,7 @@ import {
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { filterRadio, saveSmartAlbumButton } from "./fixtures/ui";
 
 const ALL_IDS = fixtureGridIds(FIXTURE_LIBRARY);
 
@@ -48,11 +49,7 @@ async function openLibrary(page: Page) {
 }
 
 async function pickRaw(page: Page) {
-	await leftPanel(page).getByText("Filter By").click();
-	await leftPanel(page)
-		.getByRole("radiogroup", { name: "Photo type" })
-		.getByRole("radio", { name: "RAW" })
-		.click();
+	await (await filterRadio(page, "Type", "RAW")).click();
 }
 
 /** Seeds the page's smart album store through the default handlers on first read. */
@@ -81,9 +78,7 @@ test("Save as Smart Album stores the current filters and search query", async ({
 	await openLibrary(page);
 	await expect(leftPanel(page).getByText("No smart albums yet")).toBeVisible();
 	// Nothing to save without a filter or query.
-	const save = leftPanel(page).getByRole("button", {
-		name: "Save as Smart Album…",
-	});
+	const save = saveSmartAlbumButton(page);
 	await expect(save).toHaveCount(0);
 
 	await leftPanel(page).getByText("2024", { exact: true }).click();
@@ -131,9 +126,7 @@ test("a filter-only album is listed with its live count and saves without a quer
 			fixtureGridIds(filterFixturePhotos(FIXTURE_PHOTOS, { filterRaw: "raw" })),
 		);
 
-	await leftPanel(page)
-		.getByRole("button", { name: "Save as Smart Album…" })
-		.click();
+	await saveSmartAlbumButton(page).click();
 	const dialog = page.getByRole("dialog", { name: "Save as Smart Album" });
 	await dialog.getByLabel("Smart album name").fill("RAW");
 	await dialog.getByLabel("Smart album name").press("Enter");
@@ -156,9 +149,7 @@ test("a duplicate name in the save dialog shows the conflict inline", async ({
 	await openLibrary(page);
 	await expect(albumRow(page, "Picks")).toHaveCount(1);
 	await pickRaw(page);
-	await leftPanel(page)
-		.getByRole("button", { name: "Save as Smart Album…" })
-		.click();
+	await saveSmartAlbumButton(page).click();
 	const dialog = page.getByRole("dialog", { name: "Save as Smart Album" });
 	await dialog.getByLabel("Smart album name").fill("picks");
 	await dialog.getByRole("button", { name: "Save smart album" }).click();
@@ -185,11 +176,7 @@ test("clicking an album replaces filters, folder, and search and leaves collecti
 	);
 	await openLibrary(page);
 	// Start from an unrelated filter and Review mode.
-	await leftPanel(page).getByText("Filter By").click();
-	await leftPanel(page)
-		.getByRole("radiogroup", { name: "Flag" })
-		.getByRole("radio", { name: "Rejected" })
-		.click();
+	await (await filterRadio(page, "Flag", "Rejected")).click();
 	await leftPanel(page)
 		.getByRole("button", { name: /Review/ })
 		.click();
@@ -215,13 +202,10 @@ test("clicking an album replaces filters, folder, and search and leaves collecti
 		`Top rated${expected.length} photos`,
 	);
 	await expect(page.getByTestId("review-header")).toHaveCount(0);
-	// Filter By remounts collapsed after Review hid it.
-	await leftPanel(page).getByText("Filter By").click();
-	await expect(
-		leftPanel(page)
-			.getByRole("radiogroup", { name: "Flag" })
-			.getByRole("radio", { name: "Any" }),
-	).toHaveAttribute("aria-checked", "true");
+	await expect(await filterRadio(page, "Flag", "Any")).toHaveAttribute(
+		"aria-checked",
+		"true",
+	);
 
 	// A query album runs a search with its filters, replacing the folder.
 	await albumButton(page, "Beach search").click();
@@ -276,10 +260,7 @@ test("changing a filter after applying an album deselects it", async ({
 		.toEqual({ flag: "pick", filterRaw: "raw" });
 
 	// Restoring the album's exact filters does not silently reselect it.
-	await leftPanel(page)
-		.getByRole("radiogroup", { name: "Photo type" })
-		.getByRole("radio", { name: "All" })
-		.click();
+	await (await filterRadio(page, "Type", "All")).click();
 	// Shown from the still-fresh cached { flag: "pick" } listing.
 	await expect
 		.poll(() => gridIds(page))

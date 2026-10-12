@@ -2,6 +2,8 @@ import { useCallback, useState } from "react";
 
 interface PanelState {
 	leftPanelVisible: boolean;
+	/** Sidebar shrunk to an icon rail (⌘\). */
+	leftPanelCollapsed: boolean;
 	rightPanelVisible: boolean;
 	filmstripVisible: boolean;
 	leftPanelWidth: number;
@@ -13,6 +15,7 @@ const STORAGE_KEY = "photobrain-panel-state";
 
 const DEFAULT_STATE: PanelState = {
 	leftPanelVisible: true,
+	leftPanelCollapsed: false,
 	rightPanelVisible: true,
 	filmstripVisible: true,
 	leftPanelWidth: 220,
@@ -54,6 +57,10 @@ export function usePanelState() {
 	const toggleLeftPanel = useCallback(() => {
 		updateState({ leftPanelVisible: !state.leftPanelVisible });
 	}, [state.leftPanelVisible, updateState]);
+
+	const toggleLeftPanelCollapsed = useCallback(() => {
+		updateState({ leftPanelCollapsed: !state.leftPanelCollapsed });
+	}, [state.leftPanelCollapsed, updateState]);
 
 	const toggleRightPanel = useCallback(() => {
 		updateState({ rightPanelVisible: !state.rightPanelVisible });
@@ -104,6 +111,7 @@ export function usePanelState() {
 	return {
 		...state,
 		toggleLeftPanel,
+		toggleLeftPanelCollapsed,
 		toggleRightPanel,
 		toggleFilmstrip,
 		toggleAllPanels,

@@ -6,6 +6,7 @@ import {
 	fixtureGridIds,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { filterRadio } from "./fixtures/ui";
 
 // forest.jpg (8) and forest.arw (13) are a RAW+JPEG pair; portrait.arw (2) is
 // an unpaired RAW.
@@ -89,8 +90,7 @@ test("the RAW filter shows the paired RAW with its combined badge and Pair row",
 }) => {
 	const calls = await mockBackend();
 	await openLibrary(page);
-	await page.getByTestId("left-panel").getByText("Filter By").click();
-	await typeRadio(page, "RAW").click();
+	await (await filterRadio(page, "Type", "RAW")).click();
 
 	const rawIds = fixtureGridIds(
 		filterFixturePhotos(FIXTURE_PHOTOS, { filterRaw: "raw" }),
@@ -140,8 +140,7 @@ test("rating the stacked photo updates both files of the pair", async ({
 	).toBeVisible();
 
 	// The RAW partner carries the rating too.
-	await page.getByTestId("left-panel").getByText("Filter By").click();
-	await typeRadio(page, "RAW").click();
+	await (await filterRadio(page, "Type", "RAW")).click();
 	await expect(
 		gridCell(page, RAW_ID).getByRole("img", { name: "2 stars" }),
 	).toBeVisible();

@@ -26,19 +26,20 @@ import { OnThisDayStrip } from "@/components/OnThisDayStrip";
 import { PeopleView } from "@/components/PeopleView";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { ActivityPanel } from "@/components/panels/ActivityPanel";
-import {
-	EMPTY_LIBRARY_FILTERS,
-	FLAG_FILTER_LABELS,
-	type LibraryFilters,
-	LibraryPanel,
-	minRatingLabel,
-} from "@/components/panels/LibraryPanel";
+import { AppSidebar } from "@/components/panels/AppSidebar";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { faceRowId } from "@/components/panels/PhotoPeople";
 import { PanelLayout } from "@/components/panels/PanelLayout";
 import { ReviewHeader } from "@/components/ReviewHeader";
 import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
-import { Toolbar } from "@/components/Toolbar";
+import { AppHeader, type Crumb } from "@/components/AppHeader";
+import { StatusBar, type StatusMode } from "@/components/StatusBar";
+import {
+	EMPTY_LIBRARY_FILTERS,
+	FLAG_FILTER_LABELS,
+	type LibraryFilters,
+	minRatingLabel,
+} from "@/lib/library-filters";
 import { UploadDropZone } from "@/components/UploadDropZone";
 import { Button } from "@/components/ui/button";
 import { RemovableChip } from "@/components/ui/chip";
@@ -554,9 +555,33 @@ export function Dashboard() {
 		[library.setActivePhoto],
 	);
 
-	const handleSearch = useCallback(() => {
-		// Query is reactive, nothing needed here
-	}, []);
+	// ⌘K focuses the sidebar search (opening the sidebar first); ⌘\ collapses it.
+	const searchInputRef = useRef<HTMLInputElement | null>(null);
+	const { leftPanelVisible, leftPanelCollapsed } = panels;
+	const { toggleLeftPanel, toggleLeftPanelCollapsed } = panels;
+	useEffect(() => {
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (!(e.metaKey || e.ctrlKey)) return;
+			if (e.key.toLowerCase() === "k") {
+				e.preventDefault();
+				if (!leftPanelVisible) toggleLeftPanel();
+				if (leftPanelCollapsed) toggleLeftPanelCollapsed();
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => searchInputRef.current?.focus());
+				});
+			} else if (e.key === "\\") {
+				e.preventDefault();
+				toggleLeftPanelCollapsed();
+			}
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [
+		leftPanelVisible,
+		leftPanelCollapsed,
+		toggleLeftPanel,
+		toggleLeftPanelCollapsed,
+	]);
 
 	const handleSearchChange = useCallback((query: string) => {
 		setSearchQuery(query);
@@ -1095,10 +1120,75 @@ export function Dashboard() {
 				) : null) ||
 				scopeHeaders;
 
+	// Breadcrumbs name the scope as a path; the title and count follow it.
+	const goLibrary = () => {
+		setSearchQuery("");
+		setSimilarSource(null);
+		setSelectedFolder(null);
+		setSelectedCollectionId(null);
+		setCatalogView(null);
+		setAppliedSmartAlbumId(null);
+	};
+	const crumbs: Crumb[] = [{ label: "Library", onSelect: goLibrary }];
+	let title = "Photos";
+	if (reviewActive) {
+		title = "Review";
+		crumbs.push({ label: "Clean up" }, { label: "Review" });
+	} else if (duplicatesActive) {
+		title = "Duplicates";
+		crumbs.push({ label: "Clean up" }, { label: "Duplicates" });
+	} else if (peopleActive) {
+		title = "People";
+		crumbs.push({ label: "People" });
+	} else if (similarSource) {
+		title = "Similar photos";
+		crumbs.push({ label: `Similar to ${similarSource.name}` });
+	} else if (searchQuery) {
+		title = "Search";
+		crumbs.push({ label: "Search" }, { label: `“${searchQuery}”` });
+	} else if (selectedSmartAlbum) {
+		title = selectedSmartAlbum.name;
+		crumbs.push({ label: "Smart albums" }, { label: selectedSmartAlbum.name });
+	} else if (selectedCollection) {
+		title = selectedCollection.name;
+		crumbs.push({ label: "Collections" }, { label: selectedCollection.name });
+	} else if (selectedFolder) {
+		const parts = selectedFolder.split("/").filter(Boolean);
+		title = parts[parts.length - 1] ?? selectedFolder;
+		parts.forEach((part, index) => {
+			const path = parts.slice(0, index + 1).join("/");
+			crumbs.push(
+				index === parts.length - 1
+					? { label: part }
+					: { label: part, onSelect: () => handleFolderSelect(path) },
+			);
+		});
+	}
+	const statusMode: StatusMode = reviewActive
+		? "review"
+		: duplicatesActive
+			? "duplicates"
+			: peopleActive
+				? "people"
+				: library.viewMode === "loupe"
+					? "loupe"
+					: "library";
+	const activeIndex = library.activePhoto
+		? photos.findIndex((p) => p.id === library.activePhoto?.id)
+		: -1;
+
 	return (
 		<PanelLayout
-			toolbar={
-				<Toolbar
+			header={
+				<AppHeader
+					crumbs={crumbs}
+					title={title}
+					meta={`${photos.length} photos`}
+					onSaveSmartAlbum={
+						canSaveSmartAlbum && !catalogView
+							? () => setSavingSmartAlbum(true)
+							: undefined
+					}
 					viewMode={library.viewMode}
 					onViewModeChange={changeViewMode}
 					thumbnailSize={library.thumbnailSize}
@@ -1129,73 +1219,91 @@ export function Dashboard() {
 							? { shown: showFaces, onToggle: toggleFaceBoxes }
 							: null
 					}
+					filtersAvailable={catalogView === null}
+					filterOptions={filterOptionsQuery.data}
+					filters={filters}
+					onFiltersChange={setFilters}
+					onEventClear={() => handleEventSelect(null)}
+					personLabel={personScopeLabel}
 					leftPanelVisible={panels.leftPanelVisible}
 					rightPanelVisible={panels.rightPanelVisible}
 					onToggleLeftPanel={panels.toggleLeftPanel}
 					onToggleRightPanel={panels.toggleRightPanel}
-					searchQuery={searchQuery}
-					onSearchChange={handleSearchChange}
-					onSearch={handleSearch}
 					onRefresh={() => handleScan()}
 					onReprocess={() => handleScan(true)}
 					isRefreshing={scanMutation.isPending}
 					uploads={uploads}
 					hasActiveJobs={jobProgress.isActive}
-					processingProgress={{
-						current: jobProgress.progress.current,
-						total: jobProgress.progress.total,
+				/>
+			}
+			footer={
+				<StatusBar
+					mode={statusMode}
+					shown={photos.length}
+					total={foldersQuery.data?.totalPhotos}
+					hasActivePhoto={library.activePhoto !== null}
+					loupeLabel={
+						library.activePhoto
+							? `${activeIndex + 1} of ${photos.length} · ${library.activePhoto.name}`
+							: undefined
+					}
+					queueLabel={
+						reviewActive
+							? `${review.counts?.all ?? reviewPhotos.length} candidates`
+							: `${duplicates.groups.length} groups shown`
+					}
+					progress={{
+						active: jobProgress.isActive,
+						label: "Indexing",
+						percentage: jobProgress.progress.percentage,
 					}}
-					photoCount={photos.length}
 				/>
 			}
 			leftPanel={
-				<div className="flex flex-col h-full">
-					<div className="flex-1 overflow-auto">
-						<LibraryPanel
-							photoCount={foldersQuery.data?.totalPhotos ?? photos.length}
-							folders={foldersQuery.data?.folders}
-							selectedFolder={selectedFolder}
-							onFolderSelect={handleFolderSelect}
-							collections={collectionsApi.collections}
-							selectedCollectionId={selectedCollectionId}
-							onCollectionSelect={handleCollectionSelect}
-							onCreateCollection={collectionsApi.createCollection}
-							onRenameCollection={collectionsApi.renameCollection}
-							onDeleteCollection={handleDeleteCollection}
-							smartAlbums={smartAlbumsApi.albums}
-							selectedSmartAlbumId={selectedSmartAlbum?.id ?? null}
-							onSmartAlbumSelect={handleSmartAlbumSelect}
-							onRenameSmartAlbum={smartAlbumsApi.renameSmartAlbum}
-							onDeleteSmartAlbum={smartAlbumsApi.deleteSmartAlbum}
-							onSaveSmartAlbum={
-								canSaveSmartAlbum ? () => setSavingSmartAlbum(true) : undefined
-							}
-							filterOptions={filterOptionsQuery.data}
-							activeFilters={filters}
-							onFilterChange={setFilters}
-							events={eventsQuery.data?.events}
-							onEventSelect={handleEventSelect}
-							reviewCount={review.counts?.all}
-							reviewActive={reviewActive}
-							onReviewSelect={handleReviewSelect}
-							duplicateCount={
-								duplicates.counts &&
-								duplicates.counts.duplicate + duplicates.counts.burst
-							}
-							duplicatesActive={duplicatesActive}
-							onDuplicatesSelect={handleDuplicatesSelect}
-							peopleCount={peopleApi.count}
-							peopleActive={peopleActive}
-							onPeopleSelect={peopleActive ? exitCatalogView : handlePeopleSelect}
-							personLabel={personScopeLabel}
+				<AppSidebar
+					ref={searchInputRef}
+					photoCount={foldersQuery.data?.totalPhotos ?? photos.length}
+					folders={foldersQuery.data?.folders}
+					selectedFolder={selectedFolder}
+					onFolderSelect={handleFolderSelect}
+					collections={collectionsApi.collections}
+					selectedCollectionId={selectedCollectionId}
+					onCollectionSelect={handleCollectionSelect}
+					onCreateCollection={collectionsApi.createCollection}
+					onRenameCollection={collectionsApi.renameCollection}
+					onDeleteCollection={handleDeleteCollection}
+					smartAlbums={smartAlbumsApi.albums}
+					selectedSmartAlbumId={selectedSmartAlbum?.id ?? null}
+					onSmartAlbumSelect={handleSmartAlbumSelect}
+					onRenameSmartAlbum={smartAlbumsApi.renameSmartAlbum}
+					onDeleteSmartAlbum={smartAlbumsApi.deleteSmartAlbum}
+					events={eventsQuery.data?.events}
+					selectedEvent={filters.event}
+					onEventSelect={handleEventSelect}
+					reviewCount={review.counts?.all}
+					reviewActive={reviewActive}
+					onReviewSelect={handleReviewSelect}
+					duplicateCount={
+						duplicates.counts &&
+						duplicates.counts.duplicate + duplicates.counts.burst
+					}
+					duplicatesActive={duplicatesActive}
+					onDuplicatesSelect={handleDuplicatesSelect}
+					peopleCount={peopleApi.count}
+					peopleActive={peopleActive}
+					onPeopleSelect={peopleActive ? exitCatalogView : handlePeopleSelect}
+					searchQuery={searchQuery}
+					onSearchChange={handleSearchChange}
+					collapsed={panels.leftPanelCollapsed}
+					onToggleCollapsed={panels.toggleLeftPanelCollapsed}
+					activity={
+						<ActivityPanel
+							progress={jobProgress.progress}
+							isActive={jobProgress.isActive}
+							isCompleted={jobProgress.isCompleted}
 						/>
-					</div>
-					<ActivityPanel
-						progress={jobProgress.progress}
-						isActive={jobProgress.isActive}
-						isCompleted={jobProgress.isCompleted}
-					/>
-				</div>
+					}
+				/>
 			}
 			rightPanel={
 				<MetadataPanel
@@ -1227,6 +1335,7 @@ export function Dashboard() {
 				/>
 			}
 			leftPanelVisible={panels.leftPanelVisible}
+			leftPanelCollapsed={panels.leftPanelCollapsed}
 			rightPanelVisible={panels.rightPanelVisible}
 			filmstripVisible={panels.filmstripVisible && library.viewMode === "loupe"}
 		>

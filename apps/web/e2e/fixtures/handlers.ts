@@ -374,7 +374,11 @@ function createDefaultHandlers(
 			const { collectionId, ...filters } = (input ??
 				{}) as FixturePhotoFilters & CollectionScope;
 			return fixtureGearStats(
-				filterFixturePhotos(scopeToCollection({ collectionId }), filters, faces),
+				filterFixturePhotos(
+					scopeToCollection({ collectionId }),
+					filters,
+					faces,
+				),
 			);
 		},
 		// Like the API: the same filters and stacking, then valid locations only.
@@ -404,7 +408,11 @@ function createDefaultHandlers(
 				};
 			const photos = searchPhotosByQuery(
 				query,
-				filterFixturePhotos(scopeToCollection({ collectionId }), filters, faces),
+				filterFixturePhotos(
+					scopeToCollection({ collectionId }),
+					filters,
+					faces,
+				),
 			);
 			return { photos, total: photos.length, query };
 		},

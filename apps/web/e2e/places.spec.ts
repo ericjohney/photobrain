@@ -9,6 +9,13 @@ import {
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import {
+	appHeader,
+	clearAllFilters,
+	filtersDialog,
+	openFilters,
+	saveSmartAlbumButton,
+} from "./fixtures/ui";
 
 const SEATTLE_ID = FIXTURE_PHOTO_PLACES[8].id;
 
@@ -24,12 +31,12 @@ function gridCell(page: Page, id: number) {
 	return page.locator(`[data-testid="photo-grid"] [data-photo-id="${id}"]`);
 }
 
-function leftPanel(page: Page) {
-	return page.getByTestId("left-panel");
+function filterPanel(page: Page) {
+	return filtersDialog(page);
 }
 
 function placeList(page: Page) {
-	return leftPanel(page).getByTestId("place-filter-list");
+	return filterPanel(page).getByTestId("place-filter-list");
 }
 
 function cityList(page: Page) {
@@ -38,7 +45,7 @@ function cityList(page: Page) {
 
 /** Filter rows as [name, count]; rows are NavItems (icon, label, count). */
 async function rows(selector: string, page: Page) {
-	return leftPanel(page)
+	return filterPanel(page)
 		.locator(selector)
 		.evaluateAll((buttons) =>
 			buttons.map((button) =>
@@ -66,12 +73,12 @@ function cityFilter(page: Page, name: string) {
 	});
 }
 
-async function openFilters(page: Page) {
+async function openPlaces(page: Page) {
 	await page.goto("/");
 	await expect(
 		page.getByText(`${FIXTURE_LIBRARY.length} photos`, { exact: true }),
 	).toBeVisible();
-	await leftPanel(page).getByText("Filter By").click();
+	await openFilters(page, "Places");
 }
 
 async function expectGrid(page: Page, filters: FixturePhotoFilters) {
@@ -87,7 +94,7 @@ test("Places lists countries with counts; a country filters and shows its cities
 	mockBackend,
 }) => {
 	const calls = await mockBackend();
-	await openFilters(page);
+	await openPlaces(page);
 
 	// Photo rows (the forest pair counts twice), count desc then name.
 	await expect
@@ -138,7 +145,9 @@ test("Places lists countries with counts; a country filters and shows its cities
 		country: "US",
 		place: SEATTLE_ID,
 	});
+	await page.keyboard.press("Escape");
 	await page.getByRole("button", { name: "Clear search" }).click();
+	await openFilters(page, "Places");
 
 	// Another country replaces the selection and drops the city.
 	await countryFilter(page, "Fiji").click();
@@ -150,7 +159,7 @@ test("Places lists countries with counts; a country filters and shows its cities
 	await countryFilter(page, "Fiji").click();
 	await expectGrid(page, {});
 	await expect(cityList(page)).toHaveCount(0);
-	await expect(leftPanel(page).getByText("Filters active")).toHaveCount(0);
+	await expect(clearAllFilters(page)).toHaveCount(0);
 });
 
 test("country and city chips remove their filters; Clear all clears both", async ({
@@ -158,9 +167,9 @@ test("country and city chips remove their filters; Clear all clears both", async
 	mockBackend,
 }) => {
 	const calls = await mockBackend();
-	await openFilters(page);
-	const countryChip = leftPanel(page).getByTestId("country-chip");
-	const placeChip = leftPanel(page).getByTestId("place-chip");
+	await openPlaces(page);
+	const countryChip = appHeader(page).getByTestId("country-chip");
+	const placeChip = appHeader(page).getByTestId("place-chip");
 
 	await countryFilter(page, "United States").click();
 	await cityFilter(page, "Seattle").click();
@@ -176,6 +185,7 @@ test("country and city chips remove their filters; Clear all clears both", async
 	await expect(countryChip).toHaveText("United States");
 
 	// Removing the country also removes its city.
+	await openFilters(page, "Places");
 	await cityFilter(page, "San Francisco").click();
 	await expect(placeChip).toHaveText("San Francisco");
 	await countryChip.getByRole("button", { name: "Clear country" }).click();
@@ -183,6 +193,7 @@ test("country and city chips remove their filters; Clear all clears both", async
 	await expect(countryChip).toHaveCount(0);
 	await expect(placeChip).toHaveCount(0);
 
+	await openFilters(page, "Places");
 	await countryFilter(page, "Samoa").click();
 	await cityFilter(page, "Apia").click();
 	await expect(placeChip).toHaveText("Apia");
@@ -192,9 +203,10 @@ test("country and city chips remove their filters; Clear all clears both", async
 			country: "WS",
 			place: FIXTURE_PHOTO_PLACES[9].id,
 		});
-	await leftPanel(page).getByRole("button", { name: "Clear all" }).click();
+	await clearAllFilters(page).click();
 	await expectGrid(page, {});
-	await expect(leftPanel(page).getByText("Filters active")).toHaveCount(0);
+	await expect(clearAllFilters(page)).toHaveCount(0);
+	await openFilters(page, "Places");
 	await expect(countryFilter(page, "Samoa")).toHaveAttribute(
 		"aria-pressed",
 		"false",
@@ -206,14 +218,12 @@ test("Save as Smart Album stores country and place, and applying restores them",
 	mockBackend,
 }) => {
 	const calls = await mockBackend();
-	await openFilters(page);
+	await openPlaces(page);
 	await countryFilter(page, "United States").click();
 	await cityFilter(page, "Seattle").click();
 	await expectGrid(page, { country: "US", place: SEATTLE_ID });
 
-	await leftPanel(page)
-		.getByRole("button", { name: "Save as Smart Album…" })
-		.click();
+	await saveSmartAlbumButton(page).click();
 	const dialog = page.getByRole("dialog", { name: "Save as Smart Album" });
 	await expect(dialog).toContainText("Seattle");
 	await dialog.getByLabel("Smart album name").fill("Seattle");
@@ -226,9 +236,10 @@ test("Save as Smart Album stores country and place, and applying restores them",
 		},
 	]);
 
-	await leftPanel(page).getByRole("button", { name: "Clear all" }).click();
+	await clearAllFilters(page).click();
 	await expectGrid(page, {});
-	await leftPanel(page)
+	await page
+		.getByTestId("left-panel")
 		.getByTestId("smart-album-row")
 		.filter({ has: page.getByText("Seattle", { exact: true }) })
 		.getByRole("button")
@@ -236,8 +247,8 @@ test("Save as Smart Album stores country and place, and applying restores them",
 		.click();
 	await expectGrid(page, { country: "US", place: SEATTLE_ID });
 	await expect(page.getByTestId("smart-album-header")).toContainText("Seattle");
-	await expect(leftPanel(page).getByTestId("place-chip")).toHaveText("Seattle");
-	await expect(leftPanel(page).getByTestId("country-chip")).toHaveText(
+	await expect(appHeader(page).getByTestId("place-chip")).toHaveText("Seattle");
+	await expect(appHeader(page).getByTestId("country-chip")).toHaveText(
 		"United States",
 	);
 });
@@ -292,7 +303,7 @@ test("metadata Place row follows the label rule, applies the filter, and is hidd
 	await expectGrid(page, { country: "US", place: SEATTLE_ID });
 	expect(calls.photos?.at(-1)).toEqual({ country: "US", place: SEATTLE_ID });
 
-	await leftPanel(page).getByText("Filter By").click();
+	await openFilters(page, "Places");
 	await expect(countryFilter(page, "United States")).toHaveAttribute(
 		"aria-pressed",
 		"true",

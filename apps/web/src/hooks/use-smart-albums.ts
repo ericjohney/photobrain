@@ -3,7 +3,7 @@ import { useCallback } from "react";
 import {
 	EMPTY_LIBRARY_FILTERS,
 	type LibraryFilters,
-} from "@/components/panels/LibraryPanel";
+} from "@/lib/library-filters";
 import { trpc } from "@/lib/trpc";
 import type { SmartAlbum, SmartAlbumFilters } from "@/lib/types";
 

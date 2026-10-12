@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import type { HandlerOverrides } from "./fixtures/handlers";
 import { FIXTURE_LIBRARY, fixtureGridIds } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { breadcrumb } from "./fixtures/ui";
 
 const ALL_IDS = fixtureGridIds(FIXTURE_LIBRARY);
 
@@ -152,7 +153,9 @@ test("selecting a collection scopes the grid, clears the folder and names the he
 	);
 	await openLibrary(page);
 	await leftPanel(page).getByText("2024", { exact: true }).click();
-	await expect(leftPanel(page).getByText("Showing: photos/2024")).toBeVisible();
+	await expect(
+		breadcrumb(page).getByText("2024", { exact: true }),
+	).toBeVisible();
 
 	await collectionRow(page, "Travel").getByRole("button").first().click();
 
@@ -162,7 +165,7 @@ test("selecting a collection scopes the grid, clears the folder and names the he
 	await expect(
 		collectionRow(page, "Travel").getByRole("button").first(),
 	).toHaveAttribute("aria-current", "true");
-	await expect(leftPanel(page).getByText("Showing: photos/2024")).toHaveCount(
+	await expect(breadcrumb(page).getByText("2024", { exact: true })).toHaveCount(
 		0,
 	);
 	expect(calls.photos?.at(-1)).toEqual({ collectionId: 1 });

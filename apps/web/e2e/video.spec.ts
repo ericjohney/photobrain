@@ -7,6 +7,7 @@ import {
 	fixtureGridIds,
 } from "./fixtures/photos";
 import { expect, type MockBackend, test } from "./fixtures/test";
+import { filterRadio } from "./fixtures/ui";
 
 declare global {
 	interface Window {
@@ -286,14 +287,14 @@ test("Type Video sends filterRaw video and lists videos only", async ({
 	const all = filterFixturePhotos(library);
 	await expect(page.getByText(`${all.length} photos`)).toBeVisible();
 
-	await page.getByTestId("left-panel").getByText("Filter By").click();
-	const radio = (name: string) =>
-		page.getByTestId("left-panel").getByRole("radio", { name, exact: true });
-	await radio("Video").click();
+	await (await filterRadio(page, "Type", "Video")).click();
 	const videos = filterFixturePhotos(library, { filterRaw: "video" });
 	await expect(page.getByText(`${videos.length} photos`)).toBeVisible();
 	expect(calls.photos?.at(-1)).toEqual({ filterRaw: "video" });
-	await expect(radio("Video")).toHaveAttribute("aria-checked", "true");
+	await expect(await filterRadio(page, "Type", "Video")).toHaveAttribute(
+		"aria-checked",
+		"true",
+	);
 	expect(
 		await page
 			.locator('[data-testid="photo-grid"] [data-photo-id]')
