@@ -1,6 +1,6 @@
 # iOS Distribution (TestFlight)
 
-The native app in `apps/ios` ships to TestFlight through `.github/workflows/native-ios-release.yml`, which runs on every push to `main` (with the default inputs) and can also be dispatched manually with custom inputs.
+The native app in `apps/ios` ships to TestFlight through `.github/workflows/native-ios-release.yml`, which runs on every push to `main` that changes `apps/ios/**` (with the default inputs) and can also be dispatched manually with custom inputs.
 
 ## Apple identities
 

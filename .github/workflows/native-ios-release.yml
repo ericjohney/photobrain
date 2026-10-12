@@ -3,6 +3,8 @@ name: Native iOS Production Release
 on:
   push:
     branches: [main]
+    paths:
+      - 'apps/ios/**'
   workflow_dispatch:
     inputs:
       bundle_id:
