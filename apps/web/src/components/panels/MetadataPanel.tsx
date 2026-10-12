@@ -6,17 +6,18 @@ import {
 	Check,
 	ChevronDown,
 	FileImage,
-	Flag,
 	Gauge,
 	ImageIcon,
 	MapPin,
 	ScanEye,
 	Sparkles,
-	Star,
 	X,
-	XCircle,
 } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PickToggle, RejectToggle, StarRating } from "@/components/ui/rating";
 import { PhotoExportMenu } from "@/components/PhotoExportMenu";
+import { Badge } from "@/components/ui/badge";
+import { Chip } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
@@ -79,7 +80,7 @@ function MetadataSection({
 }: MetadataSectionProps) {
 	return (
 		<Collapsible defaultOpen={defaultOpen} className="border-b border-border">
-			<CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-accent/50 transition-colors">
+			<CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2.5 text-xs font-semibold text-subtle transition-colors hover:text-foreground">
 				<div className="flex items-center gap-2">
 					<Icon className="h-3.5 w-3.5" />
 					<span>{title}</span>
@@ -122,13 +123,11 @@ function PairRow({
 			<span className="metadata-value" title={partnerQuery.data?.name}>
 				{partnerQuery.data?.name ??
 					(partnerQuery.error ? "Unavailable" : "Loading…")}{" "}
-				<span className="text-muted-foreground">{pairedFormat}</span>
+				<span className="text-subtle">{pairedFormat}</span>
 			</span>
 		</div>
 	);
 }
-
-const RATINGS = [1, 2, 3, 4, 5] as const;
 
 /** Star rating plus pick/reject toggles; re-selecting the current value clears it. */
 function CurationControls({
@@ -144,70 +143,24 @@ function CurationControls({
 			className="flex items-center gap-2 border-b border-border px-3 py-2"
 		>
 			<span className="metadata-label text-xs">Rating</span>
-			<div
-				role="radiogroup"
-				aria-label="Rating"
-				className="flex flex-1 items-center"
-			>
-				{RATINGS.map((stars) => (
-					<button
-						key={stars}
-						type="button"
-						role="radio"
-						aria-checked={photo.rating === stars}
-						aria-label={`Rate ${stars} ${stars === 1 ? "star" : "stars"}`}
-						title={`${stars} ${stars === 1 ? "star" : "stars"} (${stars})`}
-						onClick={() =>
-							onCurate({ rating: photo.rating === stars ? 0 : stars })
-						}
-						className="rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-					>
-						<Star
-							className={cn(
-								"h-4 w-4",
-								stars <= photo.rating && "fill-current text-yellow-400",
-							)}
-						/>
-					</button>
-				))}
-			</div>
+			<StarRating
+				value={photo.rating}
+				onChange={(rating) => onCurate({ rating })}
+				className="flex-1"
+			/>
 			<div className="flex items-center gap-1">
-				<button
-					type="button"
-					aria-pressed={photo.flag === "pick"}
-					aria-label="Pick"
-					title="Pick (P)"
-					onClick={() =>
+				<PickToggle
+					pressed={photo.flag === "pick"}
+					onToggle={() =>
 						onCurate({ flag: photo.flag === "pick" ? null : "pick" })
 					}
-					className={cn(
-						"rounded p-1 transition-colors hover:bg-secondary",
-						photo.flag === "pick"
-							? "text-green-400"
-							: "text-muted-foreground hover:text-foreground",
-					)}
-				>
-					<Flag
-						className={cn("h-4 w-4", photo.flag === "pick" && "fill-current")}
-					/>
-				</button>
-				<button
-					type="button"
-					aria-pressed={photo.flag === "reject"}
-					aria-label="Reject"
-					title="Reject (X)"
-					onClick={() =>
+				/>
+				<RejectToggle
+					pressed={photo.flag === "reject"}
+					onToggle={() =>
 						onCurate({ flag: photo.flag === "reject" ? null : "reject" })
 					}
-					className={cn(
-						"rounded p-1 transition-colors hover:bg-secondary",
-						photo.flag === "reject"
-							? "text-red-500"
-							: "text-muted-foreground hover:text-foreground",
-					)}
-				>
-					<XCircle className="h-4 w-4" />
-				</button>
+				/>
 			</div>
 		</div>
 	);
@@ -229,19 +182,16 @@ function ReviewReasons({
 			</span>
 			<ul aria-label="Review reasons" className="mt-1.5 flex flex-wrap gap-1">
 				{reasons.map((reason) => (
-					<li
-						key={reason}
-						className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs text-primary"
-					>
-						{JUNK_REASON_LABELS[reason]}
+					<li key={reason}>
+						<Chip>{JUNK_REASON_LABELS[reason]}</Chip>
 					</li>
 				))}
 			</ul>
 			<div className="mt-2 flex gap-2">
 				<Button
 					variant="outline"
-					size="sm"
-					className="h-7 flex-1 text-xs"
+					size="xs"
+					className="flex-1"
 					title="Reject (X)"
 					onClick={() => onResolve("reject")}
 				>
@@ -250,8 +200,8 @@ function ReviewReasons({
 				</Button>
 				<Button
 					variant="outline"
-					size="sm"
-					className="h-7 flex-1 text-xs"
+					size="xs"
+					className="flex-1"
 					title="Keep (K)"
 					onClick={() => onResolve("keep")}
 				>
@@ -276,15 +226,11 @@ export function MetadataPanel({
 }: MetadataPanelProps) {
 	if (!photo) {
 		return (
-			<div
-				className={cn(
-					"flex h-full flex-col items-center justify-center text-muted-foreground",
-					className,
-				)}
-			>
-				<ImageIcon className="h-12 w-12 opacity-30 mb-3" />
-				<p className="text-sm">No photo selected</p>
-			</div>
+			<EmptyState
+				icon={<ImageIcon />}
+				title="No photo selected"
+				className={className}
+			/>
 		);
 	}
 
@@ -352,16 +298,14 @@ export function MetadataPanel({
 					<MetadataSection title="RAW" icon={Camera}>
 						<div className="space-y-2 pt-1">
 							<div className="flex items-center gap-2">
-								<span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-2xs font-semibold text-orange-400">
-									{formatBadge.label}
-								</span>
+								<Badge variant="soft-raw">{formatBadge.label}</Badge>
 								{photo.isRaw && (
 									<span
 										className={cn(
 											"text-2xs font-medium",
-											photo.rawStatus === "converted" && "text-green-400",
-											photo.rawStatus === "failed" && "text-red-400",
-											photo.rawStatus === "no_converter" && "text-yellow-400",
+											photo.rawStatus === "converted" && "text-success",
+											photo.rawStatus === "failed" && "text-reject",
+											photo.rawStatus === "no_converter" && "text-warning",
 										)}
 									>
 										{photo.rawStatus === "converted"
@@ -382,7 +326,7 @@ export function MetadataPanel({
 								/>
 							)}
 							{photo.rawError && (
-								<p className="text-2xs text-red-400 bg-red-500/10 rounded px-2 py-1">
+								<p className="rounded-md bg-reject/10 px-2 py-1 text-2xs text-reject">
 									{photo.rawError}
 								</p>
 							)}
@@ -478,7 +422,7 @@ export function MetadataPanel({
 
 				{/* No EXIF */}
 				{!hasExif && !photo.isRaw && (
-					<div className="px-3 py-4 text-center text-xs text-muted-foreground">
+					<div className="px-3 py-4 text-center text-xs text-subtle">
 						No metadata available
 					</div>
 				)}

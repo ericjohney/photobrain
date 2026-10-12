@@ -1,5 +1,6 @@
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Popover } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { useDismiss } from "@/hooks/use-dismiss";
 import {
@@ -57,22 +58,24 @@ export function TimelineCalendar({
 			{/* A native title, not a Tooltip: the popover itself sits under the button. */}
 			<Button
 				variant="ghost"
-				size="icon"
+				size="icon-sm"
 				aria-label="Calendar"
 				aria-haspopup="dialog"
 				aria-expanded={open}
 				title="Calendar"
-				className={cn("h-7 w-7", open && "bg-secondary")}
+				className={cn(open && "bg-secondary text-foreground")}
 				onClick={toggle}
 			>
 				<CalendarDays className="h-4 w-4" />
 			</Button>
 			{open && (
-				<div
+				<Popover
 					role="dialog"
 					aria-label="Capture calendar"
 					data-testid="timeline-calendar"
-					className="absolute left-0 top-full z-30 mt-1 w-64 rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+					align="start"
+					padding="panel"
+					className="w-64"
 				>
 					{month === null ? (
 						<p className="px-1 py-2 text-xs text-muted-foreground">
@@ -81,15 +84,15 @@ export function TimelineCalendar({
 					) : (
 						<>
 							<div className="mb-1 flex items-center justify-between">
-								<button
-									type="button"
+								<Button
+									variant="ghost"
+									size="icon-xs"
 									aria-label="Previous month"
 									disabled={prevMonth === null}
 									onClick={() => setMonth(prevMonth)}
-									className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
 								>
-									<ChevronLeft className="h-4 w-4" />
-								</button>
+									<ChevronLeft />
+								</Button>
 								<span
 									data-testid="calendar-month"
 									aria-live="polite"
@@ -97,15 +100,15 @@ export function TimelineCalendar({
 								>
 									{formatCalendarMonth(month)}
 								</span>
-								<button
-									type="button"
+								<Button
+									variant="ghost"
+									size="icon-xs"
 									aria-label="Next month"
 									disabled={nextMonth === null}
 									onClick={() => setMonth(nextMonth)}
-									className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
 								>
-									<ChevronRight className="h-4 w-4" />
-								</button>
+									<ChevronRight />
+								</Button>
 							</div>
 							<div
 								aria-hidden="true"
@@ -163,7 +166,7 @@ export function TimelineCalendar({
 							</div>
 						</>
 					)}
-				</div>
+				</Popover>
 			)}
 		</div>
 	);

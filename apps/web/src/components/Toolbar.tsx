@@ -29,6 +29,7 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "@/components/ui/sheet";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Slider } from "@/components/ui/slider";
 import {
 	Tooltip,
@@ -75,65 +76,6 @@ export interface ToolbarGearStats {
 export interface ToolbarFaces {
 	shown: boolean;
 	onToggle: () => void;
-}
-
-/** Compact single-choice segmented control (one radio per option). */
-function ToolbarSegmented<T extends string>({
-	label,
-	options,
-	value,
-	onChange,
-}: {
-	label: string;
-	options: { value: T; label: string }[];
-	value: T;
-	onChange: (value: T) => void;
-}) {
-	// Arrow keys move the choice like a native radio group.
-	const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-		const step =
-			event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-		if (step === 0) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const index = options.findIndex((option) => option.value === value);
-		const next = options[(index + step + options.length) % options.length];
-		onChange(next.value);
-		event.currentTarget
-			.querySelector<HTMLButtonElement>(`[data-value="${next.value}"]`)
-			?.focus();
-	};
-	return (
-		<div
-			role="radiogroup"
-			aria-label={label}
-			onKeyDown={handleKeyDown}
-			className="flex h-7 items-center rounded bg-secondary p-0.5"
-		>
-			{options.map((option) => {
-				const checked = option.value === value;
-				return (
-					<button
-						key={option.value}
-						type="button"
-						role="radio"
-						aria-checked={checked}
-						data-value={option.value}
-						tabIndex={checked ? 0 : -1}
-						onClick={() => onChange(option.value)}
-						className={cn(
-							"h-full whitespace-nowrap rounded px-1.5 text-2xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-							checked
-								? "bg-primary text-primary-foreground"
-								: "text-muted-foreground hover:text-foreground",
-						)}
-					>
-						{option.label}
-					</button>
-				);
-			})}
-		</div>
-	);
 }
 
 interface ToolbarProps {
@@ -224,14 +166,13 @@ export function Toolbar({
 
 	return (
 		<TooltipProvider delayDuration={300}>
-			<div className={cn("flex h-10 items-center gap-2 px-2", className)}>
+			<div className={cn("flex h-12 items-center gap-2 px-3", className)}>
 				{/* Left panel toggle */}
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
 							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+							size="icon-sm"
 							onClick={onToggleLeftPanel}
 							aria-label={
 								leftPanelVisible ? "Hide left panel" : "Show left panel"
@@ -256,8 +197,7 @@ export function Toolbar({
 					<TooltipTrigger asChild>
 						<Button
 							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+							size="icon-sm"
 							onClick={() =>
 								onViewModeChange(viewMode === "grid" ? "loupe" : "grid")
 							}
@@ -279,10 +219,9 @@ export function Toolbar({
 					<TooltipTrigger asChild>
 						<Button
 							variant="ghost"
-							size="icon"
+							size="icon-sm"
 							aria-label="Map view"
 							aria-pressed={viewMode === "map"}
-							className={cn("h-7 w-7", viewMode === "map" && "bg-secondary")}
 							onClick={() =>
 								onViewModeChange(viewMode === "map" ? "grid" : "map")
 							}
@@ -300,10 +239,9 @@ export function Toolbar({
 						<TooltipTrigger asChild>
 							<Button
 								variant="ghost"
-								size="icon"
+								size="icon-sm"
 								aria-label="Gear stats"
 								aria-pressed={gearStats.active}
-								className={cn("h-7 w-7", gearStats.active && "bg-secondary")}
 								onClick={gearStats.onToggle}
 							>
 								<BarChart3 className="h-4 w-4" />
@@ -320,10 +258,9 @@ export function Toolbar({
 						<TooltipTrigger asChild>
 							<Button
 								variant="ghost"
-								size="icon"
+								size="icon-sm"
 								aria-label="Face boxes"
 								aria-pressed={faces.shown}
-								className={cn("h-7 w-7", faces.shown && "bg-secondary")}
 								onClick={faces.onToggle}
 							>
 								<ScanFace className="h-4 w-4" />
@@ -340,7 +277,7 @@ export function Toolbar({
 					<>
 						<Separator orientation="vertical" className="h-5" />
 						<div className="flex items-center gap-2">
-							<Grid3X3 className="h-3 w-3 text-muted-foreground" />
+							<Grid3X3 className="h-3 w-3 text-subtle" />
 							<Slider
 								value={[thumbnailSize]}
 								onValueChange={([v]) => onThumbnailSizeChange(v)}
@@ -355,13 +292,15 @@ export function Toolbar({
 
 				{timeline && (
 					<>
-						<ToolbarSegmented
+						<SegmentedControl
+							size="sm"
 							label="Group by"
 							options={GROUPING_OPTIONS}
 							value={timeline.grouping}
 							onChange={timeline.onGroupingChange}
 						/>
-						<ToolbarSegmented
+						<SegmentedControl
+							size="sm"
 							label="Sort by"
 							options={SORT_OPTIONS}
 							value={timeline.sort}
@@ -379,20 +318,20 @@ export function Toolbar({
 				<div className="flex-1" />
 
 				{/* Search */}
-				<div className="relative w-64">
-					<Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+				<div className="relative w-72">
+					<Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
 					<Input
 						type="text"
 						placeholder="Search photos..."
 						value={searchQuery}
 						onChange={(e) => onSearchChange(e.target.value)}
 						onKeyDown={handleSearchKeyDown}
-						className="h-7 pl-7 text-xs"
+						className="h-8 pl-8 text-xs"
 					/>
 				</div>
 
 				{/* Stats */}
-				<div className="flex items-center gap-1 text-2xs text-muted-foreground">
+				<div className="flex items-center gap-1 whitespace-nowrap text-xs text-subtle tabular-nums">
 					<span>{photoCount} photos</span>
 				</div>
 
@@ -415,8 +354,7 @@ export function Toolbar({
 					<TooltipTrigger asChild>
 						<Button
 							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+							size="icon-sm"
 							onClick={onRefresh}
 							disabled={scanDisabled}
 							aria-label="Scan for new photos"
@@ -437,8 +375,7 @@ export function Toolbar({
 					<SheetTrigger asChild>
 						<Button
 							variant="ghost"
-							size="sm"
-							className="h-7 text-xs"
+							size="xs"
 							disabled={scanDisabled}
 						>
 							Reprocess all photos…
@@ -477,8 +414,7 @@ export function Toolbar({
 					<TooltipTrigger asChild>
 						<Button
 							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+							size="icon-sm"
 							onClick={toggleDarkMode}
 						>
 							{isDarkMode ? (
@@ -500,8 +436,7 @@ export function Toolbar({
 					<TooltipTrigger asChild>
 						<Button
 							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+							size="icon-sm"
 							onClick={onToggleRightPanel}
 							aria-label={
 								rightPanelVisible ? "Hide right panel" : "Show right panel"

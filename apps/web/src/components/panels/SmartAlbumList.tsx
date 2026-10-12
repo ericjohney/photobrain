@@ -1,5 +1,6 @@
-import { Ellipsis, ListFilter, Search } from "lucide-react";
+import { ListFilter, Search } from "lucide-react";
 import { useState } from "react";
+import { MenuItem, Popover, RowActionsTrigger } from "@/components/ui/popover";
 import { CollectionNameInput } from "@/components/CollectionNameInput";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +12,7 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
+import { NavRow } from "@/components/ui/nav-row";
 import { useDismiss } from "@/hooks/use-dismiss";
 import { smartAlbumErrorMessage } from "@/hooks/use-smart-albums";
 import type { SmartAlbum } from "@/lib/types";
@@ -67,73 +69,52 @@ function SmartAlbumRow({
 			// The open menu overlaps the rows below; lift this row above them.
 			className={cn("group relative", menuOpen && "z-10")}
 		>
-			<button
-				type="button"
+			<NavRow
 				onClick={onSelect}
 				aria-current={selected || undefined}
-				className={cn(
-					"flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors",
-					"hover:bg-secondary/50",
-					selected && "bg-primary/10 text-primary",
-				)}
-			>
-				<ListFilter className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-				<span className="flex-1 truncate">{album.name}</span>
-				<span
-					data-testid="smart-album-count"
-					className="pr-5 text-xs text-muted-foreground"
-				>
-					{album.photoCount === null ? (
+				selected={selected}
+				icon={<ListFilter />}
+				label={album.name}
+				trailing={
+					album.photoCount === null ? (
 						// Query albums have no stable count (vector search).
 						<Search className="h-3 w-3" aria-label="Search album" />
 					) : (
 						album.photoCount
-					)}
-				</span>
-			</button>
+					)
+				}
+				trailingProps={{ "data-testid": "smart-album-count", className: "pr-5" }}
+			/>
 			<div ref={menuRef} className="absolute right-1 top-1/2 -translate-y-1/2">
-				<button
-					type="button"
+				<RowActionsTrigger
 					aria-label={`Smart album actions for ${album.name}`}
-					aria-haspopup="menu"
-					aria-expanded={menuOpen}
+					open={menuOpen}
 					onClick={() => setMenuOpen((open) => !open)}
-					className={cn(
-						"rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:opacity-100",
-						menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-					)}
-				>
-					<Ellipsis className="h-3.5 w-3.5" />
-				</button>
+				/>
 				{menuOpen && (
-					<div
+					<Popover
 						role="menu"
 						aria-label={`${album.name} actions`}
-						className="absolute right-0 top-full z-20 mt-1 w-28 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+						className="w-28"
 					>
-						<button
-							type="button"
-							role="menuitem"
+						<MenuItem
 							onClick={() => {
 								setMenuOpen(false);
 								setRenaming(true);
 							}}
-							className="w-full rounded px-2 py-1 text-left text-xs hover:bg-secondary"
 						>
 							Rename
-						</button>
-						<button
-							type="button"
-							role="menuitem"
+						</MenuItem>
+						<MenuItem
 							onClick={() => {
 								setMenuOpen(false);
 								onRequestDelete();
 							}}
-							className="w-full rounded px-2 py-1 text-left text-xs text-destructive hover:bg-secondary"
+							tone="destructive"
 						>
 							Delete
-						</button>
-					</div>
+						</MenuItem>
+					</Popover>
 				)}
 			</div>
 		</div>

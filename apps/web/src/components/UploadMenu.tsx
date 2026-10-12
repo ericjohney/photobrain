@@ -1,5 +1,7 @@
-import { ListChecks, Upload, X } from "lucide-react";
+import { ListChecks, Upload } from "lucide-react";
 import { useRef } from "react";
+import { CloseButton } from "@/components/ui/view-header";
+import { Popover } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
@@ -70,8 +72,7 @@ export function UploadMenu({ uploads }: { uploads: UploadsApi }) {
 					<span data-testid="upload-button-wrapper" className="inline-flex">
 						<Button
 							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+							size="icon-sm"
 							aria-label="Upload photos"
 							disabled={!uploads.enabled}
 							onClick={() => inputRef.current?.click()}
@@ -89,7 +90,9 @@ export function UploadMenu({ uploads }: { uploads: UploadsApi }) {
 					aria-label="Upload queue"
 					aria-haspopup="dialog"
 					aria-expanded={queueOpen}
-					title={uploads.importPending ? "Import will start shortly" : "Uploads"}
+					title={
+						uploads.importPending ? "Import will start shortly" : "Uploads"
+					}
 					className={cn("h-7 gap-1 px-2 text-xs", queueOpen && "bg-secondary")}
 					onClick={() => setQueueOpen(!queueOpen)}
 				>
@@ -98,21 +101,22 @@ export function UploadMenu({ uploads }: { uploads: UploadsApi }) {
 				</Button>
 			)}
 			{queueOpen && items.length > 0 && (
-				<div
+				<Popover
 					role="dialog"
 					aria-label="Uploads"
-					className="absolute right-0 top-full z-30 mt-1 w-80 rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
+					padding="panel"
+					className="w-80"
 				>
 					<div className="mb-1 flex items-center justify-between px-1">
 						<span className="text-xs font-semibold">Uploads</span>
-						<button
-							type="button"
+						<Button
+							variant="ghost"
+							size="xs"
 							disabled={finishedCount === 0}
 							onClick={uploads.clearFinished}
-							className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
 						>
 							Clear finished
-						</button>
+						</Button>
 					</div>
 					{uploads.importPending && (
 						<p
@@ -146,21 +150,17 @@ export function UploadMenu({ uploads }: { uploads: UploadsApi }) {
 												error
 													? "text-destructive"
 													: item.status === "created"
-														? "text-green-500"
-														: "text-muted-foreground",
+														? "text-success"
+														: "text-subtle",
 											)}
 										>
 											{statusText(item)}
 										</span>
 										{active && (
-											<button
-												type="button"
+											<CloseButton
 												aria-label={`Cancel ${item.file.name}`}
 												onClick={() => uploads.cancel(item.id)}
-												className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-											>
-												<X className="h-3.5 w-3.5" />
-											</button>
+											/>
 										)}
 									</div>
 									{item.status === "uploading" && (
@@ -182,7 +182,7 @@ export function UploadMenu({ uploads }: { uploads: UploadsApi }) {
 							);
 						})}
 					</ul>
-				</div>
+				</Popover>
 			)}
 		</div>
 	);

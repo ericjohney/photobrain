@@ -2,92 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * PhotoBrain design system: "Studio, warm neutral".
+ *
+ * Every color in the app comes from these tokens (HSL channels, consumed by
+ * tailwind.config.ts as `hsl(var(--token) / <alpha>)`). Components use the
+ * semantic Tailwind names (bg-panel, text-muted-foreground, text-pick,
+ * bg-overlay, ...), never raw palette classes such as bg-blue-500 or text-white.
+ *
+ * - Surfaces: background (canvas) < panel < secondary/accent (raised) < muted.
+ * - Text: foreground > muted-foreground > subtle.
+ * - Accent: primary (periwinkle) for selection, focus, filters and progress.
+ * - Curation: star, pick, reject; RAW format badges use raw.
+ * - Overlays on photos: overlay / overlay-foreground (theme-independent).
+ */
 @layer base {
 	:root {
-		/* Light mode - clean professional look */
-		--background: 0 0% 96%;
-		--foreground: 0 0% 15%;
-		--card: 0 0% 100%;
-		--card-foreground: 0 0% 15%;
-		--popover: 0 0% 100%;
-		--popover-foreground: 0 0% 15%;
-		--primary: 210 100% 45%;
+		/* Light: warm paper */
+		--background: 45 9.5% 91.8%;
+		--foreground: 36 7.5% 13.1%;
+		--card: 40 17.6% 96.7%;
+		--card-foreground: 36 7.5% 13.1%;
+		--popover: 40 17.6% 98.5%;
+		--popover-foreground: 36 7.5% 13.1%;
+		--primary: 230 64% 57%;
 		--primary-foreground: 0 0% 100%;
-		--secondary: 0 0% 92%;
-		--secondary-foreground: 0 0% 20%;
-		--muted: 0 0% 94%;
-		--muted-foreground: 0 0% 45%;
-		--accent: 0 0% 90%;
-		--accent-foreground: 0 0% 15%;
-		--destructive: 0 84% 60%;
+		--secondary: 36 11% 89%;
+		--secondary-foreground: 36 7.5% 13.1%;
+		--muted: 43 10% 86.5%;
+		--muted-foreground: 36 5.6% 35.3%;
+		--subtle: 35 5% 53.7%;
+		--accent: 36 11% 87%;
+		--accent-foreground: 36 7.5% 13.1%;
+		--destructive: 0 57% 52%;
 		--destructive-foreground: 0 0% 100%;
-		--border: 0 0% 88%;
-		--input: 0 0% 100%;
-		--ring: 210 100% 45%;
-		--radius: 0.25rem;
+		--border: 36 10% 82%;
+		--input: 36 10% 80%;
+		--ring: 230 64% 57%;
+		--radius: 0.5rem;
 
-		/* Sidebar - light mode */
-		--sidebar-background: 0 0% 98%;
-		--sidebar-foreground: 0 0% 35%;
-		--sidebar-primary: 210 100% 45%;
-		--sidebar-primary-foreground: 0 0% 100%;
-		--sidebar-accent: 0 0% 94%;
-		--sidebar-accent-foreground: 0 0% 15%;
-		--sidebar-border: 0 0% 90%;
-		--sidebar-ring: 210 100% 45%;
+		--panel: 40 17.6% 96.7%;
+		--panel-foreground: 36 7.5% 13.1%;
+		--well: 45 12.5% 93.7%;
+		--selection: 230 64% 57%;
 
-		/* Lightroom-specific tokens */
-		--panel: 0 0% 97%;
-		--panel-foreground: 0 0% 25%;
-		--toolbar: 0 0% 95%;
-		--filmstrip: 0 0% 92%;
-		--selection: 210 100% 45%;
-		--selection-muted: 210 100% 90%;
-		--grid-gap: 2px;
-		--thumbnail-border: 0 0% 85%;
+		--star: 40 75.5% 44.9%;
+		--pick: 156 55.3% 36.9%;
+		--pick-foreground: 0 0% 100%;
+		--reject: 0 57% 52%;
+		--reject-foreground: 0 0% 100%;
+		--raw: 27 73.5% 44.3%;
+		--raw-foreground: 0 0% 100%;
+		--success: 156 55.3% 36.9%;
+		--warning: 40 75.5% 44.9%;
+
+		/* Chart series (gear stats): periwinkle, mint, honey, rose, lilac */
+		--chart-1: 230 64% 57%;
+		--chart-2: 156 55% 40%;
+		--chart-3: 40 76% 48%;
+		--chart-4: 0 57% 58%;
+		--chart-5: 275 40% 58%;
+
+		/* Translucent chrome over photos; identical in both themes. */
+		--overlay: 30 6% 6%;
+		--overlay-foreground: 34 15% 96%;
 	}
 
 	.dark {
-		/* Lightroom-inspired dark palette */
-		--background: 0 0% 11%;
-		--foreground: 0 0% 85%;
-		--card: 0 0% 15%;
-		--card-foreground: 0 0% 85%;
-		--popover: 0 0% 18%;
-		--popover-foreground: 0 0% 85%;
-		--primary: 210 100% 50%;
-		--primary-foreground: 0 0% 100%;
-		--secondary: 0 0% 22%;
-		--secondary-foreground: 0 0% 75%;
-		--muted: 0 0% 18%;
-		--muted-foreground: 0 0% 55%;
-		--accent: 0 0% 25%;
-		--accent-foreground: 0 0% 90%;
-		--destructive: 0 70% 45%;
-		--destructive-foreground: 0 0% 100%;
-		--border: 0 0% 20%;
-		--input: 0 0% 13%;
-		--ring: 210 100% 50%;
+		/* Dark: warm neutral (stone) */
+		--background: 30 4.3% 9%;
+		--foreground: 34 14.9% 90.8%;
+		--card: 20 5.1% 11.6%;
+		--card-foreground: 34 14.9% 90.8%;
+		--popover: 30 4.9% 14%;
+		--popover-foreground: 34 14.9% 90.8%;
+		--primary: 228 100% 79%;
+		--primary-foreground: 230 57% 14.5%;
+		--secondary: 30 4.9% 16.1%;
+		--secondary-foreground: 34 14.9% 90.8%;
+		--muted: 24 5% 19.8%;
+		--muted-foreground: 33 5.9% 63.7%;
+		--subtle: 33 5% 42.9%;
+		--accent: 24 5% 19.8%;
+		--accent-foreground: 34 14.9% 90.8%;
+		--destructive: 0 100% 82%;
+		--destructive-foreground: 0 55% 15%;
+		--border: 30 5% 17.5%;
+		--input: 30 5% 21%;
+		--ring: 228 100% 79%;
 
-		/* Sidebar - Lightroom dark */
-		--sidebar-background: 0 0% 13%;
-		--sidebar-foreground: 0 0% 70%;
-		--sidebar-primary: 210 100% 50%;
-		--sidebar-primary-foreground: 0 0% 100%;
-		--sidebar-accent: 0 0% 20%;
-		--sidebar-accent-foreground: 0 0% 85%;
-		--sidebar-border: 0 0% 18%;
-		--sidebar-ring: 210 100% 50%;
+		--panel: 20 5.1% 11.6%;
+		--panel-foreground: 34 14.9% 90.8%;
+		--well: 30 5.3% 7.5%;
+		--selection: 228 100% 79%;
 
-		/* Lightroom-specific tokens - dark */
-		--panel: 0 0% 14%;
-		--panel-foreground: 0 0% 75%;
-		--toolbar: 0 0% 16%;
-		--filmstrip: 0 0% 12%;
-		--selection: 210 100% 50%;
-		--selection-muted: 210 100% 25%;
-		--grid-gap: 2px;
-		--thumbnail-border: 0 0% 25%;
+		--star: 40 81.1% 71%;
+		--pick: 160 56% 68.8%;
+		--pick-foreground: 161 58.5% 10.4%;
+		--reject: 0 100% 82%;
+		--reject-foreground: 0 55% 15%;
+		--raw: 28 81.7% 67.8%;
+		--raw-foreground: 28 60% 12%;
+		--success: 160 56% 68.8%;
+		--warning: 40 81.1% 71%;
+
+		--chart-1: 228 100% 79%;
+		--chart-2: 160 56% 68.8%;
+		--chart-3: 40 81% 71%;
+		--chart-4: 0 85% 78%;
+		--chart-5: 275 60% 78%;
 	}
 }
 
@@ -95,29 +118,46 @@
 	* {
 		@apply border-border;
 	}
+	html {
+		color-scheme: light;
+	}
+	html.dark {
+		color-scheme: dark;
+	}
 	body {
 		@apply bg-background text-foreground antialiased;
+		font-feature-settings: "cv11", "ss01";
+	}
+	::selection {
+		background: hsl(var(--selection) / 0.3);
 	}
 }
 
-/* Lightroom-specific utility classes */
+/* Shared panel building blocks */
 @layer components {
 	.panel-section {
-		@apply border-b border-border py-3 px-3;
+		@apply border-b border-border px-3 py-3;
 	}
 	.panel-section:last-child {
 		@apply border-b-0;
 	}
 	.panel-header {
-		@apply flex items-center justify-between text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2;
+		@apply mb-2 flex items-center justify-between text-xs font-semibold text-subtle;
+	}
+	.section-label {
+		@apply text-xs font-semibold text-subtle;
 	}
 	.metadata-row {
-		@apply flex justify-between gap-2 text-xs py-0.5;
+		@apply flex justify-between gap-2 py-0.5 text-xs;
 	}
 	.metadata-label {
-		@apply text-muted-foreground shrink-0;
+		@apply shrink-0 text-subtle;
 	}
 	.metadata-value {
-		@apply text-foreground font-medium text-right truncate;
+		@apply truncate text-right font-medium text-foreground tabular-nums;
+	}
+	/* Translucent chrome over a photo (loupe controls); buttons use Button variant="glass". */
+	.glass {
+		@apply bg-overlay/45 text-overlay-foreground backdrop-blur-md;
 	}
 }

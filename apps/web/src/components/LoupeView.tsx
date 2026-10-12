@@ -13,6 +13,8 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { badgeVariants, RawBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
@@ -199,7 +201,7 @@ function FaceBoxes({
 						data-face-id={face.id}
 						aria-label={`Face: ${label}`}
 						onClick={() => onFaceClick?.(face)}
-						className="pointer-events-auto absolute rounded-sm border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.5)] hover:border-primary"
+						className="pointer-events-auto absolute rounded-md border-2 border-overlay-foreground/90 shadow-[0_0_0_1px_hsl(var(--overlay)/0.5)] hover:border-primary"
 						style={{
 							left: face.box.x * rect.width,
 							top: face.box.y * rect.height,
@@ -207,7 +209,7 @@ function FaceBoxes({
 							height: face.box.height * rect.height,
 						}}
 					>
-						<span className="absolute left-0 top-full mt-0.5 max-w-40 truncate whitespace-nowrap rounded bg-black/60 px-1 text-2xs text-white">
+						<span className="absolute left-0 top-full mt-0.5 max-w-40 truncate whitespace-nowrap rounded bg-overlay/60 px-1 text-2xs text-overlay-foreground backdrop-blur-sm">
 							{label}
 						</span>
 					</button>
@@ -308,16 +310,10 @@ export function LoupeView({
 			{isVideo ? (
 				<LoupeVideo key={photo.id} photo={photo} videoRef={videoRef} />
 			) : isFailedRaw ? (
-				<div className="flex flex-col items-center justify-center text-muted-foreground">
-					<Camera className="h-24 w-24 mb-4 opacity-30" />
-					<p className="text-lg mb-2">RAW Conversion Failed</p>
-					<p className="text-sm text-muted-foreground mb-4">
-						{photo.rawError || "Unknown error"}
-					</p>
-					<p className="text-xs text-muted-foreground">
-						Re-run scan to retry conversion
-					</p>
-				</div>
+				<EmptyState icon={<Camera />} title="RAW Conversion Failed">
+					<p>{photo.rawError || "Unknown error"}</p>
+					<p className="mt-2">Re-run scan to retry conversion</p>
+				</EmptyState>
 			) : (
 				<div
 					className={cn(
@@ -369,12 +365,11 @@ export function LoupeView({
 
 			{/* RAW / RAW+JPEG pair badge */}
 			{formatBadge && (
-				<div
+				<RawBadge
 					data-testid="loupe-raw-badge"
-					className="absolute left-3 top-3 rounded bg-orange-500/90 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
-				>
-					{formatBadge.label}
-				</div>
+					badge={formatBadge}
+					className="absolute left-3 top-3"
+				/>
 			)}
 
 			{/* Live Photo: play the motion clip over the still */}
@@ -385,8 +380,9 @@ export function LoupeView({
 					aria-label="Play Live Photo"
 					onClick={() => setLivePlaying(true)}
 					className={cn(
-						"absolute right-3 top-3 rounded bg-black/50 px-1.5 py-0.5 text-2xs font-semibold tracking-wide text-white shadow-sm hover:bg-black/70",
-						livePlaying && "bg-primary/80 hover:bg-primary/80",
+						badgeVariants({ variant: livePlaying ? "accent" : "overlay" }),
+						"absolute right-3 top-3 tracking-wide",
+						!livePlaying && "hover:bg-overlay/75",
 					)}
 				>
 					LIVE
@@ -395,33 +391,36 @@ export function LoupeView({
 
 			{/* Navigation arrows */}
 			{hasPrev && (
-				<button
-					type="button"
+				<Button
+					variant="glass"
+					size="icon"
+					aria-label="Previous photo"
 					onClick={handlePrev}
-					className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100 focus:opacity-100"
+					className="absolute left-4 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 [&_svg]:size-6"
 				>
-					<ChevronLeft className="h-6 w-6" />
-				</button>
+					<ChevronLeft />
+				</Button>
 			)}
 			{hasNext && (
-				<button
-					type="button"
+				<Button
+					variant="glass"
+					size="icon"
+					aria-label="Next photo"
 					onClick={handleNext}
-					className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100 focus:opacity-100"
+					className="absolute right-4 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 [&_svg]:size-6"
 				>
-					<ChevronRight className="h-6 w-6" />
-				</button>
+					<ChevronRight />
+				</Button>
 			)}
 
 			{/* Zoom controls */}
 			<TooltipProvider>
-				<div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-black/40 px-2 py-1">
+				<div className="glass absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-1">
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button
-								variant="ghost"
-								size="icon"
-								className="h-7 w-7 text-white hover:bg-white/20"
+								variant="glass-ghost"
+								size="icon-sm"
 								onClick={() => setZoomLevel("fit")}
 							>
 								<Minimize
@@ -438,9 +437,8 @@ export function LoupeView({
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button
-								variant="ghost"
-								size="icon"
-								className="h-7 w-7 text-white hover:bg-white/20"
+								variant="glass-ghost"
+								size="icon-sm"
 								onClick={() => setZoomLevel("fill")}
 							>
 								<Maximize
@@ -457,9 +455,8 @@ export function LoupeView({
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button
-								variant="ghost"
-								size="icon"
-								className="h-7 w-7 text-white hover:bg-white/20"
+								variant="glass-ghost"
+								size="icon-sm"
 								onClick={() => setZoomLevel("100")}
 							>
 								<span
@@ -478,7 +475,7 @@ export function LoupeView({
 			</TooltipProvider>
 
 			{/* Photo info overlay */}
-			<div className="absolute bottom-4 right-4 rounded bg-black/40 px-2 py-1 text-xs text-white">
+			<div className="glass absolute bottom-4 right-4 rounded-md px-2 py-1 text-xs tabular-nums">
 				{photo.name}
 			</div>
 		</div>

@@ -1,5 +1,6 @@
 import { Users } from "lucide-react";
 import { useId, useState } from "react";
+import { MenuOption, Popover } from "@/components/ui/popover";
 import { useDismiss } from "@/hooks/use-dismiss";
 import { type FaceAssignment, useAssignFace } from "@/hooks/use-people";
 import { getFaceCropUrl } from "@/lib/thumbnails";
@@ -108,31 +109,28 @@ function FaceAssignCombobox({
 				className="h-6 w-full rounded border border-input bg-background px-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 			/>
 			{open && options.length > 0 && (
-				<ul
+				<Popover
+					as="ul"
 					id={listId}
 					role="listbox"
 					aria-label={`People for face ${face.id}`}
-					className="absolute right-0 top-full z-20 mt-1 max-h-48 w-full min-w-40 overflow-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+					className="max-h-48 w-full min-w-40 overflow-auto"
 				>
 					{options.map((option, index) => (
-						<li
+						<MenuOption
 							key={option.key}
-							role="option"
 							aria-selected={index === highlighted}
 							// Keep focus in the input until the choice lands.
 							onMouseDown={(e) => e.preventDefault()}
 							onClick={() => choose(option)}
 							onMouseEnter={() => setHighlighted(index)}
-							className={cn(
-								"cursor-pointer truncate rounded px-2 py-1 text-xs",
-								index === highlighted && "bg-secondary",
-								option.key === "reject" && "text-destructive",
-							)}
+							highlighted={index === highlighted}
+							tone={option.key === "reject" ? "destructive" : "default"}
 						>
 							{option.label}
-						</li>
+						</MenuOption>
 					))}
-				</ul>
+				</Popover>
 			)}
 		</div>
 	);

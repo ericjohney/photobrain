@@ -82,7 +82,7 @@ export function ActivityPanel({
 						{isActive ? (
 							<Loader2 className="h-4 w-4 animate-spin text-primary" />
 						) : isCompleted ? (
-							<CheckCircle className="h-4 w-4 text-green-500" />
+							<CheckCircle className="h-4 w-4 text-success" />
 						) : (
 							<Icon
 								className={cn(
@@ -103,12 +103,12 @@ export function ActivityPanel({
 
 					{/* Progress bar */}
 					{progress.total > 0 && (
-						<div className="h-1.5 bg-muted rounded-full overflow-hidden">
+						<div className="h-1.5 overflow-hidden rounded-full bg-muted">
 							<div
 								className={cn(
 									"h-full transition-all duration-300",
 									isCompleted
-										? "bg-green-500"
+										? "bg-success"
 										: progress.phase === "failed"
 											? "bg-destructive"
 											: "bg-primary",

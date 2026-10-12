@@ -1,5 +1,6 @@
 import { ChevronDown, Download } from "lucide-react";
 import { useState } from "react";
+import { MenuLink, Popover } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { useDismiss } from "@/hooks/use-dismiss";
 import { EXPORT_SIZES, exportFileName } from "@/lib/export";
@@ -42,26 +43,24 @@ export function PhotoExportMenu({
 				<ChevronDown className="h-3.5 w-3.5 opacity-60" />
 			</Button>
 			{open && (
-				<div
+				<Popover
 					role="menu"
 					aria-label="Export"
-					className="absolute right-0 top-full z-20 mt-1 w-full min-w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+					className="w-full min-w-48"
 				>
 					{sizes.map((size) => (
-						<a
+						<MenuLink
 							key={size}
-							role="menuitem"
 							href={exportPhotoUrl(photo.id, size)}
 							download={exportFileName(photo.name, size)}
 							onClick={() => setOpen(false)}
-							className="block truncate rounded px-2 py-1 text-xs hover:bg-secondary"
 						>
 							{size === "original"
 								? `Original (${photo.name})`
 								: `JPEG, ${size} px`}
-						</a>
+						</MenuLink>
 					))}
-				</div>
+				</Popover>
 			)}
 		</div>
 	);

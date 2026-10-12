@@ -1,6 +1,6 @@
 import { Camera } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { DurationBadge } from "@/components/MediaBadges";
+import { DurationBadge, RawBadge } from "@/components/ui/badge";
 import { VIRTUALIZE_MIN_PHOTOS } from "@/components/PhotoGrid";
 import { rawBadge } from "@/lib/raw-badge";
 import { getThumbnailUrl } from "@/lib/thumbnails";
@@ -14,9 +14,9 @@ interface FilmstripProps {
 	className?: string;
 }
 
-/** Horizontal padding (`px-2`) and gap between thumbnails (`gap-0.5`), in px. */
-const PADDING_X = 8;
-const GAP = 2;
+/** Horizontal padding and gap between thumbnails, in px. */
+const PADDING_X = 12;
+const GAP = 4;
 /** Vertical padding (`py-2`), in px: thumbnails fill the remaining height. */
 const PADDING_Y = 8;
 
@@ -46,18 +46,17 @@ const FilmstripTile = memo(function FilmstripTile({
 			onClick={() => onClick?.(photo)}
 			style={{ left, width, top: PADDING_Y, bottom: PADDING_Y }}
 			className={cn(
-				"absolute overflow-hidden",
-				"transition-all duration-75",
+				"group absolute overflow-hidden rounded",
+				"transition-[box-shadow,opacity] duration-100",
 				"ring-inset focus:outline-none",
-				active && "ring-2 ring-selection brightness-110",
-				!active &&
-					"opacity-70 hover:opacity-100 hover:ring-1 hover:ring-thumbnail-border",
+				active && "ring-2 ring-selection",
+				!active && "opacity-60 hover:opacity-100",
 				isRejected && "opacity-30 hover:opacity-50",
 			)}
 		>
 			{isFailedRaw ? (
-				<div className="flex h-full w-full items-center justify-center bg-muted">
-					<Camera className="h-4 w-4 opacity-50 text-muted-foreground" />
+				<div className="flex h-full w-full items-center justify-center bg-secondary">
+					<Camera className="h-4 w-4 text-subtle" />
 				</div>
 			) : (
 				<img
@@ -69,22 +68,33 @@ const FilmstripTile = memo(function FilmstripTile({
 				/>
 			)}
 
+			{/* Selection frame, drawn above the image. */}
+			<span
+				aria-hidden
+				className={cn(
+					"pointer-events-none absolute inset-0 rounded ring-inset",
+					active
+						? "ring-2 ring-selection"
+						: "group-hover:ring-1 group-hover:ring-foreground/20",
+				)}
+			/>
+
 			{/* RAW / RAW+JPEG pair indicator */}
 			{formatBadge && (
-				<div
+				<RawBadge
 					data-testid="filmstrip-raw-badge"
-					title={formatBadge.label}
-					className="absolute left-0.5 top-0.5 rounded bg-orange-500/90 px-0.5 text-[8px] font-semibold text-white"
-				>
-					{formatBadge.compact}
-				</div>
+					badge={formatBadge}
+					size="xs"
+					className="absolute left-0.5 top-0.5 shadow-none"
+				/>
 			)}
 
 			{photo.mediaType === "video" && (
 				<DurationBadge
 					data-testid="filmstrip-duration-badge"
 					durationMs={photo.durationMs}
-					className="absolute bottom-0.5 right-0.5 gap-px px-0.5 py-0 text-[8px]"
+					size="xs"
+					className="absolute bottom-0.5 right-0.5 gap-px"
 				/>
 			)}
 		</button>
@@ -154,7 +164,7 @@ export function Filmstrip({
 		return (
 			<div
 				className={cn(
-					"flex h-full items-center justify-center text-muted-foreground",
+					"flex h-full items-center justify-center text-subtle",
 					className,
 				)}
 			>

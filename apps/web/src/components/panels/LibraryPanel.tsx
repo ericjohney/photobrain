@@ -17,10 +17,13 @@ import {
 	Tag,
 	UserRound,
 	Users,
-	X,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { RemovableChip } from "@/components/ui/chip";
+import { NavRow, navRowClasses } from "@/components/ui/nav-row";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { eventSubtitle, eventTitle } from "@/lib/events";
 import { formatCapturedDate } from "@/lib/on-this-day";
 import { getThumbnailUrl } from "@/lib/thumbnails";
@@ -125,48 +128,6 @@ const FLAG_FILTER_OPTIONS: { value: FlagFilter | null; label: string }[] = [
 	{ value: "unflagged", label: FLAG_FILTER_LABELS.unflagged },
 ];
 
-/** Single-choice segmented control (one radio per option). */
-function SegmentedFilter<T>({
-	label,
-	options,
-	value,
-	onChange,
-}: {
-	label: string;
-	options: { value: T; label: string }[];
-	value: T;
-	onChange: (value: T) => void;
-}) {
-	return (
-		<div
-			role="radiogroup"
-			aria-label={label}
-			className="mx-2 mb-1 flex rounded bg-secondary p-0.5"
-		>
-			{options.map((option) => {
-				const checked = option.value === value;
-				return (
-					<button
-						key={option.label}
-						type="button"
-						role="radio"
-						aria-checked={checked}
-						onClick={() => onChange(option.value)}
-						className={cn(
-							"flex-auto whitespace-nowrap rounded px-1.5 py-0.5 text-xs transition-colors",
-							checked
-								? "bg-primary text-primary-foreground"
-								: "text-muted-foreground hover:text-foreground",
-						)}
-					>
-						{option.label}
-					</button>
-				);
-			})}
-		</div>
-	);
-}
-
 interface LibraryPanelProps {
 	photoCount: number;
 	folders?: FolderNode[];
@@ -235,23 +196,15 @@ function NavItem({
 	indent = 0,
 }: NavItemProps) {
 	return (
-		<button
-			type="button"
+		<NavRow
 			onClick={onClick}
 			aria-pressed={toggle ? Boolean(active) : undefined}
-			className={cn(
-				"flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors",
-				"hover:bg-secondary/50",
-				active && "bg-primary/10 text-primary",
-			)}
-			style={{ paddingLeft: `${8 + indent * 16}px` }}
-		>
-			<span className="flex-shrink-0 text-muted-foreground">{icon}</span>
-			<span className="flex-1 truncate">{label}</span>
-			{count !== undefined && (
-				<span className="text-xs text-muted-foreground">{count}</span>
-			)}
-		</button>
+			selected={active}
+			indent={indent}
+			icon={icon}
+			label={label}
+			trailing={count}
+		/>
 	);
 }
 
@@ -284,7 +237,7 @@ function Section({
 				<button
 					type="button"
 					onClick={() => setOpen(!open)}
-					className="flex flex-1 items-center gap-1 px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+					className="flex flex-1 items-center gap-1 px-2 pb-1 pt-2 text-xs font-semibold text-subtle hover:text-foreground"
 				>
 					<ChevronRight
 						className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
@@ -356,13 +309,14 @@ function ShowAllToggle({
 }) {
 	if (total <= FILTER_PREVIEW_LIMIT) return null;
 	return (
-		<button
-			type="button"
+		<Button
+			variant="ghost"
+			size="xs"
 			onClick={onToggle}
-			className="w-full rounded px-2 py-1 text-left text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+			className="w-full justify-start"
 		>
 			{showAll ? "Show fewer" : `Show all (${total})`}
-		</button>
+		</Button>
 	);
 }
 
@@ -523,11 +477,7 @@ function EventList({
 						data-event-id={event.id}
 						aria-pressed={selected}
 						onClick={() => onSelect(selected ? null : event)}
-						className={cn(
-							"flex w-full items-center gap-2 rounded px-2 py-1 text-left transition-colors",
-							"hover:bg-secondary/50",
-							selected && "bg-primary/10 text-primary",
-						)}
+						className={cn(navRowClasses(selected), "py-1")}
 					>
 						<img
 							src={getThumbnailUrl(
@@ -536,7 +486,7 @@ function EventList({
 								event.cover.thumbnailUpdatedAt,
 							)}
 							alt=""
-							className="h-9 w-9 shrink-0 rounded bg-muted object-cover"
+							className="h-9 w-9 shrink-0 rounded-md bg-secondary object-cover"
 							loading="lazy"
 							draggable={false}
 						/>
@@ -546,7 +496,7 @@ function EventList({
 							</span>
 							<span
 								data-testid="event-subtitle"
-								className="truncate text-2xs text-muted-foreground"
+								className="truncate text-2xs text-subtle"
 							>
 								{eventSubtitle(event)}
 							</span>
@@ -578,21 +528,15 @@ function FilterChip({
 	onClear: () => void;
 }) {
 	return (
-		<span
+		<RemovableChip
 			data-testid={testId}
-			className="mr-1 mt-1.5 inline-flex items-center gap-1 rounded-full bg-primary/15 py-0.5 pl-2 pr-0.5"
+			icon={icon}
+			clearLabel={clearLabel}
+			onClear={onClear}
+			className="mr-1 mt-1.5"
 		>
-			{icon}
 			{label}
-			<button
-				type="button"
-				aria-label={clearLabel}
-				onClick={onClear}
-				className="rounded-full p-0.5 hover:bg-primary/20"
-			>
-				<X className="h-3 w-3" />
-			</button>
-		</span>
+		</RemovableChip>
 	);
 }
 
@@ -619,47 +563,56 @@ function FolderItem({
 
 	return (
 		<div>
-			<button
-				type="button"
-				onClick={() => onSelect(folder.path)}
-				className={cn(
-					"flex w-full items-center gap-1 rounded px-2 py-1.5 text-left text-sm transition-colors",
-					"hover:bg-secondary/50",
-					isSelected && "bg-primary/10 text-primary",
-				)}
-				style={{ paddingLeft: `${8 + depth * 16}px` }}
+			<div
+				className={cn(navRowClasses(isSelected), "gap-1 py-0 pr-2")}
+				style={{ paddingLeft: `${4 + depth * 16}px` }}
 			>
 				{hasChildren ? (
 					<button
 						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							onToggleExpand(folder.path);
-						}}
-						className="flex-shrink-0 p-0.5 -ml-1 hover:bg-secondary rounded"
+						aria-label={`${isExpanded ? "Collapse" : "Expand"} ${folder.name}`}
+						aria-expanded={isExpanded}
+						onClick={() => onToggleExpand(folder.path)}
+						className="flex-shrink-0 rounded p-0.5 text-subtle hover:bg-accent hover:text-foreground"
 					>
 						<ChevronRight
 							className={cn(
-								"h-3 w-3 transition-transform text-muted-foreground",
+								"h-3 w-3 transition-transform",
 								isExpanded && "rotate-90",
 							)}
 						/>
 					</button>
 				) : (
-					<span className="w-4" />
+					<span className="w-4 flex-shrink-0" />
 				)}
-				<span className="flex-shrink-0 text-muted-foreground">
-					{isSelected || isExpanded ? (
-						<FolderOpen className="h-4 w-4" />
-					) : (
-						<Folder className="h-4 w-4" />
-					)}
-				</span>
-				<span className="flex-1 truncate">{folder.name}</span>
-				<span className="text-xs text-muted-foreground">
-					{folder.photoCount}
-				</span>
-			</button>
+				<button
+					type="button"
+					onClick={() => onSelect(folder.path)}
+					className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left focus-visible:outline-none"
+				>
+					<span
+						className={cn(
+							"flex-shrink-0",
+							isSelected ? "text-primary" : "text-subtle",
+						)}
+					>
+						{isSelected || isExpanded ? (
+							<FolderOpen className="h-4 w-4" />
+						) : (
+							<Folder className="h-4 w-4" />
+						)}
+					</span>
+					<span className="flex-1 truncate">{folder.name}</span>
+					<span
+						className={cn(
+							"text-xs tabular-nums",
+							isSelected ? "text-primary" : "text-subtle",
+						)}
+					>
+						{folder.photoCount}
+					</span>
+				</button>
+			</div>
 
 			{hasChildren && isExpanded && (
 				<div>
@@ -793,7 +746,7 @@ export function LibraryPanel({
 				{/* Folders Section */}
 				<Section title="Folders">
 					{folders.length === 0 ? (
-						<div className="px-2 py-4 text-xs text-muted-foreground text-center">
+						<div className="px-2 py-4 text-center text-xs text-subtle">
 							No folders found
 						</div>
 					) : (
@@ -817,18 +770,19 @@ export function LibraryPanel({
 					open={collectionsOpen}
 					onOpenChange={setCollectionsOpen}
 					actions={
-						<button
-							type="button"
+						<Button
+							variant="ghost"
+							size="icon-xs"
 							aria-label="New collection"
 							title="New collection"
 							onClick={() => {
 								setCollectionsOpen(true);
 								setCreatingCollection(true);
 							}}
-							className="mr-1 rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+							className="mr-1"
 						>
 							<Plus className="h-3.5 w-3.5" />
-						</button>
+						</Button>
 					}
 				>
 					<CollectionList
@@ -866,9 +820,7 @@ export function LibraryPanel({
 					{events !== undefined &&
 					events.length === 0 &&
 					activeFilters.event === null ? (
-						<div className="px-2 py-2 text-xs text-muted-foreground">
-							No events yet
-						</div>
+						<div className="px-2 py-2 text-xs text-subtle">No events yet</div>
 					) : (
 						<EventList
 							events={events ?? []}
@@ -883,7 +835,9 @@ export function LibraryPanel({
 				{!catalogViewActive && (
 					<Section title="Filter By" defaultOpen={false}>
 						<Section title="Type">
-							<SegmentedFilter
+							<SegmentedControl
+								fill
+								className="mx-2 mb-1"
 								label="Photo type"
 								options={RAW_FILTER_OPTIONS}
 								value={activeFilters.filterRaw}
@@ -893,7 +847,9 @@ export function LibraryPanel({
 							/>
 						</Section>
 						<Section title="Rating">
-							<SegmentedFilter
+							<SegmentedControl
+								fill
+								className="mx-2 mb-1"
 								label="Minimum rating"
 								options={RATING_FILTER_OPTIONS}
 								value={activeFilters.minRating}
@@ -903,7 +859,9 @@ export function LibraryPanel({
 							/>
 						</Section>
 						<Section title="Flag">
-							<SegmentedFilter
+							<SegmentedControl
+								fill
+								className="mx-2 mb-1"
 								label="Flag"
 								options={FLAG_FILTER_OPTIONS}
 								value={activeFilters.flag}
@@ -1027,16 +985,16 @@ export function LibraryPanel({
 						activeFilters.capturedDate !== null ||
 						activeFilters.event !== null ||
 						activeFilters.bounds !== null) && (
-						<div className="mt-4 rounded bg-primary/10 px-2 py-1.5 text-xs text-primary">
+						<div className="mt-4 rounded-md bg-primary/10 px-2 py-1.5 text-xs text-primary">
 							<div className="flex items-center justify-between">
 								<span>Filters active</span>
-								<button
-									type="button"
-									className="underline cursor-pointer"
+								<Button
+									variant="link"
+									className="h-auto p-0 text-xs"
 									onClick={() => onFilterChange(EMPTY_LIBRARY_FILTERS)}
 								>
 									Clear all
-								</button>
+								</Button>
 							</div>
 							{activeFilters.country !== null && (
 								<FilterChip
@@ -1119,19 +1077,20 @@ export function LibraryPanel({
 
 				{/* Selected folder indicator */}
 				{selectedFolder && !reviewActive && (
-					<div className="mt-4 rounded bg-secondary px-2 py-1.5 text-xs text-muted-foreground">
+					<div className="mt-4 rounded-md bg-secondary px-2 py-1.5 text-xs text-muted-foreground">
 						Showing: {selectedFolder}
 					</div>
 				)}
 
 				{!reviewActive && onSaveSmartAlbum && (
-					<button
-						type="button"
+					<Button
+						variant="ghost"
+						size="xs"
 						onClick={onSaveSmartAlbum}
-						className="mt-2 w-full rounded px-2 py-1.5 text-left text-xs text-primary hover:bg-primary/10"
+						className="mt-2 w-full justify-start text-primary hover:bg-primary/10 hover:text-primary"
 					>
 						Save as Smart Album…
-					</button>
+					</Button>
 				)}
 			</div>
 		</ScrollArea>

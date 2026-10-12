@@ -22,7 +22,7 @@ export function OnThisDayStrip({
 			aria-label="On this day"
 			className="shrink-0 border-b border-border px-3 pb-3 pt-2"
 		>
-			<h2 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+			<h2 className="section-label mb-2 flex items-center gap-1.5">
 				<CalendarClock className="h-3.5 w-3.5" />
 				On this day
 			</h2>
@@ -34,7 +34,7 @@ export function OnThisDayStrip({
 						data-testid="on-this-day-card"
 						data-captured-date={year.capturedDate}
 						onClick={() => onSelect(year.capturedDate)}
-						className="group relative h-28 w-40 shrink-0 overflow-hidden rounded-md bg-muted text-left ring-inset hover:ring-1 hover:ring-thumbnail-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-selection"
+						className="group relative h-28 w-44 shrink-0 overflow-hidden rounded-lg bg-secondary text-left ring-inset hover:ring-1 hover:ring-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-selection"
 					>
 						<img
 							src={getThumbnailUrl(
@@ -47,16 +47,16 @@ export function OnThisDayStrip({
 							loading="lazy"
 							draggable={false}
 						/>
-						<span className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-black/75 to-transparent p-2 pt-6 text-white">
+						<span className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-overlay/80 to-transparent p-2.5 pt-8 text-overlay-foreground">
 							<span
 								data-testid="on-this-day-years-ago"
-								className="text-sm font-semibold"
+								className="text-sm font-semibold tracking-tight"
 							>
 								{year.yearsAgo === 1
 									? "1 year ago"
 									: `${year.yearsAgo} years ago`}
 							</span>
-							<span className="flex justify-between gap-2 text-2xs text-white/80">
+							<span className="flex justify-between gap-2 text-2xs text-overlay-foreground/80">
 								<span data-testid="on-this-day-date">
 									{formatCapturedDate(year.capturedDate)}
 								</span>

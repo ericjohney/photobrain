@@ -1,4 +1,4 @@
-import { AlertCircle, Camera, Flag, ImageIcon, Star, X } from "lucide-react";
+import { AlertCircle, Camera, ImageIcon } from "lucide-react";
 import {
 	memo,
 	useEffect,
@@ -7,7 +7,15 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { DurationBadge, LiveBadge } from "@/components/MediaBadges";
+import {
+	Badge,
+	DurationBadge,
+	FlagMark,
+	LiveBadge,
+	RatingStars,
+	RawBadge,
+} from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { TimelineYearRail } from "@/components/TimelineYearRail";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { rawBadge } from "@/lib/raw-badge";
@@ -33,11 +41,13 @@ interface PhotoGridProps<T extends PhotoMetadata> {
 }
 
 /** Gap between tiles, in px (matches the grid's CSS `gap`). */
-const GAP = 2;
-/** Padding around the grid content (`p-1`), in px. */
-const PADDING = 4;
-/** Height of a sticky timeline section header (`h-8`), in px. */
-const HEADER_HEIGHT = 32;
+const GAP = 6;
+/** Horizontal padding around the grid content, in px. */
+const PADDING = 12;
+/** Vertical padding (top and bottom), in px. */
+const PADDING_Y = 4;
+/** Height of a sticky timeline section header (`h-10`), in px. */
+const HEADER_HEIGHT = 40;
 /**
  * Lists up to this many photos render every tile: they are cheap, and
  * keeping them all in the DOM keeps small views simple. Larger lists render
@@ -109,11 +119,10 @@ const PhotoTile = memo(function PhotoTile<T extends PhotoMetadata>({
 			data-photo-id={photo.id}
 			data-rejected={isRejected || undefined}
 			className={cn(
-				"group relative aspect-square cursor-pointer overflow-hidden bg-muted",
-				"transition-all duration-75",
+				"group relative aspect-square cursor-pointer overflow-hidden rounded-md bg-secondary",
+				"transition-[box-shadow,opacity] duration-100",
 				"ring-inset",
-				active && "ring-2 ring-selection brightness-110",
-				!active && "hover:ring-1 hover:ring-thumbnail-border",
+				active && "ring-2 ring-selection",
 				isRejected && "opacity-40",
 			)}
 			onClick={() => onClick?.(photo)}
@@ -121,8 +130,8 @@ const PhotoTile = memo(function PhotoTile<T extends PhotoMetadata>({
 		>
 			{/* Thumbnail */}
 			{isFailedRaw ? (
-				<div className="flex h-full w-full flex-col items-center justify-center bg-muted text-muted-foreground">
-					<Camera className="h-8 w-8 mb-1 opacity-50" />
+				<div className="flex h-full w-full flex-col items-center justify-center bg-secondary text-subtle">
+					<Camera className="mb-1 h-8 w-8" />
 					<span className="text-2xs">
 						{photo.rawStatus === "no_converter" ? "No Converter" : "Failed"}
 					</span>
@@ -139,80 +148,57 @@ const PhotoTile = memo(function PhotoTile<T extends PhotoMetadata>({
 				/>
 			)}
 
-			{/* Hover overlay - pointer-events-none to not block clicks */}
+			{/* Hover overlay and selection frame, drawn above the image. */}
 			<div
 				className={cn(
-					"absolute inset-0 transition-colors pointer-events-none",
-					"group-hover:bg-black/10",
+					"pointer-events-none absolute inset-0 rounded-md ring-inset transition-colors group-hover:bg-overlay/10",
+					active
+						? "ring-2 ring-selection"
+						: "group-hover:ring-1 group-hover:ring-foreground/20",
 				)}
 			/>
 
 			{/* RAW / RAW+JPEG pair badge */}
 			{formatBadge && (
-				<div
+				<RawBadge
 					data-testid="raw-badge"
-					className="absolute left-1 top-1 rounded bg-orange-500/90 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
-				>
-					{formatBadge.label}
-				</div>
+					badge={formatBadge}
+					className="absolute left-1.5 top-1.5"
+				/>
 			)}
 
 			{/* Failed indicator */}
 			{photo.isRaw && photo.rawStatus === "failed" && (
-				<div className="absolute right-1 top-1">
-					<AlertCircle className="h-3.5 w-3.5 text-red-500 drop-shadow" />
+				<div className="absolute right-1.5 top-1.5">
+					<AlertCircle className="h-3.5 w-3.5 text-reject drop-shadow" />
 				</div>
 			)}
 
 			{/* Live Photo: a still with a motion clip */}
 			{photo.motionVideoId !== null && (
-				<LiveBadge className="absolute right-1 top-1" />
+				<LiveBadge className="absolute right-1.5 top-1.5" />
 			)}
 
 			{/* Filename on hover */}
-			<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-1.5 pt-4 opacity-0 transition-opacity group-hover:opacity-100">
-				<p className="truncate text-2xs font-medium text-white">{photo.name}</p>
+			<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-overlay/70 to-transparent p-2 pt-6 opacity-0 transition-opacity group-hover:opacity-100">
+				<p className="truncate text-2xs font-medium text-overlay-foreground">
+					{photo.name}
+				</p>
 			</div>
 
 			{badge && (
-				<div
-					data-testid="photo-badge"
-					className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
-				>
+				<Badge data-testid="photo-badge" className="absolute bottom-1.5 left-1.5">
 					{badge}
-				</div>
+				</Badge>
 			)}
 
-			<div className="absolute bottom-1 right-1 flex items-center gap-1">
+			<div className="absolute bottom-1.5 right-1.5 flex items-center gap-1">
 				{/* Rating / flag badge */}
 				{(photo.rating > 0 || photo.flag) && (
-					<div
-						data-testid="curation-badge"
-						className="flex items-center gap-1 rounded bg-black/60 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm"
-					>
-						{photo.rating > 0 && (
-							<span
-								role="img"
-								className="flex items-center gap-0.5"
-								aria-label={`${photo.rating} ${photo.rating === 1 ? "star" : "stars"}`}
-							>
-								<Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
-								{photo.rating}
-							</span>
-						)}
-						{photo.flag === "pick" && (
-							<Flag
-								aria-label="Pick"
-								className="h-3 w-3 fill-green-400 text-green-400"
-							/>
-						)}
-						{photo.flag === "reject" && (
-							<X
-								aria-label="Rejected"
-								className="h-3 w-3 stroke-[3] text-red-500"
-							/>
-						)}
-					</div>
+					<Badge data-testid="curation-badge">
+						{photo.rating > 0 && <RatingStars rating={photo.rating} />}
+						<FlagMark flag={photo.flag} />
+					</Badge>
 				)}
 				{photo.mediaType === "video" && (
 					<DurationBadge durationMs={photo.durationMs} />
@@ -290,7 +276,7 @@ export function PhotoGrid<T extends PhotoMetadata>({
 					photos: s.photos,
 				}))
 			: [{ id: "all", title: null, year: null, photos }];
-		let offset = PADDING;
+		let offset = PADDING_Y;
 		return groups.map((group) => {
 			const rows = Math.ceil(group.photos.length / columns);
 			const gridTop = offset + (group.title === null ? 0 : HEADER_HEIGHT);
@@ -334,14 +320,13 @@ export function PhotoGrid<T extends PhotoMetadata>({
 
 	if (empty) {
 		return (
-			<div
+			<EmptyState
 				data-testid="photo-grid-empty"
-				className="flex h-full flex-col items-center justify-center text-muted-foreground"
+				icon={<ImageIcon />}
+				title="No photos found"
 			>
-				<ImageIcon className="h-16 w-16 mb-4 opacity-20" />
-				<p className="text-sm font-medium">No photos found</p>
-				<p className="text-xs">Try adjusting your search or add some photos</p>
-			</div>
+				Try adjusting your search or add some photos
+			</EmptyState>
 		);
 	}
 
@@ -393,7 +378,7 @@ export function PhotoGrid<T extends PhotoMetadata>({
 	return (
 		<div className={cn("flex h-full", className)}>
 			<ScrollArea className="h-full min-w-0 flex-1" viewportRef={viewportRef}>
-				<div style={{ padding: PADDING }}>
+				<div style={{ padding: `${PADDING_Y}px ${PADDING}px` }}>
 					{sections ? (
 						<div data-testid="photo-grid">
 							{layout.map((section) => (
@@ -406,15 +391,15 @@ export function PhotoGrid<T extends PhotoMetadata>({
 									{/* The count is a bare number so it never reads like the toolbar's "N photos". */}
 									<h2
 										data-testid="timeline-section-header"
-										className="sticky top-0 z-10 flex h-8 items-baseline gap-2 bg-background/95 px-1 py-1.5 backdrop-blur"
+										className="sticky top-0 z-10 flex h-10 items-baseline gap-2 bg-background/90 px-0.5 pb-2 pt-3 backdrop-blur"
 									>
-										<span className="text-sm font-semibold">
+										<span className="text-sm font-semibold tracking-tight">
 											{section.title}
 										</span>
 										<span
 											data-testid="timeline-section-count"
 											title={`${section.photos.length} ${section.photos.length === 1 ? "photo" : "photos"}`}
-											className="text-2xs text-muted-foreground tabular-nums"
+											className="text-xs text-subtle tabular-nums"
 										>
 											{section.photos.length}
 										</span>

@@ -26,7 +26,7 @@ export function PanelLayout({
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-background">
 			{/* Toolbar */}
 			{toolbar && (
-				<div className="flex-shrink-0 border-b border-border bg-toolbar">
+				<div className="flex-shrink-0 border-b border-border bg-panel">
 					{toolbar}
 				</div>
 			)}
@@ -50,7 +50,7 @@ export function PanelLayout({
 
 					{/* Filmstrip */}
 					{filmstrip && filmstripVisible && (
-						<div className="h-24 flex-shrink-0 border-t border-border bg-filmstrip overflow-hidden">
+						<div className="h-24 flex-shrink-0 border-t border-border bg-panel overflow-hidden">
 							{filmstrip}
 						</div>
 					)}

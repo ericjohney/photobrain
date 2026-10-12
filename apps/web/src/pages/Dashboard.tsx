@@ -2,12 +2,10 @@ import {
 	Copy,
 	Layers,
 	ListFilter,
-	Loader2,
 	ScanEye,
 	Search,
 	Sparkles,
 	UserRound,
-	X,
 } from "lucide-react";
 import {
 	lazy,
@@ -43,6 +41,9 @@ import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
 import { Toolbar } from "@/components/Toolbar";
 import { UploadDropZone } from "@/components/UploadDropZone";
 import { Button } from "@/components/ui/button";
+import { RemovableChip } from "@/components/ui/chip";
+import { EmptyState, Spinner } from "@/components/ui/empty-state";
+import { ViewHeader } from "@/components/ui/view-header";
 import { useCollections } from "@/hooks/use-collections";
 import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
 import { useJobProgress } from "@/hooks/use-job-progress";
@@ -766,9 +767,7 @@ export function Dashboard() {
 			return (
 				<Suspense
 					fallback={
-						<div className="flex h-full items-center justify-center">
-							<Loader2 className="h-10 w-10 animate-spin text-primary" />
-						</div>
+						<Spinner />
 					}
 				>
 					<MapView
@@ -819,10 +818,7 @@ export function Dashboard() {
 
 		if (loading) {
 			return (
-				<div className="flex h-full flex-col items-center justify-center">
-					<Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-					<p className="text-sm text-muted-foreground">Loading photos...</p>
-				</div>
+				<Spinner label="Loading photos..." />
 			);
 		}
 
@@ -862,25 +858,18 @@ export function Dashboard() {
 		}
 		if (similarNotIndexed) {
 			return (
-				<div className="flex h-full items-center justify-center px-6">
-					<p className="text-sm text-muted-foreground">
-						This photo hasn't been indexed yet. Run a scan to enable
-						similar-photo search.
-					</p>
-				</div>
+				<EmptyState title="This photo hasn't been indexed yet. Run a scan to enable similar-photo search." />
 			);
 		}
 
 		if (duplicatesActive) {
 			if (duplicates.groups.length === 0) {
 				return (
-					<div
+					<EmptyState
 						data-testid="duplicates-empty"
-						className="flex h-full flex-col items-center justify-center text-muted-foreground"
-					>
-						<Copy className="mb-4 h-16 w-16 opacity-20" />
-						<p className="text-sm font-medium">No duplicates or bursts</p>
-					</div>
+						icon={<Copy />}
+						title="No duplicates or bursts"
+					/>
 				);
 			}
 			return (
@@ -901,13 +890,11 @@ export function Dashboard() {
 		if (reviewActive) {
 			if (reviewPhotos.length === 0) {
 				return (
-					<div
+					<EmptyState
 						data-testid="review-empty"
-						className="flex h-full flex-col items-center justify-center text-muted-foreground"
-					>
-						<ScanEye className="mb-4 h-16 w-16 opacity-20" />
-						<p className="text-sm font-medium">Nothing to review</p>
-					</div>
+						icon={<ScanEye />}
+						title="Nothing to review"
+					/>
 				);
 			}
 			return (
@@ -951,18 +938,14 @@ export function Dashboard() {
 			data-testid="similar-chip"
 			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
 		>
-			<span className="flex min-w-0 items-center gap-1.5 rounded-full bg-primary/15 py-0.5 pl-2.5 pr-1 text-primary">
-				<Sparkles className="h-3.5 w-3.5 shrink-0" />
+			<RemovableChip
+				icon={<Sparkles className="h-3.5 w-3.5 shrink-0" />}
+				clearLabel="Exit similar photos"
+				onClear={exitSimilar}
+				className="min-w-0 pl-2.5 text-sm"
+			>
 				<span className="truncate">Similar to {similarSource.name}</span>
-				<button
-					type="button"
-					aria-label="Exit similar photos"
-					onClick={exitSimilar}
-					className="rounded-full p-0.5 hover:bg-primary/20"
-				>
-					<X className="h-3.5 w-3.5" />
-				</button>
-			</span>
+			</RemovableChip>
 		</div>
 	);
 
@@ -1003,12 +986,14 @@ export function Dashboard() {
 		.join(" · ");
 	const searchResultCount = searchPhotosQuery.data?.photos.length;
 	const searchHeader = searchQuery && (
-		<div
+		<ViewHeader
 			data-testid="search-header"
-			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
-		>
-			<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<span className="min-w-0 flex-1 truncate">
+			icon={<Search />}
+			titleAs="span"
+			exitLabel="Clear search"
+			onExit={() => setSearchQuery("")}
+			title={
+				<>
 				{searchResultCount === undefined
 					? "Searching"
 					: `${searchResultCount} ${searchResultCount === 1 ? "result" : "results"}`}{" "}
@@ -1020,58 +1005,28 @@ export function Dashboard() {
 					: ""}
 				{filters.event ? ` · ${eventTitle(filters.event)}` : ""}
 				{filters.bounds ? " · Map area" : ""}
-			</span>
-			<button
-				type="button"
-				aria-label="Clear search"
-				onClick={() => setSearchQuery("")}
-				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
-		</div>
+				</>
+			}
+		/>
 	);
 	const collectionHeader = selectedCollection && (
-		<div
+		<ViewHeader
 			data-testid="collection-header"
-			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
-		>
-			<Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<h2 className="min-w-0 truncate font-medium">
-				{selectedCollection.name}
-			</h2>
-			<span className="flex-1 text-xs text-muted-foreground">
-				{selectedCollection.photoCount}{" "}
-				{selectedCollection.photoCount === 1 ? "photo" : "photos"}
-			</span>
-			<button
-				type="button"
-				aria-label="Show all photos"
-				onClick={() => handleCollectionSelect(null)}
-				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
-		</div>
+			icon={<Layers />}
+			title={selectedCollection.name}
+			meta={`${selectedCollection.photoCount} ${selectedCollection.photoCount === 1 ? "photo" : "photos"}`}
+			exitLabel="Show all photos"
+			onExit={() => handleCollectionSelect(null)}
+		/>
 	);
 	const personHeader = personScopeLabel !== null && (
-		<div
+		<ViewHeader
 			data-testid="person-header"
-			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
-		>
-			<UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<h2 className="min-w-0 flex-1 truncate font-medium">
-				{personScopeLabel}
-			</h2>
-			<button
-				type="button"
-				aria-label="Leave person"
-				onClick={() => setFilters((current) => ({ ...current, personId: null }))}
-				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
-		</div>
+			icon={<UserRound />}
+			title={personScopeLabel}
+			exitLabel="Leave person"
+			onExit={() => setFilters((current) => ({ ...current, personId: null }))}
+		/>
 	);
 	const scopeHeaders =
 		collectionHeader || personHeader ? (
@@ -1110,28 +1065,18 @@ export function Dashboard() {
 		/>
 	);
 	const smartAlbumHeader = selectedSmartAlbum && (
-		<div
+		<ViewHeader
 			data-testid="smart-album-header"
-			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
-		>
-			<ListFilter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<h2 className="min-w-0 truncate font-medium">
-				{selectedSmartAlbum.name}
-			</h2>
-			<span className="flex-1 text-xs text-muted-foreground">
-				{selectedSmartAlbum.photoCount === null
+			icon={<ListFilter />}
+			title={selectedSmartAlbum.name}
+			meta={
+				selectedSmartAlbum.photoCount === null
 					? "Smart album"
-					: `${selectedSmartAlbum.photoCount} ${selectedSmartAlbum.photoCount === 1 ? "photo" : "photos"}`}
-			</span>
-			<button
-				type="button"
-				aria-label="Close smart album"
-				onClick={closeSmartAlbum}
-				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
-		</div>
+					: `${selectedSmartAlbum.photoCount} ${selectedSmartAlbum.photoCount === 1 ? "photo" : "photos"}`
+			}
+			exitLabel="Close smart album"
+			onExit={closeSmartAlbum}
+		/>
 	);
 	// A query album names itself above the search results header.
 	const banner = mapActive

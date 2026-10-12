@@ -1,4 +1,4 @@
-import { BarChart3, Loader2 } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import {
 	barPercent,
@@ -10,18 +10,20 @@ import {
 	previewGearCounts,
 	shotsPerYear,
 } from "@/lib/gear-stats";
+import { Button } from "@/components/ui/button";
+import { EmptyState, Spinner } from "@/components/ui/empty-state";
 import type { GearBucket, GearCount, GearStats } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** Segment colors by camera rank; "Other" uses the muted color. */
+/** Segment colors by camera rank (chart tokens); "Other" uses the muted color. */
 const CAMERA_COLORS = [
-	"bg-sky-500",
-	"bg-emerald-500",
-	"bg-amber-500",
-	"bg-fuchsia-500",
-	"bg-rose-500",
+	"bg-chart-1",
+	"bg-chart-2",
+	"bg-chart-3",
+	"bg-chart-4",
+	"bg-chart-5",
 ];
-const OTHER_COLOR = "bg-muted-foreground/50";
+const OTHER_COLOR = "bg-subtle/50";
 
 function Section({
 	title,
@@ -38,11 +40,9 @@ function Section({
 		<section
 			data-testid={testId}
 			aria-label={title}
-			className={cn("rounded-md border border-border bg-panel p-3", className)}
+			className={cn("rounded-lg border border-border bg-panel p-3", className)}
 		>
-			<h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-				{title}
-			</h3>
+			<h3 className="section-label mb-2">{title}</h3>
 			{children}
 		</section>
 	);
@@ -96,13 +96,14 @@ function GearCountList({
 				))}
 			</ul>
 			{entries.length > GEAR_LIST_PREVIEW_LIMIT && (
-				<button
-					type="button"
+				<Button
+					variant="ghost"
+					size="xs"
 					onClick={() => setShowAll((current) => !current)}
-					className="mt-1 w-full rounded px-1.5 py-1 text-left text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+					className="mt-1 w-full justify-start"
 				>
 					{showAll ? "Show fewer" : `Show all (${entries.length})`}
-				</button>
+				</Button>
 			)}
 		</>
 	);
@@ -250,21 +251,16 @@ export function GearStatsView({
 	}
 	if (!stats) {
 		return (
-			<div className="flex h-full flex-col items-center justify-center">
-				<Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
-				<p className="text-sm text-muted-foreground">Loading gear stats...</p>
-			</div>
+			<Spinner label="Loading gear stats..." />
 		);
 	}
 	if (stats.total === 0) {
 		return (
-			<div
+			<EmptyState
 				data-testid="gear-stats-empty"
-				className="flex h-full flex-col items-center justify-center text-muted-foreground"
-			>
-				<BarChart3 className="mb-4 h-16 w-16 opacity-20" />
-				<p className="text-sm font-medium">No photos match these filters</p>
-			</div>
+				icon={<BarChart3 />}
+				title="No photos match these filters"
+			/>
 		);
 	}
 	return (
@@ -273,7 +269,7 @@ export function GearStatsView({
 				data-testid="gear-stats-summary"
 				className="mb-3 flex items-center gap-1.5 text-sm font-medium"
 			>
-				<BarChart3 className="h-4 w-4 text-muted-foreground" />
+				<BarChart3 className="h-4 w-4 text-subtle" />
 				{gearSummary(stats)}
 			</h2>
 			<div className="grid grid-cols-1 gap-3 xl:grid-cols-2">

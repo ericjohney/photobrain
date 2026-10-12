@@ -9,6 +9,7 @@ import * as maplibregl from "maplibre-gl";
 // Vite bundles MapLibre's module worker and serves it from our own origin.
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { config } from "@/lib/config";
 import {
@@ -31,9 +32,16 @@ const SOURCE_ID = "photo-locations";
 const CLUSTER_LAYER = "photo-clusters";
 const POINT_LAYER = "photo-points";
 const FIT_PADDING = 48;
-// Colors match the app's primary accent (hsl(210 100% 45-50%)).
-const ACCENT = "#0073e6";
-const OUTLINE = "#ffffff";
+/**
+ * A design token (src/index.css) as a CSS color for MapLibre paint
+ * properties, which cannot reference CSS variables.
+ */
+function tokenColor(name: string) {
+	const value = getComputedStyle(document.documentElement)
+		.getPropertyValue(`--${name}`)
+		.trim();
+	return `hsl(${value.replace(/ /g, ", ").replace(/, \//, " /")})`;
+}
 
 /** A photo the map should center on instead of fitting every point. */
 export interface MapFocus {
@@ -174,7 +182,7 @@ export default function MapView({
 				if (labels.has(clusterId)) continue;
 				const element = document.createElement("div");
 				element.className =
-					"pointer-events-none text-xs font-semibold text-white";
+					"pointer-events-none text-xs font-semibold text-primary-foreground";
 				element.dataset.testid = "map-cluster-count";
 				element.textContent = String(props.point_count);
 				const [lng, lat] = feature.geometry.coordinates;
@@ -197,6 +205,8 @@ export default function MapView({
 			if (!map.loaded()) setMapError(event.error?.message ?? "Map error");
 		});
 		map.on("load", () => {
+			const accent = tokenColor("primary");
+			const outline = tokenColor("overlay-foreground");
 			map.addSource(SOURCE_ID, {
 				type: "geojson",
 				data: toGeoJson([]),
@@ -210,8 +220,8 @@ export default function MapView({
 				source: SOURCE_ID,
 				filter: ["has", "point_count"],
 				paint: {
-					"circle-color": ACCENT,
-					"circle-opacity": 0.85,
+					"circle-color": accent,
+					"circle-opacity": 0.9,
 					"circle-radius": [
 						"step",
 						["get", "point_count"],
@@ -223,7 +233,7 @@ export default function MapView({
 						1000,
 						30,
 					],
-					"circle-stroke-color": OUTLINE,
+					"circle-stroke-color": outline,
 					"circle-stroke-width": 2,
 				},
 			});
@@ -233,9 +243,9 @@ export default function MapView({
 				source: SOURCE_ID,
 				filter: ["!", ["has", "point_count"]],
 				paint: {
-					"circle-color": ACCENT,
+					"circle-color": accent,
 					"circle-radius": 6,
-					"circle-stroke-color": OUTLINE,
+					"circle-stroke-color": outline,
 					"circle-stroke-width": 2,
 				},
 			});
@@ -331,16 +341,13 @@ export default function MapView({
 
 	if (empty) {
 		return (
-			<div
+			<EmptyState
 				data-testid="map-empty"
-				className="flex h-full flex-col items-center justify-center text-muted-foreground"
+				icon={<MapPin />}
+				title="No geotagged photos"
 			>
-				<MapPin className="mb-4 h-16 w-16 opacity-20" />
-				<p className="text-sm font-medium">No geotagged photos</p>
-				<p className="mt-1 text-xs">
-					Photos with GPS coordinates in their EXIF appear here.
-				</p>
-			</div>
+				Photos with GPS coordinates in their EXIF appear here.
+			</EmptyState>
 		);
 	}
 
