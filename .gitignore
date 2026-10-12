@@ -58,3 +58,6 @@ coverage/
 # Test photos
 /tmp/test-photos/
 temp-photos/
+
+# Lazily downloaded YuNet/SFace models (FACE_MODEL_DIR default)
+.face_models/

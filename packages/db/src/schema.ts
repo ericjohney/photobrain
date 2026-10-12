@@ -210,6 +210,8 @@ export const scanJobs = sqliteTable("scan_jobs", {
 	current: integer("current").notNull().default(0),
 	total: integer("total").notNull().default(0),
 	status: text("status").notNull().default("queued"),
+	// The requested mode, so a queued job whose event was lost can be re-sent.
+	force: integer("force", { mode: "boolean" }).notNull().default(false),
 	error: text("error"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),

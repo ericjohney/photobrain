@@ -35,6 +35,9 @@ type PhotoEvents = {
 	"photos/uploaded": {
 		data: Record<string, never>;
 	};
+	"photos/maintenance.requested": {
+		data: Record<string, never>;
+	};
 };
 
 export const inngest = new Inngest({

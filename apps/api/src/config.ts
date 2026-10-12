@@ -29,9 +29,6 @@ const configSchema = z.object({
 		.positive()
 		.max(Number.MAX_SAFE_INTEGER)
 		.default(10 * 1024 ** 3),
-	// RAW conversion settings
-	DARKTABLE_CLI_PATH: z.string().default("darktable-cli"),
-	RAW_CONVERSION_TIMEOUT: z.coerce.number().default(120000), // 2 minutes
 });
 
 export function parseConfig(environment: NodeJS.ProcessEnv) {

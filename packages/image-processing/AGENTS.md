@@ -40,7 +40,7 @@ Exports are re-exported from `src/lib.rs` and consumed by the API:
 
 The streaming API rejects mismatched file, relative, and optional thumbnail path arrays and permits one pending `next()` call. Omitting thumbnail paths preserves mirrored source-path output. `processPhoto` and `processPhotosBatch` retain their existing signatures and output layout. The batch helper remains synchronous and input-aligned; callers must preserve paired arrays (the API executor validates them). Stream cancellation discards buffered results, not acknowledged SQLite receipts.
 
-The API uses a persistent worker thread for discovery, thumbnail validation, streaming media, HEIC maintenance, and image embeddings. It retains one stream across completion windows and acknowledges each result after API-thread persistence. Other native work or another job cancels/drains that stream before replacement. Public stream pulls/close are asynchronous N-API tasks; synchronous helper exports remain available. The executor is not a global library lock or native process-crash boundary.
+The API uses a persistent worker thread for discovery, thumbnail validation, streaming media, and image embeddings. It retains one stream across completion windows and acknowledges each result after API-thread persistence. Other native work or another job cancels/drains that stream before replacement. Public stream pulls/close are asynchronous N-API tasks; synchronous helper exports remain available. The executor is not a global library lock or native process-crash boundary.
 
 ## Scan Processing Pipeline
 

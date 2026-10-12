@@ -182,9 +182,6 @@
     "packages/utils": {
       "name": "@photobrain/utils",
       "version": "0.1.0",
-      "dependencies": {
-        "zod": "^3.24.0",
-      },
       "devDependencies": {
         "typescript": "^5.7.2",
       },

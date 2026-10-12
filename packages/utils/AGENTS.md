@@ -6,10 +6,8 @@ Scope: `packages/utils`.
 
 - `src/index.ts`: `formatFileSize`, `parseDate`, `formatDate`, and `debounce`.
 - `src/thumbnails.ts`: thumbnail size/type configuration and deterministic path helper.
-- `src/tasks.ts`: Zod task/progress schemas from an older workflow model.
-- `src/queues.ts`: BullMQ queue names and job types from an older architecture.
 
-The package has no build, test, or typecheck script. It is consumed as TypeScript source through the workspace.
+The package has no build, test, or typecheck script and no runtime dependencies. It is consumed as TypeScript source through the workspace.
 
 ## Thumbnail Contract
 
@@ -30,8 +28,6 @@ The nominal quality values are shared configuration but the current Rust WebP sa
 
 `debounce` has no cancel or flush API.
 
-## Legacy Queue Types
+## Job Types
 
-`queues.ts` documents and exports `scan`, `phash`, and `embedding` BullMQ names, but there is no `apps/worker` and no current consumer. `tasks.ts` similarly defines an older item-level workflow event shape. Current progress uses Inngest Realtime data `{ phase, current, total }`.
-
-Do not use these legacy exports for new API/job work unless the architecture is intentionally migrated and the root/scoped guides are updated at the same time.
+The package no longer exports queue or task types. Background jobs are Inngest functions in `apps/api`; their typed events live in `apps/api/src/inngest/client.ts`, and progress uses Inngest Realtime data `{ phase, current, total }`.
