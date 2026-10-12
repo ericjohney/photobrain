@@ -32,6 +32,8 @@ struct LoupeScreen: View {
     @State private var transitioning = false
     @State private var dismissDragging = false
     @State private var didRunEntrance = false
+    /// O(1) id lookup; the body reads the open record many times per scrub step.
+    @State private var recordIndex = LoupeRecordIndex()
 
     init(
         records: [PhotoRecord],
@@ -56,7 +58,7 @@ struct LoupeScreen: View {
     }
 
     private var activeRecord: PhotoRecord? {
-        records.first { $0.id == activeID }
+        recordIndex.index(of: activeID, in: records).map { records[$0] }
     }
 
     /// Tag-chip/place-row action for this loupe: closes its sheets and the loupe itself, then
@@ -284,7 +286,7 @@ struct LoupeScreen: View {
 
     /// `(index, count)` of the open photo, for the title's accessibility value.
     private var position: (Int, Int) {
-        ((records.firstIndex { $0.id == activeID } ?? 0) + 1, records.count)
+        ((recordIndex.index(of: activeID, in: records) ?? 0) + 1, records.count)
     }
 
     /// Share (export sizes) and everything else that acts on the open photo.
@@ -840,8 +842,27 @@ private struct LoupeTitle: View {
         .accessibilityValue("Photo \(position.0) of \(position.1)")
         .task {
             guard PhotoCoordinate(exif: photo.exif) != nil else { return }
+            // Scrubbing replaces this title per photo passed; only a photo that stays open
+            // long enough loads its place.
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
             await place.load()
         }
+    }
+}
+
+/// Maps photo ids to positions in the loupe's records, rebuilt only when the array changes.
+@MainActor
+final class LoupeRecordIndex {
+    private var records: [PhotoRecord] = []
+    private var positions: [Int: Int] = [:]
+
+    func index(of id: Int, in next: [PhotoRecord]) -> Int? {
+        if !next.sharesStorage(with: records) {
+            records = next
+            positions = Dictionary(next.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+        return positions[id]
     }
 }
 

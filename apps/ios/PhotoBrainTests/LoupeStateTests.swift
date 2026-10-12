@@ -111,4 +111,13 @@ final class LoupeStateTests: XCTestCase {
             }
         }
     }
+
+    func testRecordIndexFollowsArrayChanges() {
+        let index = LoupeRecordIndex()
+        var records = RedactedFixture.make(count: 4)
+        XCTAssertEqual(index.index(of: records[2].id, in: records), 2)
+        let removed = records.remove(at: 0)
+        XCTAssertNil(index.index(of: removed.id, in: records))
+        XCTAssertEqual(index.index(of: records[2].id, in: records), 2)
+    }
 }
