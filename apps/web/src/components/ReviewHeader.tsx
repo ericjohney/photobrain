@@ -1,6 +1,8 @@
 import { Check, ScanEye, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { AlertBanner, ViewHeader } from "@/components/ui/view-header";
 import {
 	Sheet,
 	SheetClose,
@@ -16,7 +18,6 @@ import {
 	REJECT_ALL_CONFIRM_THRESHOLD,
 } from "@/lib/junk-review";
 import type { JunkCounts, JunkReason } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 const REASON_OPTIONS: { value: JunkReason | null; label: string }[] = [
 	{ value: null, label: "All" },
@@ -59,92 +60,62 @@ export function ReviewHeader({
 			data-testid="review-header"
 			className="shrink-0 border-b border-border"
 		>
-			<div className="flex items-center gap-2 px-3 py-1.5 text-sm">
-				<ScanEye className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-				<h2 className="font-medium">Review</h2>
-				<div
-					role="radiogroup"
-					aria-label="Review reason"
-					className="flex rounded bg-secondary p-0.5"
-				>
-					{REASON_OPTIONS.map((option) => {
-						const checked = option.value === reason;
-						const count = counts?.[option.value ?? "all"];
-						return (
-							<button
-								key={option.label}
-								type="button"
-								role="radio"
-								aria-checked={checked}
-								onClick={() => onReasonChange(option.value)}
-								className={cn(
-									"flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-xs transition-colors",
-									checked
-										? "bg-primary text-primary-foreground"
-										: "text-muted-foreground hover:text-foreground",
-								)}
-							>
-								{option.label}
-								{count !== undefined && (
-									<span data-testid="reason-count" className="opacity-70">
-										{count}
-									</span>
-								)}
-							</button>
-						);
-					})}
-				</div>
-				<div className="flex-1" />
-				<Button
-					variant="outline"
-					size="sm"
-					className="h-7 text-xs"
-					disabled={shownCount === 0}
-					onClick={() => {
-						if (shownCount > REJECT_ALL_CONFIRM_THRESHOLD) {
-							setConfirmingReject(true);
-						} else {
-							onRejectAll();
-						}
-					}}
-				>
-					<X className="h-3.5 w-3.5" />
-					Reject all ({shownCount})
-				</Button>
-				<Button
-					variant="outline"
-					size="sm"
-					className="h-7 text-xs"
-					disabled={shownCount === 0}
-					onClick={onKeepAll}
-				>
-					<Check className="h-3.5 w-3.5" />
-					Keep all ({shownCount})
-				</Button>
-				<button
-					type="button"
-					aria-label="Exit review"
-					onClick={onExit}
-					className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-				>
-					<X className="h-3.5 w-3.5" />
-				</button>
-			</div>
-			{error && (
-				<div
-					role="alert"
-					className="flex items-center gap-2 bg-destructive/10 px-3 py-1 text-xs text-destructive"
-				>
-					<span className="flex-1">{error}</span>
-					<button
-						type="button"
-						aria-label="Dismiss error"
-						onClick={onDismissError}
-						className="rounded-full p-0.5 hover:bg-destructive/20"
+			<ViewHeader
+				bordered={false}
+				icon={<ScanEye />}
+				title="Review"
+				exitLabel="Exit review"
+				onExit={onExit}
+			>
+					<SegmentedControl
+						label="Review reason"
+						value={reason}
+						onChange={onReasonChange}
+						options={REASON_OPTIONS.map((option) => {
+							const count = counts?.[option.value ?? "all"];
+							return {
+								value: option.value,
+								label: (
+									<>
+										{option.label}
+										{count !== undefined && (
+											<span data-testid="reason-count" className="opacity-70">
+												{count}
+											</span>
+										)}
+									</>
+								),
+							};
+						})}
+					/>
+					<div className="flex-1" />
+					<Button
+						variant="outline"
+						size="xs"
+						disabled={shownCount === 0}
+						onClick={() => {
+							if (shownCount > REJECT_ALL_CONFIRM_THRESHOLD) {
+								setConfirmingReject(true);
+							} else {
+								onRejectAll();
+							}
+						}}
 					>
-						<X className="h-3 w-3" />
-					</button>
-				</div>
+						<X className="h-3.5 w-3.5" />
+						Reject all ({shownCount})
+					</Button>
+					<Button
+						variant="outline"
+						size="xs"
+						disabled={shownCount === 0}
+						onClick={onKeepAll}
+					>
+						<Check className="h-3.5 w-3.5" />
+						Keep all ({shownCount})
+					</Button>
+			</ViewHeader>
+			{error && (
+				<AlertBanner onDismiss={onDismissError}>{error}</AlertBanner>
 			)}
 
 			<Sheet open={confirmingReject} onOpenChange={setConfirmingReject}>

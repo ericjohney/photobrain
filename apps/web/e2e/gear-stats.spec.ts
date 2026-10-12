@@ -8,6 +8,7 @@ import {
 	fixtureGridIds,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { clearAllFilters, filterRadio } from "./fixtures/ui";
 
 async function gridIds(page: Page) {
 	return page
@@ -184,9 +185,7 @@ test("clicking a camera applies the camera filter and returns to the grid", asyn
 	await expect.poll(() => gridIds(page)).toEqual(fixtureGridIds(canon));
 	expect(calls.photos?.at(-1)).toEqual({ camera: "Canon EOS R5" });
 	await expect(gearToggle(page)).toHaveAttribute("aria-pressed", "false");
-	await expect(
-		page.getByTestId("left-panel").getByText("Filters active"),
-	).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
 
 	// Reopening Gear sends the new filter.
 	await openGear(page);
@@ -239,12 +238,7 @@ test("gearStats receives the grid's folder and filters and follows changes", asy
 		.toEqual({ folder: "photos/2024" });
 
 	// Changing a filter while Gear is shown re-requests it with the grid input.
-	const leftPanel = page.getByTestId("left-panel");
-	await leftPanel.getByText("Filter By").click();
-	await leftPanel
-		.getByRole("radiogroup", { name: "Minimum rating" })
-		.getByRole("radio", { name: "★3+", exact: true })
-		.click();
+	await (await filterRadio(page, "Rating", "★3+")).click();
 	const threePlus = filterFixturePhotos(FIXTURE_PHOTOS, {
 		folder: "photos/2024",
 		minRating: 3,

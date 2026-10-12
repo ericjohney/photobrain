@@ -55,7 +55,9 @@ function gate() {
 
 async function openDuplicates(page: Page) {
 	await page.goto("/");
-	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
+	await expect(
+		page.getByText(`${FIXTURE_LIBRARY.length} photos`),
+	).toBeVisible();
 	await expect(duplicatesItem(page)).toContainText("4");
 	await duplicatesItem(page).click();
 	await expect.poll(() => groupKeys(page)).toEqual(GROUP_KEYS);
@@ -227,7 +229,9 @@ test("Not duplicates dismisses the group without flagging photos", async ({
 	await expect(group(page, "burst:6,7,8")).toHaveCount(0);
 
 	await page.getByRole("button", { name: "Exit duplicates" }).click();
-	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
+	await expect(
+		page.getByText(`${FIXTURE_LIBRARY.length} photos`),
+	).toBeVisible();
 	for (const id of [6, 7, 8]) {
 		await expect(gridCell(page, id)).not.toHaveAttribute("data-rejected");
 	}
@@ -344,6 +348,8 @@ test("choosing a folder leaves Duplicates for the library", async ({
 		.click();
 	await expect(page.getByTestId("duplicates-header")).toHaveCount(0);
 	await expect(duplicatesItem(page)).toHaveAttribute("aria-pressed", "false");
-	await expect(page.getByText(`${FIXTURE_LIBRARY.length} photos`)).toBeVisible();
+	await expect(
+		page.getByText(`${FIXTURE_LIBRARY.length} photos`),
+	).toBeVisible();
 	await expect(gridCell(page, 1)).toBeVisible();
 });

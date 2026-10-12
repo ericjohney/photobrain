@@ -1,6 +1,7 @@
 import { formatFileSize } from "@photobrain/utils";
-import { Check, Copy, Flag, Loader2, Star, X } from "lucide-react";
+import { Check, Copy, Loader2, X } from "lucide-react";
 import { useState } from "react";
+import { Badge, FlagMark, RatingStars, RawBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCaptureTime } from "@/lib/duplicates";
@@ -111,15 +112,13 @@ function DuplicateGroupCard({
 				<div className="flex-1" />
 				<Button
 					variant="outline"
-					size="sm"
-					className="h-7 text-xs"
+					size="xs"
 					onClick={() => onDismiss(group)}
 				>
 					Not duplicates
 				</Button>
 				<Button
-					size="sm"
-					className="h-7 text-xs"
+					size="xs"
 					disabled={rejectCount === 0}
 					onClick={() => onKeep(group, keptIds)}
 				>
@@ -172,25 +171,23 @@ function DuplicateGroupCard({
 									draggable={false}
 								/>
 								{photo.id === group.suggestedKeeperId && (
-									<span
+									<Badge
 										data-testid="suggested-badge"
-										className="absolute left-1 top-1 rounded bg-primary px-1 py-0.5 text-2xs font-semibold text-primary-foreground shadow-sm"
+										variant="accent"
+										className="absolute left-1.5 top-1.5"
 									>
 										Suggested
-									</span>
+									</Badge>
 								)}
 								{formatBadge && (
-									<span className="absolute right-1 top-1 rounded bg-orange-500/90 px-1 py-0.5 text-2xs font-semibold text-white shadow-sm">
-										{formatBadge.label}
-									</span>
+									<RawBadge
+										badge={formatBadge}
+										className="absolute right-1.5 top-1.5"
+									/>
 								)}
-								<span
-									className={cn(
-										"absolute bottom-1 right-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-2xs font-semibold shadow-sm",
-										isKept
-											? "bg-primary text-primary-foreground"
-											: "bg-black/60 text-white",
-									)}
+								<Badge
+									variant={isKept ? "pick" : "overlay"}
+									className="absolute bottom-1.5 right-1.5 gap-0.5"
 								>
 									{isKept ? (
 										<Check className="h-3 w-3" />
@@ -198,11 +195,11 @@ function DuplicateGroupCard({
 										<X className="h-3 w-3" />
 									)}
 									{isKept ? "Keep" : "Reject"}
-								</span>
+								</Badge>
 							</div>
 							<div
 								data-testid="duplicate-photo-details"
-								className="flex flex-col gap-0.5 px-2 py-1.5 text-2xs text-muted-foreground"
+								className="flex flex-col gap-0.5 px-2 py-1.5 text-2xs text-subtle"
 							>
 								<span className="truncate text-xs text-foreground">
 									{photo.name}
@@ -215,23 +212,11 @@ function DuplicateGroupCard({
 								</span>
 								<span className="flex items-center gap-1">
 									{photo.rating > 0 ? (
-										<span
-											role="img"
-											aria-label={`${photo.rating} ${photo.rating === 1 ? "star" : "stars"}`}
-											className="flex items-center gap-0.5"
-										>
-											<Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
-											{photo.rating}
-										</span>
+										<RatingStars rating={photo.rating} />
 									) : (
 										<span>Unrated</span>
 									)}
-									{photo.flag === "pick" && (
-										<Flag
-											aria-label="Pick"
-											className="h-3 w-3 fill-green-400 text-green-400"
-										/>
-									)}
+									{photo.flag === "pick" && <FlagMark flag="pick" />}
 								</span>
 								{photo.exif?.dateTaken && (
 									<span>{formatCaptureTime(photo.exif.dateTaken)}</span>

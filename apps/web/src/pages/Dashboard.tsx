@@ -2,12 +2,10 @@ import {
 	Copy,
 	Layers,
 	ListFilter,
-	Loader2,
 	ScanEye,
 	Search,
 	Sparkles,
 	UserRound,
-	X,
 } from "lucide-react";
 import {
 	lazy,
@@ -28,21 +26,25 @@ import { OnThisDayStrip } from "@/components/OnThisDayStrip";
 import { PeopleView } from "@/components/PeopleView";
 import { PhotoGrid } from "@/components/PhotoGrid";
 import { ActivityPanel } from "@/components/panels/ActivityPanel";
-import {
-	EMPTY_LIBRARY_FILTERS,
-	FLAG_FILTER_LABELS,
-	type LibraryFilters,
-	LibraryPanel,
-	minRatingLabel,
-} from "@/components/panels/LibraryPanel";
+import { AppSidebar } from "@/components/panels/AppSidebar";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
 import { faceRowId } from "@/components/panels/PhotoPeople";
 import { PanelLayout } from "@/components/panels/PanelLayout";
 import { ReviewHeader } from "@/components/ReviewHeader";
 import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
-import { Toolbar } from "@/components/Toolbar";
+import { AppHeader, type Crumb } from "@/components/AppHeader";
+import { StatusBar, type StatusMode } from "@/components/StatusBar";
+import {
+	EMPTY_LIBRARY_FILTERS,
+	FLAG_FILTER_LABELS,
+	type LibraryFilters,
+	minRatingLabel,
+} from "@/lib/library-filters";
 import { UploadDropZone } from "@/components/UploadDropZone";
 import { Button } from "@/components/ui/button";
+import { RemovableChip } from "@/components/ui/chip";
+import { EmptyState, Spinner } from "@/components/ui/empty-state";
+import { ViewHeader } from "@/components/ui/view-header";
 import { useCollections } from "@/hooks/use-collections";
 import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
 import { useJobProgress } from "@/hooks/use-job-progress";
@@ -553,9 +555,33 @@ export function Dashboard() {
 		[library.setActivePhoto],
 	);
 
-	const handleSearch = useCallback(() => {
-		// Query is reactive, nothing needed here
-	}, []);
+	// ⌘K focuses the sidebar search (opening the sidebar first); ⌘\ collapses it.
+	const searchInputRef = useRef<HTMLInputElement | null>(null);
+	const { leftPanelVisible, leftPanelCollapsed } = panels;
+	const { toggleLeftPanel, toggleLeftPanelCollapsed } = panels;
+	useEffect(() => {
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (!(e.metaKey || e.ctrlKey)) return;
+			if (e.key.toLowerCase() === "k") {
+				e.preventDefault();
+				if (!leftPanelVisible) toggleLeftPanel();
+				if (leftPanelCollapsed) toggleLeftPanelCollapsed();
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => searchInputRef.current?.focus());
+				});
+			} else if (e.key === "\\") {
+				e.preventDefault();
+				toggleLeftPanelCollapsed();
+			}
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [
+		leftPanelVisible,
+		leftPanelCollapsed,
+		toggleLeftPanel,
+		toggleLeftPanelCollapsed,
+	]);
 
 	const handleSearchChange = useCallback((query: string) => {
 		setSearchQuery(query);
@@ -766,9 +792,7 @@ export function Dashboard() {
 			return (
 				<Suspense
 					fallback={
-						<div className="flex h-full items-center justify-center">
-							<Loader2 className="h-10 w-10 animate-spin text-primary" />
-						</div>
+						<Spinner />
 					}
 				>
 					<MapView
@@ -819,10 +843,7 @@ export function Dashboard() {
 
 		if (loading) {
 			return (
-				<div className="flex h-full flex-col items-center justify-center">
-					<Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-					<p className="text-sm text-muted-foreground">Loading photos...</p>
-				</div>
+				<Spinner label="Loading photos..." />
 			);
 		}
 
@@ -862,25 +883,18 @@ export function Dashboard() {
 		}
 		if (similarNotIndexed) {
 			return (
-				<div className="flex h-full items-center justify-center px-6">
-					<p className="text-sm text-muted-foreground">
-						This photo hasn't been indexed yet. Run a scan to enable
-						similar-photo search.
-					</p>
-				</div>
+				<EmptyState title="This photo hasn't been indexed yet. Run a scan to enable similar-photo search." />
 			);
 		}
 
 		if (duplicatesActive) {
 			if (duplicates.groups.length === 0) {
 				return (
-					<div
+					<EmptyState
 						data-testid="duplicates-empty"
-						className="flex h-full flex-col items-center justify-center text-muted-foreground"
-					>
-						<Copy className="mb-4 h-16 w-16 opacity-20" />
-						<p className="text-sm font-medium">No duplicates or bursts</p>
-					</div>
+						icon={<Copy />}
+						title="No duplicates or bursts"
+					/>
 				);
 			}
 			return (
@@ -901,13 +915,11 @@ export function Dashboard() {
 		if (reviewActive) {
 			if (reviewPhotos.length === 0) {
 				return (
-					<div
+					<EmptyState
 						data-testid="review-empty"
-						className="flex h-full flex-col items-center justify-center text-muted-foreground"
-					>
-						<ScanEye className="mb-4 h-16 w-16 opacity-20" />
-						<p className="text-sm font-medium">Nothing to review</p>
-					</div>
+						icon={<ScanEye />}
+						title="Nothing to review"
+					/>
 				);
 			}
 			return (
@@ -951,18 +963,14 @@ export function Dashboard() {
 			data-testid="similar-chip"
 			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
 		>
-			<span className="flex min-w-0 items-center gap-1.5 rounded-full bg-primary/15 py-0.5 pl-2.5 pr-1 text-primary">
-				<Sparkles className="h-3.5 w-3.5 shrink-0" />
+			<RemovableChip
+				icon={<Sparkles className="h-3.5 w-3.5 shrink-0" />}
+				clearLabel="Exit similar photos"
+				onClear={exitSimilar}
+				className="min-w-0 pl-2.5 text-sm"
+			>
 				<span className="truncate">Similar to {similarSource.name}</span>
-				<button
-					type="button"
-					aria-label="Exit similar photos"
-					onClick={exitSimilar}
-					className="rounded-full p-0.5 hover:bg-primary/20"
-				>
-					<X className="h-3.5 w-3.5" />
-				</button>
-			</span>
+			</RemovableChip>
 		</div>
 	);
 
@@ -1003,12 +1011,14 @@ export function Dashboard() {
 		.join(" · ");
 	const searchResultCount = searchPhotosQuery.data?.photos.length;
 	const searchHeader = searchQuery && (
-		<div
+		<ViewHeader
 			data-testid="search-header"
-			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
-		>
-			<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<span className="min-w-0 flex-1 truncate">
+			icon={<Search />}
+			titleAs="span"
+			exitLabel="Clear search"
+			onExit={() => setSearchQuery("")}
+			title={
+				<>
 				{searchResultCount === undefined
 					? "Searching"
 					: `${searchResultCount} ${searchResultCount === 1 ? "result" : "results"}`}{" "}
@@ -1020,58 +1030,28 @@ export function Dashboard() {
 					: ""}
 				{filters.event ? ` · ${eventTitle(filters.event)}` : ""}
 				{filters.bounds ? " · Map area" : ""}
-			</span>
-			<button
-				type="button"
-				aria-label="Clear search"
-				onClick={() => setSearchQuery("")}
-				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
-		</div>
+				</>
+			}
+		/>
 	);
 	const collectionHeader = selectedCollection && (
-		<div
+		<ViewHeader
 			data-testid="collection-header"
-			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
-		>
-			<Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<h2 className="min-w-0 truncate font-medium">
-				{selectedCollection.name}
-			</h2>
-			<span className="flex-1 text-xs text-muted-foreground">
-				{selectedCollection.photoCount}{" "}
-				{selectedCollection.photoCount === 1 ? "photo" : "photos"}
-			</span>
-			<button
-				type="button"
-				aria-label="Show all photos"
-				onClick={() => handleCollectionSelect(null)}
-				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
-		</div>
+			icon={<Layers />}
+			title={selectedCollection.name}
+			meta={`${selectedCollection.photoCount} ${selectedCollection.photoCount === 1 ? "photo" : "photos"}`}
+			exitLabel="Show all photos"
+			onExit={() => handleCollectionSelect(null)}
+		/>
 	);
 	const personHeader = personScopeLabel !== null && (
-		<div
+		<ViewHeader
 			data-testid="person-header"
-			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
-		>
-			<UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<h2 className="min-w-0 flex-1 truncate font-medium">
-				{personScopeLabel}
-			</h2>
-			<button
-				type="button"
-				aria-label="Leave person"
-				onClick={() => setFilters((current) => ({ ...current, personId: null }))}
-				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
-		</div>
+			icon={<UserRound />}
+			title={personScopeLabel}
+			exitLabel="Leave person"
+			onExit={() => setFilters((current) => ({ ...current, personId: null }))}
+		/>
 	);
 	const scopeHeaders =
 		collectionHeader || personHeader ? (
@@ -1110,28 +1090,18 @@ export function Dashboard() {
 		/>
 	);
 	const smartAlbumHeader = selectedSmartAlbum && (
-		<div
+		<ViewHeader
 			data-testid="smart-album-header"
-			className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-sm"
-		>
-			<ListFilter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<h2 className="min-w-0 truncate font-medium">
-				{selectedSmartAlbum.name}
-			</h2>
-			<span className="flex-1 text-xs text-muted-foreground">
-				{selectedSmartAlbum.photoCount === null
+			icon={<ListFilter />}
+			title={selectedSmartAlbum.name}
+			meta={
+				selectedSmartAlbum.photoCount === null
 					? "Smart album"
-					: `${selectedSmartAlbum.photoCount} ${selectedSmartAlbum.photoCount === 1 ? "photo" : "photos"}`}
-			</span>
-			<button
-				type="button"
-				aria-label="Close smart album"
-				onClick={closeSmartAlbum}
-				className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
-		</div>
+					: `${selectedSmartAlbum.photoCount} ${selectedSmartAlbum.photoCount === 1 ? "photo" : "photos"}`
+			}
+			exitLabel="Close smart album"
+			onExit={closeSmartAlbum}
+		/>
 	);
 	// A query album names itself above the search results header.
 	const banner = mapActive
@@ -1150,10 +1120,75 @@ export function Dashboard() {
 				) : null) ||
 				scopeHeaders;
 
+	// Breadcrumbs name the scope as a path; the title and count follow it.
+	const goLibrary = () => {
+		setSearchQuery("");
+		setSimilarSource(null);
+		setSelectedFolder(null);
+		setSelectedCollectionId(null);
+		setCatalogView(null);
+		setAppliedSmartAlbumId(null);
+	};
+	const crumbs: Crumb[] = [{ label: "Library", onSelect: goLibrary }];
+	let title = "Photos";
+	if (reviewActive) {
+		title = "Review";
+		crumbs.push({ label: "Clean up" }, { label: "Review" });
+	} else if (duplicatesActive) {
+		title = "Duplicates";
+		crumbs.push({ label: "Clean up" }, { label: "Duplicates" });
+	} else if (peopleActive) {
+		title = "People";
+		crumbs.push({ label: "People" });
+	} else if (similarSource) {
+		title = "Similar photos";
+		crumbs.push({ label: `Similar to ${similarSource.name}` });
+	} else if (searchQuery) {
+		title = "Search";
+		crumbs.push({ label: "Search" }, { label: `“${searchQuery}”` });
+	} else if (selectedSmartAlbum) {
+		title = selectedSmartAlbum.name;
+		crumbs.push({ label: "Smart albums" }, { label: selectedSmartAlbum.name });
+	} else if (selectedCollection) {
+		title = selectedCollection.name;
+		crumbs.push({ label: "Collections" }, { label: selectedCollection.name });
+	} else if (selectedFolder) {
+		const parts = selectedFolder.split("/").filter(Boolean);
+		title = parts[parts.length - 1] ?? selectedFolder;
+		parts.forEach((part, index) => {
+			const path = parts.slice(0, index + 1).join("/");
+			crumbs.push(
+				index === parts.length - 1
+					? { label: part }
+					: { label: part, onSelect: () => handleFolderSelect(path) },
+			);
+		});
+	}
+	const statusMode: StatusMode = reviewActive
+		? "review"
+		: duplicatesActive
+			? "duplicates"
+			: peopleActive
+				? "people"
+				: library.viewMode === "loupe"
+					? "loupe"
+					: "library";
+	const activeIndex = library.activePhoto
+		? photos.findIndex((p) => p.id === library.activePhoto?.id)
+		: -1;
+
 	return (
 		<PanelLayout
-			toolbar={
-				<Toolbar
+			header={
+				<AppHeader
+					crumbs={crumbs}
+					title={title}
+					meta={`${photos.length} photos`}
+					onSaveSmartAlbum={
+						canSaveSmartAlbum && !catalogView
+							? () => setSavingSmartAlbum(true)
+							: undefined
+					}
 					viewMode={library.viewMode}
 					onViewModeChange={changeViewMode}
 					thumbnailSize={library.thumbnailSize}
@@ -1184,73 +1219,91 @@ export function Dashboard() {
 							? { shown: showFaces, onToggle: toggleFaceBoxes }
 							: null
 					}
+					filtersAvailable={catalogView === null}
+					filterOptions={filterOptionsQuery.data}
+					filters={filters}
+					onFiltersChange={setFilters}
+					onEventClear={() => handleEventSelect(null)}
+					personLabel={personScopeLabel}
 					leftPanelVisible={panels.leftPanelVisible}
 					rightPanelVisible={panels.rightPanelVisible}
 					onToggleLeftPanel={panels.toggleLeftPanel}
 					onToggleRightPanel={panels.toggleRightPanel}
-					searchQuery={searchQuery}
-					onSearchChange={handleSearchChange}
-					onSearch={handleSearch}
 					onRefresh={() => handleScan()}
 					onReprocess={() => handleScan(true)}
 					isRefreshing={scanMutation.isPending}
 					uploads={uploads}
 					hasActiveJobs={jobProgress.isActive}
-					processingProgress={{
-						current: jobProgress.progress.current,
-						total: jobProgress.progress.total,
+				/>
+			}
+			footer={
+				<StatusBar
+					mode={statusMode}
+					shown={photos.length}
+					total={foldersQuery.data?.totalPhotos}
+					hasActivePhoto={library.activePhoto !== null}
+					loupeLabel={
+						library.activePhoto
+							? `${activeIndex + 1} of ${photos.length} · ${library.activePhoto.name}`
+							: undefined
+					}
+					queueLabel={
+						reviewActive
+							? `${review.counts?.all ?? reviewPhotos.length} candidates`
+							: `${duplicates.groups.length} groups shown`
+					}
+					progress={{
+						active: jobProgress.isActive,
+						label: "Indexing",
+						percentage: jobProgress.progress.percentage,
 					}}
-					photoCount={photos.length}
 				/>
 			}
 			leftPanel={
-				<div className="flex flex-col h-full">
-					<div className="flex-1 overflow-auto">
-						<LibraryPanel
-							photoCount={foldersQuery.data?.totalPhotos ?? photos.length}
-							folders={foldersQuery.data?.folders}
-							selectedFolder={selectedFolder}
-							onFolderSelect={handleFolderSelect}
-							collections={collectionsApi.collections}
-							selectedCollectionId={selectedCollectionId}
-							onCollectionSelect={handleCollectionSelect}
-							onCreateCollection={collectionsApi.createCollection}
-							onRenameCollection={collectionsApi.renameCollection}
-							onDeleteCollection={handleDeleteCollection}
-							smartAlbums={smartAlbumsApi.albums}
-							selectedSmartAlbumId={selectedSmartAlbum?.id ?? null}
-							onSmartAlbumSelect={handleSmartAlbumSelect}
-							onRenameSmartAlbum={smartAlbumsApi.renameSmartAlbum}
-							onDeleteSmartAlbum={smartAlbumsApi.deleteSmartAlbum}
-							onSaveSmartAlbum={
-								canSaveSmartAlbum ? () => setSavingSmartAlbum(true) : undefined
-							}
-							filterOptions={filterOptionsQuery.data}
-							activeFilters={filters}
-							onFilterChange={setFilters}
-							events={eventsQuery.data?.events}
-							onEventSelect={handleEventSelect}
-							reviewCount={review.counts?.all}
-							reviewActive={reviewActive}
-							onReviewSelect={handleReviewSelect}
-							duplicateCount={
-								duplicates.counts &&
-								duplicates.counts.duplicate + duplicates.counts.burst
-							}
-							duplicatesActive={duplicatesActive}
-							onDuplicatesSelect={handleDuplicatesSelect}
-							peopleCount={peopleApi.count}
-							peopleActive={peopleActive}
-							onPeopleSelect={peopleActive ? exitCatalogView : handlePeopleSelect}
-							personLabel={personScopeLabel}
+				<AppSidebar
+					ref={searchInputRef}
+					photoCount={foldersQuery.data?.totalPhotos ?? photos.length}
+					folders={foldersQuery.data?.folders}
+					selectedFolder={selectedFolder}
+					onFolderSelect={handleFolderSelect}
+					collections={collectionsApi.collections}
+					selectedCollectionId={selectedCollectionId}
+					onCollectionSelect={handleCollectionSelect}
+					onCreateCollection={collectionsApi.createCollection}
+					onRenameCollection={collectionsApi.renameCollection}
+					onDeleteCollection={handleDeleteCollection}
+					smartAlbums={smartAlbumsApi.albums}
+					selectedSmartAlbumId={selectedSmartAlbum?.id ?? null}
+					onSmartAlbumSelect={handleSmartAlbumSelect}
+					onRenameSmartAlbum={smartAlbumsApi.renameSmartAlbum}
+					onDeleteSmartAlbum={smartAlbumsApi.deleteSmartAlbum}
+					events={eventsQuery.data?.events}
+					selectedEvent={filters.event}
+					onEventSelect={handleEventSelect}
+					reviewCount={review.counts?.all}
+					reviewActive={reviewActive}
+					onReviewSelect={handleReviewSelect}
+					duplicateCount={
+						duplicates.counts &&
+						duplicates.counts.duplicate + duplicates.counts.burst
+					}
+					duplicatesActive={duplicatesActive}
+					onDuplicatesSelect={handleDuplicatesSelect}
+					peopleCount={peopleApi.count}
+					peopleActive={peopleActive}
+					onPeopleSelect={peopleActive ? exitCatalogView : handlePeopleSelect}
+					searchQuery={searchQuery}
+					onSearchChange={handleSearchChange}
+					collapsed={panels.leftPanelCollapsed}
+					onToggleCollapsed={panels.toggleLeftPanelCollapsed}
+					activity={
+						<ActivityPanel
+							progress={jobProgress.progress}
+							isActive={jobProgress.isActive}
+							isCompleted={jobProgress.isCompleted}
 						/>
-					</div>
-					<ActivityPanel
-						progress={jobProgress.progress}
-						isActive={jobProgress.isActive}
-						isCompleted={jobProgress.isCompleted}
-					/>
-				</div>
+					}
+				/>
 			}
 			rightPanel={
 				<MetadataPanel
@@ -1282,6 +1335,7 @@ export function Dashboard() {
 				/>
 			}
 			leftPanelVisible={panels.leftPanelVisible}
+			leftPanelCollapsed={panels.leftPanelCollapsed}
 			rightPanelVisible={panels.rightPanelVisible}
 			filmstripVisible={panels.filmstripVisible && library.viewMode === "loupe"}
 		>

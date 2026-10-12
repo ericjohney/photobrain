@@ -1,5 +1,11 @@
-import { Ellipsis, Loader2, Merge, Users, X } from "lucide-react";
+import { Merge, Users } from "lucide-react";
 import { useState } from "react";
+import {
+	MenuItem,
+	MenuOption,
+	Popover,
+	RowActionsTrigger,
+} from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import {
 	Sheet,
@@ -10,6 +16,8 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
+import { EmptyState, Spinner } from "@/components/ui/empty-state";
+import { AlertBanner, ViewHeader } from "@/components/ui/view-header";
 import { useDismiss } from "@/hooks/use-dismiss";
 import { personName } from "@/hooks/use-people";
 import { getFaceCropUrl } from "@/lib/thumbnails";
@@ -179,65 +187,51 @@ function PersonCard({
 					{person.name}
 				</span>
 			)}
-			<span data-testid="person-count" className="text-2xs text-muted-foreground">
+			<span
+				data-testid="person-count"
+				className="text-2xs text-muted-foreground"
+			>
 				{person.photoCount} {person.photoCount === 1 ? "photo" : "photos"}
 				{person.hidden ? " · Hidden" : ""}
 			</span>
 			{!mergeMode && (
 				<div ref={menuRef} className="absolute right-1 top-1">
-					<button
-						type="button"
+					<RowActionsTrigger
 						aria-label={`Person actions for ${label}`}
-						aria-haspopup="menu"
-						aria-expanded={menuOpen}
+						open={menuOpen}
 						onClick={() => setMenuOpen((open) => !open)}
-						className={cn(
-							"rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:opacity-100",
-							menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-						)}
-					>
-						<Ellipsis className="h-3.5 w-3.5" />
-					</button>
+					/>
 					{menuOpen && (
-						<div
+						<Popover
 							role="menu"
 							aria-label={`${label} actions`}
-							className="absolute right-0 top-full z-20 mt-1 w-32 rounded-md border border-border bg-popover p-1 text-left text-popover-foreground shadow-md"
+							className="w-32"
 						>
-							<button
-								type="button"
-								role="menuitem"
+							<MenuItem
 								onClick={() => {
 									setMenuOpen(false);
 									setRenaming(true);
 								}}
-								className="w-full rounded px-2 py-1 text-left text-xs hover:bg-secondary"
 							>
 								Rename
-							</button>
-							<button
-								type="button"
-								role="menuitem"
+							</MenuItem>
+							<MenuItem
 								onClick={() => {
 									setMenuOpen(false);
 									onSetHidden(!person.hidden);
 								}}
-								className="w-full rounded px-2 py-1 text-left text-xs hover:bg-secondary"
 							>
 								{person.hidden ? "Unhide" : "Hide"}
-							</button>
-							<button
-								type="button"
-								role="menuitem"
+							</MenuItem>
+							<MenuItem
 								onClick={() => {
 									setMenuOpen(false);
 									onStartMerge();
 								}}
-								className="w-full rounded px-2 py-1 text-left text-xs hover:bg-secondary"
 							>
 								Merge
-							</button>
-						</div>
+							</MenuItem>
+						</Popover>
 					)}
 				</div>
 			)}
@@ -305,36 +299,40 @@ export function PeopleView({
 				data-testid="people-header"
 				className="shrink-0 border-b border-border"
 			>
-				<div className="flex items-center gap-2 px-3 py-1.5 text-sm">
-					<Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-					<h2 className="font-medium">People</h2>
+				<ViewHeader
+					bordered={false}
+					icon={<Users />}
+					title="People"
+					exitLabel="Exit people"
+					onExit={onExit}
+				>
 					{mergeMode ? (
 						<>
 							<span className="text-xs text-muted-foreground">
 								{selectedPeople.length} selected
 							</span>
 							<div ref={pickerRef} className="relative">
-								<button
-									type="button"
+								<Button
+									size="xs"
 									aria-haspopup="listbox"
 									aria-expanded={pickingTarget}
 									disabled={selectedPeople.length < 2}
 									onClick={() => setPickingTarget((open) => !open)}
-									className="flex items-center gap-1 rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground disabled:opacity-50"
 								>
-									<Merge className="h-3 w-3" />
+									<Merge />
 									Merge into...
-								</button>
+								</Button>
 								{pickingTarget && (
-									<ul
+									<Popover
+										as="ul"
 										role="listbox"
 										aria-label="Merge into"
-										className="absolute left-0 top-full z-20 mt-1 w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+										align="start"
+										className="w-48"
 									>
 										{selectedPeople.map((person) => (
-											<li
+											<MenuOption
 												key={person.id}
-												role="option"
 												aria-selected={false}
 												tabIndex={0}
 												onClick={() => {
@@ -348,82 +346,46 @@ export function PeopleView({
 														setMergeTarget(person);
 													}
 												}}
-												className="cursor-pointer truncate rounded px-2 py-1 text-xs hover:bg-secondary"
 											>
 												{personName(person)}
-											</li>
+											</MenuOption>
 										))}
-									</ul>
+									</Popover>
 								)}
 							</div>
-							<button
-								type="button"
-								onClick={exitMergeMode}
-								className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground"
-							>
+							<Button variant="ghost" size="xs" onClick={exitMergeMode}>
 								Cancel merge
-							</button>
+							</Button>
 						</>
 					) : (
-						<button
-							type="button"
+						<Button
+							variant="ghost"
+							size="xs"
 							aria-pressed={showHidden}
 							onClick={() => onShowHiddenChange(!showHidden)}
-							className={cn(
-								"rounded px-2 py-0.5 text-xs transition-colors",
-								showHidden
-									? "bg-primary text-primary-foreground"
-									: "bg-secondary text-muted-foreground hover:text-foreground",
-							)}
 						>
 							Show hidden
-						</button>
+						</Button>
 					)}
-					<div className="flex-1" />
-					<button
-						type="button"
-						aria-label="Exit people"
-						onClick={onExit}
-						className="rounded-full p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-					>
-						<X className="h-3.5 w-3.5" />
-					</button>
-				</div>
+				</ViewHeader>
 				{error && (
-					<div
-						role="alert"
-						className="flex items-center gap-2 bg-destructive/10 px-3 py-1 text-xs text-destructive"
-					>
-						<span className="flex-1">{error}</span>
-						<button
-							type="button"
-							aria-label="Dismiss error"
-							onClick={onDismissError}
-							className="rounded-full p-0.5 hover:bg-destructive/20"
-						>
-							<X className="h-3 w-3" />
-						</button>
-					</div>
+					<AlertBanner onDismiss={onDismissError}>{error}</AlertBanner>
 				)}
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-auto">
 				{loading ? (
-					<div className="flex h-full items-center justify-center">
-						<Loader2 className="h-10 w-10 animate-spin text-primary" />
-					</div>
+					<Spinner />
 				) : loadError ? (
 					<p role="alert" className="p-6 text-center text-sm text-destructive">
 						{loadError}
 					</p>
 				) : people.length === 0 ? (
-					<div
+					<EmptyState
 						data-testid="people-empty"
-						className="flex h-full flex-col items-center justify-center text-muted-foreground"
-					>
-						<Users className="mb-4 h-16 w-16 opacity-20" />
-						<p className="text-sm font-medium">No people yet</p>
-					</div>
+						icon={<Users />}
+						title="No people yet"
+					/>
 				) : (
 					<ul
 						aria-label="People"

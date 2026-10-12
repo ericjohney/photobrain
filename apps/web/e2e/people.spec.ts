@@ -8,6 +8,7 @@ import {
 	fixtureGridIds,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { appHeader, saveSmartAlbumButton } from "./fixtures/ui";
 
 /** A promise the test resolves to release a held mock response. */
 function gate() {
@@ -27,7 +28,9 @@ function peopleItem(page: Page) {
 }
 
 function card(page: Page, personId: number) {
-	return page.locator(`[data-testid="person-card"][data-person-id="${personId}"]`);
+	return page.locator(
+		`[data-testid="person-card"][data-person-id="${personId}"]`,
+	);
 }
 
 /** Card labels in rendered order: the name, or "Add a name" when unnamed. */
@@ -97,13 +100,9 @@ test("People lists people in API order with placeholders and a count badge", asy
 	const calls = await mockBackend();
 	await openPeople(page);
 
-	await expect.poll(() => cardLabels(page)).toEqual([
-		"Bob",
-		"Alice",
-		"Carol",
-		"Add a name",
-		"Add a name",
-	]);
+	await expect
+		.poll(() => cardLabels(page))
+		.toEqual(["Bob", "Alice", "Carol", "Add a name", "Add a name"]);
 	await expect(page.getByTestId("person-count")).toHaveText([
 		"3 photos",
 		"2 photos",
@@ -140,7 +139,9 @@ test("clicking a person scopes the library, search, and smart albums to personId
 	const calls = await mockBackend();
 	await openPeople(page);
 
-	await card(page, 2).getByRole("button", { name: "Show photos of Bob" }).click();
+	await card(page, 2)
+		.getByRole("button", { name: "Show photos of Bob" })
+		.click();
 	await expect(page.getByTestId("people-view")).toHaveCount(0);
 	await expectGrid(page, { personId: 2 });
 	expect(calls.photos?.at(-1)).toEqual({ personId: 2 });
@@ -159,9 +160,7 @@ test("clicking a person scopes the library, search, and smart albums to personId
 	await page.getByRole("button", { name: "Clear search" }).click();
 
 	// Save as Smart Album carries personId.
-	await leftPanel(page)
-		.getByRole("button", { name: "Save as Smart Album…" })
-		.click();
+	await saveSmartAlbumButton(page).click();
 	const dialog = page.getByRole("dialog", { name: "Save as Smart Album" });
 	await dialog.getByLabel("Smart album name").fill("Bob");
 	await dialog.getByRole("button", { name: "Save smart album" }).click();
@@ -171,7 +170,7 @@ test("clicking a person scopes the library, search, and smart albums to personId
 	]);
 
 	// The saved album now heads the grid; the filter chip still clears the person.
-	await leftPanel(page).getByRole("button", { name: "Clear person" }).click();
+	await appHeader(page).getByRole("button", { name: "Clear person" }).click();
 	await expect(page.getByTestId("smart-album-header")).toHaveCount(0);
 	// The unscoped library was loaded before and is still fresh, so it is
 	// shown from the cache rather than requested again.
@@ -187,9 +186,7 @@ test("an unnamed person's scope label reads Unnamed", async ({
 	await card(page, 3)
 		.getByRole("button", { name: "Show photos of Unnamed" })
 		.click();
-	await expect(page.getByTestId("person-header")).toHaveText(
-		"Person: Unnamed",
-	);
+	await expect(page.getByTestId("person-header")).toHaveText("Person: Unnamed");
 	await expectGrid(page, { personId: 3 });
 	expect(calls.photos?.at(-1)).toEqual({ personId: 3 });
 
@@ -212,7 +209,9 @@ test("rename saves on Enter, cancels on Escape, and clears an empty name", async
 	await page.getByLabel("Name for Bob").fill("  Robert ");
 	await page.getByLabel("Name for Bob").press("Enter");
 	await expect(card(page, 2).getByTestId("person-name")).toHaveText("Robert");
-	await expect.poll(() => calls.updatePerson).toEqual([{ id: 2, name: "Robert" }]);
+	await expect
+		.poll(() => calls.updatePerson)
+		.toEqual([{ id: 2, name: "Robert" }]);
 
 	await cardAction(page, 2, "Rename");
 	await page.getByLabel("Name for Robert").fill("Bobby");
@@ -227,17 +226,21 @@ test("rename saves on Enter, cancels on Escape, and clears an empty name", async
 	await expect(
 		card(page, 2).getByRole("button", { name: "Add a name" }),
 	).toBeVisible();
-	await expect.poll(() => calls.updatePerson).toEqual([
-		{ id: 2, name: "Robert" },
-		{ id: 2, name: null },
-	]);
+	await expect
+		.poll(() => calls.updatePerson)
+		.toEqual([
+			{ id: 2, name: "Robert" },
+			{ id: 2, name: null },
+		]);
 
 	// "Add a name" opens the same field.
 	await card(page, 5).getByRole("button", { name: "Add a name" }).click();
 	await page.getByLabel("Name for Unnamed").fill("Eve");
 	await page.getByLabel("Name for Unnamed").press("Enter");
 	await expect(card(page, 5).getByTestId("person-name")).toHaveText("Eve");
-	await expect.poll(() => calls.updatePerson?.at(-1)).toEqual({ id: 5, name: "Eve" });
+	await expect
+		.poll(() => calls.updatePerson?.at(-1))
+		.toEqual({ id: 5, name: "Eve" });
 });
 
 test("a failed rename restores the name and shows the error", async ({
@@ -263,7 +266,9 @@ test("a failed rename restores the name and shows the error", async ({
 	await expect(page.getByRole("alert")).toHaveText(
 		"Couldn't rename Alice: Database is locked",
 	);
-	await expect.poll(() => calls.updatePerson).toEqual([{ id: 1, name: "Alicia" }]);
+	await expect
+		.poll(() => calls.updatePerson)
+		.toEqual([{ id: 1, name: "Alicia" }]);
 	await page.getByRole("button", { name: "Dismiss error" }).click();
 	await expect(page.getByRole("alert")).toHaveCount(0);
 });
@@ -277,7 +282,9 @@ test("hide and unhide, with Show hidden listing hidden people", async ({
 
 	await cardAction(page, 4, "Hide");
 	await expect(card(page, 4)).toHaveCount(0);
-	await expect.poll(() => calls.updatePerson).toEqual([{ id: 4, hidden: true }]);
+	await expect
+		.poll(() => calls.updatePerson)
+		.toEqual([{ id: 4, hidden: true }]);
 	await expect(peopleItem(page)).toContainText("4");
 
 	const showHidden = page.getByRole("button", { name: "Show hidden" });
@@ -289,7 +296,9 @@ test("hide and unhide, with Show hidden listing hidden people", async ({
 
 	await cardAction(page, 6, "Unhide");
 	await expect(card(page, 6)).not.toContainText("Hidden");
-	await expect.poll(() => calls.updatePerson?.at(-1)).toEqual({ id: 6, hidden: false });
+	await expect
+		.poll(() => calls.updatePerson?.at(-1))
+		.toEqual({ id: 6, hidden: false });
 
 	await showHidden.click();
 	await expect(showHidden).toHaveAttribute("aria-pressed", "false");
@@ -337,7 +346,9 @@ test("merge picks a target among the selection and confirms first", async ({
 	await picker.getByRole("option", { name: "Bob" }).click();
 	await dialog.getByRole("button", { name: "Merge people" }).click();
 	await expect(card(page, 1)).toHaveCount(0);
-	await expect.poll(() => calls.mergePeople).toEqual([{ targetId: 2, sourceIds: [1] }]);
+	await expect
+		.poll(() => calls.mergePeople)
+		.toEqual([{ targetId: 2, sourceIds: [1] }]);
 	await expect(card(page, 2).getByTestId("person-count")).toHaveText(
 		"4 photos",
 	);
@@ -373,7 +384,9 @@ test("a failed merge restores the people and shows the error", async ({
 	await expect(page.getByRole("alert")).toHaveText(
 		"Couldn't merge into Carol: Database is locked",
 	);
-	await expect.poll(() => calls.mergePeople).toEqual([{ targetId: 4, sourceIds: [5] }]);
+	await expect
+		.poll(() => calls.mergePeople)
+		.toEqual([{ targetId: 4, sourceIds: [5] }]);
 });
 
 function assignInput(page: Page, faceId: number) {
@@ -388,7 +401,9 @@ function assignOption(page: Page, faceId: number, name: string) {
 
 async function openPhotoPeople(page: Page, photoId: number) {
 	await openLibrary(page);
-	await page.locator(`[data-testid="photo-grid"] [data-photo-id="${photoId}"]`).click();
+	await page
+		.locator(`[data-testid="photo-grid"] [data-photo-id="${photoId}"]`)
+		.click();
 	const section = page.getByTestId("right-panel").getByTestId("photo-people");
 	await expect(section).toBeVisible();
 	return section;
@@ -429,11 +444,13 @@ test("metadata People rows assign a new person, an existing one, or none", async
 		"Not assigned",
 	);
 
-	await expect.poll(() => calls.assignFace).toEqual([
-		{ faceId: 104, name: "Eve" },
-		{ faceId: 110, personId: 1 },
-		{ faceId: 103, personId: null },
-	]);
+	await expect
+		.poll(() => calls.assignFace)
+		.toEqual([
+			{ faceId: 104, name: "Eve" },
+			{ faceId: 110, personId: 1 },
+			{ faceId: 103, personId: null },
+		]);
 });
 
 test("a failed face assignment rolls back and shows the error", async ({
@@ -454,10 +471,12 @@ test("a failed face assignment rolls back and shows the error", async ({
 
 	release.open();
 	await expect(faceRow(page, 101).getByTestId("face-name")).toHaveText("Bob");
-	await expect(
-		page.getByTestId("photo-people").getByRole("alert"),
-	).toHaveText("Couldn't update this face: Database is locked");
-	await expect.poll(() => calls.assignFace).toEqual([{ faceId: 101, personId: 4 }]);
+	await expect(page.getByTestId("photo-people").getByRole("alert")).toHaveText(
+		"Couldn't update this face: Database is locked",
+	);
+	await expect
+		.poll(() => calls.assignFace)
+		.toEqual([{ faceId: 101, personId: 4 }]);
 });
 
 test("videos have no People section", async ({ page, mockBackend }) => {

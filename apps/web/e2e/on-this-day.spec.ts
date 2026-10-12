@@ -7,6 +7,13 @@ import {
 	fixtureOnThisDay,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import {
+	appHeader,
+	breadcrumb,
+	clearAllFilters,
+	filterRadio,
+	saveSmartAlbumButton,
+} from "./fixtures/ui";
 
 // 23:30 on June 15 in Denver is already June 16 in UTC: requests must carry
 // the browser's local calendar date.
@@ -145,13 +152,9 @@ test("the strip is hidden while a filter, search, or scope is active", async ({
 	await expect(strip(page)).toBeVisible();
 
 	// Library filter.
-	await leftPanel(page).getByText("Filter By").click();
-	const typeControl = leftPanel(page).getByRole("radiogroup", {
-		name: "Photo type",
-	});
-	await typeControl.getByRole("radio", { name: "RAW" }).click();
+	await (await filterRadio(page, "Type", "RAW")).click();
 	await expect(strip(page)).toHaveCount(0);
-	await leftPanel(page).getByRole("button", { name: "Clear all" }).click();
+	await clearAllFilters(page).click();
 	await expect(strip(page)).toBeVisible();
 
 	// Search.
@@ -164,7 +167,9 @@ test("the strip is hidden while a filter, search, or scope is active", async ({
 
 	// Folder scope.
 	await leftPanel(page).getByText("2024", { exact: true }).click();
-	await expect(leftPanel(page).getByText("Showing: photos/2024")).toBeVisible();
+	await expect(
+		breadcrumb(page).getByText("2024", { exact: true }),
+	).toBeVisible();
 	await expect(strip(page)).toHaveCount(0);
 	await leftPanel(page).getByText("All Photos").click();
 	await expect(strip(page)).toBeVisible();
@@ -188,9 +193,9 @@ test("a card filters to its capture date; the chip and Clear all restore the str
 	await card(page, "2025-06-15").click();
 	await expectCapturedDateGrid(page, "2025-06-15");
 	expect(calls.photos?.at(-1)).toEqual({ capturedDate: "2025-06-15" });
-	const chip = leftPanel(page).getByTestId("captured-date-chip");
+	const chip = appHeader(page).getByTestId("captured-date-chip");
 	await expect(chip).toHaveText("Jun 15, 2025");
-	await expect(leftPanel(page).getByText("Filters active")).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
 	await expect(strip(page)).toHaveCount(0);
 
 	// Removing the chip returns to the whole library and its strip.
@@ -204,8 +209,8 @@ test("a card filters to its capture date; the chip and Clear all restore the str
 	// Clear all clears it too.
 	await card(page, "2019-06-15").click();
 	await expectCapturedDateGrid(page, "2019-06-15");
-	await leftPanel(page).getByRole("button", { name: "Clear all" }).click();
-	await expect(leftPanel(page).getByTestId("captured-date-chip")).toHaveCount(
+	await clearAllFilters(page).click();
+	await expect(appHeader(page).getByTestId("captured-date-chip")).toHaveCount(
 		0,
 	);
 	await expect(strip(page)).toBeVisible();
@@ -248,17 +253,11 @@ test("Save as Smart Album never saves the capture date", async ({
 	await openLibrary(page);
 	await card(page, "2025-06-15").click();
 	await expectCapturedDateGrid(page, "2025-06-15");
-	const save = leftPanel(page).getByRole("button", {
-		name: "Save as Smart Album…",
-	});
+	const save = saveSmartAlbumButton(page);
 	// A capture date alone is not savable.
 	await expect(save).toHaveCount(0);
 
-	await leftPanel(page).getByText("Filter By").click();
-	await leftPanel(page)
-		.getByRole("radiogroup", { name: "Photo type" })
-		.getByRole("radio", { name: "Standard" })
-		.click();
+	await (await filterRadio(page, "Type", "Standard")).click();
 	await save.click();
 	const dialog = page.getByRole("dialog", { name: "Save as Smart Album" });
 	await expect(dialog).toContainText("Standard only");
@@ -272,5 +271,5 @@ test("Save as Smart Album never saves the capture date", async ({
 	]);
 	// The view still narrows the album by date, so the album is not selected.
 	await expect(page.getByTestId("smart-album-header")).toHaveCount(0);
-	await expect(leftPanel(page).getByTestId("captured-date-chip")).toBeVisible();
+	await expect(appHeader(page).getByTestId("captured-date-chip")).toBeVisible();
 });

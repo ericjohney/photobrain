@@ -346,7 +346,7 @@ test("the calendar counts EXIF capture days, skips empty months, and applies cap
 
 	await calendarDay(page, "2024-06-14").click();
 	await expect(calendar(page)).toHaveCount(0);
-	const chip = page.getByTestId("left-panel").getByTestId("captured-date-chip");
+	const chip = page.getByTestId("app-header").getByTestId("captured-date-chip");
 	await expect(chip).toContainText("Jun 14, 2024");
 	await expect(page.getByText("1 photos", { exact: true })).toBeVisible();
 	await expect.poll(() => gridIds(page)).toEqual([10]);

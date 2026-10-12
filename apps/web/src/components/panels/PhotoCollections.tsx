@@ -1,6 +1,13 @@
 import { Layers, Plus } from "lucide-react";
 import { useState } from "react";
+import {
+	MenuItem,
+	menuItemVariants,
+	Popover,
+} from "@/components/ui/popover";
 import { CollectionNameInput } from "@/components/CollectionNameInput";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
 import { useDismiss } from "@/hooks/use-dismiss";
 import { trpc } from "@/lib/trpc";
 import type { Collection } from "@/lib/types";
@@ -54,8 +61,9 @@ export function PhotoCollections({
 					Collections
 				</span>
 				<div ref={popoverRef} className="relative ml-auto">
-					<button
-						type="button"
+					<Button
+						variant="ghost"
+						size="xs"
 						aria-haspopup="dialog"
 						aria-expanded={open}
 						title="Add to collection (B adds to the last used)"
@@ -63,16 +71,16 @@ export function PhotoCollections({
 							setOpen((current) => !current);
 							setCreating(false);
 						}}
-						className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground"
+						className="h-6 px-1.5"
 					>
-						<Plus className="h-3.5 w-3.5" />
+						<Plus />
 						Add to collection
-					</button>
+					</Button>
 					{open && (
-						<div
+						<Popover
 							role="dialog"
 							aria-label="Add to collection"
-							className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+							className="w-56"
 						>
 							<div className="max-h-56 overflow-auto">
 								{collections?.map((collection) => {
@@ -80,7 +88,7 @@ export function PhotoCollections({
 									return (
 										<label
 											key={collection.id}
-											className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-secondary"
+											className={cn(menuItemVariants(), "gap-2")}
 										>
 											<input
 												type="checkbox"
@@ -92,7 +100,7 @@ export function PhotoCollections({
 												className="h-3.5 w-3.5 accent-primary"
 											/>
 											<span className="flex-1 truncate">{collection.name}</span>
-											<span className="text-muted-foreground">
+											<span className="text-subtle tabular-nums">
 												{collection.photoCount}
 											</span>
 										</label>
@@ -116,16 +124,12 @@ export function PhotoCollections({
 										className="px-1 py-0.5"
 									/>
 								) : (
-									<button
-										type="button"
-										onClick={() => setCreating(true)}
-										className="w-full rounded px-2 py-1 text-left text-xs hover:bg-secondary"
-									>
+									<MenuItem role={undefined} onClick={() => setCreating(true)}>
 										New collection…
-									</button>
+									</MenuItem>
 								)}
 							</div>
-						</div>
+						</Popover>
 					)}
 				</div>
 			</div>
@@ -137,11 +141,8 @@ export function PhotoCollections({
 				)}
 			>
 				{memberships.map((collection) => (
-					<li
-						key={collection.id}
-						className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs text-primary"
-					>
-						{collection.name}
+					<li key={collection.id}>
+						<Chip>{collection.name}</Chip>
 					</li>
 				))}
 			</ul>

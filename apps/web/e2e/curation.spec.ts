@@ -8,6 +8,7 @@ import {
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { clearAllFilters, filterRadio } from "./fixtures/ui";
 
 async function gridIds(page: Page) {
 	return page
@@ -310,31 +311,26 @@ test("Rating and Flag filters scope the library and search and clear with Clear 
 }) => {
 	const calls = await mockBackend();
 	await openLibrary(page);
-	const leftPanel = page.getByTestId("left-panel");
-	await leftPanel.getByText("Filter By").click();
-	const ratingRadio = (name: string) =>
-		leftPanel
-			.getByRole("radiogroup", { name: "Minimum rating" })
-			.getByRole("radio", { name, exact: true });
-	const flagRadio = (name: string) =>
-		leftPanel
-			.getByRole("radiogroup", { name: "Flag" })
-			.getByRole("radio", { name, exact: true });
-	await expect(ratingRadio("Any")).toHaveAttribute("aria-checked", "true");
-	await expect(flagRadio("Any")).toHaveAttribute("aria-checked", "true");
+	const ratingRadio = async (name: string) => filterRadio(page, "Rating", name);
+	const flagRadio = async (name: string) => filterRadio(page, "Flag", name);
+	await expect(await ratingRadio("Any")).toHaveAttribute(
+		"aria-checked",
+		"true",
+	);
+	await expect(await flagRadio("Any")).toHaveAttribute("aria-checked", "true");
 
 	const threePlus = filterFixturePhotos(FIXTURE_PHOTOS, { minRating: 3 });
-	await ratingRadio("★3+").click();
+	await (await ratingRadio("★3+")).click();
 	await expect(page.getByText(`${threePlus.length} photos`)).toBeVisible();
 	expect(await gridIds(page)).toEqual(fixtureGridIds(threePlus));
 	expect(calls.photos?.at(-1)).toEqual({ minRating: 3 });
-	await expect(leftPanel.getByText("Filters active")).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
 
 	const picks = filterFixturePhotos(FIXTURE_PHOTOS, {
 		minRating: 3,
 		flag: "pick",
 	});
-	await flagRadio("Picks").click();
+	await (await flagRadio("Picks")).click();
 	await expect(page.getByText(`${picks.length} photos`)).toBeVisible();
 	expect(await gridIds(page)).toEqual(fixtureGridIds(picks));
 	expect(calls.photos?.at(-1)).toEqual({ minRating: 3, flag: "pick" });
@@ -352,8 +348,8 @@ test("Rating and Flag filters scope the library and search and clear with Clear 
 		flag: "pick",
 	});
 
-	await ratingRadio("★5").click();
-	await flagRadio("Unflagged").click();
+	await (await ratingRadio("★5")).click();
+	await (await flagRadio("Unflagged")).click();
 	await expect(page.getByTestId("search-header")).toHaveText(
 		"0 results for “jpg” · ★5 · Unflagged",
 	);
@@ -364,8 +360,8 @@ test("Rating and Flag filters scope the library and search and clear with Clear 
 		flag: "unflagged",
 	});
 
-	await flagRadio("Rejected").click();
-	await ratingRadio("Any").click();
+	await (await flagRadio("Rejected")).click();
+	await (await ratingRadio("Any")).click();
 	const rejected = searchPhotosByQuery(
 		"jpg",
 		filterFixturePhotos(FIXTURE_PHOTOS, { flag: "reject" }),
@@ -374,10 +370,13 @@ test("Rating and Flag filters scope the library and search and clear with Clear 
 		`${rejected.length} results for “jpg” · Rejected`,
 	);
 
-	await leftPanel.getByRole("button", { name: "Clear all" }).click();
-	await expect(leftPanel.getByText("Filters active")).toHaveCount(0);
-	await expect(ratingRadio("Any")).toHaveAttribute("aria-checked", "true");
-	await expect(flagRadio("Any")).toHaveAttribute("aria-checked", "true");
+	await clearAllFilters(page).click();
+	await expect(clearAllFilters(page)).toHaveCount(0);
+	await expect(await ratingRadio("Any")).toHaveAttribute(
+		"aria-checked",
+		"true",
+	);
+	await expect(await flagRadio("Any")).toHaveAttribute("aria-checked", "true");
 	await expect(page.getByTestId("search-header")).toHaveText(
 		`${searchPhotosByQuery("jpg").length} results for “jpg”`,
 	);

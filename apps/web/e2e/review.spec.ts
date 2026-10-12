@@ -7,6 +7,7 @@ import {
 	fixtureGridIds,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { breadcrumb, clearAllFilters, filterRadio } from "./fixtures/ui";
 
 /** Review candidates newest-first: reasons, not picked/rejected, unrated. */
 const CANDIDATE_IDS = [12, 11, 10, 9, 7, 3];
@@ -345,11 +346,7 @@ test("leaving Review restores the library with its folder and filters", async ({
 	await page.goto("/");
 	const panel = leftPanel(page);
 	await panel.getByRole("button", { name: /^2024/ }).click();
-	await panel.getByText("Filter By").click();
-	await panel
-		.getByRole("radiogroup", { name: "Flag" })
-		.getByRole("radio", { name: "Picks", exact: true })
-		.click();
+	await (await filterRadio(page, "Flag", "Picks")).click();
 	const picks = fixtureGridIds(
 		filterFixturePhotos(FIXTURE_PHOTOS, {
 			folder: "photos/2024",
@@ -362,14 +359,18 @@ test("leaving Review restores the library with its folder and filters", async ({
 
 	await reviewItem(page).click();
 	await expect.poll(() => gridIds(page)).toEqual(CANDIDATE_IDS);
-	await expect(panel.getByText("Filters active")).toHaveCount(0);
-	await expect(panel.getByText("Showing: photos/2024")).toHaveCount(0);
+	await expect(clearAllFilters(page)).toHaveCount(0);
+	await expect(breadcrumb(page).getByText("2024", { exact: true })).toHaveCount(
+		0,
+	);
 
 	await headerButton(page, /^Exit review/).click();
 	await expect(page.getByTestId("review-header")).toHaveCount(0);
 	await expect.poll(() => gridIds(page)).toEqual(picks);
-	await expect(panel.getByText("Filters active")).toBeVisible();
-	await expect(panel.getByText("Showing: photos/2024")).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
+	await expect(
+		breadcrumb(page).getByText("2024", { exact: true }),
+	).toBeVisible();
 	expect(calls.photos?.at(-1)).toEqual(libraryRequest);
 
 	// Choosing a folder also leaves Review.

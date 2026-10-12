@@ -8,6 +8,7 @@ import {
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { clearAllFilters, openFilters } from "./fixtures/ui";
 
 async function gridIds(page: Page) {
 	return page
@@ -22,7 +23,7 @@ function gridCell(page: Page, id: number) {
 }
 
 function tagList(page: Page) {
-	return page.getByTestId("left-panel").getByTestId("tag-filter-list");
+	return page.getByTestId("tag-filter-list");
 }
 
 /** Tag filter rows as [display name, count] in rendered order. */
@@ -97,7 +98,7 @@ test("Tags lists the top 12 tags by count, in Title Case, and Show all reveals t
 	page,
 }) => {
 	await openLibrary(page);
-	await page.getByTestId("left-panel").getByText("Filter By").click();
+	await openFilters(page, "Tags");
 
 	await expect.poll(() => tagRows(page)).toEqual(TOP_TAGS);
 	const toggle = tagList(page).getByRole("button", { name: "Show all (20)" });
@@ -118,8 +119,8 @@ test("selecting a tag scopes the library and search, toggles off, and clears wit
 	const calls = await mockBackend();
 	await openLibrary(page);
 	const leftPanel = page.getByTestId("left-panel");
-	await leftPanel.getByText("Filter By").click();
-	await expect(leftPanel.getByText("Filters active")).toHaveCount(0);
+	await openFilters(page, "Tags");
+	await expect(clearAllFilters(page)).toHaveCount(0);
 
 	await tagFilter(page, "Beach").click();
 	await expectGrid(page, { tag: "beach" });
@@ -128,7 +129,7 @@ test("selecting a tag scopes the library and search, toggles off, and clears wit
 		"aria-pressed",
 		"true",
 	);
-	await expect(leftPanel.getByText("Filters active")).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
 
 	// Clicking the selected tag again clears it.
 	await tagFilter(page, "Beach").click();
@@ -137,7 +138,7 @@ test("selecting a tag scopes the library and search, toggles off, and clears wit
 		"aria-pressed",
 		"false",
 	);
-	await expect(leftPanel.getByText("Filters active")).toHaveCount(0);
+	await expect(clearAllFilters(page)).toHaveCount(0);
 
 	await tagFilter(page, "Beach").click();
 	await expectGrid(page, { tag: "beach" });
@@ -175,8 +176,9 @@ test("selecting a tag scopes the library and search, toggles off, and clears wit
 		"false",
 	);
 
-	await leftPanel.getByRole("button", { name: "Clear all" }).click();
-	await expect(leftPanel.getByText("Filters active")).toHaveCount(0);
+	await clearAllFilters(page).click();
+	await expect(clearAllFilters(page)).toHaveCount(0);
+	await openFilters(page, "Tags");
 	await expect(tagFilter(page, "Night sky")).toHaveAttribute(
 		"aria-pressed",
 		"false",
@@ -222,12 +224,12 @@ test("metadata panel shows the active photo's tags by score and a chip applies t
 	expect(calls.photos?.at(-1)).toEqual({ tag: "night-sky" });
 
 	const leftPanel = page.getByTestId("left-panel");
-	await leftPanel.getByText("Filter By").click();
+	await openFilters(page, "Tags");
 	await expect(tagFilter(page, "Night sky")).toHaveAttribute(
 		"aria-pressed",
 		"true",
 	);
-	await expect(leftPanel.getByText("Filters active")).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
 
 	// A chip outside the collapsed top 12 still shows as the selected tag.
 	await page.getByRole("button", { name: "Clear all" }).click();
@@ -236,6 +238,7 @@ test("metadata panel shows the active photo's tags by score and a chip applies t
 	await expect(photoTagChips(page)).toHaveText(["Sunset", "Sky", "Beach"]);
 	await photoTagChips(page).filter({ hasText: "Sunset" }).click();
 	await expectGrid(page, { tag: "sunset" });
+	await openFilters(page, "Tags");
 	await expect(tagFilter(page, "Sunset")).toHaveAttribute(
 		"aria-pressed",
 		"true",

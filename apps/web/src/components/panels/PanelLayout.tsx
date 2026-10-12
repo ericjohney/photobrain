@@ -5,9 +5,14 @@ interface PanelLayoutProps {
 	leftPanel?: ReactNode;
 	rightPanel?: ReactNode;
 	filmstrip?: ReactNode;
-	toolbar?: ReactNode;
+	/** Status bar across the bottom of the window. */
+	footer?: ReactNode;
+	/** Chrome above the content (breadcrumbs, title, filters), inside the center column. */
+	header?: ReactNode;
 	children: ReactNode;
 	leftPanelVisible?: boolean;
+	/** Icon rail instead of the full sidebar. */
+	leftPanelCollapsed?: boolean;
 	rightPanelVisible?: boolean;
 	filmstripVisible?: boolean;
 }
@@ -16,56 +21,57 @@ export function PanelLayout({
 	leftPanel,
 	rightPanel,
 	filmstrip,
-	toolbar,
+	footer,
+	header,
 	children,
 	leftPanelVisible = true,
+	leftPanelCollapsed = false,
 	rightPanelVisible = true,
 	filmstripVisible = true,
 }: PanelLayoutProps) {
 	return (
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-background">
-			{/* Toolbar */}
-			{toolbar && (
-				<div className="flex-shrink-0 border-b border-border bg-toolbar">
-					{toolbar}
-				</div>
-			)}
-
-			{/* Main content area */}
-			<div className="flex flex-1 overflow-hidden">
-				{/* Left Panel */}
+			<div className="flex min-h-0 flex-1 overflow-hidden">
+				{/* Left panel: sidebar or icon rail */}
 				{leftPanel && leftPanelVisible && (
 					<div
 						data-testid="left-panel"
-						className="w-64 flex-shrink-0 border-r border-border bg-panel overflow-hidden"
+						data-collapsed={leftPanelCollapsed}
+						className={cn(
+							"flex-shrink-0 overflow-hidden border-r border-border bg-panel",
+							leftPanelCollapsed ? "w-14" : "w-64",
+						)}
 					>
 						{leftPanel}
 					</div>
 				)}
 
-				{/* Center area (content + filmstrip) */}
-				<div className="flex flex-1 flex-col overflow-hidden">
-					{/* Main Content */}
-					<div className="flex-1 overflow-hidden">{children}</div>
-
-					{/* Filmstrip */}
+				{/* Center area (header + content + filmstrip) */}
+				<div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+					{header && <div className="flex-shrink-0">{header}</div>}
+					<div className="min-h-0 flex-1 overflow-hidden">{children}</div>
 					{filmstrip && filmstripVisible && (
-						<div className="h-24 flex-shrink-0 border-t border-border bg-filmstrip overflow-hidden">
+						<div className="h-24 flex-shrink-0 overflow-hidden border-t border-border bg-panel">
 							{filmstrip}
 						</div>
 					)}
 				</div>
 
-				{/* Right Panel */}
+				{/* Right panel */}
 				{rightPanel && rightPanelVisible && (
 					<div
 						data-testid="right-panel"
-						className="w-72 flex-shrink-0 border-l border-border bg-panel overflow-hidden"
+						className="w-72 flex-shrink-0 overflow-hidden border-l border-border bg-panel"
 					>
 						{rightPanel}
 					</div>
 				)}
 			</div>
+			{footer && (
+				<div className="flex-shrink-0 border-t border-border bg-panel">
+					{footer}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -82,7 +88,6 @@ interface PanelSectionProps {
 export function PanelSection({
 	title,
 	children,
-	defaultOpen = true,
 	actions,
 	className,
 }: PanelSectionProps) {

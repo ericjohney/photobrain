@@ -8,6 +8,7 @@ import {
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { openFilters, filtersDialog, clearAllFilters } from "./fixtures/ui";
 
 // RAW shows every RAW file, including forest.arw (13) whose JPEG partner is
 // filtered out; All stacks that pair into forest.jpg (8). The library grid
@@ -25,13 +26,11 @@ async function gridIds(page: Page) {
 }
 
 async function openTypeFilter(page: Page) {
-	await page.getByTestId("left-panel").getByText("Filter By").click();
+	await openFilters(page, "Type");
 }
 
 function typeRadio(page: Page, name: "All" | "RAW" | "Standard") {
-	return page
-		.getByTestId("left-panel")
-		.getByRole("radio", { name, exact: true });
+	return filtersDialog(page).getByRole("radio", { name, exact: true });
 }
 
 test("RAW, Standard and All switch the library request and grid", async ({
@@ -77,12 +76,13 @@ test("Clear all resets the type filter to All", async ({
 	await openTypeFilter(page);
 	await typeRadio(page, "RAW").click();
 	await expect(page.getByText(`${RAW_IDS.length} photos`)).toBeVisible();
-	await expect(page.getByText("Filters active")).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
 
-	await page.getByRole("button", { name: "Clear all" }).click();
+	await clearAllFilters(page).click();
 	await expect(page.getByText(`${ALL_IDS.length} photos`)).toBeVisible();
+	await openTypeFilter(page);
 	await expect(typeRadio(page, "All")).toHaveAttribute("aria-checked", "true");
-	await expect(page.getByText("Filters active")).toHaveCount(0);
+	await expect(clearAllFilters(page)).toHaveCount(0);
 	expect(
 		(calls.photos ?? []).some(
 			(input) =>

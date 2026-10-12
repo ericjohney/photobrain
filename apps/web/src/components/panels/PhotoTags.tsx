@@ -1,4 +1,5 @@
 import { Tag } from "lucide-react";
+import { ChipButton } from "@/components/ui/chip";
 import { trpc } from "@/lib/trpc";
 import { formatTagName } from "@/lib/utils";
 
@@ -26,14 +27,12 @@ export function PhotoTags({
 				<ul aria-label="Photo tags" className="mt-1.5 flex flex-wrap gap-1">
 					{tags.map(({ tag }) => (
 						<li key={tag}>
-							<button
-								type="button"
+							<ChipButton
 								title={`Show photos tagged ${formatTagName(tag)}`}
 								onClick={() => onSelect(tag)}
-								className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs text-primary hover:bg-primary/25"
 							>
 								{formatTagName(tag)}
-							</button>
+							</ChipButton>
 						</li>
 					))}
 				</ul>

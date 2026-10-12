@@ -8,6 +8,7 @@ import {
 	searchPhotosByQuery,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { clearAllFilters, filtersDialog, openFilters } from "./fixtures/ui";
 
 async function gridIds(page: Page) {
 	return page
@@ -18,9 +19,7 @@ async function gridIds(page: Page) {
 }
 
 async function openCameraFilters(page: Page) {
-	const leftPanel = page.getByTestId("left-panel");
-	await leftPanel.getByText("Filter By").click();
-	await leftPanel.getByText("Camera", { exact: true }).click();
+	await openFilters(page, "Camera");
 }
 
 test("folders and filters stay visible while a search is active", async ({
@@ -37,7 +36,9 @@ test("folders and filters stay visible while a search is active", async ({
 	await expect(leftPanel.getByText("2024", { exact: true })).toBeVisible();
 	await openCameraFilters(page);
 	for (const camera of ["Sony A7III", "Canon EOS R5", "Fujifilm X-T5"]) {
-		await expect(leftPanel.getByRole("button", { name: camera })).toBeVisible();
+		await expect(
+			filtersDialog(page).getByRole("button", { name: camera }),
+		).toBeVisible();
 	}
 });
 
@@ -54,8 +55,7 @@ test("selecting a camera while searching re-queries with that camera and scopes 
 	);
 
 	await openCameraFilters(page);
-	await page
-		.getByTestId("left-panel")
+	await filtersDialog(page)
 		.getByRole("button", { name: "Canon EOS R5" })
 		.click();
 
@@ -151,10 +151,7 @@ test("clearing the search restores the filtered library grid", async ({
 	await page.goto("/");
 	await expect(page.getByText("12 photos")).toBeVisible();
 	await openCameraFilters(page);
-	await page
-		.getByTestId("left-panel")
-		.getByRole("button", { name: "Sony A7III" })
-		.click();
+	await filtersDialog(page).getByRole("button", { name: "Sony A7III" }).click();
 	await expect(page.getByText(`${sonyIds.length} photos`)).toBeVisible();
 
 	await page.getByPlaceholder("Search photos...").fill("beach");
@@ -167,9 +164,7 @@ test("clearing the search restores the filtered library grid", async ({
 	await expect(page.getByPlaceholder("Search photos...")).toHaveValue("");
 	await expect(page.getByText(`${sonyIds.length} photos`)).toBeVisible();
 	expect(await gridIds(page)).toEqual(sonyIds);
-	await expect(
-		page.getByTestId("left-panel").getByText("Filters active"),
-	).toBeVisible();
+	await expect(clearAllFilters(page)).toBeVisible();
 	expect(calls.photos?.at(-1)).toEqual({ camera: "Sony A7III" });
 });
 
@@ -182,11 +177,13 @@ test("filters chosen before searching carry into the search request", async ({
 	await expect(page.getByText("12 photos")).toBeVisible();
 	const leftPanel = page.getByTestId("left-panel");
 	await openCameraFilters(page);
-	await leftPanel.getByRole("button", { name: "Canon EOS R5" }).click();
-	await leftPanel.getByText("ISO", { exact: true }).click();
-	await leftPanel.getByRole("button", { name: "ISO 100" }).click();
-	await leftPanel.getByText("Date", { exact: true }).click();
-	await leftPanel.getByRole("button", { name: "June 2024" }).click();
+	await filtersDialog(page)
+		.getByRole("button", { name: "Canon EOS R5" })
+		.click();
+	await openFilters(page, "ISO");
+	await filtersDialog(page).getByRole("button", { name: "ISO 100" }).click();
+	await openFilters(page, "Date");
+	await filtersDialog(page).getByRole("button", { name: "June 2024" }).click();
 	await expect(page.getByText("1 photos")).toBeVisible();
 
 	await page.getByPlaceholder("Search photos...").fill("jpg");

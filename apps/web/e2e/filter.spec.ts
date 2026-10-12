@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures/test";
 import { FIXTURE_LIBRARY } from "./fixtures/photos";
+import { filtersDialog, openFilters } from "./fixtures/ui";
 
 test.beforeEach(async ({ page }) => {
 	await page.goto("/");
@@ -7,10 +8,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Filter By section shows camera options", async ({ page }) => {
-	// Expand Filter By section
-	await page.getByText("Filter By").click();
-	// Expand Camera sub-section
-	await page.getByText("Camera").click();
+	await openFilters(page, "Camera");
 	// Camera options from filterOptions handler should appear
 	await expect(page.getByText("Sony A7III")).toBeVisible();
 	await expect(page.getByText("Canon EOS R5")).toBeVisible();
@@ -44,9 +42,8 @@ test("selecting a camera filter updates photo count", async ({
 	await expect(page.getByText("12 photos")).toBeVisible();
 
 	// Open filter and select Sony
-	await page.getByText("Filter By").click();
-	await page.getByText("Camera").click();
-	await page.getByText("Sony A7III").click();
+	await openFilters(page, "Camera");
+	await filtersDialog(page).getByText("Sony A7III").click();
 
 	// Should filter to Sony photos only
 	await expect(page.getByText(`${sonyPhotos.length} photos`)).toBeVisible();
@@ -79,12 +76,11 @@ test("clearing a filter restores full photo list", async ({
 	await expect(page.getByText("12 photos")).toBeVisible();
 
 	// Select filter
-	await page.getByText("Filter By").click();
-	await page.getByText("Camera").click();
-	await page.getByText("Sony A7III").click();
+	await openFilters(page, "Camera");
+	await filtersDialog(page).getByText("Sony A7III").click();
 	await expect(page.getByText(`${sonyPhotos.length} photos`)).toBeVisible();
 
 	// Click again to deselect
-	await page.getByText("Sony A7III").click();
+	await filtersDialog(page).getByText("Sony A7III").click();
 	await expect(page.getByText("12 photos")).toBeVisible();
 });

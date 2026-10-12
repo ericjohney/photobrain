@@ -10,6 +10,7 @@ import {
 	fixtureLocation,
 } from "./fixtures/photos";
 import { expect, test } from "./fixtures/test";
+import { filterRadio, saveSmartAlbumButton } from "./fixtures/ui";
 
 declare global {
 	interface Window {
@@ -166,26 +167,13 @@ test("the map shows clustered points for the library filters", async ({
 	expect(labelTotal + singles.size).toBe(GEOTAGGED_IDS.length);
 
 	// A filter re-queries the locations: only the forest RAW has a location.
-	await page.getByTestId("left-panel").getByText("Filter By").click();
-	await page
-		.getByTestId("left-panel")
-		.getByRole("radiogroup", { name: "Photo type" })
-		.getByRole("radio", { name: "RAW" })
-		.click();
+	await (await filterRadio(page, "Type", "RAW")).click();
 	await expect(page.getByTestId("map-summary")).toHaveText("1 photo on map");
 	expect(calls.photoLocations?.at(-1)).toEqual({ filterRaw: "raw" });
 
 	// Ratings with no geotagged matches show the empty state.
-	await page
-		.getByTestId("left-panel")
-		.getByRole("radiogroup", { name: "Photo type" })
-		.getByRole("radio", { name: "Standard" })
-		.click();
-	await page
-		.getByTestId("left-panel")
-		.getByRole("radiogroup", { name: "Flag" })
-		.getByRole("radio", { name: "Rejected" })
-		.click();
+	await (await filterRadio(page, "Type", "Standard")).click();
+	await (await filterRadio(page, "Flag", "Rejected")).click();
 	await expect(page.getByTestId("map-empty")).toHaveText(/No geotagged photos/);
 });
 
@@ -284,11 +272,7 @@ test("Show photos in this area filters the grid with a clearable Map area chip",
 	expect(bounds).toBeDefined();
 	expect(bounds!.west).toBeLessThan(bounds!.east);
 	// The map area alone is never saved as a smart album.
-	await expect(
-		page
-			.getByTestId("left-panel")
-			.getByRole("button", { name: /Save as Smart Album/ }),
-	).toHaveCount(0);
+	await expect(saveSmartAlbumButton(page)).toHaveCount(0);
 
 	await chip.getByRole("button", { name: "Clear map area" }).click();
 	await expect(chip).toHaveCount(0);

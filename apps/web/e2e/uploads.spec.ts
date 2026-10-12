@@ -18,7 +18,8 @@ const UPLOAD_CONFIG = {
 	enabled: true,
 	maxBytes: 1024,
 };
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const UUID =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const UPLOAD_ROUTE = /\/api\/v1\/uploads\?/;
 
 async function enableUploads(page: Page) {
@@ -157,9 +158,9 @@ test("picker uploads send the contract query and render each outcome", async ({
 	const deviceId = uploadParams(requests[0]).deviceId;
 	expect(deviceId).toMatch(UUID);
 	expect(
-		requests.map((request) => uploadParams(request)).sort((a, b) =>
-			a.filename.localeCompare(b.filename),
-		),
+		requests
+			.map((request) => uploadParams(request))
+			.sort((a, b) => a.filename.localeCompare(b.filename)),
 	).toEqual(
 		["IMG_0001.HEIC", "beach.jpg", "scan.png"]
 			.sort((a, b) => a.localeCompare(b))
@@ -202,7 +203,9 @@ test("picker uploads send the contract query and render each outcome", async ({
 	await page.reload();
 	await page
 		.getByTestId("upload-input")
-		.setInputFiles([await fixtureFile(testInfo.outputPath("big.dng"), "raw!!")]);
+		.setInputFiles([
+			await fixtureFile(testInfo.outputPath("big.dng"), "raw!!"),
+		]);
 	await expect(itemStatus(page, "big.dng")).toHaveText(
 		"Not enough storage space on the server",
 	);
@@ -275,7 +278,9 @@ test("dropping files on the library shows an overlay and uploads them", async ({
 		transfer.items.add(
 			new File(["abc"], "dropped.jpg", { type: "image/jpeg" }),
 		);
-		transfer.items.add(new File(["abc"], "dropped.txt", { type: "text/plain" }));
+		transfer.items.add(
+			new File(["abc"], "dropped.txt", { type: "text/plain" }),
+		);
 		return transfer;
 	});
 	await zone.dispatchEvent("dragenter", { dataTransfer });
@@ -304,9 +309,11 @@ test("cancel aborts the upload request", async ({ page }) => {
 	);
 	await page.goto("/");
 	await expect(uploadButton(page)).toBeEnabled();
-	await page.getByTestId("upload-input").setInputFiles([
-		{ name: "slow.jpg", mimeType: "image/jpeg", buffer: Buffer.from("abc") },
-	]);
+	await page
+		.getByTestId("upload-input")
+		.setInputFiles([
+			{ name: "slow.jpg", mimeType: "image/jpeg", buffer: Buffer.from("abc") },
+		]);
 	await expect.poll(() => held.length).toBe(1);
 	await expect(itemStatus(page, "slow.jpg")).toHaveText(/%$/);
 	await queue(page).getByRole("button", { name: "Cancel slow.jpg" }).click();

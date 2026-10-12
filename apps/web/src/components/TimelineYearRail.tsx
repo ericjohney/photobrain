@@ -83,10 +83,10 @@ export function TimelineYearRail({
 						aria-current={current ? "true" : undefined}
 						onClick={() => jumpTo(year)}
 						className={cn(
-							"mx-1 rounded px-1 py-0.5 text-center text-2xs tabular-nums transition-colors",
+							"mx-1 rounded-md px-1 py-0.5 text-center text-2xs font-medium tabular-nums transition-colors",
 							current
-								? "bg-primary text-primary-foreground"
-								: "text-muted-foreground hover:bg-secondary hover:text-foreground",
+								? "bg-primary/15 text-primary"
+								: "text-subtle hover:bg-secondary hover:text-foreground",
 						)}
 					>
 						{year}
