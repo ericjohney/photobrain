@@ -20,7 +20,7 @@ Read the guide for the area being changed:
 - [Web application](apps/web/AGENTS.md)
 - [Native iOS application source and XCTest](apps/ios); [TestFlight distribution, signing, and secrets](docs/ios-distribution.md)
 - [Rust image processing](packages/image-processing/AGENTS.md)
-- [Rust RAW development (standalone, not yet wired in)](packages/raw-develop/AGENTS.md)
+- [Rust RAW development: Fujifilm RAF, Sony ARW, Apple ProRAW DNG (standalone, not yet wired in)](packages/raw-develop/AGENTS.md)
 - [Database and migrations](packages/db/AGENTS.md)
 - [Shared utilities](packages/utils/AGENTS.md)
 - [Shared TypeScript configuration](packages/config/AGENTS.md)
@@ -39,7 +39,7 @@ packages/
   config/                 Shared TypeScript configuration package
   db/                     Drizzle schema and migration files
   image-processing/       Rust N-API addon and browser stub
-  raw-develop/            Standalone Rust X-Trans RAF -> Display P3 pipeline (not used by the API yet)
+  raw-develop/            Standalone Rust RAW (X-Trans RAF, Sony ARW, ProRAW DNG) -> Display P3 pipeline (not used by the API yet)
   utils/                  Shared TypeScript helpers and thumbnail configuration
 docs/
   superpowers/            Historical design specifications and implementation plans
@@ -104,7 +104,7 @@ The 7,961-file corpus needs at most 399 media completion windows and 498 embeddi
 8. Generate a double-gradient perceptual hash from the oriented source, then resize once to a `large` preview bounded at 1,600 pixels and derive smaller thumbnails from that preview using original-derived target dimensions. Bundled libwebp now applies lossy color quality 80/85/85/90 for tiny/small/medium/large, with lossless alpha encoding. Derived pixels are not lossless; originals, orientation handling, pHash input, and EXIF extraction are unchanged. Thumbnail errors fail the photo result rather than marking it ready.
 9. Defer CLIP image embeddings to the Inngest embedding function.
 
-Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a standalone, not-yet-integrated Fujifilm X-Trans developer (bit-exact Fuji decoder, Apple-calibrated rendering). There is no current histogram-matching implementation.
+Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a standalone, not-yet-integrated RAW developer for Fujifilm X-Trans RAF, Sony ARW (uncompressed, lossless and lossy cRAW) and Apple ProRAW DNG (bit-exact decoders, rendering that follows and is validated against Apple's RawCamera). There is no current histogram-matching implementation.
 
 ### Database and vectors
 

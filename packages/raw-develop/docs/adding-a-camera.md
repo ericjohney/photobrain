@@ -1,15 +1,20 @@
 # Adding a camera
 
-How much work a new camera needs depends on how different it is from the X-E5:
+How much work a new camera needs depends on how different it is from the cameras already
+supported (Fujifilm X-E5 and X100VI RAF; Sony A1 II, A7C R and A7R V ARW; Apple ProRAW
+DNG):
 
 | Case | Examples | Work |
 |---|---|---|
-| **A. Another X-Trans RAF body** | X-T5, X-H2, X100VI, X-S20 | profile + calibration (≈ half a day) |
+| **A. Another X-Trans RAF body** | X-T5, X-H2, X-S20 | profile + calibration (≈ half a day) |
 | **B. Older X-Trans or a different compression variant** | X-Trans I/II/III bodies, lossy-compressed RAF | case A + verify or extend the decoder |
 | **C. Bayer Fuji** | GFX, X-A series | case A + Bayer demosaic + Bayer decode paths |
-| **D. Another make** | Sony ARW, Canon CR3, Nikon NEF, DNG | new container parser and unpacker, Bayer demosaic, lens data source |
+| **D. Another Sony body, or another make** | Sony A7 IV, Canon CR3, Nikon NEF | another Sony: profile + graphs (as case A); another make: new container parser and unpacker, lens data source |
 
-Always do case A's steps. Cases B–D add work on top.
+Always do case A's steps. Cases B–D add work on top. Apple ProRAW DNGs from another iPhone
+need no profile: colour, exposure and tone come from the file's tags, and the detail
+parameters are derived from its exposure gain. Check that it decodes and compare one file
+against Apple.
 
 ## Case A: another X-Trans RAF body
 
@@ -165,7 +170,8 @@ noise entry needs.
 
 You do not need a real file per ISO: RawCamera picks noise parameters from the ISO tag, so
 patching a copy (`exiftool -ISO=N -PhotographicSensitivity=N copy.RAF`) gives that ISO's
-graph. Chroma thresholds match a real file exactly; `rn`, `DIRToC` and anneal values within
+graph. (Sony also needs `StandardOutputSensitivity` and `RecommendedExposureIndex`
+patched; see [case D](#another-sony-body).) Chroma thresholds match a real file exactly; `rn`, `DIRToC` and anneal values within
 about 1% (checked at X-E5 ISO 800). Prefer real files when you have them and say which
 method was used in the provenance comment. Do not commit the graphs themselves. Record the RawCamera version in the
 provenance comment. `cargo test` checks the table's structure; `raw-compare` per ISO checks
@@ -214,28 +220,79 @@ Needed:
 2. `unpack::fuji_compressed`: the Bayer variant (`raw_type == 0`) uses
    `line_width = block_width / 2` and a different pass table. The header code already
    accepts it, but `decode` rejects it. Implement the Bayer passes and validate bit for bit.
-3. `stages/demosaic`: add a Bayer path (2×2 binning for `Preview`; for `Full`, port
-   RawCamera's Bayer demosaic kernel the same way `deXtrans_v8` was ported) and dispatch on
-   `cfa.is_xtrans()`. The noise tables come from that camera's graphs as in step 8.
-4. Black levels: the 36-value array becomes per 2×2 position; `pipeline.rs` indexes it by
-   `(row % 6) * 6 + col % 6`, so generalise that to the pattern size.
+3. Demosaic: nothing new. The Bayer path (`stages/debayer.rs`, 2×2 binning for `Preview`)
+   already exists for Sony; check that RawCamera's graph uses `despeckle_v8` + `deBayer_v8`
+   for the body. The noise tables come from that camera's graphs as in step 8, plus
+   `demosaic_exposure_factor` (see case D).
+4. Black levels: store one per 2×2 position; `pipeline.rs` already indexes them by the
+   pattern size.
 
-## Case D: another make
+## Case D: another Sony body, or another make
 
 The pipeline from stage 1 onwards is camera-agnostic given:
 
 - a `metadata::RawMetadata`: geometry, black levels (one per CFA position), as-shot white
-  balance, CFA, orientation, exposure bias, lens data (`LensSource`) and a `RawStorage`.
-  Add the container parser and a magic-byte branch in `negative::parse_metadata`. The
-  shared `tiff.rs` reader and the lossless JPEG decoder (`unpack/ljpeg.rs`, with
-  `RawStorage::LosslessJpegTiles`) cover most TIFF-based formats,
+  balance, CFA, orientation, exposure bias, lens data (`LensSource`) and a `RawStorage`,
 - a `u16` mosaic,
 - a profile.
 
-Lens correction is currently Fuji-specific (FujiIFD arrays; `LensSource::Sony` is parsed
-but gives the identity until its mapping is known). Other makes store it in
-different places (Sony and Panasonic MakerNotes, DNG `OpcodeList3` WarpRectilinear), so add a
-source-specific parser that produces the same `LensCorrection`.
+Two non-Fuji containers exist as examples: `src/arw.rs` (Sony ARW: TIFF raw SubIFD,
+uncompressed, tiled lossless JPEG and cRAW) and `src/dng.rs` (DNG LinearRaw: lossless JPEG
+and JPEG XL tiles, colour from tags). Both use the shared `tiff.rs` reader; the lossless JPEG
+decoder (`unpack/ljpeg.rs`, with `RawStorage::LosslessJpegTiles`) covers most TIFF-based
+formats. Bayer mosaics take the Bayer path: `stages/debayer.rs` (ports of `despeckle_v8` and
+`deBayer_v8`) for `Full`, 2×2 binning for `Preview`.
 
-Validate each new decoder bit-exactly against Apple's `cfa.u16`, as for Fuji. The
-`apple-reference` tool is format-independent.
+### Another Sony body
+
+ARW parsing, the decoders, the Bayer demosaic and the Sony lens model are shared, so a new
+Sony body usually needs only a profile:
+
+1. Collect fixtures and references as in case A steps 1–4 (`*.ARW`). The decoder must be
+   bit-exact; uncompressed, lossless and cRAW files all go through `arw::parse`.
+2. Copy a Sony profile (for example `profiles/sony-ilce-7cr.toml`) to
+   `profiles/sony-<model>.toml`, set `make`/`model`, and register it in `BUILTIN` under the
+   EXIF model (for example `ILCE-7M4`).
+3. Colour and forward matrices and illuminants from Adobe DNG Converter (case A step 5).
+4. From any reference `graph.txt`, read the `deBayer_v8` node: `exposureFactor` is
+   `demosaic_exposure_factor` (a constant per body), and `white_level = 65535 / range + black`
+   (black 512 on these bodies).
+5. Noise tables: run `apple-reference FILE --graph OUT.txt` on copies of one ARW with the ISO
+   patched to every setting. On Sony, patch `ISO`, `PhotographicSensitivity`,
+   `StandardOutputSensitivity` and `RecommendedExposureIndex` together, otherwise RawCamera
+   keeps the original ISO's parameters:
+
+   ```bash
+   exiftool -ISO=N -PhotographicSensitivity=N -StandardOutputSensitivity=N \
+     -RecommendedExposureIndex=N -o copy-N.ARW source.ARW
+   python3 tools/calibrate/noise_table.py graphs/*.txt > /tmp/noise.toml
+   ```
+
+   `noise_table.py` handles the Sony variants (`despeckle_v8`, `powerBlurLFS`,
+   `smoothDSharpenAntiBloom`, `FGN`/`addFGN`).
+6. Look matrices, `baseline_exposure` and `black_render`: `tools/calibrate/graph_color.py`
+   derives them exactly from the graph's two `color_matrix` nodes. It needs graphs at two
+   colour temperatures; the second can come from a copy with `WB_RGGBLevels` patched (for
+   example to tungsten values):
+
+   ```bash
+   RAW_DEVELOP_PROFILE=profiles/sony-<model>.toml python3 tools/calibrate/graph_color.py \
+     refs/<a>/graph.txt refs/<b>/graph.txt refs/<a>-tungsten/graph.txt
+   ```
+
+7. Lens: nothing to do. Distortion comes from the file's `DistortionCorrParams` when
+   `DistortionCorrection` is 1.
+8. Validate (case A step 9) and document (step 10).
+
+### Another make
+
+Add the container parser and a magic-byte branch in `negative::parse_metadata`, and an
+unpacker if the compression is new. Validate each new decoder bit-exactly against Apple's
+`cfa.u16` (or `cfa.rgb.f32` for LinearRaw DNG), as for Fuji and Sony. The `apple-reference`
+tool is format-independent.
+
+Lens correction comes from Fuji FujiIFD arrays (`LensSource::Fuji`) or Sony
+`DistortionCorrParams` (`LensSource::Sony`). Other makes store it elsewhere (Panasonic
+MakerNotes, DNG `OpcodeList3` WarpRectilinear), so add a source-specific parser that produces
+the same `LensCorrection`, and use REA on RawCamera to find what it reads, as was done for
+Sony.

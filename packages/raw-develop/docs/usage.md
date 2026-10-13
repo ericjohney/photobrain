@@ -5,11 +5,11 @@
 ```rust
 use raw_develop::{develop, encode, DevelopSettings, Negative, Options, Quality};
 
-let neg = Negative::open("DSCF0970.RAF")?;                 // ~0.1 s; cache between edits
+let neg = Negative::open("DSCF0970.RAF")?;                 // RAF, ARW or DNG; 0.03–0.2 s; cache between edits
 let out = develop(&neg, &DevelopSettings::default(), &Options::default())?;
 encode::write(&out.image, "out.png".as_ref(), encode::Format::Png16)?;
 
-// Fast preview at one third of the resolution.
+// Fast preview: one third of the resolution for X-Trans, one half for Bayer.
 let preview = develop(&neg, &DevelopSettings::default(), &Options { quality: Quality::Preview, keep_linear: false })?;
 let jpeg_bytes = encode::encode(&preview.image, encode::Format::Jpeg(90))?;
 ```
@@ -23,7 +23,9 @@ let jpeg_bytes = encode::encode(&preview.image, encode::Format::Jpeg(90))?;
   actually used.
 
 `Negative::read_metadata(&bytes)` parses metadata without decoding the sensor data, which
-is cheap. Use it for dimensions, orientation and white balance.
+is cheap. Use it for dimensions, orientation and white balance. The container (RAF, ARW or
+DNG) is detected from the bytes; unsupported files and models without a profile return
+`Error::Unsupported`. JPEG XL DNGs (iPhone 17 Pro Max) need the default cargo feature `jxl`.
 
 ## Edit settings
 
@@ -47,11 +49,13 @@ optional on input and defaults to the as-shot (Apple-like) rendering:
 ```
 
 - `white_balance`: `{"mode": "as-shot"}` or `{"mode": "temperature", "kelvin", "tint"}`.
+  Temperature/tint is not implemented for DNG yet and returns `Error::Unsupported`.
 - `luma_noise_reduction: null` means RawCamera's default for the ISO (0 to about 0.13 on the
   X-E5); `chroma_noise_reduction` 0.5 is RawCamera's default and scales the chroma
   thresholds linearly; `sharpening` multiplies the luma pyramid's sharpening (see
   [noise-reduction.md](noise-reduction.md)).
-- `lens` defaults to distortion only, like Apple's render.
+- `lens` defaults to distortion only, like Apple's render (Fuji and Sony; DNG has no lens
+  stage).
 - `crop` is normalised to the display-oriented image after `quarter_turns`.
 - Unknown fields are rejected and ranges are validated (`DevelopSettings::validate`), so
   stored settings fail loudly rather than being silently reinterpreted.
@@ -64,14 +68,15 @@ optional on input and defaults to the as-shot (Apple-like) rendering:
   way the API uses `MEDIA_VERSION`.
 - A `Negative` depends only on the file bytes, so it can be cached by content hash.
 - For interactive editing, keep the `Negative` in memory, render `Quality::Preview` on every
-  change (about 0.12 s at 40 MP), and render `Full` (about 2.5 s) once the user stops
-  changing settings. Preview uses the generic NR/sharpening filters, so its fine texture
+  change (about 0.12 s for X-Trans 40 MP), and render `Full` (about 2.8 s for X-Trans 40 MP,
+  about 5 s for Sony 61 MP, 0.4–0.6 s for iPhone 12 MP) once the user stops changing
+  settings. Preview uses the generic NR/sharpening filters, so its fine texture
   differs slightly from the full render.
 
 ## CLI
 
 ```bash
-raw-develop info F.RAF                                  # parsed metadata
+raw-develop info F.RAF|F.ARW|F.DNG                     # parsed metadata
 raw-develop cfa F.RAF out.u16                           # decoded mosaic, LE u16
 raw-develop develop F.RAF out.png|out.jpg [--preview] [--settings s.json] \
                     [--dump-linear l.f32] [--dump-final f.f32]

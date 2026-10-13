@@ -1,6 +1,7 @@
 # Handoff plan: the other cameras in the production library
 
-Status: phases 0–3 (X100VI, format-neutral core, Sony ARW including lossy cRAW) are done; phase 4 (iPhone ProRAW) is open. The plan was written on 2026-10-12 after
+Status: phases 0–4 (X100VI, format-neutral core, Sony ARW including lossy cRAW, iPhone
+ProRAW DNG) are done; phase 5 (integration into `image-processing`) is future work. The plan was written on 2026-10-12 after
 surveying the production library and running the Apple reference tool on samples of
 every camera. Read [adding-a-camera.md](adding-a-camera.md),
 [pipeline.md](pipeline.md) and [noise-reduction.md](noise-reduction.md) first.
@@ -14,13 +15,13 @@ RAW files by camera, from `GET /api/v1/gear-stats?filterRaw=raw` and
 
 | Camera | RAW files | Format observed | Done today |
 |---|---|---|---|
-| Sony ILCE-1M2 (A1 II) | 3,142 | ARW, mostly "Lossless Compressed RAW 2" (tiled lossless JPEG, Compression 7). Full frame is 8664×5784; APS-C crop mode is 5640×3768 (about a quarter of the sampled files). A few files are uncompressed 14-bit. | no |
-| Sony ILCE-7CR (A7C R) | 1,646 | ARW, mostly lossless compressed (9568×6376). About 15% are "Sony Compressed RAW" (lossy cRAW, Compression 32767). | no |
+| Sony ILCE-1M2 (A1 II) | 3,142 | ARW, mostly "Lossless Compressed RAW 2" (tiled lossless JPEG, Compression 7). Full frame is 8664×5784; APS-C crop mode is 5640×3768 (about a quarter of the sampled files). A few files are uncompressed 14-bit. | **yes** |
+| Sony ILCE-7CR (A7C R) | 1,646 | ARW, mostly lossless compressed (9568×6376). About 15% are "Sony Compressed RAW" (lossy cRAW, Compression 32767). | **yes** |
 | Fujifilm X-E5 | 1,231 | RAF, X-Trans, lossless | **yes** |
-| Apple iPhone 17 Pro Max | 699 | DNG 1.7 LinearRaw (Photometric 34892) with **JPEG XL** tiles (Compression 52546), 10-bit, with a LinearizationTable, ProfileGainTableMap, ProfileToneCurve and semantic mattes. 12 MP and 48 MP. | no |
-| Apple iPhone 16 Pro Max | 241 | DNG 1.6 LinearRaw, **lossless JPEG** (Compression 7), 10-bit, LinearizationTable. Newer files also have a ProfileGainTableMap. 12 MP and 48 MP. | no |
-| Sony ILCE-7RM5 (A7R V) | 6 | ARW, uncompressed 14-bit | no |
-| Fujifilm X100VI | 1 | RAF, X-Trans, lossless: same sensor and readout as the X-E5 (7872×5196, crop 21/12) | parses and decodes; no profile |
+| Apple iPhone 17 Pro Max | 699 | DNG 1.7 LinearRaw (Photometric 34892) with **JPEG XL** tiles (Compression 52546), 10-bit, with a LinearizationTable, ProfileGainTableMap, ProfileToneCurve and semantic mattes. 12 MP and 48 MP. | **yes** |
+| Apple iPhone 16 Pro Max | 241 | DNG 1.6 LinearRaw, **lossless JPEG** (Compression 7), 10-bit, LinearizationTable. Newer files also have a ProfileGainTableMap. 12 MP and 48 MP. | **yes** |
+| Sony ILCE-7RM5 (A7R V) | 6 | ARW, uncompressed 14-bit | **yes** |
+| Fujifilm X100VI | 1 | RAF, X-Trans, lossless: same sensor and readout as the X-E5 (7872×5196, crop 21/12) | **yes** |
 
 All Sony bodies are Bayer RGGB (`CFAPattern2 0 1 1 2`, 2×2), 14-bit, black 512,
 white 15360. Sony ARWs carry `DistortionCorrParams` / `ChromaticAberrationCorrParams` /
@@ -133,8 +134,8 @@ Ordered by photos covered per unit of effort:
 | 1 | Format-neutral core and Bayer support (**done**: `metadata::RawMetadata`, `tiff.rs`, `unpack/ljpeg.rs` + tile assembly, 2×2 binning) | — | medium (refactor) |
 | 2 | Sony ARW: uncompressed and lossless (**done**: ΔE00 0.05–0.40; see below) | ≈ 4,550 | large |
 | 3 | Sony lossy cRAW (**done**: bit-exact, `unpack/sony_craw.rs`) | ≈ 250 | small–medium |
-| 4 | iPhone ProRAW DNG | 940 | large (a new pipeline variant) |
-| 5 | Integration into `image-processing` | all | separate change; out of scope here |
+| 4 | iPhone ProRAW DNG (**done**: ΔE00 0.05–0.09; see below) | 940 | large (a new pipeline variant) |
+| 5 | Integration into `image-processing` | all | separate change; future work |
 
 Each phase ends with:
 
@@ -285,6 +286,29 @@ RawCamera if it doesn't match. Everything else reuses Phase 2.
 6. **Validation**: as for Sony, plus visual checks of the local tone map on high-dynamic-range
    scenes.
 
+#### Phase 4 results
+
+- **Decode**: lossless JPEG (iPhone 16 Pro Max) and JPEG XL (iPhone 17 Pro Max, `jxl-oxide`
+  behind the default `jxl` cargo feature) through the `LinearizationTable` match RawCamera's
+  `RGBAh` provider exactly after rounding to half float. `apple-reference` now dumps that
+  provider as `cfa.rgb.f32`.
+- **Colour** follows RawCamera's `RAWConvert`, found with REA (`outputMatrix` and
+  `FUN_1b7829ba4`/`FUN_1b7828be0`) and verified by probing `RAWConvert.outputMatrix`: white
+  xy from `AsShotNeutral` by iterating CCT, a forward matrix synthesised per calibration
+  illuminant (Bradford to D50, ratios clamped to [0.1, 10]), mired-weighted interpolation.
+  It matches RawCamera's matrix to 2e-3 on 16 files.
+- **Detail**: every parameter of the "8.dng" detail graph is a constant or a multiple of the
+  exposure gain `2^BaselineExposure` (checked on 16 files, ISO 16–6400). There are no
+  per-phone tables, so the "DNG parameter derivation" risk is resolved.
+- **Look**: `profileGainTableMap` per the DNG 1.7 specification and `boost_lut` from
+  `ProfileToneCurve` (`stages/dng_look.rs`).
+- Results (quarter-scale final, mean ΔE00): 0.05–0.09 on 16 files (iPhone 16/17 Pro Max,
+  ISO 16–6400, wide, ultra-wide, telephoto and front); full-resolution centre crop 0.08 on
+  file 116. About 0.4–0.6 s per 12 MP develop.
+- Remaining gaps: kelvin/tint white balance for DNG (returns `Error::Unsupported`), semantic
+  mattes are ignored, and GPU rendering is still out of scope. Phase 5 (integration into
+  `image-processing`) remains future work.
+
 ## 5. Fixture collection
 
 ```bash
@@ -305,14 +329,14 @@ Keep everything outside the repository.
 
 ## 6. Risks and open questions
 
-- **Sony lens map source** (Phase 2.6) is unknown. Without it, Sony renders will differ at
-  the edges on the zooms. The 70-200 GM II's `DistortionCorrParams` show up to about 2%
-  barrel distortion.
-- **Sony WB encryption**: implementing it is required unless the WB is also stored in
-  plain text somewhere. Check with REA what RawCamera reads.
-- **DNG parameter derivation**: if the noise and gain-map parameters cannot be derived from
-  tags, the DNG path needs per-phone tables, like Fuji. Find out early in Phase 4.
-- **Memory and time**: the A7CR/A7R V are 61 MP, about 1.5× the X-E5. The current full
-  develop takes 2.5 s for 40 MP, so expect about 4 s. GPU work stays out of scope.
+- **Sony lens map source** (Phase 2.6): *resolved*. RawCamera uses `DistortionCorrParams`
+  when `DistortionCorrection` is 1 (see Phase 2 results).
+- **Sony WB encryption**: *resolved*. `WB_RGGBLevels` (0x7313) is stored in plain text in the
+  raw SubIFD; no SR2 decryption is needed.
+- **DNG parameter derivation**: *resolved*. Every detail parameter derives from the exposure
+  gain; no per-phone tables (see Phase 4 results).
+- **Memory and time**: the A7CR/A7R V are 61 MP, about 1.5× the X-E5. A full develop takes
+  about 5 s for Sony 61 MP against about 2.8 s for X-Trans 40 MP. GPU work stays out of
+  scope.
 - **RawCamera version drift**: all references were taken on macOS 26.5.1 (RawCamera
   decoder "8"). Record the version in every profile's provenance comment.

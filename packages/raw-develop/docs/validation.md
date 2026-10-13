@@ -2,20 +2,23 @@
 
 Correctness has two levels:
 
-1. **Decoder**: must match Apple's decoded mosaic exactly. This is a hard pass/fail.
+1. **Decoder**: must match Apple's decoded data exactly. This is a hard pass/fail. For RAF
+   and ARW that is the `u16` mosaic; for LinearRaw DNG, RawCamera's provider holds half
+   floats, so our RGB must equal it after rounding to half float.
 2. **Rendering**: should be close to Apple's render, measured in CIEDE2000 (ΔE00). Roughly,
    below 1 is invisible, below 2 is hard to see side by side, and above 3–5 is noticeable.
 
 ## The Apple reference tool (macOS only)
 
 `tools/apple-reference/apple-reference.m` runs CIRAWFilter (the public front end of
-RawCamera) on one file and writes everything we compare against:
+RawCamera) on one RAF, ARW or DNG file and writes everything we compare against:
 
 | File | Content |
 |---|---|
 | `params.json` | CIRAWFilter properties: neutral temp/tint, baselineExposure, NR and sharpness defaults, lens support, orientation, size |
 | `graph.txt` | the Core Image render graph (`CI_PRINT_TREE=1`), with every kernel's parameters; the source of the profile's `[[noise]]` tables |
 | `cfa.u16`, `cfa.json` | RawCamera's decoded mosaic, full readout, little-endian `u16` |
+| `cfa.rgb.f32` | DNG LinearRaw only: RawCamera's decoded RGB provider (half floats, written in the `.f32` layout) |
 | `default.lin.{q,crop}.f32` | scene-linear P3 at the `linearSpaceFilter` hook (after colour and exposure, before the look) |
 | `nonr.lin.*.f32` | the same with NR and sharpening off |
 | `nolens.lin.*.f32` | the same with lens correction off |
@@ -36,12 +39,20 @@ How the captures work:
 - **`graph.txt`**: the tool re-executes itself with `CI_PRINT_TREE=1`, because the graph is
   printed to stderr at render time.
 
+`apple-reference FILE --graph OUT.txt` writes only the render graph, which is all a noise
+table or `graph_color.py` needs.
+
 Build and run:
 
 ```bash
 bun run apple-reference
 for f in ~/raw-develop-fixtures/*.RAF; do target/apple-reference "$f" ~/raw-develop-refs/$(basename "$f" .RAF); done
+for f in ~/raw-develop-fixtures/a7cr/*.ARW; do target/apple-reference "$f" ~/raw-develop-refs/a7cr/$(basename "$f" .ARW); done
 ```
+
+Fixture directories: X-E5 files at the top level of `~/raw-develop-fixtures`, the others in
+`~/raw-develop-fixtures/{x100vi,a1m2,a7cr,a7rm5,iphone16pm,iphone17pm,iphone-more}`, with
+references in `~/raw-develop-refs/<same>`.
 
 It never runs in CI. It executes Apple's code locally; nothing from it is committed.
 
@@ -53,9 +64,12 @@ RAW_DEVELOP_FIXTURES=~/raw-develop-fixtures RAW_DEVELOP_REFS=~/raw-develop-refs 
   cargo test --release --test fixtures -- --nocapture
 ```
 
-- `decoder_is_bit_exact_with_rawcamera`: our mosaic equals `cfa.u16` for every fixture.
+The fixture tests accept `*.RAF`, `*.ARW` and `*.DNG`; run them once per fixture directory.
+
+- `decoder_is_bit_exact_with_rawcamera`: our mosaic equals `cfa.u16` for every RAF and ARW
+  fixture; for DNG, our RGB equals `cfa.rgb.f32` after rounding to half float.
 - `final_render_close_to_apple`: mean absolute encoded difference against `final.q.f32` is
-  below 0.006 on every fixture (observed maximum 0.0032). Use `raw-compare` for ΔE00.
+  below 0.006 on every fixture (observed maximum 0.0036). Use `raw-compare` for ΔE00.
 
 The fixture tests print `skipped` when the variables are unset, so CI and other machines
 pass without RAW files.
@@ -98,7 +112,15 @@ Other useful diagnostics (one-off Python, see `tools/calibrate/fit.py` for loade
 ## Refitting a profile
 
 Scripts in `tools/calibrate/` (Python 3 with numpy and scipy). See its README. They read
-fixture metadata with exiftool and the profile from `RAW_DEVELOP_PROFILE`. Order:
+fixture metadata with exiftool and the profile from `RAW_DEVELOP_PROFILE`.
+
+For Sony, the colour needs no fit: `graph_color.py` derives `look_matrix_1/2`,
+`baseline_exposure` and `black_render` exactly from the graph's two `color_matrix` nodes
+(graphs at two colour temperatures; the second can come from a copy with `WB_RGGBLevels`
+patched). `noise_table.py` transcribes `[[noise]]` tables from graphs (see
+[adding a camera](adding-a-camera.md#another-sony-body)). DNG needs no profile.
+
+For Fuji, in order:
 
 1. `fit_color.py`: joint least squares, over smooth unclipped blocks of every fixture, of
    `baseline_exposure` and the two white-preserving look matrices. It maps Apple's decoded
@@ -152,3 +174,25 @@ X100VI, `raw-compare final` (quarter scale), profile noise table from ISO-patche
 |---|---|---|---|---|
 | DSCF0008 | 500 | portrait orientation | 0.43 | 0.95 |
 | DSCF0008, ISO tag patched | 12800 | exercises `smoothDSharpenAntiBloom` | 0.46 | 0.98 |
+
+Sony, `raw-compare final` (quarter scale). Lens correction from `DistortionCorrParams`;
+noise tables from ISO-patched graphs; colour from `graph_color.py`:
+
+| Camera | Fixture | ISO | Notes | ΔE00 mean |
+|---|---|---|---|---|
+| A1 II | 12766 | 125 | APS-C crop, lossless, 70-200 GM II | 0.07 |
+| A1 II | 4309 | 100 | uncompressed, 35 GM | 0.05 |
+| A1 II | 4309, ISO tags patched | 3200 | | 0.07 |
+| A7C R | 6453 | 100 | lossy cRAW | 0.19 |
+| A7C R | 13567 | 12800 | | 0.40 |
+| A7R V | 13937 | 2000 | uncompressed | 0.21 |
+
+Every decoder (uncompressed, lossless JPEG, cRAW) is bit-exact on every Sony fixture.
+
+Apple ProRAW DNG, `raw-compare final` (quarter scale): mean ΔE00 0.05–0.09 on 16 files from
+the iPhone 16 Pro Max (lossless JPEG) and iPhone 17 Pro Max (JPEG XL), ISO 16–6400, wide,
+ultra-wide, telephoto and front cameras. The full-resolution centre crop of file 116 is 0.08.
+Decode is exact after rounding to half float on every file.
+
+Timings on Apple Silicon: decode 0.03–0.2 s; full develop about 2.8 s for X-Trans 40 MP,
+about 5 s for Sony 61 MP and 0.4–0.6 s for iPhone 12 MP.

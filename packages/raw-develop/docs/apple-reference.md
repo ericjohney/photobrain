@@ -2,7 +2,9 @@
 
 What we observed in Preview and CIRAWFilter on macOS 26.5.1 (RawCamera 9.42.0,
 decoder version 8) for Fujifilm X-E5 RAFs, and how each part maps onto this crate. It is
-recorded so future work can tell what is measured from what is guessed.
+recorded so future work can tell what is measured from what is guessed. Sony ARW and Apple
+ProRAW DNG are summarised in [Other formats](#other-formats); the graphs are described in
+detail in [plan-other-cameras.md](plan-other-cameras.md#2-what-apple-does-for-each-format-evidence).
 
 Apple's code was executed and inspected locally. Reimplementing RawCamera's methodology is
 allowed for this crate: the demosaic, chroma NR, luma pyramid, highlight-recovery and look
@@ -82,6 +84,45 @@ The CIRAWFilter defaults observed:
   `colorNoiseReductionAmount / 0.5` (checked at 0.25, 0.5 and 1.0). `exposureFactor` follows
   `2^(1.0146 + 0.452·(−RawExposureBias − 0.5))` (fitted).
 
+## Other formats
+
+**Sony ARW** takes the same "8" path as Fuji with a Bayer demosaic:
+`CRawImage L16 → despeckle_v8 → deBayer_v8`, then the same chroma NR, luma pyramid,
+`radialLens`, `RAWRecoverHighlightsV2`, `color_matrix` and look nodes. Measured facts:
+
+- **Decoder**: uncompressed, lossless JPEG and cRAW mosaics equal the `CRawImage` provider
+  output exactly on every fixture. cRAW codes are expanded through `SonyToneCurve`.
+- **White balance** is the plain `WB_RGGBLevels` (0x7313); no SR2 decryption. The highlight
+  factors equal R/G and B/G.
+- **Crop** is exactly `DefaultCropOrigin`/`DefaultCropSize`.
+- **Lens**: `DistortionCorrParams` (0x7037), used only when `DistortionCorrection` (0x7036)
+  is 1, as `(1 + d/16384)` at evenly spaced radii normalised to 1 at the half-diagonal
+  (matches `RAWRadialLensCorrection`'s `inputScales` to 2e-4). CA and vignetting arrays are
+  ignored.
+- **Colour and exposure**: the two `color_matrix` nodes give the look matrices,
+  `baseline_exposure` and `black_render` exactly (`tools/calibrate/graph_color.py`).
+- **Noise**: per ISO, as for Fuji; `deBayer_v8` `exposureFactor` is a constant per body. New
+  kernels: `despeckle_v8`, `deBayer_v8`, `powerBlurLFS`, `FGN`/`addFGN`,
+  `smoothDSharpenAntiBloom`. ISO-patched graphs need ISO, SOS and REI patched together.
+
+**Apple ProRAW DNG** (LinearRaw) takes the "8.dng" path: an `RGBAh` provider (already
+demosaiced), a detail graph (`extractY`, `gaborFiltersToSmoothedLuminanceAndGradient`,
+`blurGradient`, `expandAndMakeDetails`, `expandAndAddDetails*`, `powerBlurFS`,
+`YAndRGBGather`), `RAWRecoverHighlightsV2` with thresholds `[1, 0.9, 1]`, the DNG colour
+matrix, exposure `2^BaselineExposure`, `profileGainTableMap`, `gmKernel_v7` and `boost_lut`.
+Measured facts:
+
+- **Decoder**: equal to the provider after rounding to half float.
+- **Colour** follows `RAWConvert`, found with REA (`outputMatrix` and the helpers at
+  `FUN_1b7829ba4`/`FUN_1b7828be0` in RawCamera) and checked by probing
+  `RAWConvert.outputMatrix`: white xy from `AsShotNeutral` by iterating CCT, a forward
+  matrix synthesised per calibration illuminant (Bradford to D50, ratios clamped to
+  [0.1, 10]), mired-weighted interpolation. Our matrix matches to 2e-3 on 16 files.
+- **Detail**: every parameter is a constant or a multiple of the exposure gain (checked on 16
+  files, ISO 16–6400), so no per-phone tables are needed.
+- **Tone**: `boost_lut` is a 256-entry LUT from `ProfileToneCurve` (end slope continued
+  beyond 1, shadow gain 0.9 easing to 1 over 0–0.1).
+
 ## Tools used
 
 - REA MCP (Ghidra provider) on `RawCamera` extracted from the dyld shared cache with
@@ -92,5 +133,6 @@ The CIRAWFilter defaults observed:
 - Swizzling `+[CIKernel kernelsWithString:messageLog:]` while CIRAWFilter rendered, to
   capture the Core Image kernel source the ported stages translate (a scratch tool, not in
   the repository).
+- REA on RawCamera's `RAWConvert` for the DNG colour model.
 - `CI_PRINT_TREE=1` for the graph. Note that `dump-inputs` and the other dump options write
   nothing on release builds of macOS.
