@@ -1,61 +1,10 @@
 //! Fujifilm RAF container: header offsets, CFA header records, the FujiIFD inside the
 //! CFA block, and the TIFF/EXIF IFDs embedded in the preview JPEG.
 
-mod tiff;
-
 use crate::cfa::CfaPattern;
 use crate::error::{Error, Result, malformed};
-pub use tiff::{Endian, Ifd, IfdEntry, TiffReader};
-
-/// How the sensor data inside the CFA block is stored.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RawStorage {
-  /// Fuji lossless compressed stream ("FujiCompressed", header signature 0x4953).
-  FujiCompressed { offset: usize, length: usize },
-  /// Uncompressed little-endian 16-bit samples, `bits` significant.
-  Uncompressed { offset: usize, length: usize },
-}
-
-/// Fuji lens-correction parameter arrays (FujiIFD 0xf00b / 0xf00f / 0xf010).
-///
-/// Each array begins with the same `normalizing radius` and nine (or ten) radial
-/// positions in units of the image half-diagonal, followed by per-position values.
-#[derive(Clone, Debug, Default)]
-pub struct LensParams {
-  pub distortion: Option<Vec<f64>>,
-  pub chromatic_aberration: Option<Vec<f64>>,
-  pub vignetting: Option<Vec<f64>>,
-}
-
-/// Everything the pipeline needs from the RAF file, in sensor (unrotated) coordinates.
-#[derive(Clone, Debug)]
-pub struct RafMetadata {
-  pub make: String,
-  pub model: String,
-  /// Full sensor readout size, in pixels.
-  pub raw_width: usize,
-  pub raw_height: usize,
-  /// Active area (crop) within the readout.
-  pub crop_top: usize,
-  pub crop_left: usize,
-  pub crop_width: usize,
-  pub crop_height: usize,
-  pub bits_per_sample: u32,
-  /// 6x6 black levels, row-major over the CFA repeat (one value per CFA position).
-  pub black_levels: Vec<u16>,
-  /// As-shot white-balance multipliers' source levels, as (G, R, B).
-  pub wb_grb: [u16; 3],
-  pub cfa: CfaPattern,
-  pub storage: RawStorage,
-  /// EXIF orientation (1-8).
-  pub orientation: u16,
-  pub iso: Option<u32>,
-  /// RawExposureBias (CFA header 0x9650) in EV, when present.
-  pub raw_exposure_bias: Option<f64>,
-  pub lens: LensParams,
-  pub lens_model: Option<String>,
-  pub focal_length: Option<f64>,
-}
+use crate::metadata::{Container, LensParams, LensSource, RawMetadata, RawStorage};
+use crate::tiff::TiffReader;
 
 const MAGIC: &[u8] = b"FUJIFILMCCD-RAW ";
 
@@ -72,7 +21,7 @@ fn be16(b: &[u8], o: usize) -> Result<u16> {
 }
 
 /// Parse the RAF container held entirely in `data`.
-pub fn parse(data: &[u8]) -> Result<RafMetadata> {
+pub fn parse(data: &[u8]) -> Result<RawMetadata> {
   if data.len() < 0x6c || &data[..16] != MAGIC {
     return Err(Error::NotRaf);
   }
@@ -170,13 +119,21 @@ pub fn parse(data: &[u8]) -> Result<RafMetadata> {
     .transpose()?
     .filter(|v| v.len() >= 3)
     .ok_or_else(|| Error::Malformed("missing WB_GRBLevels (0xf00e)".into()))?;
-  let wb_grb = [wb[0] as u16, wb[1] as u16, wb[2] as u16];
+  // WB_GRBLevels: multipliers are (G/R, 1, G/B).
+  if wb[0] == 0 || wb[1] == 0 || wb[2] == 0 {
+    return malformed("zero WB_GRBLevels");
+  }
+  let as_shot_wb = [
+    wb[1] as f64 / wb[0] as f64,
+    1.0,
+    wb[2] as f64 / wb[0] as f64,
+  ];
 
-  let lens = LensParams {
+  let lens = LensSource::Fuji(LensParams {
     distortion: fuji.get(0xf00b).map(|e| e.values_f64(&tiff)).transpose()?,
     chromatic_aberration: fuji.get(0xf00f).map(|e| e.values_f64(&tiff)).transpose()?,
     vignetting: fuji.get(0xf010).map(|e| e.values_f64(&tiff)).transpose()?,
-  };
+  });
 
   let abs_strip = cfa_offset + strip_offset;
   let compressed = data.get(abs_strip..abs_strip + 2) == Some(&[0x49, 0x53]);
@@ -208,7 +165,8 @@ pub fn parse(data: &[u8]) -> Result<RafMetadata> {
     return malformed("crop exceeds raw size");
   }
 
-  let mut meta = RafMetadata {
+  let mut meta = RawMetadata {
+    container: Container::Raf,
     make: "FUJIFILM".into(),
     model,
     raw_width,
@@ -219,7 +177,8 @@ pub fn parse(data: &[u8]) -> Result<RafMetadata> {
     crop_height,
     bits_per_sample,
     black_levels,
-    wb_grb,
+    white_level: None,
+    as_shot_wb,
     cfa,
     storage,
     orientation: 1,
@@ -237,7 +196,7 @@ pub fn parse(data: &[u8]) -> Result<RafMetadata> {
 }
 
 /// Read IFD0/EXIF/MakerNote fields from the APP1 segment of the embedded JPEG.
-fn read_exif(jpeg: &[u8], meta: &mut RafMetadata) -> Result<()> {
+fn read_exif(jpeg: &[u8], meta: &mut RawMetadata) -> Result<()> {
   if jpeg.len() < 12 || jpeg[0] != 0xff || jpeg[1] != 0xd8 {
     return malformed("preview is not JPEG");
   }
@@ -252,31 +211,7 @@ fn read_exif(jpeg: &[u8], meta: &mut RafMetadata) -> Result<()> {
       let tiff_bytes = &jpeg[p + 10..(p + 2 + len).min(jpeg.len())];
       let tiff = TiffReader::new(tiff_bytes)?;
       let ifd0 = tiff.ifd(tiff.first_ifd_offset()?)?;
-      if let Some(e) = ifd0.get(0x0112) {
-        meta.orientation = e.value_u32(&tiff, 0)? as u16;
-      }
-      if let Some(e) = ifd0.get(0x010f) {
-        meta.make = e.ascii(&tiff)?;
-      }
-      if let Some(e) = ifd0.get(0x0110) {
-        meta.model = e.ascii(&tiff)?;
-      }
-      if let Some(exif_off) = ifd0
-        .get(0x8769)
-        .map(|e| e.value_u32(&tiff, 0))
-        .transpose()?
-      {
-        let exif = tiff.ifd(exif_off as usize)?;
-        meta.iso = exif
-          .get(0x8827)
-          .map(|e| e.value_u32(&tiff, 0))
-          .transpose()?;
-        meta.lens_model = exif.get(0xa434).map(|e| e.ascii(&tiff)).transpose()?;
-        meta.focal_length = exif
-          .get(0x920a)
-          .map(|e| e.value_f64(&tiff, 0))
-          .transpose()?;
-      }
+      crate::tiff::read_ifd0_exif(&tiff, &ifd0, meta)?;
       return Ok(());
     }
     if marker == 0xda {

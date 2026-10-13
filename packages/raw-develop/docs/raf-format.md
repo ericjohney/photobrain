@@ -59,7 +59,7 @@ A little-endian TIFF. IFD0 holds a single entry, `0xf000`, pointing to the FujiI
 If the strip starts with `0x4953` it is Fuji lossless compressed; otherwise it is treated as
 uncompressed little-endian `u16`.
 
-`raf/tiff.rs` is a small bounds-checked TIFF reader. Every offset is checked, so a truncated
+`tiff.rs` is a small bounds-checked TIFF reader shared by every container. Every offset is checked, so a truncated
 or malicious file returns `Error::Malformed` rather than panicking.
 
 ## Fuji lossless compressed decoder

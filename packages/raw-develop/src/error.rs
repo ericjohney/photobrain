@@ -6,7 +6,9 @@ pub enum Error {
   Io(#[from] std::io::Error),
   #[error("not a Fujifilm RAF file")]
   NotRaf,
-  #[error("malformed RAF: {0}")]
+  #[error("not a supported RAW file (RAF, ARW or DNG)")]
+  NotRaw,
+  #[error("malformed RAW: {0}")]
   Malformed(String),
   #[error("unsupported: {0}")]
   Unsupported(String),

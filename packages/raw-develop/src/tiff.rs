@@ -1,4 +1,4 @@
-//! Minimal bounds-checked TIFF IFD reader (enough for FujiIFD and EXIF).
+//! Minimal bounds-checked TIFF IFD reader (FujiIFD, EXIF, ARW and DNG IFDs).
 
 use crate::error::{Error, Result};
 
@@ -10,7 +10,7 @@ pub enum Endian {
 
 pub struct TiffReader<'a> {
   data: &'a [u8],
-  endian: Endian,
+  pub endian: Endian,
 }
 
 #[derive(Clone, Debug)]
@@ -62,7 +62,24 @@ impl<'a> TiffReader<'a> {
     Ok(self.u32_at(4)? as usize)
   }
 
-  fn bytes(&self, off: usize, len: usize) -> Result<&'a [u8]> {
+  pub fn data(&self) -> &'a [u8] {
+    self.data
+  }
+
+  /// The chain of IFDs starting at the header's first offset (IFD0, IFD1, ...).
+  pub fn ifd_chain(&self) -> Result<Vec<(usize, Ifd)>> {
+    let mut out = Vec::new();
+    let mut off = self.first_ifd_offset()?;
+    while off != 0 && out.len() < 16 {
+      let ifd = self.ifd(off)?;
+      let next = off + 2 + 12 * ifd.entries.len();
+      out.push((off, ifd));
+      off = self.u32_at(next).unwrap_or(0) as usize;
+    }
+    Ok(out)
+  }
+
+  pub fn bytes(&self, off: usize, len: usize) -> Result<&'a [u8]> {
     off
       .checked_add(len)
       .and_then(|end| self.data.get(off..end))
@@ -193,4 +210,28 @@ impl IfdEntry {
     let end = b.iter().position(|&c| c == 0).unwrap_or(b.len());
     Ok(String::from_utf8_lossy(&b[..end]).trim().to_string())
   }
+}
+
+/// Read orientation, make, model and the EXIF sub-IFD fields used by the pipeline.
+pub fn read_ifd0_exif(
+  tiff: &TiffReader,
+  ifd0: &Ifd,
+  meta: &mut crate::metadata::RawMetadata,
+) -> Result<()> {
+  if let Some(e) = ifd0.get(0x0112) {
+    meta.orientation = e.value_u32(tiff, 0)? as u16;
+  }
+  if let Some(e) = ifd0.get(0x010f) {
+    meta.make = e.ascii(tiff)?;
+  }
+  if let Some(e) = ifd0.get(0x0110) {
+    meta.model = e.ascii(tiff)?;
+  }
+  if let Some(exif_off) = ifd0.get(0x8769).map(|e| e.value_u32(tiff, 0)).transpose()? {
+    let exif = tiff.ifd(exif_off as usize)?;
+    meta.iso = exif.get(0x8827).map(|e| e.value_u32(tiff, 0)).transpose()?;
+    meta.lens_model = exif.get(0xa434).map(|e| e.ascii(tiff)).transpose()?;
+    meta.focal_length = exif.get(0x920a).map(|e| e.value_f64(tiff, 0)).transpose()?;
+  }
+  Ok(())
 }

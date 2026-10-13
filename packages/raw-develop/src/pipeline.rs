@@ -2,7 +2,7 @@
 //!
 //!  1. linearise: black subtract, scale by the white level           (deXtrans inputs)
 //!  2. white balance                                                (deXtrans factors)
-//!  3. demosaic (full, or 3x3 binned for previews)                   (deXtrans_v8)
+//!  3. demosaic (full, or binned for previews)                       (deXtrans_v8)
 //!  4. crop to the active area                                       (crop)
 //!  5. noise reduction                                               (pyramid detail)
 //!  6. lens correction: distortion, CA, vignetting                   (radialLens)
@@ -32,7 +32,8 @@ pub const PIPELINE_VERSION: u32 = 2;
 pub enum Quality {
   /// Full-resolution demosaic.
   Full,
-  /// One third resolution (3x3 binning): fast previews and thumbnails.
+  /// Binned to one third (X-Trans, 3x3 cells) or one half (Bayer, 2x2) resolution: fast
+  /// previews and thumbnails.
   Preview,
 }
 
@@ -76,23 +77,20 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
 
   let noise = profile.noise_for_iso(meta.iso);
 
-  // White balance: as-shot multipliers come from WB_GRBLevels (G/R, 1, G/B).
-  let as_shot = [
-    meta.wb_grb[1] as f64 / meta.wb_grb[0] as f64,
-    1.0,
-    meta.wb_grb[2] as f64 / meta.wb_grb[0] as f64,
-  ];
+  // White balance: as-shot multipliers (R, 1, B) from the file.
+  let as_shot = meta.as_shot_wb;
   let neutral = match settings.white_balance {
     WhiteBalance::AsShot => [1.0 / as_shot[0], 1.0, 1.0 / as_shot[2]],
     WhiteBalance::Temperature { kelvin, tint } => profile.neutral_for_temperature(kelvin, tint),
   };
   let wb = [1.0 / neutral[0], 1.0, 1.0 / neutral[2]];
 
-  // 1-2. Linearise and white balance the active area (keeping a 3-aligned origin for
-  // binning). Crop origin is snapped down to a multiple of 3 for Preview.
+  // 1-2. Linearise and white balance the active area. For Preview the crop origin is
+  // snapped down to a multiple of the binning cell (3 for X-Trans, 2 for Bayer).
+  let bin = demosaic::bin_size(&meta.cfa);
   let (top, left) = match opts.quality {
     Quality::Full => (meta.crop_top, meta.crop_left),
-    Quality::Preview => (meta.crop_top / 3 * 3, meta.crop_left / 3 * 3),
+    Quality::Preview => (meta.crop_top / bin * bin, meta.crop_left / bin * bin),
   };
   let (w, h) = (
     meta.crop_width + (meta.crop_left - left),
@@ -105,11 +103,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     for (x, out) in row.iter_mut().enumerate() {
       let sx = x + left;
       let ch = meta.cfa.at(sy, sx) as usize;
-      let black = meta
-        .black_levels
-        .get((sy % 6) * 6 + sx % 6)
-        .copied()
-        .unwrap_or(0) as f32;
+      let black = meta.black_at(sy, sx) as f32;
       let v = (neg.sample(sy, sx) as f32 - black) / (white - black);
       *out = v * wb[ch] as f32;
     }
@@ -139,11 +133,11 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     Quality::Preview => {
       let b = demosaic::binned(&mosaic);
       // Binned origin is the snapped origin; drop the partial leading cell offset.
-      let (dx, dy) = ((meta.crop_left - left) / 3, (meta.crop_top - top) / 3);
-      let (bw, bh) = (meta.crop_width / 3, meta.crop_height / 3);
+      let (dx, dy) = ((meta.crop_left - left) / bin, (meta.crop_top - top) / bin);
+      let (bw, bh) = (meta.crop_width / bin, meta.crop_height / bin);
       (
         b.crop(dx, dy, bw.min(b.width - dx), bh.min(b.height - dy)),
-        1.0 / 3.0,
+        1.0 / bin as f32,
       )
     }
   };
@@ -198,7 +192,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   }
 
   // 6. Lens correction.
-  let lc = LensCorrection::from_params(&meta.lens, profile.distortion_fill_scale);
+  let lc = LensCorrection::from_source(&meta.lens, profile.distortion_fill_scale);
   let l = &settings.lens;
   if !lc.is_identity() && (l.distortion || l.chromatic_aberration || l.vignetting) {
     img = lc.apply(&img, (l.distortion, l.chromatic_aberration, l.vignetting));
@@ -277,8 +271,7 @@ fn full_dextrans(
   noise: &crate::profile::NoiseIso,
 ) -> Option<RgbImage> {
   let meta = &neg.meta;
-  let black = meta.black_levels.iter().map(|&b| b as f32).sum::<f32>()
-    / meta.black_levels.len().max(1) as f32;
+  let black = meta.mean_black();
   // RawCamera's exposureFactor (only gates the demosaic noise mixer in deep shadows)
   // tracks its baseline exposure, -RawExposureBias - 0.5; fitted log-linear relation.
   let be = -meta.raw_exposure_bias.unwrap_or(-0.72) - 0.5;

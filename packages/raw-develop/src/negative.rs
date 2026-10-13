@@ -4,12 +4,13 @@
 //! is a pure function of a `Negative` and `DevelopSettings`.
 
 use crate::error::Result;
-use crate::raf::{self, RafMetadata};
+use crate::metadata::RawMetadata;
+use crate::raf;
 use crate::unpack;
 use std::path::Path;
 
 pub struct Negative {
-  pub meta: RafMetadata,
+  pub meta: RawMetadata,
   /// Full readout mosaic, `meta.raw_width * meta.raw_height`, row-major.
   pub mosaic: Vec<u16>,
 }
@@ -21,18 +22,26 @@ impl Negative {
   }
 
   pub fn from_bytes(data: &[u8]) -> Result<Self> {
-    let meta = raf::parse(data)?;
+    let meta = parse_metadata(data)?;
     let mosaic = unpack::unpack(data, &meta)?;
     Ok(Self { meta, mosaic })
   }
 
   /// Parse metadata only (no sensor decode).
-  pub fn read_metadata(data: &[u8]) -> Result<RafMetadata> {
-    raf::parse(data)
+  pub fn read_metadata(data: &[u8]) -> Result<RawMetadata> {
+    parse_metadata(data)
   }
 
   #[inline]
   pub fn sample(&self, row: usize, col: usize) -> u16 {
     self.mosaic[row * self.meta.raw_width + col]
   }
+}
+
+/// Detect the container from its magic bytes and parse its metadata.
+fn parse_metadata(data: &[u8]) -> Result<RawMetadata> {
+  if data.starts_with(b"FUJIFILMCCD-RAW ") {
+    return raf::parse(data);
+  }
+  Err(crate::Error::NotRaw)
 }

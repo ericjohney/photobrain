@@ -20,12 +20,14 @@ pub mod encode;
 pub mod error;
 pub mod image;
 pub mod math;
+pub mod metadata;
 pub mod negative;
 pub mod pipeline;
 pub mod profile;
 pub mod raf;
 pub mod settings;
 pub mod stages;
+pub mod tiff;
 pub mod unpack;
 
 pub use error::{Error, Result};

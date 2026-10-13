@@ -9,7 +9,7 @@
 //!   v(r)/100 (relative to the centre).
 
 use crate::image::RgbImage;
-use crate::raf::LensParams;
+use crate::metadata::{LensParams, LensSource};
 use rayon::prelude::*;
 
 #[derive(Clone, Debug)]
@@ -62,6 +62,18 @@ pub struct LensCorrection {
 }
 
 impl LensCorrection {
+  /// Correction for the camera's recorded lens data. Only Fuji arrays are interpreted so
+  /// far; other sources give the identity.
+  pub fn from_source(src: &LensSource, fill_scale: f64) -> Self {
+    match src {
+      LensSource::Fuji(p) => Self::from_params(p, fill_scale),
+      LensSource::Sony(_) | LensSource::None => Self {
+        fill_scale: 1.0,
+        ..Default::default()
+      },
+    }
+  }
+
   pub fn from_params(p: &LensParams, fill_scale: f64) -> Self {
     let mk = |knots: &Vec<f32>, values: Vec<f32>| Radial {
       knots: knots.clone(),

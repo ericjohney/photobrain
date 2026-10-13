@@ -23,7 +23,7 @@ look, so highlights above 1.0 and small negative values survive the intermediate
 
 ## 0. Decode (once per file)
 
-`Negative::open` parses the RAF (`raf::parse`) and unpacks the sensor data
+`Negative::open` detects the container, parses it into `metadata::RawMetadata` (`raf::parse` for RAF) and unpacks the sensor data
 (`unpack::unpack`) into a `u16` mosaic covering the full sensor readout. On the X-E5
 that is 7872×5196, including masked borders. This is the expensive, settings-independent
 part (about 0.1 s). Keep the `Negative` and call `develop` again for each edit.

@@ -183,18 +183,26 @@ pub fn refine_luma_chroma(m: &Mosaic, img: &mut RgbImage, radius: usize) {
   });
 }
 
-/// One output pixel per aligned 3x3 cell (cells start at the view origin, which must be
-/// a multiple of 3 in the CFA pattern for the 5/2/2 composition to hold).
+/// Binning cell size for a CFA: 3 for X-Trans (5G/2R/2B per cell), 2 for Bayer
+/// (1R/2G/1B).
+pub fn bin_size(cfa: &CfaPattern) -> usize {
+  if cfa.is_xtrans() { 3 } else { 2 }
+}
+
+/// One output pixel per aligned `bin_size` cell (cells start at the view origin, which
+/// must be a multiple of the cell size in the CFA pattern so every cell holds all three
+/// colours).
 pub fn binned(m: &Mosaic) -> RgbImage {
-  let (w, h) = (m.width / 3, m.height / 3);
+  let b = bin_size(m.cfa);
+  let (w, h) = (m.width / b, m.height / b);
   let mut out = RgbImage::new(w, h);
   out.rows_mut().for_each(|(by, row)| {
     for bx in 0..w {
       let mut s = [0.0f32; 3];
       let mut n = [0.0f32; 3];
-      for dy in 0..3 {
-        for dx in 0..3 {
-          let (x, y) = (bx * 3 + dx, by * 3 + dy);
+      for dy in 0..b {
+        for dx in 0..b {
+          let (x, y) = (bx * b + dx, by * b + dy);
           let c = m.cfa.at(y, x) as usize;
           s[c] += m.data[y * m.width + x];
           n[c] += 1.0;
@@ -249,6 +257,23 @@ mod tests {
     }
     let b = binned(&m);
     assert!((b.px(3, 3)[0] - 0.3).abs() < 1e-6);
+  }
+
+  #[test]
+  fn bayer_binning_is_exact_on_flat_colour() {
+    use Channel::{Blue as B, Green as G, Red as R};
+    let cfa = CfaPattern::new(2, 2, vec![R, G, G, B]).unwrap();
+    let (w, h) = (10, 8);
+    let data = mosaic_of(&|_, _| [0.3, 0.5, 0.2], w, h, &cfa);
+    let m = Mosaic {
+      width: w,
+      height: h,
+      data: &data,
+      cfa: &cfa,
+    };
+    let b = binned(&m);
+    assert_eq!((b.width, b.height), (5, 4));
+    assert_eq!(b.px(2, 1), [0.3, 0.5, 0.2]);
   }
 
   #[test]

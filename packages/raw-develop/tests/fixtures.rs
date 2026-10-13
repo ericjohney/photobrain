@@ -1,7 +1,7 @@
-//! Fixture tests against real RAF files and Apple reference renders.
+//! Fixture tests against real RAW files (RAF, ARW, DNG) and Apple reference renders.
 //!
 //! Skipped (with a message) unless both are set:
-//!   RAW_DEVELOP_FIXTURES  directory of *.RAF files
+//!   RAW_DEVELOP_FIXTURES  directory of *.RAF / *.ARW / *.DNG files
 //!   RAW_DEVELOP_REFS      directory produced by tools/apple-reference (one subdir per stem)
 //!
 //!   RAW_DEVELOP_FIXTURES=~/raw-develop-fixtures RAW_DEVELOP_REFS=~/raw-develop-refs \
@@ -20,7 +20,11 @@ fn fixtures(dir: &Path) -> Vec<PathBuf> {
   let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
     .unwrap()
     .filter_map(|e| e.ok().map(|e| e.path()))
-    .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("raf")))
+    .filter(|p| {
+      p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| ["raf", "arw", "dng"].contains(&e.to_ascii_lowercase().as_str()))
+    })
     .collect();
   v.sort();
   v

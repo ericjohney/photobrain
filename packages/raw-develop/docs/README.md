@@ -23,7 +23,7 @@ uses it yet.
 
 ```text
 RAF file
- └─ raf::parse ─────────── metadata: geometry, black levels, WB, CFA, lens params, orientation
+ └─ raf::parse (by magic) ─ metadata: geometry, black levels, WB, CFA, lens params, orientation
  └─ unpack ─────────────── 16-bit sensor mosaic (bit-exact with RawCamera)   ← Negative (cache this)
      └─ develop(settings)
          linearise + WB inputs → deXtrans demosaic + crop → chroma NR + luma pyramid

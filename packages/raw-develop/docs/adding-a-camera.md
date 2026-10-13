@@ -224,13 +224,16 @@ Needed:
 
 The pipeline from stage 1 onwards is camera-agnostic given:
 
-- a `RafMetadata`-equivalent: geometry, black levels, white balance, CFA, orientation,
-  exposure bias, lens data. Rename it to a make-neutral `RawMetadata` when the second format
-  arrives, and dispatch in `Negative::from_bytes`,
+- a `metadata::RawMetadata`: geometry, black levels (one per CFA position), as-shot white
+  balance, CFA, orientation, exposure bias, lens data (`LensSource`) and a `RawStorage`.
+  Add the container parser and a magic-byte branch in `negative::parse_metadata`. The
+  shared `tiff.rs` reader and the lossless JPEG decoder (`unpack/ljpeg.rs`, with
+  `RawStorage::LosslessJpegTiles`) cover most TIFF-based formats,
 - a `u16` mosaic,
 - a profile.
 
-Lens correction is currently Fuji-specific (FujiIFD arrays). Other makes store it in
+Lens correction is currently Fuji-specific (FujiIFD arrays; `LensSource::Sony` is parsed
+but gives the identity until its mapping is known). Other makes store it in
 different places (Sony and Panasonic MakerNotes, DNG `OpcodeList3` WarpRectilinear), so add a
 source-specific parser that produces the same `LensCorrection`.
 

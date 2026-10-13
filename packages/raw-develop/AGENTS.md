@@ -24,7 +24,7 @@ let out = develop(&neg, &DevelopSettings::default(), &Options::default())?;
 encode::write(&out.image, path, encode::Format::Png16)?;  // PNG/JPEG with embedded Display P3 ICC
 ```
 
-- `Negative` is immutable: RAF metadata (`raf::RafMetadata`) plus the full-readout `u16` mosaic.
+- `Negative` is immutable: make-neutral metadata (`metadata::RawMetadata`, filled by `raf::parse`; the container is detected by magic bytes) plus the full-readout `u16` mosaic.
 - `develop` is a pure function of `(Negative, DevelopSettings, Options)`, built for edit features: `DevelopSettings` is serde JSON with `settings_version` (white balance as-shot or kelvin/tint, exposure EV, highlight recovery, luma/chroma NR, sharpening, tone amount, lens toggles, normalised crop, quarter turns). Unknown fields are rejected; omitted fields take as-shot defaults.
 - `Options { quality: Full | Preview, keep_linear }`. `Full` runs the ported `deXtrans_v8` demosaic and RawCamera's chroma NR and luma pyramid. `Preview` bins each 3x3 X-Trans cell (exact 5G/2R/2B) for one-third resolution, about 20x faster, and uses the generic `stages/detail.rs` filters for luma NR and sharpening.
 - `PIPELINE_VERSION` must be bumped when output changes for the same input and settings (mirror of the API's `MEDIA_VERSION` contract, for future caching).
