@@ -2,7 +2,7 @@
 	"name": "@photobrain/raw-develop",
 	"version": "0.1.0",
 	"private": true,
-	"description": "Rust RAW development pipeline (Fujifilm X-Trans RAF to Display P3). Standalone; not yet used by the API.",
+	"description": "Rust RAW development pipeline (RAF, ARW, ProRAW DNG to Display P3), used for on-demand loupe renders.",
 	"license": "MIT",
 	"scripts": {
 		"build": "cargo build --release",

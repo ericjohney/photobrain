@@ -2,6 +2,7 @@ import {
 	Camera,
 	ChevronLeft,
 	ChevronRight,
+	Loader2,
 	Maximize,
 	Minimize,
 } from "lucide-react";
@@ -13,15 +14,16 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { EmptyState } from "@/components/ui/empty-state";
 import { badgeVariants, RawBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useRawDevelopment } from "@/hooks/use-raw-development";
 import { rawBadge } from "@/lib/raw-badge";
 import { getFullImageUrl, getThumbnailUrl } from "@/lib/thumbnails";
 import type { PhotoFace, PhotoMetadata } from "@/lib/types";
@@ -237,21 +239,15 @@ export function LoupeView({
 	const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("fit");
 	const [imageLoaded, setImageLoaded] = useState(false);
 	const [livePlaying, setLivePlaying] = useState(false);
+	const developed = useRawDevelopment(photo?.id);
 	const stopLive = useCallback(() => setLivePlaying(false), []);
 
 	// Reset image loaded and Live playback state when photo changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: navigation resets playback and loading.
 	useEffect(() => {
 		setImageLoaded(false);
 		setLivePlaying(false);
 	}, [photo?.id]);
-
-	const handleZoomChange = useCallback(() => {
-		setZoomLevel((current) => {
-			if (current === "fit") return "fill";
-			if (current === "fill") return "100";
-			return "fit";
-		});
-	}, []);
 
 	const handlePrev = useCallback(() => {
 		onNavigate?.("prev");
@@ -279,6 +275,7 @@ export function LoupeView({
 	const formatBadge = rawBadge(photo);
 
 	const getImageSrc = () => {
+		if (developed.url) return developed.url;
 		if (zoomLevel === "100") {
 			return getFullImageUrl(photo.id, photo.thumbnailUpdatedAt);
 		}
@@ -309,7 +306,7 @@ export function LoupeView({
 			{/* Main image */}
 			{isVideo ? (
 				<LoupeVideo key={photo.id} photo={photo} videoRef={videoRef} />
-			) : isFailedRaw ? (
+			) : isFailedRaw && !developed.url ? (
 				<EmptyState icon={<Camera />} title="RAW Conversion Failed">
 					<p>{photo.rawError || "Unknown error"}</p>
 					<p className="mt-2">Re-run scan to retry conversion</p>
@@ -352,14 +349,32 @@ export function LoupeView({
 							onDone={stopLive}
 						/>
 					)}
-					{showFaces && faces && faces.length > 0 && !livePlaying && (
-						<FaceBoxes
-							image={imageElement}
-							loaded={imageLoaded}
-							faces={faces}
-							onFaceClick={onFaceClick}
-						/>
-					)}
+					{showFaces &&
+						faces &&
+						faces.length > 0 &&
+						!livePlaying &&
+						!developed.enabled && (
+							<FaceBoxes
+								image={imageElement}
+								loaded={imageLoaded}
+								faces={faces}
+								onFaceClick={onFaceClick}
+							/>
+						)}
+				</div>
+			)}
+
+			{developed.loading && (
+				<output className="absolute inset-0 flex items-center justify-center gap-2 bg-background/60 text-sm">
+					<Loader2 className="size-5 animate-spin" /> Developing RAW…
+				</output>
+			)}
+			{developed.error && (
+				<div
+					role="alert"
+					className="glass absolute top-14 mx-4 rounded-md px-3 py-2 text-sm"
+				>
+					{developed.error}
 				</div>
 			)}
 
@@ -373,21 +388,24 @@ export function LoupeView({
 			)}
 
 			{/* Live Photo: play the motion clip over the still */}
-			{!isVideo && !isFailedRaw && photo.motionVideoId !== null && (
-				<button
-					type="button"
-					aria-pressed={livePlaying}
-					aria-label="Play Live Photo"
-					onClick={() => setLivePlaying(true)}
-					className={cn(
-						badgeVariants({ variant: livePlaying ? "accent" : "overlay" }),
-						"absolute right-3 top-3 tracking-wide",
-						!livePlaying && "hover:bg-overlay/75",
-					)}
-				>
-					LIVE
-				</button>
-			)}
+			{!isVideo &&
+				!isFailedRaw &&
+				!developed.enabled &&
+				photo.motionVideoId !== null && (
+					<button
+						type="button"
+						aria-pressed={livePlaying}
+						aria-label="Play Live Photo"
+						onClick={() => setLivePlaying(true)}
+						className={cn(
+							badgeVariants({ variant: livePlaying ? "accent" : "overlay" }),
+							"absolute right-3 top-3 tracking-wide",
+							!livePlaying && "hover:bg-overlay/75",
+						)}
+					>
+						LIVE
+					</button>
+				)}
 
 			{/* Navigation arrows */}
 			{hasPrev && (
@@ -410,6 +428,20 @@ export function LoupeView({
 					className="absolute right-4 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 [&_svg]:size-6"
 				>
 					<ChevronRight />
+				</Button>
+			)}
+
+			{!isVideo && (photo.isRaw || photo.pairedPhotoId !== null) && (
+				<Button
+					variant="glass"
+					aria-pressed={developed.enabled}
+					onClick={() => {
+						setLivePlaying(false);
+						developed.toggle();
+					}}
+					className="absolute left-4 bottom-4"
+				>
+					{developed.enabled ? "Show original preview" : "Develop RAW"}
 				</Button>
 			)}
 

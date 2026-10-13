@@ -100,6 +100,7 @@ The Hono server registers:
 - `GET /api/v1/uploads/config`
 - `POST /api/v1/uploads`
 - `POST /api/v1/uploads/known`
+- `GET /api/photos/:id/developed` (experimental full-quality RAW loupe JPEG, no-store)
 - `GET /api/photos/:id/file`
 - `GET /api/photos/:id/thumbnail/:size`
 - `GET /api/faces/:id/crop`
@@ -573,3 +574,7 @@ Wall-clock budgets in performance tests go through `perfBudgetMs(ms)` from `setu
 `bun run bench:exif <1-20 distinct photo paths>` requires ExifTool but not the addon, reads the Rust metadata flags, and compares batched versus four-concurrent per-file metadata extraction with exact JSON equivalence checks. `EXIFTOOL_BIN` selects an executable for this benchmark only. See [import architecture and measurements](../../docs/import-performance.md) for historical measurements, locally verified incremental behavior, and remaining architectural options.
 
 `scripts/ui-test-server.ts` serves the real `/api/v1` and `/api/photos` routes over a temporary SQLite library seeded through the shared migrations with deterministic photos, EXIF, pHashes, tags, places, events, and collections. It stubs the native addon, never runs scans or Inngest, and exposes `POST /__fixture/reset` to restore the seed between UI tests. It is test infrastructure only; `apps/ios/scripts/run-ui-tests.sh` starts and stops it.
+
+## Experimental RAW Loupe
+
+`services/raw-develop.ts` runs the standalone release CLI with binary stdout, as-shot defaults and full quality; there are no artifacts or database writes. The route resolves a JPEG’s RAW partner with the shared pair SQL and reads the committed source root. One development runs per API process; concurrent requests return 503, processes time out after 120 seconds, and request cancellation terminates the child. `RAW_DEVELOP_BIN` overrides the binary path (default: `packages/raw-develop/target/release/raw-develop`, resolved relative to the service). Build locally with `cd packages/raw-develop && cargo build --release --bin raw-develop`. Docker ships it at `/usr/local/bin/raw-develop`.
