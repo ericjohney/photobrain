@@ -18,6 +18,7 @@ struct LoupeScreen: View {
     @State private var showingInfo = false
     @State private var similarSource: PhotoRecord?
     @State private var collectionSheetPhotoID: CollectionSheetTarget?
+    @StateObject private var rawDevelopment: RawDevelopmentStore
     @StateObject private var exports: ExportStore
     /// The open page's video or Live Photo player; released on page change and dismissal.
     @StateObject private var playback = LoupePlaybackController()
@@ -53,6 +54,7 @@ struct LoupeScreen: View {
         self.dismiss = dismiss
         self.review = review
         self.transition = transition
+        _rawDevelopment = StateObject(wrappedValue: RawDevelopmentStore(baseURL: api.baseURL))
         _exports = StateObject(wrappedValue: ExportStore(api: api))
         _faceBoxes = StateObject(wrappedValue: LoupeFaceBoxesStore(api: api))
     }
@@ -97,7 +99,8 @@ struct LoupeScreen: View {
                     }
                 },
                 onEmpty: dismiss,
-                faceBoxes: faceBoxes.visibleBoxes,
+                faceBoxes: rawDevelopment.photoID == activeID ? [:] : faceBoxes.visibleBoxes,
+                developedImages: developedImages,
                 onDismissDragActive: { active in
                     withAnimation(.easeOut(duration: 0.15)) { dismissDragging = active }
                 },
@@ -115,6 +118,13 @@ struct LoupeScreen: View {
             )
             .ignoresSafeArea()
             .opacity(transitioning ? 0 : 1)
+
+            if rawDevelopment.isLoading && rawDevelopment.photoID == activeID {
+                ProgressView("Developing RAW…")
+                    .padding(20)
+                    .pbGlass(in: RoundedRectangle(cornerRadius: 16), dark: true)
+                    .accessibilityIdentifier("raw-development-loader")
+            }
 
             if let flight {
                 Color.clear
@@ -147,6 +157,9 @@ struct LoupeScreen: View {
                     } else if let message = curation.errorMessage {
                         PBBanner(message: "Couldn’t save rating. \(message)", dismiss: { curation.dismissError() })
                     }
+                    if let message = rawDevelopment.errorMessage {
+                        PBBanner(message: message, dismiss: rawDevelopment.reset)
+                    }
                     overlayControls
                     Spacer()
                     filmstrip
@@ -169,10 +182,11 @@ struct LoupeScreen: View {
             runEntrance()
         }
         .onChange(of: activeID) { _, _ in
+            rawDevelopment.show(photoID: activeID)
             playback.show(activeRecord)
             Task { await faceBoxes.load(activeRecord) }
         }
-        .onDisappear { playback.release() }
+        .onDisappear { playback.release(); rawDevelopment.reset() }
         .statusBarHidden(!showsChrome)
         .exportPresentation(exports)
         .sheet(isPresented: $showingInfo) {
@@ -444,16 +458,44 @@ struct LoupeScreen: View {
     /// LIVE (for Live Photos) and Show Faces (for stills) over the top of the photo.
     @ViewBuilder
     private var overlayControls: some View {
-        let hasLive = activeRecord?.motionVideoURL != nil
-        let canShowFaces = faceBoxes.isShowing && (activeRecord.map { !$0.isVideo } ?? false)
-        if hasLive || canShowFaces {
+        let hasRaw = activeRecord.map(RawDevelopmentStore.supports) ?? false
+        let hasLive = activeRecord?.motionVideoURL != nil && rawDevelopment.photoID != activeID
+        let canShowFaces = rawDevelopment.photoID != activeID && faceBoxes.isShowing && (activeRecord.map { !$0.isVideo } ?? false)
+        if hasLive || canShowFaces || hasRaw {
             HStack(spacing: 8) {
+                if hasRaw { rawDevelopmentButton }
                 if hasLive { liveButton }
                 if canShowFaces { facesButton }
                 Spacer()
             }
             .padding(.horizontal, PBSpacing.m)
         }
+    }
+
+    private var developedImages: [Int: UIImage] {
+        guard rawDevelopment.photoID == activeID, let image = rawDevelopment.image else { return [:] }
+        return [activeID: image]
+    }
+
+    private var rawDevelopmentButton: some View {
+        let enabled = rawDevelopment.photoID == activeID
+        return Button {
+            guard let activeRecord else { return }
+            playback.show(nil)
+            rawDevelopment.toggle(activeRecord)
+            if rawDevelopment.photoID == nil { playback.show(activeRecord) }
+        } label: {
+            Label(enabled ? "Original preview" : "Develop RAW", systemImage: "slider.horizontal.3")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .foregroundStyle(enabled ? Color.yellow : Color.white)
+                .pbGlass(in: Capsule(), interactive: true, dark: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(enabled ? "Show original preview" : "Develop RAW")
+        .accessibilityValue(enabled ? "On" : "Off")
+        .accessibilityIdentifier("raw-development-toggle")
     }
 
     /// Outlines detected faces on the photo; they follow pinch-zoom and pan.

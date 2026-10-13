@@ -75,6 +75,98 @@ final class LoupeStateTests: XCTestCase {
         XCTAssertTrue(becameEmpty)
     }
 
+    func testRawRenderReplacesAndRestoresThePagerImage() {
+        let photo = RedactedFixture.make(count: 1)[0]
+        let cell = makeCell(photo: photo, loader: RedirectAwareImageLoader())
+        let original = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+        let developed = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 6)).image { _ in }
+        cell.zoomView.setImage(original)
+        cell.setDevelopedImage(developed)
+        XCTAssertTrue(cell.zoomView.image === developed)
+        cell.setDevelopedImage(nil)
+        XCTAssertTrue(cell.zoomView.image === original)
+        cell.prepareForReuse()
+        XCTAssertNil(cell.zoomView.image)
+    }
+
+    func testRawDevelopmentSupportsRAWAndPairsButNotStandardPhotosOrVideos() {
+        let base = URL(string: "https://photos.example.invalid")!
+        let raw = PhotoRecord(dto: TestModels.photo(id: 1, isRaw: true), apiBaseURL: base)
+        let paired = PhotoRecord(dto: TestModels.photo(id: 2, pairedPhotoId: 1, pairedFormat: "ARW"), apiBaseURL: base)
+        let standard = PhotoRecord(dto: TestModels.photo(id: 3), apiBaseURL: base)
+        var videoDTO = TestModels.photo(id: 4)
+        videoDTO.mediaType = .video
+        let video = PhotoRecord(dto: videoDTO, apiBaseURL: base)
+        XCTAssertTrue(RawDevelopmentStore.supports(raw))
+        XCTAssertTrue(RawDevelopmentStore.supports(paired))
+        XCTAssertFalse(RawDevelopmentStore.supports(standard))
+        XCTAssertFalse(RawDevelopmentStore.supports(video))
+    }
+
+    func testRawDevelopmentLoadingSuccessToggleOffAndFreshActivation() async throws {
+        let base = URL(string: "https://photos.example.invalid/library")!
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 6)).image { _ in }
+        let data = try XCTUnwrap(image.pngData())
+        let requests = RawRequestLog()
+        let store = RawDevelopmentStore(baseURL: base) { url in
+            await requests.record(url)
+            return data
+        }
+        let photo = PhotoRecord(dto: TestModels.photo(id: 2, pairedPhotoId: 1), apiBaseURL: base)
+        store.toggle(photo)
+        XCTAssertTrue(store.isLoading)
+        XCTAssertEqual(store.photoID, 2)
+        try await waitForRaw(store)
+        XCTAssertNotNil(store.image)
+        XCTAssertNil(store.errorMessage)
+        store.toggle(photo)
+        XCTAssertNil(store.photoID)
+        XCTAssertNil(store.image)
+        store.toggle(photo)
+        try await waitForRaw(store)
+        let urls = await requests.urls
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls.first?.absoluteString, "https://photos.example.invalid/library/api/photos/2/developed")
+        store.reset()
+    }
+
+    func testRawDevelopmentFailureAndNavigationDiscardLateCompletion() async throws {
+        let base = URL(string: "https://photos.example.invalid")!
+        let photo = PhotoRecord(dto: TestModels.photo(id: 2, isRaw: true), apiBaseURL: base)
+        let failed = RawDevelopmentStore(baseURL: base) { _ in throw URLError(.unsupportedURL) }
+        failed.toggle(photo)
+        try await waitForRaw(failed)
+        XCTAssertNotNil(failed.errorMessage)
+        XCTAssertNil(failed.image)
+        failed.reset()
+        XCTAssertNil(failed.errorMessage)
+
+        let gate = RawRequestGate()
+        let store = RawDevelopmentStore(baseURL: base) { _ in await gate.load() }
+        store.toggle(photo)
+        for _ in 0..<200 {
+            if await gate.started { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let started = await gate.started
+        XCTAssertTrue(started)
+        store.show(photoID: 3)
+        await gate.complete()
+        await Task.yield()
+        XCTAssertNil(store.photoID)
+        XCTAssertNil(store.image)
+        XCTAssertFalse(store.isLoading)
+        XCTAssertNil(store.errorMessage)
+    }
+
+    private func waitForRaw(_ store: RawDevelopmentStore) async throws {
+        for _ in 0..<200 {
+            if !store.isLoading { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("RAW development did not settle")
+    }
+
     private func makeCell(photo: PhotoRecord, loader: RedirectAwareImageLoader) -> ZoomPageCell {
         let cell = ZoomPageCell(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         cell.configure(photo: photo, loader: loader, onTap: {}, onZoomChanged: { _ in })
@@ -120,4 +212,19 @@ final class LoupeStateTests: XCTestCase {
         XCTAssertNil(index.index(of: removed.id, in: records))
         XCTAssertEqual(index.index(of: records[2].id, in: records), 2)
     }
+}
+
+private actor RawRequestLog {
+    var urls: [URL] = []
+    func record(_ url: URL) { urls.append(url) }
+}
+
+private actor RawRequestGate {
+    var started = false
+    private var continuation: CheckedContinuation<Data, Never>?
+    func load() async -> Data {
+        started = true
+        return await withCheckedContinuation { continuation = $0 }
+    }
+    func complete() { continuation?.resume(returning: Data()); continuation = nil }
 }

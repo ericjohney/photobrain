@@ -22,6 +22,7 @@ COPY packages/image-processing/package.json packages/image-processing/
 COPY packages/utils/package.json packages/utils/
 COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
+COPY packages/raw-develop/package.json packages/raw-develop/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 
@@ -34,6 +35,7 @@ COPY packages/image-processing packages/image-processing
 COPY packages/utils packages/utils
 COPY packages/config packages/config
 COPY packages/db packages/db
+COPY packages/raw-develop packages/raw-develop
 COPY apps/api apps/api
 COPY apps/web apps/web
 
@@ -42,6 +44,12 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/app/packages/image-processing/target \
     bun run build --filter=@photobrain/image-processing
+
+# Build the standalone RAW renderer; copy out of the cache mount for runtime.
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/app/packages/raw-develop/target \
+    cd packages/raw-develop && cargo build --release --bin raw-develop && cp target/release/raw-develop /app/raw-develop
 
 # =============================================================================
 # Stage 2: API Production Image
@@ -60,6 +68,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 ENV RUN_DB_INIT=true
+ENV RAW_DEVELOP_BIN=/usr/local/bin/raw-develop
+COPY --from=builder /app/raw-develop /usr/local/bin/raw-develop
 
 # Copy package files
 COPY --from=builder /app/package.json /app/bun.lock /app/turbo.json ./

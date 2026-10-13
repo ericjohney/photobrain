@@ -14,6 +14,8 @@ struct PagedLoupe: UIViewControllerRepresentable {
     let onEmpty: () -> Void
     /// Face boxes drawn over each photo by id; empty when Show Faces is off.
     var faceBoxes: [Int: [FaceBoxDTO]] = [:]
+    /// Temporary full-quality RAW render for the open page.
+    var developedImages: [Int: UIImage] = [:]
     /// A vertical drag-to-dismiss started (`true`) or sprang back (`false`).
     var onDismissDragActive: ((Bool) -> Void)?
     /// Drag released past the dismiss threshold: the image's on-screen frame (window
@@ -36,6 +38,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.attach(playback: playback)
         controller.chromeVisible = chromeVisible
         controller.faceBoxes = faceBoxes
+        controller.developedImages = developedImages
         assignGestureCallbacks(controller)
         controller.update(records: records, activeID: activeID)
         return controller
@@ -48,6 +51,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.attach(playback: playback)
         controller.chromeVisible = chromeVisible
         controller.faceBoxes = faceBoxes
+        controller.developedImages = developedImages
         assignGestureCallbacks(controller)
         controller.update(records: records, activeID: activeID)
     }
@@ -124,6 +128,14 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             guard faceBoxes != oldValue else { return }
             knownCells.allObjects.forEach { cell in
                 cell.setFaceBoxes(cell.representedID.flatMap { faceBoxes[$0] } ?? [])
+            }
+        }
+    }
+
+    var developedImages: [Int: UIImage] = [:] {
+        didSet {
+            knownCells.allObjects.forEach { cell in
+                cell.setDevelopedImage(cell.representedID.flatMap { developedImages[$0] })
             }
         }
     }
@@ -260,6 +272,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         )
         knownCells.add(cell)
         cell.setFaceBoxes(faceBoxes[photo.id] ?? [])
+        cell.setDevelopedImage(developedImages[photo.id])
         syncPlayerHost()
         return cell
     }
@@ -521,6 +534,8 @@ final class ZoomPageCell: UICollectionViewCell {
     private var retry: (() -> Void)?
     private(set) var representedID: Int?
     private var decodedImageWasEvicted = false
+    private var developedImage: UIImage?
+    private var originalPreview: UIImage?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -567,6 +582,8 @@ final class ZoomPageCell: UICollectionViewCell {
         loadTask = nil
         retry = nil
         representedID = nil
+        developedImage = nil
+        originalPreview = nil
         decodedImageWasEvicted = false
         failureStack.isHidden = true
         zoomView.setImage(nil)
@@ -636,6 +653,8 @@ final class ZoomPageCell: UICollectionViewCell {
         if representedID != photo.id {
             hostedPlayerView?.removeFromSuperview()
         }
+        developedImage = nil
+        originalPreview = nil
         representedID = photo.id
         decodedImageWasEvicted = false
         failureStack.isHidden = true
@@ -684,6 +703,25 @@ final class ZoomPageCell: UICollectionViewCell {
         }
         retry = load
         load()
+    }
+
+    /// Keep pinch/pan in the existing pager while replacing only its image.
+    func setDevelopedImage(_ image: UIImage?) {
+        guard developedImage !== image else { return }
+        if let image {
+            if developedImage == nil { originalPreview = zoomView.image }
+            loadTask?.cancel()
+            failureStack.isHidden = true
+            developedImage = image
+            zoomView.setImage(image)
+            setShowsPhotoImage(true)
+        } else {
+            developedImage = nil
+            zoomView.setImage(originalPreview)
+            setShowsPhotoImage(originalPreview != nil)
+            originalPreview = nil
+            retry?()
+        }
     }
 
     func handleMemoryWarning(isVisible: Bool, activeID: Int?) {
