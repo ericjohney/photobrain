@@ -1,0 +1,1742 @@
+# Camera profile: Sony A7C R (ILCE-7CR, 61 MP), Bayer RGGB, 14-bit ARW.
+#
+# Provenance
+# - color_matrix_* / forward_matrix_* / calibration illuminants: Adobe DNG Converter 18.7
+#   (Adobe Standard) output for 6453.ARW.
+# - white_level: from RawCamera's deBayer_v8 `range` (4.12923 = 65535 / (white - 512)).
+# - demosaic_exposure_factor: RawCamera's deBayer_v8 `exposureFactor` for this body
+#   (constant across files and ISOs).
+# - baseline_exposure, black_render, look_matrix_*: derived exactly from RawCamera's colour
+#   and exposure color_matrix nodes (tools/calibrate/graph_color.py) of 6453 (5759 K) and 13567 (3297 K).
+# - Lens: distortion from the file's DistortionCorrParams when the camera flags it
+#   (RawCamera ignores the CA and vignetting arrays); no profile data needed.
+# - [[noise]]: RawCamera render graphs (macOS 26.5.1, decoder "8") of 6453.ARW with its
+#   ISO/SOS/REI tags patched to each setting 50-102400 (docs/adding-a-camera.md, ISO-patch
+#   method), transcribed with tools/calibrate/noise_table.py.
+
+make = "SONY"
+model = "ILCE-7CR"
+
+white_level = 16383.0
+base_iso = 100.0
+demosaic_exposure_factor = 2.31951
+
+calibration_illuminant_1 = 2856.0
+calibration_illuminant_2 = 6504.0
+
+color_matrix_1 = [0.9185, -0.4857, 0.0505, -0.3651, 1.1061, 0.2982, -0.0161, 0.0698, 0.6769]
+color_matrix_2 = [0.82, -0.2976, -0.0719, -0.4296, 1.2053, 0.2532, -0.0429, 0.1282, 0.5774]
+forward_matrix_1 = [0.4616, 0.3771, 0.1256, 0.2079, 0.7562, 0.0359, 0.0798, 0.0011, 0.7442]
+forward_matrix_2 = [0.4677, 0.3226, 0.174, 0.267, 0.6792, 0.0539, 0.1207, 0.0037, 0.7007]
+
+# Exposure applied before the look, in EV (Sony files carry no RawExposureBias).
+#
+# black_render: linear value subtracted before exposure (a small flare/black offset;
+# renders lift shadows less than a pure gain would). Fitted.
+black_render = 0.003
+baseline_exposure = 0.4056
+
+# White-preserving 3x3 (rows sum to 1) applied in linear Display P3 after the DNG
+# forward-matrix transform, interpolated by 1/CCT like the DNG matrices. It carries the
+# rendering's saturation and hue differences from Adobe Standard.
+look_matrix_1 = [
+  1.923756, -0.918222, -0.005534,
+  -0.135643, 1.477836, -0.342193,
+  -0.154951, -0.315594, 1.470545,
+]
+look_matrix_2 = [
+  2.055493, -0.724230, -0.331263,
+  -0.233023, 1.742851, -0.509828,
+  -0.226514, -0.179647, 1.406161,
+]
+
+[[noise]]
+iso = 50
+demosaic_noise = [0.208717, 7.44166e-09, 2.89922e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [1.28937e-08, 1.20581e-05, 3.39613e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [5.01129e-09, 4.8803e-06, 1.80837e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [-2.42452e-09, 3.0714e-06, 7.70127e-06, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00313834, 1, 1, 1]
+roparms = [0.0050841, 0.0152523, 0.0101682, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [-6.21052e-07, 0.00360631, 0.00548863]
+cfactor = 7
+anneal = [-6.93646e-08, 8.633e-05, 6.05217e-05]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00321529, 466.522], [2, 0.78625, 0.533331, 0.2286, 2, 0.00321529, 466.522], [4, 0.8575, 0.766669, 0.13716, 3, 0.00321529, 466.522], [8, 0.92875, 1, 0.082296, 4, 0.00321529, 466.522]]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 64
+demosaic_noise = [0.234188, 7.44166e-09, 3.6513e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [1.22942e-08, 1.6932e-05, 2.7238e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [7.52381e-09, 6.6927e-06, 1.92096e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [-4.94355e-09, 4.37675e-06, 7.78038e-06, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00313834, 1, 0.999933, 1]
+roparms = [0.0050841, 0.0152523, 0.0101682, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [6.27092e-07, 0.00431207, 0.00877261]
+cfactor = 7
+anneal = [-2.17314e-08, 0.000100979, 0.000123848]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00360766, 415.782], [2, 0.78625, 0.533331, 0.2286, 2, 0.00360766, 415.782], [4, 0.8575, 0.766669, 0.13716, 3, 0.00360766, 415.782], [8, 0.92875, 1, 0.082296, 4, 0.00360766, 415.782]]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 80
+demosaic_noise = [0.257912, 7.44166e-09, 4.42959e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [2.0929e-08, 2.2804e-05, 3.42603e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [1.15409e-08, 8.80937e-06, 2.57914e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [-1.20108e-08, 6.1053e-06, 8.42938e-06, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00313834, 1, 0.999847, 1]
+roparms = [0.0050841, 0.0152523, 0.0101682, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [4.99353e-06, 0.00504138, 0.0138406]
+cfactor = 7
+anneal = [1.79121e-08, 0.000124563, 0.000145859]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00397313, 377.536], [2, 0.78625, 0.533331, 0.2286, 2, 0.00397313, 377.536], [4, 0.8575, 0.766669, 0.13716, 3, 0.00397313, 377.536], [8, 0.92875, 1, 0.082296, 4, 0.00397313, 377.536]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.000204518, 0.000115041]
+roparms = [0.000889718, 0.00266915, 0.00177944, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [7.25846e-07, 0.000729277, 0.00371682]
+cfactor = 7
+anneal = [8.37499e-09, 1.00306e-05, 2.67611e-05]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 100
+demosaic_noise = [0.209278, 7.44299e-09, 2.91485e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [8.48666e-09, 2.00631e-05, 5.94473e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [5.68102e-09, 7.46015e-06, 3.99373e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [1.34276e-09, 4.19578e-06, 2.4019e-05, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.998865, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [-4.99289e-07, 0.00360018, 0.0035231]
+cfactor = 7
+anneal = [3.0432e-09, 7.87542e-05, 0.000145205]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00322392, 465.271], [2, 0.78625, 0.533331, 0.2286, 2, 0.00322392, 465.271], [4, 0.8575, 0.766669, 0.13716, 3, 0.00322392, 465.271], [8, 0.92875, 1, 0.082296, 4, 0.00322392, 465.271]]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 125
+demosaic_noise = [0.231338, 7.44299e-09, 3.56284e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [9.76121e-09, 2.4163e-05, 5.52964e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [6.75056e-09, 8.86011e-06, 4.64949e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [2.21442e-09, 4.80977e-06, 3.32704e-05, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.998543, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [5.65178e-07, 0.00426402, 0.00910519]
+cfactor = 7
+anneal = [1.62209e-08, 9.66124e-05, 0.000202281]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00356376, 420.904], [2, 0.78625, 0.533331, 0.2286, 2, 0.00356376, 420.904], [4, 0.8575, 0.766669, 0.13716, 3, 0.00356376, 420.904], [8, 0.92875, 1, 0.082296, 4, 0.00356376, 420.904]]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 160
+demosaic_noise = [0.259085, 7.44299e-09, 4.47004e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [1.02179e-08, 2.65701e-05, 4.44552e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [7.2694e-09, 9.72513e-06, 4.85267e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [2.95962e-09, 5.10904e-06, 4.02933e-05, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.998119, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [2.05543e-06, 0.0051934, 0.0169201]
+cfactor = 7
+anneal = [3.46621e-08, 0.000121603, 0.000282153]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.0039912, 375.827], [2, 0.78625, 0.533331, 0.2286, 2, 0.0039912, 375.827], [4, 0.8575, 0.766669, 0.13716, 3, 0.0039912, 375.827], [8, 0.92875, 1, 0.082296, 4, 0.0039912, 375.827]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00250763, 0.00141054]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [1.95652e-07, 0.000774343, 0.00318502]
+cfactor = 7
+anneal = [4.08162e-09, 1.29044e-05, 4.6773e-05]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 200
+demosaic_noise = [0.287786, 2.18504e-08, 5.50683e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [1.03014e-08, 2.75926e-05, 3.38892e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [7.38105e-09, 1.01826e-05, 4.70175e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [3.47979e-09, 5.20659e-06, 4.39771e-05, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.997675, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [3.75858e-06, 0.00625555, 0.0258515]
+cfactor = 7
+anneal = [5.57264e-08, 0.000150148, 0.000373386]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00443335, 338.345], [2, 0.78625, 0.533331, 0.2286, 2, 0.00443335, 338.345], [4, 0.8575, 0.766669, 0.13716, 3, 0.00443335, 338.345], [8, 0.92875, 1, 0.082296, 4, 0.00443335, 338.345]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00309977, 0.00174362]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [4.08192e-07, 0.000945191, 0.00387554]
+cfactor = 7
+anneal = [8.70036e-09, 1.67396e-05, 7.50719e-05]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 250
+demosaic_noise = [0.322781, 2.18504e-08, 6.93127e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [1.10504e-08, 3.19959e-05, 3.2302e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [8.39589e-09, 1.18699e-05, 4.5959e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [4.72112e-09, 5.93687e-06, 4.29895e-05, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.997149, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [3.97927e-06, 0.00803101, 0.0256455]
+cfactor = 7
+anneal = [4.397e-08, 0.000191986, 0.000357953]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00497244, 301.663], [2, 0.78625, 0.533331, 0.2286, 2, 0.00497244, 301.663], [4, 0.8575, 0.766669, 0.13716, 3, 0.00497244, 301.663], [8, 0.92875, 1, 0.082296, 4, 0.00497244, 301.663]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00380187, 0.00213855]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [2.56335e-07, 0.00122112, 0.00336967]
+cfactor = 7
+anneal = [7.37329e-09, 2.20366e-05, 7.29995e-05]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 320
+demosaic_noise = [0.366198, 2.18504e-08, 8.92548e-05]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [1.19458e-08, 3.71855e-05, 3.01836e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [9.46482e-09, 1.38364e-05, 4.46522e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [5.9712e-09, 6.74673e-06, 4.14519e-05, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.99656, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [4.28824e-06, 0.0105167, 0.0253572]
+cfactor = 7
+anneal = [2.75267e-08, 0.000250509, 0.000336371]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00564128, 265.897], [2, 0.78625, 0.533331, 0.2286, 2, 0.00564128, 265.897], [4, 0.8575, 0.766669, 0.13716, 3, 0.00564128, 265.897], [8, 0.92875, 1, 0.082296, 4, 0.00564128, 265.897]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00458661, 0.00257997]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [4.37361e-08, 0.00160741, 0.00266146]
+cfactor = 7
+anneal = [5.41221e-09, 2.95543e-05, 6.95338e-05]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 400
+demosaic_noise = [0.410153, 1.57037e-08, 0.000112046]
+moire_detect = true
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 1
+threshold = [1.34699e-08, 4.41464e-05, 2.99908e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf"
+scale = 3
+threshold = [1.08987e-08, 1.63205e-05, 4.60106e-05, 0.022]
+[[noise.chroma_passes]]
+kind = "hf_early_out"
+scale = 7
+threshold = [7.27984e-09, 7.74934e-06, 4.16953e-05, 0.022]
+interpolant = 0.25
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.996091, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [4.64135e-06, 0.0133574, 0.0250277]
+cfactor = 7
+anneal = [8.75567e-09, 0.000317329, 0.000311741]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00631841, 237.401], [2, 0.78625, 0.533331, 0.2286, 2, 0.00631841, 237.401], [4, 0.8575, 0.766669, 0.13716, 3, 0.00631841, 237.401], [8, 0.92875, 1, 0.082296, 4, 0.00631841, 237.401]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00521156, 0.00340309]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [-1.99156e-07, 0.00204785, 0.00185105]
+cfactor = 7
+anneal = [3.08176e-09, 3.82732e-05, 6.51291e-05]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 500
+demosaic_noise = [0.457288, 1.57037e-08, 0.000139304]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [2.03563e-08, 5.56787e-05, 4.07828e-05, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [1.49713e-08, 2.03342e-05, 5.45957e-05, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.995797, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [7.0691e-06, 0.016559, 0.0343939]
+cfactor = 7
+anneal = [4.04587e-08, 0.000394984, 0.000354757]
+fine_grain = 0.5
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00704453, 212.931], [2, 0.78625, 0.533331, 0.2286, 2, 0.00704453, 212.931], [4, 0.8575, 0.766669, 0.13716, 3, 0.00704453, 212.931], [8, 0.92875, 1, 0.082296, 4, 0.00704453, 212.931]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00560353, 0.00423726]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [6.56895e-07, 0.00242303, 0.00530839]
+cfactor = 7
+anneal = [1.18438e-08, 4.77075e-05, 8.50015e-05]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 640
+demosaic_noise = [0.516095, 1.57037e-08, 0.000177465]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [3.12133e-08, 7.38131e-05, 5.95024e-05, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [2.12059e-08, 2.64704e-05, 6.85305e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [9.64382e-09, 1.28928e-05, 4.0002e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [7.12058e-09, 1.2503e-05, 3.42243e-05, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.995841, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [1.0468e-05, 0.0210412, 0.0475065]
+cfactor = 7
+anneal = [8.47843e-08, 0.00050359, 0.00041493]
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00795044, 188.669], [2, 0.78625, 0.533331, 0.2286, 2, 0.00795044, 188.669], [4, 0.8575, 0.766669, 0.13716, 3, 0.00795044, 188.669], [8, 0.92875, 1, 0.082296, 4, 0.00795044, 188.669]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00554557, 0.00501675]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [1.84879e-06, 0.00294473, 0.0101207]
+cfactor = 7
+anneal = [2.44988e-08, 6.12814e-05, 0.000113579]
+[[noise.luma]]
+kind = "plain"
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 800
+demosaic_noise = [0.576317, 5.25294e-08, 0.000221077]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [4.3741e-08, 9.40299e-05, 8.11337e-05, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [2.83528e-08, 3.34541e-05, 8.42123e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [1.13577e-08, 1.64791e-05, 3.93825e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [5.13675e-09, 1.63945e-05, 2.3753e-05, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.996494, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [1.43524e-05, 0.0261638, 0.0624924]
+cfactor = 7
+anneal = [1.35377e-07, 0.000627594, 0.000483651]
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00887816, 168.954], [2, 0.78625, 0.533331, 0.2286, 2, 0.00887816, 168.954], [4, 0.8575, 0.766669, 0.13716, 3, 0.00887816, 168.954], [8, 0.92875, 1, 0.082296, 4, 0.00887816, 168.954]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00467404, 0.00467404]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [3.23034e-06, 0.00356789, 0.0157234]
+cfactor = 7
+anneal = [3.9573e-08, 7.7476e-05, 0.000147624]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.00623206, 0.00197186]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [5.13742e-07, 0.000578743, 0.00247828]
+cfactor = 7
+anneal = [4.5769e-09, 1.15629e-05, 1.72015e-05]
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 1000
+demosaic_noise = [0.641894, 5.25294e-08, 0.000274335]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [6.00574e-08, 0.000115434, 0.000117291, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [3.54811e-08, 4.22304e-05, 9.40586e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [2.20894e-08, 1.94959e-05, 8.71471e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [1.69382e-08, 1.92366e-05, 7.3449e-05, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 1, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [1.90711e-05, 0.0326205, 0.0825065]
+cfactor = 7
+anneal = [2.69663e-07, 0.000767757, 0.00118233]
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.00988838, 151.693], [2, 0.78625, 0.533331, 0.2286, 2, 0.00988838, 151.693], [4, 0.8575, 0.766669, 0.13716, 3, 0.00988838, 151.693], [8, 0.92875, 1, 0.082296, 4, 0.00988838, 151.693]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0, 0]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [3.45962e-06, 0.00520787, 0.013717]
+cfactor = 7
+anneal = [6.63366e-08, 0.000100393, 0.000250454]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0, 0]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [5.79024e-07, 0.000932847, 0.00318138]
+cfactor = 7
+anneal = [9.00933e-09, 1.52812e-05, 3.45275e-05]
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 1250
+demosaic_noise = [0.715462, 5.25294e-08, 0.000340907]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [7.67727e-08, 0.000136549, 0.000152142, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [4.33997e-08, 5.24621e-05, 0.000102994, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [3.62981e-08, 2.35166e-05, 0.000150569, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [3.37631e-08, 2.35841e-05, 0.000145085, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.95564, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [2.49807e-05, 0.0407046, 0.107571]
+cfactor = 7
+anneal = [4.37389e-07, 0.000942971, 0.00205493]
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.0110217, 136.095], [2, 0.78625, 0.533331, 0.2286, 2, 0.0110217, 136.095], [4, 0.8575, 0.766669, 0.13716, 3, 0.0110217, 136.095], [8, 0.92875, 1, 0.082296, 4, 0.0110217, 136.095]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.0591471, 0.0591471]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [3.83378e-06, 0.00795062, 0.0102756]
+cfactor = 7
+anneal = [1.03409e-07, 0.000131663, 0.000392418]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.0788628, 0.0249527]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [6.90944e-07, 0.00166033, 0.00459957]
+cfactor = 7
+anneal = [1.55571e-08, 2.06981e-05, 5.99247e-05]
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 1600
+demosaic_noise = [0.808029, 1.74804e-07, 0.000434108]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [1.01049e-07, 0.000167871, 0.000203893, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [5.48889e-08, 6.72077e-05, 0.000116906, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [5.68467e-08, 2.91402e-05, 0.000242709, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [5.82876e-08, 2.93335e-05, 0.000250752, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.752404, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [3.33699e-05, 0.0521964, 0.143155]
+cfactor = 7
+anneal = [6.72244e-07, 0.00118856, 0.00327665]
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.0124477, 120.504], [2, 0.78625, 0.533331, 0.2286, 2, 0.0124477, 120.504], [4, 0.8575, 0.766669, 0.13716, 3, 0.0124477, 120.504], [8, 0.92875, 1, 0.082296, 4, 0.0124477, 120.504]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.330128, 0.330128]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [3.95459e-06, 0.0119918, 0.00202534]
+cfactor = 7
+anneal = [1.55493e-07, 0.000173177, 0.000591726]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.44017, 0.139273]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [6.89776e-07, 0.00284421, 0.00632814]
+cfactor = 7
+anneal = [2.48392e-08, 2.77109e-05, 9.58766e-05]
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 2000
+demosaic_noise = [0.906297, 1.74804e-07, 0.000546417]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [1.23752e-07, 0.000226776, 4.02928e-05, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [6.55383e-08, 8.99269e-05, 6.47839e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [5.96507e-08, 4.1859e-05, 0.000190434, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [6.10551e-08, 4.1448e-05, 0.000198478, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.606359, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [3.31965e-05, 0.0604817, 0.0631396]
+cfactor = 7
+anneal = [8.22402e-07, 0.00154598, 0.00194555]
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.0139615, 107.438], [2, 0.78625, 0.533331, 0.2286, 2, 0.0139615, 107.438], [4, 0.8575, 0.766669, 0.13716, 3, 0.0139615, 107.438], [8, 0.92875, 1, 0.082296, 4, 0.0139615, 107.438]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.524855, 0.524855]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [5.70356e-06, 0.0151093, -0.00546588]
+cfactor = 7
+anneal = [1.64693e-07, 0.000227743, 0.000372137]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.699806, 0.304941]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [1.32031e-06, 0.0040275, 0.00333426]
+cfactor = 7
+anneal = [2.6809e-08, 3.69834e-05, 6.09429e-05]
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 2500
+demosaic_noise = [1.01585, 1.74804e-07, 0.000686803]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [1.63748e-07, 0.000320538, -0.000177557, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [8.32414e-08, 0.000122512, 4.54036e-06, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [6.37175e-08, 5.82032e-05, 0.000125347, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [6.2331e-08, 5.52715e-05, 0.000127367, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.462363, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [2.75351e-05, 0.0571571, -0.0110626]
+cfactor = 7
+anneal = [1.01138e-06, 0.00199532, 0.000280305]
+sharpen = [[1, 0.715, 0.3, 0.381, 1, 0.0156492, 95.8517], [2, 0.78625, 0.533331, 0.2286, 2, 0.0156492, 95.8517], [4, 0.8575, 0.766669, 0.13716, 3, 0.0156492, 95.8517], [8, 0.92875, 1, 0.082296, 4, 0.0156492, 95.8517]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.71685, 0.71685]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [6.89382e-06, 0.0165859, -0.0124432]
+cfactor = 7
+anneal = [1.7361e-07, 0.000290883, 0.000100814]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.9558, 0.579999]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [2.0666e-06, 0.00527141, -0.00119448]
+cfactor = 7
+anneal = [2.84692e-08, 4.69934e-05, 1.83007e-05]
+[[noise.luma]]
+kind = "plain"
+
+[[noise]]
+iso = 3200
+demosaic_noise = [1.15373, 6.07591e-07, 0.000883343]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [2.26998e-07, 0.000466647, -0.00053367, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [1.09592e-07, 0.000170841, -8.84653e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [6.86415e-08, 8.08088e-05, 3.0015e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [6.15723e-08, 7.26195e-05, 2.64737e-05, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.360735, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [2.20863e-05, 0.0517642, -0.0613855]
+cfactor = 7.68837
+anneal = [1.27878e-06, 0.00263042, -0.00206296]
+sharpen = [[1, 0.715, 1, 0.372051, 1, 0.0177732, 84.3968], [2, 0.78625, 1, 0.223231, 2, 0.0177732, 84.3968], [4, 0.8575, 1, 0.133938, 3, 0.0177732, 84.3968], [8, 0.92875, 1, 0.0803631, 4, 0.0177732, 84.3968]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.852354, 0.852354]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [7.81754e-06, 0.017376, -0.018345]
+cfactor = 7.68837
+anneal = [1.87812e-07, 0.000379506, -0.000262833]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.854876]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [2.92655e-06, 0.00655896, -0.00717866]
+cfactor = 7.68837
+anneal = [3.12332e-08, 6.09356e-05, -3.64944e-05]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.26969]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [1.14767e-06, 0.00258294, -0.00287712]
+cfactor = 7.68837
+anneal = [7.87866e-09, 1.06265e-05, 1.04737e-05]
+
+[[noise]]
+iso = 4000
+demosaic_noise = [1.29208, 6.07591e-07, 0.00110893]
+moire_detect = false
+despeckle = [1.25, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [4.02688e-07, 0.000615373, -0.000495988, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [1.73422e-07, 0.00021663, -8.3268e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [9.02015e-08, 9.86324e-05, 7.04856e-06, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [7.36428e-08, 8.38185e-05, -5.9145e-06, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.371033, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [4.32359e-05, 0.0790161, -0.0773651]
+cfactor = 9.26178
+anneal = [2.06511e-06, 0.00341161, -0.00277324]
+sharpen = [[1, 0.715, 1, 0.359798, 1, 0.0199045, 75.3599], [2, 0.78625, 1, 0.215879, 2, 0.0199045, 75.3599], [4, 0.8575, 1, 0.129527, 3, 0.0199045, 75.3599], [8, 0.92875, 1, 0.0777165, 4, 0.0199045, 75.3599]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.838622, 0.838622]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [1.64331e-05, 0.0239862, -0.00630769]
+cfactor = 9.26178
+anneal = [2.98844e-07, 0.00049588, -0.000380706]
+sharpen = [[1, 0.715, 1, 0.359798, 1, 0.0199045, 75.3599], [2, 0.78625, 1, 0.215879, 2, 0.0199045, 75.3599], [4, 0.8575, 1, 0.129527, 3, 0.0199045, 75.3599], [8, 0.92875, 1, 0.0777165, 4, 0.0199045, 75.3599]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [4.14021e-06, 0.00854664, -0.0044971]
+cfactor = 9.26178
+anneal = [4.74034e-08, 7.90667e-05, -5.72277e-05]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.265345]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [1.53133e-06, 0.00315636, -0.00161348]
+cfactor = 9.26178
+anneal = [1.00934e-08, 1.41237e-05, 2.11391e-06]
+
+[[noise]]
+iso = 5000
+demosaic_noise = [1.44653, 6.07591e-07, 0.00139091]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [6.44181e-07, 0.00081423, -0.000431355, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [2.52296e-07, 0.00027261, -7.99969e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [1.1057e-07, 0.000116045, -2.014e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 14
+threshold = [7.74332e-08, 8.92884e-05, -3.95271e-05, 0]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.366616, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [9.16022e-05, 0.14162, -0.114221]
+cfactor = 11
+anneal = [3.13291e-06, 0.0044804, -0.0037402]
+sharpen = [[1, 0.715, 1, 0.348229, 1, 0.0222837, 67.3136], [2, 0.78625, 1, 0.208938, 2, 0.0222837, 67.3136], [4, 0.8575, 1, 0.125363, 3, 0.0222837, 67.3136], [8, 0.92875, 1, 0.0752175, 4, 0.0222837, 67.3136]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.844513, 0.844513]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [3.19124e-05, 0.0360085, 0.015163]
+cfactor = 11
+anneal = [4.58192e-07, 0.000665059, -0.00054815]
+sharpen = [[1, 0.715, 1, 0.348229, 1, 0.0222837, 67.3136], [2, 0.78625, 1, 0.208938, 2, 0.0222837, 67.3136], [4, 0.8575, 1, 0.125363, 3, 0.0222837, 67.3136], [8, 0.92875, 1, 0.0752175, 4, 0.0222837, 67.3136]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [5.74745e-06, 0.0111609, -0.000803018]
+cfactor = 11
+anneal = [7.18201e-08, 0.000106688, -8.73306e-05]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.267209]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [1.83928e-06, 0.00356359, -0.000207985]
+cfactor = 11
+anneal = [1.37294e-08, 1.95343e-05, -9.21087e-06]
+
+[[noise]]
+iso = 6400
+demosaic_noise = [1.64299, 2.09036e-06, 0.00178568]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [9.79495e-07, 0.00107633, -0.000321259, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [3.5623e-07, 0.000346063, -7.95463e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [1.36026e-07, 0.000137609, -4.40466e-05, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [8.05292e-08, 9.41524e-05, -5.78116e-05, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.364332, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000170618, 0.232525, -0.150826]
+cfactor = 10.8648
+anneal = [4.63339e-06, 0.00593895, -0.00506872]
+sharpen = [[1, 0.715, 1, 0.26245, 1, 0.0253103, 59.2644], [2, 0.78625, 1, 0.15747, 2, 0.0253103, 59.2644], [4, 0.8575, 1, 0.094482, 3, 0.0253103, 59.2644], [8, 0.92875, 1, 0.0566892, 4, 0.0253103, 59.2644]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.847558, 0.847558]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [5.52142e-05, 0.051563, 0.0546428]
+cfactor = 10.8648
+anneal = [6.85072e-07, 0.000896517, -0.000779497]
+sharpen = [[1, 0.715, 1, 0.26245, 1, 0.0253103, 59.2644], [2, 0.78625, 1, 0.15747, 2, 0.0253103, 59.2644], [4, 0.8575, 1, 0.094482, 3, 0.0253103, 59.2644], [8, 0.92875, 1, 0.0566892, 4, 0.0253103, 59.2644]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [7.83154e-06, 0.0144579, 0.00468471]
+cfactor = 10.8648
+anneal = [1.06962e-07, 0.000144454, -0.000129016]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.268173]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [2.252e-06, 0.00416082, 0.00128162]
+cfactor = 10.8648
+anneal = [1.90663e-08, 2.69931e-05, -2.50286e-05]
+
+[[noise]]
+iso = 8000
+demosaic_noise = [1.83561, 2.09036e-06, 0.00223238]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [1.4562e-06, 0.0012718, 0.000436356, 0]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 3
+threshold = [5.79793e-07, 0.000397956, 0.00046473, 0]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [2.71062e-07, 0.000149632, 0.000316042, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [1.96227e-07, 9.68489e-05, 0.000319152, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.364583, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000244594, 0.305253, -0.428737]
+cfactor = 9.98233
+anneal = [7.7585e-06, 0.00710947, -0.00755326]
+sharpen = [[1, 0.715, 1, 0.163453, 1, 0.0282776, 53.0455], [2, 0.78625, 1, 0.0980721, 2, 0.0282776, 53.0455], [4, 0.8575, 1, 0.0588432, 3, 0.0282776, 53.0455], [8, 0.92875, 1, 0.0353059, 4, 0.0282776, 53.0455]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.847222, 0.847222]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [7.04821e-05, 0.0708573, -0.0318266]
+cfactor = 9.98233
+anneal = [1.1301e-06, 0.00107227, -0.00117512]
+sharpen = [[1, 0.715, 1, 0.163453, 1, 0.0282776, 53.0455], [2, 0.78625, 1, 0.0980721, 2, 0.0282776, 53.0455], [4, 0.8575, 1, 0.0588432, 3, 0.0282776, 53.0455], [8, 0.92875, 1, 0.0353059, 4, 0.0282776, 53.0455]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [1.28763e-05, 0.019042, -0.0144711]
+cfactor = 9.98233
+anneal = [1.71877e-07, 0.000172095, -0.000197062]
+sharpen = [[1, 0.715, 1, 0.163453, 1, 0.0282776, 53.0455, 0.1], [2, 0.78625, 1, 0.0980721, 2, 0.0282776, 53.0455, 0.1], [4, 0.8575, 1, 0.0588432, 3, 0.0282776, 53.0455, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.318131]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [3.68595e-06, 0.00550393, -0.00405229]
+cfactor = 9.98233
+anneal = [3.06809e-08, 3.2736e-05, -3.98615e-05]
+
+[[noise]]
+iso = 10000
+demosaic_noise = [2.0511, 2.09036e-06, 0.00279075]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [1.88246e-06, 0.0014106, 0.00118748, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [8.01152e-07, 0.000441221, 0.00100201, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -0.350013, -0.806098, -0.912899, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [4.24297e-07, 0.000161951, 0.000715959, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [3.50503e-07, 0.000106113, 0.000799584, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.366306, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000331881, 0.389308, -0.770958]
+cfactor = 9.33844
+anneal = [1.00148e-05, 0.00753448, -0.00932504]
+sharpen = [[1, 0.715, 1, 0.17998, 1, 0.0315973, 47.4725], [2, 0.78625, 1, 0.107988, 2, 0.0315973, 47.4725], [4, 0.8575, 1, 0.0647929, 3, 0.0315973, 47.4725], [8, 0.92875, 1, 0.0388757, 4, 0.0315973, 47.4725]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.844925, 0.844925]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [9.14891e-05, 0.0974044, -0.151721]
+cfactor = 9.33844
+anneal = [1.47738e-06, 0.00116079, -0.00150081]
+sharpen = [[1, 0.715, 1, 0.17998, 1, 0.0315973, 47.4725], [2, 0.78625, 1, 0.107988, 2, 0.0315973, 47.4725], [4, 0.8575, 1, 0.0647929, 3, 0.0315973, 47.4725], [8, 0.92875, 1, 0.0388757, 4, 0.0315973, 47.4725]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [2.07959e-05, 0.026341, -0.0436124]
+cfactor = 9.33844
+anneal = [2.26456e-07, 0.000190039, -0.000260685]
+sharpen = [[1, 0.715, 1, 0.17998, 1, 0.0315973, 47.4725, 0.1], [2, 0.78625, 1, 0.107988, 2, 0.0315973, 47.4725, 0.1], [4, 0.8575, 1, 0.0647929, 3, 0.0315973, 47.4725, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.404598]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [6.21234e-06, 0.00793114, -0.0129242]
+cfactor = 9.33844
+anneal = [4.13018e-08, 3.74937e-05, -5.52639e-05]
+
+[[noise]]
+iso = 12800
+demosaic_noise = [2.33059, 7.29472e-06, 0.00357247]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [2.35432e-06, 0.00156443, 0.00200014, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [1.0666e-06, 0.000495419, 0.00158399, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -0.538311, -1.02331, -1.04669, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [6.25041e-07, 0.000179042, 0.00121968, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [5.73582e-07, 0.000120894, 0.00149207, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.368158, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000451036, 0.503733, -1.24138]
+cfactor = 8.50332
+anneal = [1.22959e-05, 0.00805672, -0.0112795]
+sharpen = [[1, 0.715, 1, 0.201415, 1, 0.0359027, 41.7795], [2, 0.78625, 1, 0.120849, 2, 0.0359027, 41.7795], [4, 0.8575, 1, 0.0725094, 3, 0.0359027, 41.7795], [8, 0.92875, 1, 0.0435056, 4, 0.0359027, 41.7795]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.842456, 0.842456]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [0.000119931, 0.134208, -0.33083]
+cfactor = 8.50332
+anneal = [1.80555e-06, 0.00124814, -0.00185308]
+sharpen = [[1, 0.715, 1, 0.201415, 1, 0.0359027, 41.7795], [2, 0.78625, 1, 0.120849, 2, 0.0359027, 41.7795], [4, 0.8575, 1, 0.0725094, 3, 0.0359027, 41.7795], [8, 0.92875, 1, 0.0435056, 4, 0.0359027, 41.7795]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [3.25308e-05, 0.0364524, -0.0898743]
+cfactor = 8.50332
+anneal = [2.7533e-07, 0.00020625, -0.000330718]
+sharpen = [[1, 0.715, 1, 0.201415, 1, 0.0359027, 41.7795, 0.1], [2, 0.78625, 1, 0.120849, 2, 0.0359027, 41.7795, 0.1], [4, 0.8575, 1, 0.0725094, 3, 0.0359027, 41.7795, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.483671]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [1.01065e-05, 0.01135, -0.0279924]
+cfactor = 8.50332
+anneal = [5.05396e-08, 4.18407e-05, -7.27455e-05]
+
+[[noise]]
+iso = 16000
+demosaic_noise = [2.44402, 7.29472e-06, 0.00393351]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [3.148e-06, 0.00188032, 0.00174107, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [1.48434e-06, 0.000622556, 0.00183604, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -0.623156, -1.11146, -1.10099, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [7.53439e-07, 0.000225481, 0.00106066, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [6.36883e-07, 0.00015072, 0.00117078, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.448057, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000451507, 0.58094, -1.81623]
+cfactor = 8.1644
+anneal = [1.18903e-05, 0.00944596, -0.020631]
+sharpen = [[1, 0.715, 1, 0.210114, 1, 0.0376501, 39.8406], [2, 0.78625, 1, 0.126068, 2, 0.0376501, 39.8406], [4, 0.8575, 1, 0.075641, 3, 0.0376501, 39.8406], [8, 0.92875, 1, 0.0453846, 4, 0.0376501, 39.8406]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.735924, 0.735924]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [0.000121892, 0.160619, -0.517095]
+cfactor = 8.1644
+anneal = [2.00717e-06, 0.00171208, -0.00403311]
+sharpen = [[1, 0.715, 1, 0.210114, 1, 0.0376501, 39.8406], [2, 0.78625, 1, 0.126068, 2, 0.0376501, 39.8406], [4, 0.8575, 1, 0.075641, 3, 0.0376501, 39.8406], [8, 0.92875, 1, 0.0453846, 4, 0.0376501, 39.8406]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.981231, 0.981231]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [3.30682e-05, 0.0443042, -0.145406]
+cfactor = 8.1644
+anneal = [3.45898e-07, 0.000316093, -0.000785373]
+sharpen = [[1, 0.715, 1, 0.210114, 1, 0.0376501, 39.8406, 0.1], [2, 0.78625, 1, 0.126068, 2, 0.0376501, 39.8406, 0.1], [4, 0.8575, 1, 0.075641, 3, 0.0376501, 39.8406, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 0.917438]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [1.01924e-05, 0.0138418, -0.0460737]
+cfactor = 8.1644
+anneal = [6.81869e-08, 6.56951e-05, -0.000166295]
+
+[[noise]]
+iso = 20000
+demosaic_noise = [2.57879, 7.29472e-06, 0.00438481]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [4.53395e-06, 0.00247113, 0.00155556, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [2.17364e-06, 0.000837178, 0.00233244, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -0.730296, -1.21621, -1.16551, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [9.69583e-07, 0.000298394, 0.000890024, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [7.20774e-07, 0.000189195, 0.000768889, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.313111, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000453123, 0.678399, -2.53629]
+cfactor = 7.76168
+anneal = [1.17826e-05, 0.0117133, -0.034276]
+sharpen = [[1, 0.715, 1, 0.22045, 1, 0.0397263, 37.7584], [2, 0.78625, 1, 0.13227, 2, 0.0397263, 37.7584], [4, 0.8575, 1, 0.0793621, 3, 0.0397263, 37.7584], [8, 0.92875, 1, 0.0476173, 4, 0.0397263, 37.7584]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.915852, 0.915852]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [0.000111941, 0.172, -0.657083]
+cfactor = 7.76168
+anneal = [2.41489e-06, 0.00254436, -0.00778187]
+sharpen = [[1, 0.715, 1, 0.22045, 1, 0.0397263, 37.7584], [2, 0.78625, 1, 0.13227, 2, 0.0397263, 37.7584], [4, 0.8575, 1, 0.0793621, 3, 0.0397263, 37.7584], [8, 0.92875, 1, 0.0476173, 4, 0.0397263, 37.7584]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [2.72441e-05, 0.042592, -0.164753]
+cfactor = 7.76168
+anneal = [4.87851e-07, 0.000535978, -0.00168101]
+sharpen = [[1, 0.715, 1, 0.22045, 1, 0.0397263, 37.7584, 0.1], [2, 0.78625, 1, 0.13227, 2, 0.0397263, 37.7584, 0.1], [4, 0.8575, 1, 0.0793621, 3, 0.0397263, 37.7584, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [7.47118e-06, 0.0118429, -0.0461804]
+cfactor = 7.76168
+anneal = [1.05574e-07, 0.000118086, -0.000370942]
+
+[[noise]]
+iso = 25600
+demosaic_noise = [2.79236, 2.72338e-05, 0.00501664]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [6.69643e-06, 0.00335737, 0.00110098, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [3.2498e-06, 0.00116421, 0.00299096, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -0.914143, -1.3822, -1.26775, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [1.30549e-06, 0.00040648, 0.000571621, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [8.42873e-07, 0.000243977, 0.000197732, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.422051, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000458859, 0.820718, -3.56903]
+cfactor = 7.12351
+anneal = [1.15768e-05, 0.0155375, -0.0572698]
+sharpen = [[1, 0.715, 1, 0.23683, 1, 0.0430164, 34.8705], [2, 0.78625, 1, 0.142098, 2, 0.0430164, 34.8705], [4, 0.8575, 1, 0.0852587, 3, 0.0430164, 34.8705], [8, 0.92875, 1, 0.0511552, 4, 0.0430164, 34.8705]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.770599, 0.770599]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [8.51699e-05, 0.152721, -0.662719]
+cfactor = 7.12351
+anneal = [2.86763e-06, 0.00386057, -0.0142236]
+sharpen = [[1, 0.715, 1, 0.23683, 1, 0.0430164, 34.8705], [2, 0.78625, 1, 0.142098, 2, 0.0430164, 34.8705], [4, 0.8575, 1, 0.0852587, 3, 0.0430164, 34.8705], [8, 0.92875, 1, 0.0511552, 4, 0.0430164, 34.8705]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [1.54743e-05, 0.0278653, -0.120488]
+cfactor = 7.12351
+anneal = [6.59892e-07, 0.000891645, -0.00328345]
+sharpen = [[1, 0.715, 1, 0.23683, 1, 0.0430164, 34.8705, 0.1], [2, 0.78625, 1, 0.142098, 2, 0.0430164, 34.8705, 0.1], [4, 0.8575, 1, 0.0852587, 3, 0.0430164, 34.8705, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [3.26218e-06, 0.00591168, -0.025426]
+cfactor = 7.12351
+anneal = [1.5041e-07, 0.000204172, -0.000751379]
+
+[[noise]]
+iso = 32000
+demosaic_noise = [3.14329, 2.72338e-05, 0.0064053]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [8.08237e-06, 0.00437893, -0.000304088, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [3.65005e-06, 0.0016149, 0.00176269, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -1.25369, -1.65494, -1.43575, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [1.43717e-06, 0.000586905, 0.000229554, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [9.1048e-07, 0.000358888, -4.71621e-06, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.451055, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000719986, 1.14494, -4.58392]
+cfactor = 6.1937
+anneal = [1.74504e-05, 0.0201861, -0.0719701]
+sharpen = [[1, 0.715, 1, 0.256126, 1, 0.0484224, 30.9774], [2, 0.78625, 1, 0.153676, 2, 0.0484224, 30.9774], [4, 0.8575, 1, 0.0922054, 3, 0.0484224, 30.9774], [8, 0.92875, 1, 0.0553232, 4, 0.0484224, 30.9774]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.731927, 0.731927]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [0.000140582, 0.225052, -0.901152]
+cfactor = 6.1937
+anneal = [4.24541e-06, 0.00495684, -0.0176975]
+sharpen = [[1, 0.715, 1, 0.256126, 1, 0.0484224, 30.9774], [2, 0.78625, 1, 0.153676, 2, 0.0484224, 30.9774], [4, 0.8575, 1, 0.0922054, 3, 0.0484224, 30.9774], [8, 0.92875, 1, 0.0553232, 4, 0.0484224, 30.9774]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.975902, 0.975902]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [2.70415e-05, 0.043608, -0.174281]
+cfactor = 6.1937
+anneal = [9.57607e-07, 0.0011305, -0.00404282]
+sharpen = [[1, 0.715, 1, 0.256126, 1, 0.0484224, 30.9774, 0.1], [2, 0.78625, 1, 0.153676, 2, 0.0484224, 30.9774, 0.1], [4, 0.8575, 1, 0.0922054, 3, 0.0484224, 30.9774, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [5.56949e-06, 0.00917598, -0.0368352]
+cfactor = 6.1937
+anneal = [2.09435e-07, 0.000251608, -0.000902297]
+
+[[noise]]
+iso = 40000
+demosaic_noise = [3.53327, 2.72338e-05, 0.00814113]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [8.69707e-06, 0.0050391, -0.00209207, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [3.75037e-06, 0.00198334, 9.55208e-05, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -1.68565, -1.95803, -1.62244, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [1.4795e-06, 0.000757378, -0.000219517, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [9.86938e-07, 0.000499813, -0.000261442, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.455593, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.00114568, 1.67492, -6.2534]
+cfactor = 5.17803
+anneal = [2.52717e-05, 0.0264095, -0.0916945]
+sharpen = [[1, 0.715, 1, 0.276439, 1, 0.0544301, 27.5583], [2, 0.78625, 1, 0.165864, 2, 0.0544301, 27.5583], [4, 0.8575, 1, 0.0995182, 3, 0.0544301, 27.5583], [8, 0.92875, 1, 0.0597109, 4, 0.0544301, 27.5583]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.725876, 0.725876]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [0.000265767, 0.390638, -1.45997]
+cfactor = 5.17803
+anneal = [5.59e-06, 0.00593409, -0.0206744]
+sharpen = [[1, 0.715, 1, 0.276439, 1, 0.0544301, 27.5583], [2, 0.78625, 1, 0.165864, 2, 0.0544301, 27.5583], [4, 0.8575, 1, 0.0995182, 3, 0.0544301, 27.5583], [8, 0.92875, 1, 0.0597109, 4, 0.0544301, 27.5583]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.967835, 0.967835]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [6.06693e-05, 0.0895656, -0.334531]
+cfactor = 5.17803
+anneal = [1.15046e-06, 0.00124659, -0.00436225]
+sharpen = [[1, 0.715, 1, 0.276439, 1, 0.0544301, 27.5583, 0.1], [2, 0.78625, 1, 0.165864, 2, 0.0544301, 27.5583, 0.1], [4, 0.8575, 1, 0.0995182, 3, 0.0544301, 27.5583, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [1.38739e-05, 0.0207885, -0.0781136]
+cfactor = 5.17803
+anneal = [2.28237e-07, 0.000255178, -0.000898859]
+
+[[noise]]
+iso = 51200
+demosaic_noise = [4.1101, 0.000103599, 0.0105713]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [9.50276e-06, 0.0058793, -0.00420436, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [3.9326e-06, 0.00244861, -0.00184742, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -2.43002, -2.40633, -1.89858, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [1.55638e-06, 0.00097536, -0.000774626, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [1.08308e-06, 0.000690106, -0.000617608, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.450956, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.00176223, 2.40898, -8.43477]
+cfactor = 3.97147
+anneal = [3.76686e-05, 0.036339, -0.123249]
+sharpen = [[1, 0.715, 1, 0.301883, 1, 0.0633161, 23.6907], [2, 0.78625, 1, 0.18113, 2, 0.0633161, 23.6907], [4, 0.8575, 1, 0.108678, 3, 0.0633161, 23.6907], [8, 0.92875, 1, 0.0652067, 4, 0.0633161, 23.6907]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.732058, 0.732058]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [0.000455504, 0.625189, -2.19133]
+cfactor = 3.97147
+anneal = [7.15114e-06, 0.00707009, -0.0241365]
+sharpen = [[1, 0.715, 1, 0.301883, 1, 0.0633161, 23.6907], [2, 0.78625, 1, 0.18113, 2, 0.0633161, 23.6907], [4, 0.8575, 1, 0.108678, 3, 0.0633161, 23.6907], [8, 0.92875, 1, 0.0652067, 4, 0.0633161, 23.6907]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.976077, 0.976077]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [0.000116535, 0.160564, -0.563348]
+cfactor = 3.97147
+anneal = [1.27503e-06, 0.00130858, -0.00451029]
+sharpen = [[1, 0.715, 1, 0.301883, 1, 0.0633161, 23.6907, 0.1], [2, 0.78625, 1, 0.18113, 2, 0.0633161, 23.6907, 0.1], [4, 0.8575, 1, 0.108678, 3, 0.0633161, 23.6907, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [2.87416e-05, 0.0398599, -0.140087]
+cfactor = 3.97147
+anneal = [2.21201e-07, 0.000240678, -0.00084132]
+
+[[noise]]
+iso = 64000
+demosaic_noise = [4.46949, 0.000103599, 0.0126269]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [1.30829e-05, 0.00809342, -0.00721851, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [5.88773e-06, 0.00332391, -0.00280972, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -2.95742, -2.68564, -2.07062, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [2.30764e-06, 0.00134411, -0.00122936, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [1.47392e-06, 0.000941017, -0.00101966, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.391535, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.00112717, 3.24284, -14.5985]
+cfactor = 3.88911
+anneal = [5.21316e-05, 0.0538122, -0.191702]
+sharpen = [[1, 0.715, 1, 0.307319, 1, 0.0688525, 21.7857], [2, 0.78625, 1, 0.184391, 2, 0.0688525, 21.7857], [4, 0.8575, 1, 0.110635, 3, 0.0688525, 21.7857], [8, 0.92875, 1, 0.0663808, 4, 0.0688525, 21.7857]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.811286, 0.811286]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [0.000293345, 0.848954, -3.81688]
+cfactor = 3.88911
+anneal = [9.54302e-06, 0.0102095, -0.0366372]
+sharpen = [[1, 0.715, 1, 0.307319, 1, 0.0688525, 21.7857], [2, 0.78625, 1, 0.184391, 2, 0.0688525, 21.7857], [4, 0.8575, 1, 0.110635, 3, 0.0688525, 21.7857], [8, 0.92875, 1, 0.0663808, 4, 0.0688525, 21.7857]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [7.52001e-05, 0.223289, -1.00665]
+cfactor = 3.88911
+anneal = [1.65304e-06, 0.00187631, -0.00681428]
+sharpen = [[1, 0.715, 1, 0.307319, 1, 0.0688525, 21.7857, 0.1], [2, 0.78625, 1, 0.184391, 2, 0.0688525, 21.7857, 0.1], [4, 0.8575, 1, 0.110635, 3, 0.0688525, 21.7857, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [1.84533e-05, 0.0571873, -0.258867]
+cfactor = 3.88911
+anneal = [2.77927e-07, 0.000347622, -0.00128516]
+
+[[noise]]
+iso = 80000
+demosaic_noise = [4.88166, 0.000103599, 0.0151964]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [1.89402e-05, 0.0116439, -0.0115878, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [9.11635e-06, 0.00464252, -0.00397596, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -3.6224, -3.00598, -2.26794, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [3.46024e-06, 0.00186755, -0.00178866, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [1.92728e-06, 0.00124716, -0.00152541, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.428301, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [0.000359004, 3.95839, -20.4529]
+cfactor = 3.79466
+anneal = [7.63322e-05, 0.0825882, -0.304186]
+sharpen = [[1, 0.715, 1, 0.313552, 1, 0.0752019, 19.9463], [2, 0.78625, 1, 0.188131, 2, 0.0752019, 19.9463], [4, 0.8575, 1, 0.112879, 3, 0.0752019, 19.9463], [8, 0.92875, 1, 0.0677273, 4, 0.0752019, 19.9463]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.762265, 0.762265]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [9.34961e-05, 1.06075, -5.47091]
+cfactor = 3.79466
+anneal = [1.37585e-05, 0.0154886, -0.0574385]
+sharpen = [[1, 0.715, 1, 0.313552, 1, 0.0752019, 19.9463], [2, 0.78625, 1, 0.188131, 2, 0.0752019, 19.9463], [4, 0.8575, 1, 0.112879, 3, 0.0752019, 19.9463], [8, 0.92875, 1, 0.0677273, 4, 0.0752019, 19.9463]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [2.33631e-05, 0.28832, -1.48827]
+cfactor = 3.79466
+anneal = [2.35921e-06, 0.00283886, -0.0106466]
+sharpen = [[1, 0.715, 1, 0.313552, 1, 0.0752019, 19.9463, 0.1], [2, 0.78625, 1, 0.188131, 2, 0.0752019, 19.9463, 0.1], [4, 0.8575, 1, 0.112879, 3, 0.0752019, 19.9463, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [5.33497e-06, 0.0766448, -0.39602]
+cfactor = 3.79466
+anneal = [3.91057e-07, 0.000526252, -0.00200729]
+
+[[noise]]
+iso = 102400
+demosaic_noise = [5.68066, 0.000407935, 0.0187937]
+moire_detect = false
+despeckle = [8.08601, 1]
+[[noise.chroma_passes]]
+kind = "plain"
+scale = 1
+threshold = [3.23145e-05, 0.0195383, -0.02028, 0]
+[[noise.chroma_passes]]
+kind = "despeckle"
+scale = 3
+threshold = [1.68531e-05, 0.00730672, -0.0053968, 0]
+despeckle = [0, 1, 0.006, 1.5, 1, -5.09447, -3.62695, -2.65043, 4, 1, 1.457, 1.5, 0.2]
+[[noise.chroma_passes]]
+kind = "early_out"
+scale = 7
+threshold = [5.97144e-06, 0.00283135, -0.00251419, 0]
+[[noise.chroma_passes]]
+kind = "early_out2"
+scale = 14
+threshold = [2.44882e-06, 0.00164876, -0.002242, 0]
+despeckle = [5, 0.15]
+[[noise.luma]]
+kind = "thru_g3"
+parms = [0.00151572, 1, 0.443343, 1]
+roparms = [0.00245546, 0.00736638, 0.00491092, 0.142857]
+omparms = [0.499, 3.603]
+dir_to_c = [-0.000403745, 3.71514, -21.0292]
+cfactor = 3.61156
+anneal = [0.000133839, 0.149456, -0.564394]
+sharpen = [[1, 0.715, 1, 0.325637, 1, 0.0875106, 17.1408], [2, 0.78625, 1, 0.195382, 2, 0.0875106, 17.1408], [4, 0.8575, 1, 0.117229, 3, 0.0875106, 17.1408], [8, 0.92875, 1, 0.0703376, 4, 0.0875106, 17.1408]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.742209, 0.742209]
+roparms = [0.000429706, 0.00128912, 0.000859411, 0]
+omparms = [0.455682, 24.7261]
+dir_to_c = [-0.000122007, 1.08895, -6.15257]
+cfactor = 3.61156
+anneal = [2.42619e-05, 0.0280293, -0.106396]
+sharpen = [[1, 0.715, 1, 0.325637, 1, 0.0875106, 17.1408], [2, 0.78625, 1, 0.195382, 2, 0.0875106, 17.1408], [4, 0.8575, 1, 0.117229, 3, 0.0875106, 17.1408], [8, 0.92875, 1, 0.0703376, 4, 0.0875106, 17.1408]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 0.989612, 0.989612]
+roparms = [0.000306933, 0.000920798, 0.000613865, 0]
+omparms = [0.416124, 169.687]
+dir_to_c = [-3.71676e-05, 0.325331, -1.83591]
+cfactor = 3.61156
+anneal = [4.20984e-06, 0.00514532, -0.0196905]
+sharpen = [[1, 0.715, 1, 0.325637, 1, 0.0875106, 17.1408, 0.1], [2, 0.78625, 1, 0.195382, 2, 0.0875106, 17.1408, 0.1], [4, 0.8575, 1, 0.117229, 3, 0.0875106, 17.1408, 0.1]]
+[[noise.luma]]
+kind = "thru_g"
+parms = [0, 0, 1, 1]
+roparms = [0.00018416, 0.000552479, 0.000368319, 0]
+omparms = [0.38, 1164.5]
+dir_to_c = [-1.12831e-05, 0.0952942, -0.536543]
+cfactor = 3.61156
+anneal = [7.05337e-07, 0.000948723, -0.00367699]
+

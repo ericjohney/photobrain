@@ -15,6 +15,11 @@
 //!    - `despeckle`: additionally replaces isolated dark/saturated/red speckles by the
 //!      average of their 4 neighbours (high ISO).
 //! 3. Expand (`expandHRGB`): bilinear (9/3/3/1) upsample to full resolution.
+//!
+//! Some Bayer recipes instead use a single fused pass (`powerBlurLFS`, kind `fs`): it
+//! reads the full-resolution image at the 2x2-block centres around each pixel, does the
+//! 4-neighbour selective average for the four nearest half-resolution samples and
+//! interpolates them (9/3/3/1), without a separate extract or expand.
 //! 4. Gather (`YAndRGBGather`): keep the filtered chromaticity but restore each pixel's
 //!    own full-resolution luminance, so detail is untouched.
 //!
@@ -303,6 +308,7 @@ fn pass(src: &Plane, p: &ChromaNrPass, nf: [f32; 3], strength: f32) -> Plane {
             }
           }
         }
+        PassKind::Fs => unreachable!("powerBlurLFS is applied by fused_fs"),
         PassKind::Despeckle => {
           for off in TAPS {
             let v = tap(off);
@@ -421,8 +427,13 @@ pub fn apply(
   let nf = [1.0 / wb[0], 1.0 / wb[1], 1.0 / wb[2]];
   let (w, h) = (img.width, img.height);
 
-  let plane = do_chroma.then(|| {
-    let strength = chroma / 0.5;
+  let strength = chroma / 0.5;
+  // powerBlurLFS recipes: one fused full-resolution pass.
+  let fused = do_chroma
+    && noise.chroma_passes.len() == 1
+    && noise.chroma_passes[0].kind == PassKind::Fs;
+  let fused_kc = fused.then(|| fused_fs(img, &noise.chroma_passes[0], nf, k, strength));
+  let plane = (do_chroma && !fused).then(|| {
     let mut plane = extract(img, [k, k, k], noise.moire_detect.then_some(1000.0));
     for p in &noise.chroma_passes {
       plane = pass(&plane, p, nf, strength);
@@ -449,8 +460,12 @@ pub fn apply(
     for x in 0..w {
       let p = &mut row[x * 3..x * 3 + 3];
       let yorig = (p[0] * LUM[0] + p[1] * LUM[1] + p[2] * LUM[2]) * k;
-      let kc: [f32; 3] = match &plane {
-        Some(plane) => {
+      let kc: [f32; 3] = match (&plane, &fused_kc) {
+        (_, Some(f)) => {
+          let i = (y * w + x) * 3;
+          [f[i], f[i + 1], f[i + 2]]
+        }
+        (Some(plane), None) => {
           let (hx, vx) = (x / 2, if x % 2 == 0 { -1 } else { 1 });
           let (hx, hy) = (hx as isize, hy as isize);
           let c1 = plane.at(hx, hy);
@@ -459,7 +474,7 @@ pub fn apply(
           let c4 = plane.at(hx + vx, hy + vy);
           std::array::from_fn(|i| c1[i] * 0.5625 + (c2[i] + c3[i]) * 0.1875 + c4[i] * 0.0625)
         }
-        None => [p[0] * k, p[1] * k, p[2] * k],
+        (None, None) => [p[0] * k, p[1] * k, p[2] * k],
       };
       let mut y0 = match &y_out {
         Some(l) => l.d[(h - 1 - y) * w + x],
@@ -478,6 +493,69 @@ pub fn apply(
       p[2] = kc[2] * s;
     }
   });
+}
+
+/// powerBlurLFS over the whole image: returns k-scaled RGB per full-resolution pixel.
+fn fused_fs(img: &RgbImage, p: &ChromaNrPass, nf: [f32; 3], k: f32, strength: f32) -> Vec<f32> {
+  let (w, h) = (img.width, img.height);
+  let th = p.threshold;
+  // Image samples at Core Image coordinates (x, y up), times the uniform scale k. The
+  // kernel works in Core Image orientation; we sample with flipped y.
+  let sampler = |cx: f32, cy: f32| -> [f32; 4] {
+    let (x, y) = (cx, h as f32 - cy);
+    [
+      img.sample_bilinear(x, y, 0) * k,
+      img.sample_bilinear(x, y, 1) * k,
+      img.sample_bilinear(x, y, 2) * k,
+      1.0,
+    ]
+  };
+  let mut out = vec![0.0f32; w * h * 3];
+  out.par_chunks_mut(w * 3).enumerate().for_each(|(row, o)| {
+    // Core Image destCoord for this row.
+    let py = (h - 1 - row) as f32 + 0.5;
+    let ceny = 2.0 * (py * 0.5).floor() + 1.0;
+    let by = ((py - ceny) * 4.0 + 0.5).floor();
+    for x in 0..w {
+      let px = x as f32 + 0.5;
+      let cenx = 2.0 * (px * 0.5).floor() + 1.0;
+      let bx = ((px - cenx) * 4.0 + 0.5).floor();
+      let n = |dx: f32, dy: f32| sampler(cenx + dx, ceny + dy);
+      let n1 = n(0.0, 2.0 * by);
+      let n2 = n(bx, 2.0 * by);
+      let n3 = n(-bx, by);
+      let n4 = n(0.0, by);
+      let n5 = n(bx, by);
+      let n6 = n(2.0 * bx, by);
+      let n7 = n(-bx, 0.0);
+      let n8 = n(0.0, 0.0);
+      let n9 = n(bx, 0.0);
+      let n10 = n(2.0 * bx, 0.0);
+      let n11 = n(0.0, -by);
+      let n12 = n(bx, -by);
+      let blur = |c: [f32; 4], nb: [[f32; 4]; 4]| -> [f32; 3] {
+        let yl = lum(c);
+        let t = (th[0] + th[1] * yl + th[2] * yl * yl) * strength;
+        let mut sum = c;
+        for v in nb {
+          if nf_err(v, c, nf) < t {
+            for q in 0..4 {
+              sum[q] += v[q];
+            }
+          }
+        }
+        [sum[0] / sum[3], sum[1] / sum[3], sum[2] / sum[3]]
+      };
+      let pb1 = blur(n8, [n4, n7, n9, n11]);
+      let pb2 = blur(n4, [n1, n3, n5, n8]);
+      let pb3 = blur(n9, [n5, n8, n10, n12]);
+      let pb4 = blur(n5, [n2, n4, n6, n9]);
+      for c in 0..3 {
+        o[x * 3 + c] = 0.5625 * pb1[c] + 0.1875 * (pb2[c] + pb3[c]) + 0.0625 * pb4[c];
+      }
+    }
+  });
+  out
 }
 
 #[inline]
@@ -514,6 +592,7 @@ mod tests {
         },
       ],
       luma: vec![],
+      despeckle: None,
     }
   }
 

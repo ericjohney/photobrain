@@ -608,6 +608,19 @@ pub fn process(y0: &P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
       let p = root.parms;
       let pb = 1.0 - amt.lnr.clamp(0.0, 1.0);
       let sharp = p[1] * amt.sharpness;
+      // FGN: a clamped high-pass of the full-resolution detail band, sampled 1.2 px
+      // apart, added back by addFGN outside the structure mask.
+      let fgn = (root.fine_grain != 0.0).then(|| {
+        P1::map(d0.w, d0.h, |x, y| {
+          let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
+          let t = |dx: f32, dy: f32| d0.s(cx + dx * 1.2, cy + dy * 1.2);
+          let b = t(0.0, 0.0) * 0.859375
+            - (t(0.0, -1.0) + t(-1.0, 0.0) + t(1.0, 0.0) + t(0.0, 1.0)) * 0.1171875
+            - (t(-1.0, -1.0) + t(1.0, -1.0) + t(-1.0, 1.0) + t(1.0, 1.0)) * 0.09765625;
+          b.clamp(-0.015, 0.015)
+        })
+      });
+      let fg = root.fine_grain;
       P1::map(d0.w, d0.h, |x, y| {
         let s = expand(hsy, x, y);
         let dd = d0.at(x, y);
@@ -624,7 +637,8 @@ pub fn process(y0: &P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
         let mu = mix(1.0, m, 1.0 - pb);
         let md = mix(dc, du, mu);
         let st = mu * shd * sharp * (1.0 + saf);
-        s + md + st
+        let grain = fgn.as_ref().map_or(0.0, |n| n.at(x, y) * fg * (1.0 - m));
+        s + md + st + grain
       })
     }
   }
@@ -659,6 +673,7 @@ mod tests {
       cfactor: 7.0,
       sharpen: vec![vec![1.0, 0.0, 0.3, 0.381, 1.0, 0.0043, 348.8]],
       gabor: vec![],
+      fine_grain: 0.0,
     };
     let recipe = vec![
       lvl(LevelKind::ThruG3),

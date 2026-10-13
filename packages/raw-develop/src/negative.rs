@@ -43,5 +43,8 @@ fn parse_metadata(data: &[u8]) -> Result<RawMetadata> {
   if data.starts_with(b"FUJIFILMCCD-RAW ") {
     return raf::parse(data);
   }
+  if crate::arw::is_arw(data) {
+    return crate::arw::parse(data);
+  }
   Err(crate::Error::NotRaw)
 }

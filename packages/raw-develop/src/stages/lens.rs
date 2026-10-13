@@ -52,9 +52,20 @@ fn split(arr: &[f64], sets: usize) -> Option<(Vec<f32>, Vec<Vec<f32>>)> {
   Some((knots, values))
 }
 
+/// How a distortion curve maps to a radial source scale.
+#[derive(Clone, Copy, Debug, Default)]
+enum DistortionModel {
+  /// Fuji: percentage displacement, times the profile's fill scale.
+  #[default]
+  FujiPercent,
+  /// Sony: `(1 + d / 16384)`, normalised to 1 at the half-diagonal (RawCamera's table).
+  SonyNormalised { end: f32 },
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LensCorrection {
   distortion: Option<Radial>,
+  model: DistortionModel,
   ca_red: Option<Radial>,
   ca_blue: Option<Radial>,
   vignetting: Option<Radial>,
@@ -67,11 +78,34 @@ impl LensCorrection {
   pub fn from_source(src: &LensSource, fill_scale: f64) -> Self {
     match src {
       LensSource::Fuji(p) => Self::from_params(p, fill_scale),
-      LensSource::Sony(_) | LensSource::None => Self {
+      LensSource::Sony(p) => Self::from_sony(p),
+      LensSource::None => Self {
         fill_scale: 1.0,
         ..Default::default()
       },
     }
+  }
+
+  /// Sony `DistortionCorrParams`: `[n, v_1..v_n]`, values at n evenly spaced radii from
+  /// the centre to the half-diagonal, in units of 1/16384. Only distortion is applied,
+  /// like RawCamera.
+  pub fn from_sony(p: &LensParams) -> Self {
+    let mut lc = LensCorrection {
+      fill_scale: 1.0,
+      ..Default::default()
+    };
+    if let Some(a) = p.distortion.as_deref() {
+      let n = a.first().copied().unwrap_or(0.0) as usize;
+      if n >= 2 && a.len() > n && a[1..=n].iter().any(|&v| v != 0.0) {
+        let values: Vec<f32> = a[1..=n].iter().map(|&v| v as f32).collect();
+        let knots = (0..n).map(|i| i as f32 / (n - 1) as f32).collect();
+        lc.model = DistortionModel::SonyNormalised {
+          end: values[n - 1],
+        };
+        lc.distortion = Some(Radial { knots, values });
+      }
+    }
+    lc
   }
 
   pub fn from_params(p: &LensParams, fill_scale: f64) -> Self {
@@ -125,7 +159,12 @@ impl LensCorrection {
       .distortion
       .as_ref()
       .map_or(0.0, |d| d.eval(r.max(d.knots[0]), 0.0));
-    (1.0 + d / 100.0) * self.fill_scale
+    match self.model {
+      DistortionModel::FujiPercent => (1.0 + d / 100.0) * self.fill_scale,
+      DistortionModel::SonyNormalised { end } => {
+        (1.0 + d / 16384.0) / (1.0 + end / 16384.0)
+      }
+    }
   }
 
   fn ca_scale(&self, ca: &Option<Radial>, r: f32) -> f32 {
@@ -207,6 +246,23 @@ fn sample_bicubic(img: &RgbImage, x: f32, y: f32, c: usize) -> f32 {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn sony_scale_matches_rawcamera_table() {
+    // A1 II + FE 70-200 GM II (file 12766): RawCamera's 51-entry table starts at
+    // 0.986755 and ends at 1.
+    let lc = LensCorrection::from_sony(&LensParams {
+      distortion: Some(
+        [11.0, 0.0, 2.0, 9.0, 19.0, 35.0, 54.0, 78.0, 106.0, 138.0, 176.0, 217.0].to_vec(),
+      ),
+      ..Default::default()
+    });
+    assert!((lc.distortion_scale(0.0) - 0.986755).abs() < 2e-4);
+    assert!((lc.distortion_scale(0.5) - 0.990018).abs() < 2e-4);
+    assert!((lc.distortion_scale(1.0) - 1.0).abs() < 1e-6);
+    let off = LensCorrection::from_sony(&LensParams::default());
+    assert!(off.is_identity());
+  }
 
   #[test]
   fn bicubic_matches_rawcamera_weights_and_is_exact_on_grid() {

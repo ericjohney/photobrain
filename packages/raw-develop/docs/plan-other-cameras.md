@@ -1,6 +1,6 @@
 # Handoff plan: the other cameras in the production library
 
-Status: phases 0 (X100VI) and 1 (format-neutral core, LJ92, Bayer binning) are done; phases 2–4 are open. The plan was written on 2026-10-12 after
+Status: phases 0 (X100VI), 1 (format-neutral core) and 2 (Sony ARW uncompressed and lossless) are done; phases 3–4 are open. The plan was written on 2026-10-12 after
 surveying the production library and running the Apple reference tool on samples of
 every camera. Read [adding-a-camera.md](adding-a-camera.md),
 [pipeline.md](pipeline.md) and [noise-reduction.md](noise-reduction.md) first.
@@ -131,7 +131,7 @@ Ordered by photos covered per unit of effort:
 |---|---|---|---|
 | 0 | X100VI profile (**done**: ΔE00 0.43, `noise_table.py`, `smoothDSharpenAntiBloom`) | 1 | small, and it proves out the "case A" checklist |
 | 1 | Format-neutral core and Bayer support (**done**: `metadata::RawMetadata`, `tiff.rs`, `unpack/ljpeg.rs` + tile assembly, 2×2 binning) | — | medium (refactor) |
-| 2 | Sony ARW: uncompressed and lossless | ≈ 4,550 | large |
+| 2 | Sony ARW: uncompressed and lossless (**done**: ΔE00 0.05–0.40; see below) | ≈ 4,550 | large |
 | 3 | Sony lossy cRAW | ≈ 250 | small–medium |
 | 4 | iPhone ProRAW DNG | 940 | large (a new pipeline variant) |
 | 5 | Integration into `image-processing` | all | separate change; out of scope here |
@@ -223,6 +223,23 @@ Each phase ends with:
 7. **Validation targets**: same as the X-E5 (mean ΔE00 ≤ 0.5 per fixture). Fixture set per
    body: base ISO, 800–1600, 6400+, clipped highlights, tungsten, each lens, and the A1 II
    APS-C crop and 2× teleconverter files.
+
+#### Phase 2 results and answers to the open questions
+
+- **White balance** is plain `WB_RGGBLevels` (0x7313) in the raw SubIFD; no SR2
+  decryption needed. RawCamera's highlight factors equal R/G and B/G exactly.
+- **Lens**: RawCamera uses `DistortionCorrParams` (0x7037) only when
+  `DistortionCorrection` (0x7036) is 1, as `(1 + d/16384)` at n evenly spaced radii
+  normalised to 1 at the half-diagonal (checked against `RAWRadialLensCorrection`'s
+  `inputScales`, max error 2e-4). CA and vignetting arrays are ignored.
+- **Colour and exposure** are read exactly from the graph's two `color_matrix` nodes
+  (`tools/calibrate/graph_color.py`); a second colour temperature comes from patching
+  `WB_RGGBLevels` in a copy.
+- **Noise tables**: the ISO-patch method needs ISO, SOS and REI patched together on Sony.
+- **New kernels**: `despeckle_v8`, `deBayer_v8`, `powerBlurLFS` (fused chroma NR),
+  `FGN`/`addFGN` (fine-grain noise), `smoothDSharpenAntiBloom`.
+- Results (quarter-scale final, mean ΔE00): A1 II 0.07 / 0.05 (and 0.07 at a patched
+  ISO 3200), A7C R ISO 12800 0.40, A7R V 0.21. Decoders bit-exact.
 
 ### Phase 3: Sony lossy cRAW (Compression 32767)
 

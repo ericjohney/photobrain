@@ -16,6 +16,9 @@ pub enum PassKind {
   /// factor]`) preferred for already-saturated pixels.
   EarlyOut2,
   Despeckle,
+  /// powerBlurLFS: one fused pass (extract, 4-neighbour cross average at half
+  /// resolution, expand); used alone instead of a chain.
+  Fs,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -78,6 +81,10 @@ pub struct LumaLevel {
   /// thru_g2 only: gaborToSYAndG [smoothAmt, f1 (4), f2 (2)].
   #[serde(default)]
   pub gabor: Vec<f32>,
+  /// Full-resolution level only: addFGN factor (fine-grain noise re-added outside the
+  /// structure mask), 0 = off.
+  #[serde(default)]
+  pub fine_grain: f32,
 }
 
 /// Noise tuning at one ISO.
@@ -93,6 +100,9 @@ pub struct NoiseIso {
   pub chroma_passes: Vec<ChromaNrPass>,
   /// Luma pyramid recipe: full resolution first, then three coarser levels.
   pub luma: Vec<LumaLevel>,
+  /// Bayer only: despeckle_v8 `[amount, neighborPrevention]` before the demosaic.
+  #[serde(default)]
+  pub despeckle: Option<[f32; 2]>,
 }
 
 impl CameraProfile {
@@ -129,7 +139,16 @@ pub struct CameraProfile {
   /// Per-ISO noise tuning (demosaic noise model, chroma NR), any order.
   #[serde(default)]
   pub noise: Vec<NoiseIso>,
+  #[serde(default = "one")]
   pub distortion_fill_scale: f64,
+  /// Bayer demosaic `exposureFactor` (RawCamera's constant per body; only gates the
+  /// noise mixer in deep shadows). X-Trans derives it from RawExposureBias.
+  #[serde(default)]
+  pub demosaic_exposure_factor: Option<f32>,
+}
+
+fn one() -> f64 {
+  1.0
 }
 
 fn default_base_iso() -> f32 {
@@ -139,6 +158,9 @@ fn default_base_iso() -> f32 {
 const BUILTIN: &[(&str, &str)] = &[
   ("X-E5", include_str!("../profiles/fujifilm-x-e5.toml")),
   ("X100VI", include_str!("../profiles/fujifilm-x100vi.toml")),
+  ("ILCE-1M2", include_str!("../profiles/sony-ilce-1m2.toml")),
+  ("ILCE-7CR", include_str!("../profiles/sony-ilce-7cr.toml")),
+  ("ILCE-7RM5", include_str!("../profiles/sony-ilce-7rm5.toml")),
 ];
 
 impl CameraProfile {
@@ -301,8 +323,11 @@ mod tests {
             assert!(matches!(s.len(), 7 | 8), "{model}: sharpen pass has 7 or 8 values");
           }
         }
+        if c.chroma_passes.iter().any(|p| p.kind == PassKind::Fs) {
+          assert_eq!(c.chroma_passes.len(), 1, "{model}: fs is a single fused pass");
+        }
         for pass in &c.chroma_passes {
-          assert!(pass.scale >= 1, "{model}: chroma NR pass scale");
+          assert!(pass.scale >= 1 || pass.kind == PassKind::Fs, "{model}: chroma NR pass scale");
           if pass.kind == PassKind::Despeckle {
             assert_eq!(pass.despeckle.len(), 13, "{model}: despeckle parameters");
           }

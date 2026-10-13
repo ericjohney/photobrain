@@ -21,7 +21,7 @@ use crate::math::srgb_encode;
 use crate::profile::CameraProfile;
 use crate::settings::{DevelopSettings, WhiteBalance};
 use crate::stages::{
-  chroma_nr, demosaic, detail, dextrans, highlights, lens::LensCorrection, look, luma,
+  chroma_nr, debayer, demosaic, detail, dextrans, highlights, lens::LensCorrection, look, luma,
 };
 use rayon::prelude::*;
 
@@ -120,7 +120,8 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   let (mut img, scale) = match opts.quality {
     Quality::Full => {
       let d = match noise {
-        Some(n) => full_dextrans(neg, profile.white_level, wb, n),
+        Some(n) if meta.cfa.is_xtrans() => full_dextrans(neg, profile.white_level, wb, n),
+        Some(n) => full_debayer(neg, &profile, wb, n),
         None => None,
       };
       let d = d.unwrap_or_else(|| {
@@ -293,6 +294,41 @@ fn full_dextrans(
       meta.crop_width,
       meta.crop_height,
     ),
+    &prm,
+  )?;
+  let wbf = wb.map(|v| v as f32);
+  img.map_pixels(|p| [p[0] * wbf[0], p[1] * wbf[1], p[2] * wbf[2]]);
+  Some(img)
+}
+
+/// Full-resolution Bayer demosaic (RawCamera's despeckle_v8 + deBayer_v8 ports) of the
+/// active area, white-balanced.
+fn full_debayer(
+  neg: &Negative,
+  profile: &CameraProfile,
+  wb: [f64; 3],
+  noise: &crate::profile::NoiseIso,
+) -> Option<RgbImage> {
+  let meta = &neg.meta;
+  let black = meta.mean_black();
+  let (mw, mh) = (meta.raw_width, meta.raw_height);
+  let raw: Vec<f32> = neg.mosaic.par_iter().map(|&v| v as f32 * (1.0 / 65535.0)).collect();
+  let src = match noise.despeckle {
+    Some([amount, prevention]) => debayer::despeckle(&raw, mw, mh, &meta.cfa, amount, prevention),
+    None => raw,
+  };
+  let prm = debayer::Params {
+    black: black / 65535.0,
+    range: 65535.0 / (profile.white_level - black),
+    rn: noise.demosaic_noise,
+    exposure_factor: profile.demosaic_exposure_factor.unwrap_or(2.0),
+  };
+  let mut img = debayer::demosaic(
+    &src,
+    mw,
+    mh,
+    &meta.cfa,
+    (meta.crop_left, meta.crop_top, meta.crop_width, meta.crop_height),
     &prm,
   )?;
   let wbf = wb.map(|v| v as f32);

@@ -15,6 +15,7 @@
 
 #![allow(clippy::needless_range_loop)]
 
+pub mod arw;
 pub mod cfa;
 pub mod encode;
 pub mod error;

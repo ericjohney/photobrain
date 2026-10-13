@@ -28,6 +28,7 @@ PASS_KINDS = {
     "powerBlurEarlyOutLHFi": "hf_early_out",
     "powerBlurEarlyOut2L": "early_out2",
     "powerBlurDespeckleL": "despeckle",
+    "powerBlurLFS": "fs",
 }
 
 LEVEL_KINDS = {
@@ -132,6 +133,8 @@ def walk_levels(n, out):
 
 def entry(text):
     rn = vec(re.search(r"deXtrans_v8\(([^)]*)\)|deBayer_v8\(([^)]*)\)", text).group(0), "rn")
+    ds = re.search(r"despeckle_v8\(([^)]*)\)", text)
+    despeckle = [vec(ds.group(1), "amount")[0], vec(ds.group(1), "neighborPrevention")[0]] if ds else None
     passes = []
     for m in re.finditer(r"kernel (powerBlur[A-Za-z0-9]*)\((.*?)\) outputFormat", text):
         name, args = m.groups()
@@ -147,16 +150,27 @@ def entry(text):
             p["despeckle"] = vec(args, "params3")[:2]
         passes.append(p)
     passes.reverse()  # the graph prints the outermost pass first
-    ex = re.search(r"kernel (extractHRGB\w*)\(", text).group(1)
+    ex = re.search(r"kernel (extractHRGB\w*)\(", text)
+    ex = ex.group(1) if ex else None
     root = parse_tree(text, "YAndRGBGather")
+    top = root["c"][0]
+    fine_grain = 0.0
+    if top["k"] == "addFGN":
+        fine_grain = vec(top["args"], "factor")[0]
+        top = top["c"][0]
     levels = []
-    walk_levels(root["c"][0], levels)
+    walk_levels(top, levels)
+    if fine_grain:
+        levels[-1]["fine_grain"] = fine_grain
     g2 = re.search(r"gaborToSYAndG\(src,([^)]*)\)", text)
     for lv in levels:
         if lv["kind"] == "thru_g2":
             lv["gabor"] = vec(g2.group(1), "smoothAmt") + vec(g2.group(1), "f1") + vec(g2.group(1), "f2")[:2]
     levels.reverse()  # finest first
-    return {"demosaic_noise": rn, "moire_detect": ex == "extractHRGBHF", "chroma_passes": passes, "luma": levels}
+    e = {"demosaic_noise": rn, "moire_detect": ex == "extractHRGBHF", "chroma_passes": passes, "luma": levels}
+    if despeckle:
+        e["despeckle"] = despeckle
+    return e
 
 
 def num(x):
@@ -171,6 +185,8 @@ def arr(v):
 
 def emit(iso, e):
     out = ["[[noise]]", f"iso = {num(iso)}", f"demosaic_noise = {arr(e['demosaic_noise'])}", f"moire_detect = {str(e['moire_detect']).lower()}"]
+    if "despeckle" in e:
+        out.append(f"despeckle = {arr(e['despeckle'])}")
     for p in e["chroma_passes"]:
         out += ["[[noise.chroma_passes]]", f'kind = "{p["kind"]}"', f"scale = {p['scale']}", f"threshold = {arr(p['threshold'])}"]
         if "interpolant" in p:
@@ -179,7 +195,7 @@ def emit(iso, e):
             out.append(f"despeckle = {arr(p['despeckle'])}")
     for lv in e["luma"]:
         out += ["[[noise.luma]]", f'kind = "{lv["kind"]}"']
-        for key in ["overdrive", "parms", "roparms", "omparms", "dir_to_c", "cfactor", "anneal"]:
+        for key in ["overdrive", "parms", "roparms", "omparms", "dir_to_c", "cfactor", "anneal", "fine_grain"]:
             if key in lv:
                 v = lv[key]
                 out.append(f"{key} = {arr(v) if isinstance(v, list) else num(v)}")
