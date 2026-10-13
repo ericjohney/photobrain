@@ -111,6 +111,10 @@ protocol PhotoBrainAPI: Sendable {
     func mergePeople(targetId: Int, sourceIds: [Int]) async throws -> PersonDTO
     /// `GET /photos/{id}/faces`: the photo's faces left to right.
     func photoFaces(photoId: Int) async throws -> PhotoFacesResponseDTO
+    /// `GET /api/photos/{id}/developed`: the RAW fully developed (raw-develop) as a
+    /// full-resolution Display P3 JPEG, rendered on demand. A busy renderer throws
+    /// `PhotoBrainAPIError.server(status: 503, code: "DEVELOP_BUSY", ...)`.
+    func developedRaw(photoId: Int) async throws -> DevelopedRawImage
     /// `PUT /faces/{id}/person`; returns the updated face.
     func assignFace(faceId: Int, to target: FaceAssignmentTarget) async throws -> PhotoFaceDTO
     /// `GET /review/junk`. `reason` and `cursor` are sent only when set; `limit` is 1-500.
@@ -550,6 +554,42 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         defer { try? handle.close() }
         let data = (try? handle.read(upToCount: maximumErrorBytes + 1)) ?? Data()
         return data.count > maximumErrorBytes ? Data() : data
+    }
+
+    func developedRaw(photoId: Int) async throws -> DevelopedRawImage {
+        guard photoId > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        let url = baseURL
+            .appendingPathComponent("api")
+            .appendingPathComponent("photos")
+            .appendingPathComponent(String(photoId))
+            .appendingPathComponent("developed")
+        guard let scheme = url.scheme, scheme == "https" || scheme == "http" else {
+            throw PhotoBrainAPIError.invalidRequest
+        }
+        var request = URLRequest(url: url)
+        request.setValue("image/jpeg", forHTTPHeaderField: "Accept")
+        // A large RAW takes seconds to develop and arrives as tens of MB.
+        request.timeoutInterval = 120
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await downloadSession.data(for: request)
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw PhotoBrainAPIError.transport(error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse else { throw PhotoBrainAPIError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            throw serverError(status: http.statusCode, body: data.count > maximumErrorBytes ? Data() : data)
+        }
+        return DevelopedRawImage(
+            data: data,
+            width: http.value(forHTTPHeaderField: "X-Developed-Width").flatMap(Int.init),
+            height: http.value(forHTTPHeaderField: "X-Developed-Height").flatMap(Int.init)
+        )
     }
 
     func cancelAll() {

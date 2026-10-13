@@ -20,7 +20,7 @@ Read the guide for the area being changed:
 - [Web application](apps/web/AGENTS.md)
 - [Native iOS application source and XCTest](apps/ios); [TestFlight distribution, signing, and secrets](docs/ios-distribution.md)
 - [Rust image processing](packages/image-processing/AGENTS.md)
-- [Rust RAW development: Fujifilm RAF, Sony ARW, Apple ProRAW DNG (standalone, on-demand web/iOS loupe)](packages/raw-develop/AGENTS.md)
+- [Rust RAW development: Fujifilm RAF, Sony ARW, Apple ProRAW DNG (loupe "Developed" view only)](packages/raw-develop/AGENTS.md)
 - [Database and migrations](packages/db/AGENTS.md)
 - [Shared utilities](packages/utils/AGENTS.md)
 - [Shared TypeScript configuration](packages/config/AGENTS.md)
@@ -39,7 +39,7 @@ packages/
   config/                 Shared TypeScript configuration package
   db/                     Drizzle schema and migration files
   image-processing/       Rust N-API addon and browser stub
-  raw-develop/            Standalone Rust RAW (X-Trans RAF, Sony ARW, ProRAW DNG) -> Display P3 pipeline (not used by the API yet)
+  raw-develop/            Rust RAW (X-Trans RAF, Sony ARW, ProRAW DNG) -> Display P3 pipeline (loupe "Developed" view only)
   utils/                  Shared TypeScript helpers and thumbnail configuration
 docs/
   superpowers/            Historical design specifications and implementation plans
@@ -104,7 +104,7 @@ The 7,961-file corpus needs at most 399 media completion windows and 498 embeddi
 8. Generate a double-gradient perceptual hash from the oriented source, then resize once to a `large` preview bounded at 1,600 pixels and derive smaller thumbnails from that preview using original-derived target dimensions. Bundled libwebp now applies lossy color quality 80/85/85/90 for tiny/small/medium/large, with lossless alpha encoding. Derived pixels are not lossless; originals, orientation handling, pHash input, and EXIF extraction are unchanged. Thumbnail errors fail the photo result rather than marking it ready.
 9. Defer CLIP image embeddings to the Inngest embedding function.
 
-Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a standalone RAW developer for Fujifilm X-Trans RAF, Sony ARW (uncompressed, lossless and lossy cRAW) and Apple ProRAW DNG (bit-exact decoders, rendering that follows and is validated against Apple's RawCamera). The web and native iOS loupes can request a full-quality as-shot JPEG from this module on demand, without caching. There is no current histogram-matching implementation.
+Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a RAW developer, used only by the on-demand loupe **Developed** view (`GET /api/photos/:id/developed`), not by scans, thumbnails, or export, for Fujifilm X-Trans RAF, Sony ARW (uncompressed, lossless and lossy cRAW) and Apple ProRAW DNG (bit-exact decoders, rendering that follows and is validated against Apple's RawCamera). There is no current histogram-matching implementation.
 
 ### Database and vectors
 
@@ -308,6 +308,7 @@ Export routes (`apps/api/src/routes/exports.ts`, mounted at `/api`; binary, not 
 - `GET /api/photos/:id/export?size=original|2048|1024` (default `2048`): `original` streams the source bytes unchanged; `2048`/`1024` render a metadata-free (no EXIF/GPS) sRGB JPEG at quality 90 through native `renderExportJpeg` (shared HEIF/RAW-preview decode, orientation applied, long edge fit, never upscaled) on the native executor. Filename `{stem}_{size}.jpg`; RFC 6266 `Content-Disposition` with an ASCII fallback; `Cache-Control: private, no-store`. Errors: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `EXPORT_FAILED`, 503 `EXPORT_BUSY` with `Retry-After` when executor admission is full.
 - `GET /api/collections/:id/export?size=original|2048|1024` (default `original`): streaming STORE ZIP (UTF-8 names, CRC-32, ZIP64 when needed) of every member, unstacked, in captured order (`listCollectionMembers`); duplicate names become `stem (2).ext` case-insensitively; missing/failed members are skipped and listed in a final `export-errors.txt`. Pull-based with at most two renders in flight; ZIP renders wait for executor capacity, and client abort stops further reads/renders. 404 `COLLECTION_NOT_FOUND` before any bytes.
 - Videos export as their unchanged original file for every `size`, including inside collection ZIPs.
+- `GET /api/photos/:id/developed`: the loupe's **Developed** rendition. Develops the RAW with `packages/raw-develop` (native `renderDevelopedRaw`, default settings, full resolution) and returns a Display P3 JPEG (quality 95, embedded ICC) with `X-Developed-Width`/`X-Developed-Height` (CORS-exposed) and `Cache-Control: private, no-store`; rendered on demand on the native executor, never cached or persisted. Supports Fujifilm X-E5/X100VI RAF, Sony A1 II/A7C R/A7R V ARW and Apple ProRAW DNG. Codes: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `NOT_RAW`, 422 `DEVELOP_UNSUPPORTED` (other cameras; message from raw-develop), 503 `DEVELOP_BUSY` with `Retry-After: 1`, 503 `DEVELOP_UNAVAILABLE` when no developer is configured.
 
 Videos and Live Photos: photos carry `mediaType` (`photo`|`video`), `durationMs`, `videoCodec`, and `motionVideoId`. `filterRaw` accepts `all|raw|standard|video` (`standard` = non-RAW stills; `video` excludes motion clips). A video ≤4,000 ms that is the only video on a pair stem holding one still or a RAW pair is a motion clip (`livePhotoSql`): it is hidden from listings, counts, search, similar, map, events, gear stats, on-this-day, and smart albums, and exposed as the still's `motionVideoId`, but remains fetchable by ID. Videos are excluded from junk, quality backfill, and duplicate/burst candidates.
 
@@ -339,6 +340,8 @@ Uploads on web: the toolbar **Upload photos** button (disabled with a tooltip wh
 
 Export on web: the metadata panel's **Export** menu (grid or loupe with an active photo) downloads Original / JPEG 2048 / JPEG 1024 through `download` anchors (streamed by the browser, no blob); `Shift+D` downloads the active photo as JPEG 2048. A collection's actions menu has **Download as ZIP** (Originals / JPEG 2048 / JPEG 1024).
 
+Developed RAW on web: for a converted RAW, or the RAW partner of a RAW+JPEG pair, the loupe zoom bar has a **Show developed RAW** toggle (aperture icon, `aria-pressed`) and `R` switches between the stored embedded preview and `GET /api/photos/:id/developed`. The preference persists in localStorage (`photobrain-loupe-developed`). A bottom-left badge always names the rendition: "Embedded preview · 1600 px", "Developing…" (spinner; the preview stays until the render has fully loaded), or "Developed · W × H" (from the size headers, else the decoded size). Failures keep the preview and append a reason ("Not available for this camera" for `DEVELOP_UNSUPPORTED`); `DEVELOP_BUSY` is retried up to 5 times. Renders are fetched once per photo visit into an object URL and never cached.
+
 Videos on web: grid and filmstrip tiles show a duration badge (floored `m:ss`/`h:mm:ss`, label "Video, 1 minute 5 seconds"); stills with a motion clip show **LIVE**. The loupe renders a paused `<video controls preload=metadata>` with the large thumbnail as poster; `Space` toggles playback (`Shift+Space` still toggles the filmstrip). The LIVE button plays the clip muted once over the still. The Type filter has a Video option; videos export as Original only, including `Shift+D`.
 
 Catalog **Review** (badge = candidate count) replaces the grid with junk candidates, each badged with its first reason; a reason radiogroup with counts, **Reject all (N)** (confirmation above 50) and **Keep all (N)** act on the shown photos. In Review, `X` rejects and `K` keeps the active photo and advance; the metadata panel shows "Why it's here" with Reject/Keep. Resolutions remove photos optimistically and roll back on error. Choosing a folder, collection, tag, search, or Find similar leaves Review and restores the library filters.
@@ -358,6 +361,7 @@ Implemented keyboard shortcuts:
 - `S`: find photos similar to the active photo
 - `0`-`5`: rate the active photo; `P` pick, `X` reject, `U` unflag (ignored while typing); in Review, `X` rejects and `K` keeps, then advance
 - `B`: toggle the active photo in the most recently used collection
+- `R`: in the loupe on a RAW, switch between the embedded preview and the developed RAW
 - `Escape`: return from loupe to grid; in grid, exit similar-photo mode
 
 Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width/height values are persisted by `usePanelState`, but `PanelLayout` currently renders fixed dimensions.
@@ -387,6 +391,8 @@ Events on iOS: the Collections tab's **Memories** row, after On this day (cover 
 Gear stats on iOS: Collections → Utilities → **Gear Stats** opens a sheet with the same sections for the Library's current filter; tapping a camera or lens opens Search filtered to it.
 
 Export on iOS: the loupe's bottom-left Share menu (**Share Photo** = JPEG 2048, **Share Original**) and a collection detail **Export** menu (Originals or JPEGs 2048 px as ZIP) download to a per-export temp directory with progress/cancel, then present the share sheet; temp files are deleted after sharing, on cancel, or on failure. `EXPORT_BUSY` offers a manual retry.
+
+Developed RAW on iOS: the loupe ⋯ menu has **Show Developed RAW** / **Show Embedded Preview** for converted RAWs and RAW+JPEG pairs, persisted in `UserDefaults` (`com.photobrain.loupeShowsDeveloped`). `LoupeDevelopedStore` (`Library/DevelopedRaw.swift`) fetches only the open photo through `APIClient.developedRaw` (120 s timeout, `DEVELOP_BUSY` retried), decodes it off the main thread, and the pager swaps it in for that page keeping the zoom; paging away or closing cancels and drops it. A tappable capsule over the photo shows "Embedded preview · 1600 px", "Developing…", or "Developed · W × H" and toggles the setting.
 
 Videos on iOS: library, search, and similar grids show the same floored duration and LIVE badges. The loupe hosts an AVKit player (prepared paused; poster until ready; released on page change or dismissal); LIVE plays the motion clip muted once and returns to the still. The info sheet adds duration and codec; the Media Type picker has Video; videos offer only **Share Video** (original).
 

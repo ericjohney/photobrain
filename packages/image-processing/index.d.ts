@@ -131,6 +131,17 @@ export function renderExportJpeg(
 	maxEdge: number,
 	quality: number,
 ): Buffer;
+/** A developed RAW: a full-resolution Display P3 JPEG (ICC embedded) and its size. */
+export interface DevelopedRaw {
+	jpeg: Buffer;
+	width: number;
+	height: number;
+}
+/**
+ * Develop a RAW file at full resolution through raw-develop (orientation applied) and
+ * encode it as a Display P3 JPEG. Throws for unsupported formats or cameras.
+ */
+export function renderDevelopedRaw(path: string, quality: number): DevelopedRaw;
 /** Normalized (0..1) box in the oriented input image. */
 export interface FaceBox {
 	x: number;

@@ -22,6 +22,7 @@ export type ExportRenderer = {
 		maxEdge: number,
 		quality: number,
 	): Promise<Uint8Array<ArrayBuffer>>;
+
 	runWhenAdmitted(
 		signal: AbortSignal | undefined,
 		operation: "renderExportJpeg",
@@ -29,6 +30,15 @@ export type ExportRenderer = {
 		maxEdge: number,
 		quality: number,
 	): Promise<Uint8Array<ArrayBuffer>>;
+};
+
+/** Full RAW development on the native executor (loupe "Developed" view). */
+export type RawDeveloper = {
+	run(
+		operation: "renderDevelopedRaw",
+		path: string,
+		quality: number,
+	): Promise<{ jpeg: Uint8Array<ArrayBuffer>; width: number; height: number }>;
 };
 
 /** `name` split at its last `.`; a leading dot alone (".profile") is no extension. */

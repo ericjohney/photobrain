@@ -11,6 +11,7 @@ type NativeOperations = Pick<
 	| "validateThumbnails"
 	| "analyzeImageQuality"
 	| "renderExportJpeg"
+	| "renderDevelopedRaw"
 	| "detectFaces"
 	| "renderFaceCrop"
 >;
@@ -21,7 +22,9 @@ type OperationResult<K extends Operation> = K extends
 	| "renderExportJpeg"
 	| "renderFaceCrop"
 	? Uint8Array<ArrayBuffer>
-	: ReturnType<NativeOperations[K]>;
+	: K extends "renderDevelopedRaw"
+		? { jpeg: Uint8Array<ArrayBuffer>; width: number; height: number }
+		: ReturnType<NativeOperations[K]>;
 
 type OperationRequest = {
 	[K in Operation]: {
@@ -57,7 +60,12 @@ export type NativeResponse =
 	| {
 			id: number;
 			// The worker posts the native Buffer; the receiver gets OperationResult.
-			result: OperationResult<Operation> | Uint8Array | WindowResult | null;
+			result:
+				| OperationResult<Operation>
+				| Uint8Array
+				| { jpeg: Uint8Array; width: number; height: number }
+				| WindowResult
+				| null;
 	  }
 	| { id: number; error: string }
 	| {
@@ -305,6 +313,7 @@ export class NativeExecutor {
 				request?.operation === "cancelPhotos"
 					? request.jobId === this.sessionJobId
 					: request?.operation !== "renderExportJpeg" &&
+						request?.operation !== "renderDevelopedRaw" &&
 						request?.operation !== "renderFaceCrop"
 			) {
 				this.sessionJobId = undefined;

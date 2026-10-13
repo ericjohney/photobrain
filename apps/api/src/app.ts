@@ -21,7 +21,14 @@ import { appRouter } from "./trpc/router";
 export const app = new Hono();
 
 // CORS middleware
-app.use("*", cors());
+app.use(
+	"*",
+	cors({
+		origin: "*",
+		// Developed RAW renders report their pixel size so clients can label them.
+		exposeHeaders: ["X-Developed-Width", "X-Developed-Height"],
+	}),
+);
 // JSON responses only (binary routes and SSE are left as is).
 app.use("/api/trpc/*", compressJson());
 app.use("/api/v1/*", compressJson());
@@ -74,6 +81,7 @@ app.route(
 		database: db,
 		photoDirectory: config.PHOTO_DIRECTORY,
 		renderer: nativeExecutor,
+		developer: nativeExecutor,
 	}),
 );
 

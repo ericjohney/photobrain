@@ -86,6 +86,14 @@ mock.module("@photobrain/image-processing", () => ({
 			JSON.stringify({ path, maxEdge, quality, streamsActive }),
 		);
 	},
+	renderDevelopedRaw(path: string, quality: number) {
+		if (path === "throw") throw new Error("develop failed");
+		return {
+			jpeg: Buffer.from(JSON.stringify({ path, quality })),
+			width: 6000,
+			height: 4000,
+		};
+	},
 	renderFaceCrop(
 		path: string,
 		box: { x: number; y: number; width: number; height: number },

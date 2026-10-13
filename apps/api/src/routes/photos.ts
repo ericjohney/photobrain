@@ -9,48 +9,9 @@ import { Hono } from "hono";
 import { config } from "../config";
 import { db } from "../db";
 import { parseByteRange } from "../services/byte-range";
-import { pairedPhotoExtras } from "../services/photo-catalog";
 import { originalFilePath } from "../services/photo-files";
-import { developRaw, RawDevelopError } from "../services/raw-develop";
 
 const router = new Hono();
-
-// Experimental loupe rendering: no database writes, files, or HTTP cache.
-router.get("/:id/developed", async (c) => {
-	c.header("Cache-Control", "no-store");
-	const id = Number(c.req.param("id"));
-	if (!Number.isSafeInteger(id) || id <= 0)
-		return c.json({ error: "Invalid photo ID" }, 400);
-	try {
-		const shown = await db.query.photos.findFirst({
-			where: (photos, { eq }) => eq(photos.id, id),
-			extras: pairedPhotoExtras,
-		});
-		if (!shown) return c.json({ error: "Photo not found" }, 404);
-		const partnerId = shown.pairedPhotoId;
-		const raw = shown.isRaw
-			? shown
-			: partnerId !== null
-				? await db.query.photos.findFirst({
-						where: (photos, { eq }) => eq(photos.id, partnerId),
-					})
-				: null;
-		if (!raw?.isRaw) return c.json({ error: "Photo has no RAW source" }, 422);
-		const path = originalFilePath(raw, config.PHOTO_DIRECTORY);
-		if (!(await Bun.file(path).exists()))
-			return c.json({ error: "RAW source file not found" }, 404);
-		const jpeg = await developRaw(path, c.req.raw.signal);
-		return new Response(new Uint8Array(jpeg), {
-			headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store" },
-		});
-	} catch (error) {
-		if (error instanceof RawDevelopError)
-			return c.json({ error: error.message }, error.status);
-		if (c.req.raw.signal.aborted) return new Response(null, { status: 499 });
-		console.error("Error developing RAW:", error);
-		return c.json({ error: "Failed to develop RAW" }, 500);
-	}
-});
 
 /**
  * `file` as a 200, or as the single byte range `rangeHeader` selects: 206 with

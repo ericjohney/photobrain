@@ -4,8 +4,8 @@
 P3 images. It follows Apple's RawCamera pipeline (the engine behind Preview and Photos): the
 demosaic, noise reduction, highlight recovery, detail and look stages are ports of
 RawCamera's Core Image kernels, and the colour and lens stages are calibrated against, or
-derived from, its output. It is a standalone Rust crate; nothing in the API
-uses it yet.
+derived from, its output. It is a standalone Rust crate; the app uses it only for the loupe's on-demand
+"Developed" view (`GET /api/photos/:id/developed`).
 
 | Document | Read it when you want to… |
 |---|---|

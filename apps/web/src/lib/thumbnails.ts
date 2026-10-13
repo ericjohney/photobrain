@@ -72,3 +72,8 @@ export function exportCollectionUrl(
 ): string {
 	return `${config.apiUrl}/api/collections/${collectionId}/export?size=${size}`;
 }
+
+/** Full RAW development (`GET /api/photos/:id/developed`): full-resolution Display P3 JPEG. */
+export function getDevelopedUrl(photoId: number): string {
+	return `${config.apiUrl}/api/photos/${photoId}/developed`;
+}

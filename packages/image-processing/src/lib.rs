@@ -3,6 +3,7 @@
 mod batch;
 mod clip;
 mod decode;
+mod develop;
 mod discovery;
 mod duplicates;
 mod exif;

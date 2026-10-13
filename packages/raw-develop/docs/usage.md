@@ -83,7 +83,12 @@ raw-develop develop F.RAF out.png|out.jpg [--preview] [--settings s.json] \
 raw-compare final|linear ours.f32 apple.f32             # ΔE00 report
 ```
 
-## Integrating with the app (not done yet)
+## Integrating with the app
+
+Done today: `image-processing` path-depends on `raw_develop` and exposes
+`renderDevelopedRaw(path, quality)`, which the API serves as `GET /api/photos/:id/developed`
+for the loupe's opt-in "Developed" view (web toggle / `R`, iOS ⋯ menu). Renders are full
+resolution, default settings, and not cached.
 
 Planned shape, for when this replaces the embedded-preview path in `image-processing`:
 

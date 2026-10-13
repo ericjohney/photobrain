@@ -346,6 +346,7 @@ describe("export routes", () => {
 		sourceRoot?: string;
 		modifiedAt?: Date;
 		dateTaken?: string;
+		isRaw?: boolean;
 	}): number {
 		const path = fields.path ?? fields.name;
 		const root = fields.sourceRoot ?? photoDirectory;
@@ -366,6 +367,7 @@ describe("export routes", () => {
 					fields.mimeType === undefined ? "image/jpeg" : fields.mimeType,
 				mediaType: fields.mediaType ?? "photo",
 				sourceRoot: fields.sourceRoot ?? null,
+				isRaw: fields.isRaw ?? false,
 			})
 			.returning()
 			.get();
@@ -396,6 +398,71 @@ describe("export routes", () => {
 		expect(response.status).toBe(200);
 		return new Uint8Array(await response.arrayBuffer());
 	}
+
+	describe("developed RAW", () => {
+		function developerApp(
+			result: "ok" | "busy" | "fail",
+			calls: string[] = [],
+		) {
+			const hono = new Hono();
+			hono.route(
+				"/api",
+				createExportsRouter({
+					database,
+					photoDirectory,
+					renderer: fakeRenderer().renderer,
+					developer: {
+						run: async (_operation, path, quality) => {
+							calls.push(`${basename(path)} q${quality}`);
+							if (result === "busy") throw new NativeExecutorBusyError();
+							if (result === "fail") throw new Error("unsupported camera");
+							return {
+								jpeg: encoder.encode("jpeg"),
+								width: 7728,
+								height: 5152,
+							};
+						},
+					},
+				}),
+			);
+			return hono;
+		}
+
+		test("returns the full-resolution JPEG with its pixel size", async () => {
+			const calls: string[] = [];
+			const id = addPhoto({ name: "DSCF1.RAF", isRaw: true });
+			const response = await developerApp("ok", calls).request(
+				`/api/photos/${id}/developed`,
+			);
+			expect(response.status).toBe(200);
+			expect(Object.fromEntries(response.headers)).toMatchObject({
+				"content-type": "image/jpeg",
+				"cache-control": "private, no-store",
+				"x-developed-width": "7728",
+				"x-developed-height": "5152",
+			});
+			expect(await response.text()).toBe("jpeg");
+			expect(calls).toEqual(["DSCF1.RAF q95"]);
+		});
+
+		test("non-RAW photos, unsupported cameras and a busy executor are reported", async () => {
+			const jpeg = addPhoto({ name: "a.jpg" });
+			const raw = addPhoto({ name: "b.ARW", isRaw: true });
+			let r = await developerApp("ok").request(`/api/photos/${jpeg}/developed`);
+			expect(r.status).toBe(422);
+			expect(await errorOf(r)).toBe("NOT_RAW");
+			r = await developerApp("fail").request(`/api/photos/${raw}/developed`);
+			expect(r.status).toBe(422);
+			expect(await errorOf(r)).toBe("DEVELOP_UNSUPPORTED");
+			r = await developerApp("busy").request(`/api/photos/${raw}/developed`);
+			expect(r.status).toBe(503);
+			expect(r.headers.get("Retry-After")).toBe("1");
+			expect(await errorOf(r)).toBe("DEVELOP_BUSY");
+			r = await app().request(`/api/photos/${raw}/developed`);
+			expect(r.status).toBe(503);
+			expect(await errorOf(r)).toBe("DEVELOP_UNAVAILABLE");
+		});
+	});
 
 	describe("single photo", () => {
 		test.each([

@@ -5,6 +5,7 @@ apps/api/photobrain.db
 apps/api/thumbnails
 packages/image-processing/.fastembed_cache
 packages/image-processing/target
+packages/raw-develop/target
 temp-photos
 .git
 .claude
@@ -18,5 +19,3 @@ arw_*
 /test-*
 /perf-test-*
 /screenshot-*
-
-packages/raw-develop/target

@@ -11,6 +11,7 @@ import {
 	type ExportRenderer,
 	type ExportSize,
 	exportFilename,
+	type RawDeveloper,
 } from "../services/exports";
 import { NativeExecutorBusyError } from "../services/native-executor";
 import type { ApiDatabase } from "../services/photo-catalog";
@@ -21,7 +22,12 @@ export type ExportDependencies = {
 	database: ApiDatabase;
 	photoDirectory: string;
 	renderer: ExportRenderer;
+	/** Optional: enables `GET /photos/:id/developed`. */
+	developer?: RawDeveloper;
 };
+
+/** JPEG quality of developed RAW renders (near-lossless for loupe inspection). */
+const DEVELOPED_JPEG_QUALITY = 95;
 
 /** Seconds a client should wait before retrying a busy single-photo render. */
 const BUSY_RETRY_AFTER_SECONDS = 1;
@@ -66,7 +72,7 @@ function parseSize(value: string | undefined, fallback: ExportSize) {
  * `GET /photos/:id/export` and `GET /collections/:id/export`.
  */
 export function createExportsRouter(dependencies: ExportDependencies) {
-	const { database, photoDirectory, renderer } = dependencies;
+	const { database, photoDirectory, renderer, developer } = dependencies;
 	const router = new Hono();
 
 	router.get("/photos/:id/export", async (context) => {
@@ -140,6 +146,73 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 				...headers,
 				"Content-Type": "image/jpeg",
 				"Content-Length": String(jpeg.byteLength),
+			},
+		});
+	});
+
+	// Full RAW development (raw-develop) for the loupe's "Developed" view: a
+	// full-resolution Display P3 JPEG, rendered on demand and not cached.
+	router.get("/photos/:id/developed", async (context) => {
+		const id = photoIdSchema.safeParse(context.req.param("id"));
+		if (!id.success)
+			return errorResponse("INVALID_REQUEST", "Request validation failed", 400);
+		if (!developer)
+			return errorResponse(
+				"DEVELOP_UNAVAILABLE",
+				"RAW development is off",
+				503,
+			);
+		const photo = await database.query.photos.findFirst({
+			columns: { path: true, sourceRoot: true, isRaw: true },
+			where: (photos, { eq }) => eq(photos.id, id.data),
+		});
+		if (!photo) return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+		if (!photo.isRaw)
+			return errorResponse("NOT_RAW", "Only RAW photos can be developed", 422);
+		const path = originalFilePath(photo, photoDirectory);
+		if (!(await Bun.file(path).exists())) {
+			return errorResponse(
+				"SOURCE_MISSING",
+				"The original file is missing",
+				404,
+			);
+		}
+		let developed: {
+			jpeg: Uint8Array<ArrayBuffer>;
+			width: number;
+			height: number;
+		};
+		try {
+			developed = await developer.run(
+				"renderDevelopedRaw",
+				path,
+				DEVELOPED_JPEG_QUALITY,
+			);
+		} catch (error) {
+			if (error instanceof NativeExecutorBusyError) {
+				return errorResponse(
+					"DEVELOP_BUSY",
+					"The renderer is busy; retry shortly",
+					503,
+					{ "Retry-After": String(BUSY_RETRY_AFTER_SECONDS) },
+				);
+			}
+			console.error(`RAW develop failed for photo ${id.data}:`, error);
+			return errorResponse(
+				"DEVELOP_UNSUPPORTED",
+				error instanceof Error
+					? error.message
+					: "The RAW could not be developed",
+				422,
+			);
+		}
+		return new Response(developed.jpeg, {
+			headers: {
+				"Content-Type": "image/jpeg",
+				"Content-Length": String(developed.jpeg.byteLength),
+				"Cache-Control": "private, no-store",
+				"X-Developed-Width": String(developed.width),
+				"X-Developed-Height": String(developed.height),
 			},
 		});
 	});

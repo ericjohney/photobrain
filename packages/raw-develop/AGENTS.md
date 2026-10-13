@@ -10,7 +10,7 @@ A standalone Rust library and CLI that develops RAW files into Display P3 images
 - Sony Bayer ARW (ILCE-1M2 / A1 II, ILCE-7CR / A7C R, ILCE-7RM5 / A7R V): uncompressed 14-bit, lossless compressed (tiled lossless JPEG, Compression 7) and lossy "Compressed RAW" / cRAW (Compression 32767).
 - Apple ProRAW DNG (iPhone 16 Pro Max lossless JPEG tiles, iPhone 17 Pro Max JPEG XL tiles; DNG 1.6/1.7 LinearRaw). No camera profile: colour, exposure and tone come from DNG tags.
 
-The web and native iOS loupes can develop a RAW on demand through `GET /api/photos/:id/developed`, using the CLI in a bounded child process. This produces a full-quality as-shot Display P3 JPEG in memory with no cache or database writes. Scans, thumbnails, and export still use the embedded JPEG preview. It has no N-API surface. Docker builds and ships the CLI.
+Its only app integration is the loupe's on-demand **Developed** view: `image-processing` path-depends on it and exposes `renderDevelopedRaw(path, quality)` (`src/develop.rs`), served by `GET /api/photos/:id/developed`. Scans, thumbnails, and export still use the embedded JPEG preview. The Docker builder copies this package for that path dependency.
 
 ```bash
 cd packages/raw-develop && cargo test               # unit tests, no RAW files needed
@@ -20,7 +20,7 @@ target/release/raw-develop develop <file> out.png [--preview] [--settings s.json
 target/release/raw-compare final|linear <ours.f32> <apple.f32>   # ΔE00 against a reference
 ```
 
-`turbo run build` picks up the `build` script (`cargo build --release`); Docker builds and ships the `raw-develop` binary for the API. JPEG XL decoding uses the `jxl-oxide` crate (MIT/Apache-2.0) behind the default cargo feature `jxl`; without it, JPEG XL DNGs return `Error::Unsupported`.
+`turbo run build` picks up the `build` script (`cargo build --release`). JPEG XL decoding uses the `jxl-oxide` crate (MIT/Apache-2.0) behind the default cargo feature `jxl`; without it, JPEG XL DNGs return `Error::Unsupported`.
 
 ## Public API
 
@@ -94,5 +94,3 @@ Quarter-scale final render vs Apple, mean CIEDE2000; decoders bit-exact on every
 | iPhone 16/17 Pro Max ProRAW | 16 files, ISO 16–6400, all lenses | 0.05–0.09 |
 
 Timings on Apple Silicon: decode 0.03–0.2 s; full develop about 2.8 s for X-Trans 40 MP, about 5 s for Sony 61 MP, 0.4–0.6 s for iPhone 12 MP.
-
-`raw-develop develop <file> -` emits a full-quality Display P3 JPEG on stdout; diagnostics remain on stderr. The API uses this mode without temporary files.

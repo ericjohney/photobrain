@@ -30,6 +30,8 @@ ureq = { version = "2.12", default-features = false, features = ["tls"] }
 sha2 = "0.10"
 tempfile = "3.24.0"
 matrixmultiply = "0.3"
+# Full RAW development (Apple RawCamera-equivalent pipeline) for the loupe toggle.
+raw_develop = { path = "../raw-develop" }
 
 [build-dependencies]
 napi-build = "2"

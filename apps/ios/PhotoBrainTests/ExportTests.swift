@@ -580,6 +580,7 @@ private final class SlowCompletingAPI: PhotoBrainAPI, @unchecked Sendable {
     func updatePerson(id: Int, name: String??, hidden: Bool?) async throws -> PersonDTO { throw PhotoBrainAPIError.invalidRequest }
     func mergePeople(targetId: Int, sourceIds: [Int]) async throws -> PersonDTO { throw PhotoBrainAPIError.invalidRequest }
     func photoFaces(photoId: Int) async throws -> PhotoFacesResponseDTO { throw PhotoBrainAPIError.invalidRequest }
+    func developedRaw(photoId: Int) async throws -> DevelopedRawImage { throw PhotoBrainAPIError.invalidRequest }
     func assignFace(faceId: Int, to target: FaceAssignmentTarget) async throws -> PhotoFaceDTO { throw PhotoBrainAPIError.invalidRequest }
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO { throw PhotoBrainAPIError.invalidRequest }
     func resolveJunk(ids: [Int], action: JunkAction) async throws -> ResolveJunkResponseDTO { throw PhotoBrainAPIError.invalidRequest }

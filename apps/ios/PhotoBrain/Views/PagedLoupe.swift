@@ -14,7 +14,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
     let onEmpty: () -> Void
     /// Face boxes drawn over each photo by id; empty when Show Faces is off.
     var faceBoxes: [Int: [FaceBoxDTO]] = [:]
-    /// Temporary full-quality RAW render for the open page.
+    /// Developed RAW renders by photo id, shown in place of the embedded preview.
     var developedImages: [Int: UIImage] = [:]
     /// A vertical drag-to-dismiss started (`true`) or sprang back (`false`).
     var onDismissDragActive: ((Bool) -> Void)?
@@ -132,8 +132,10 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         }
     }
 
+    /// Developed RAW renders by photo id; a cell shows its photo's render over the preview.
     var developedImages: [Int: UIImage] = [:] {
         didSet {
+            guard developedImages != oldValue else { return }
             knownCells.allObjects.forEach { cell in
                 cell.setDevelopedImage(cell.representedID.flatMap { developedImages[$0] })
             }
@@ -534,8 +536,10 @@ final class ZoomPageCell: UICollectionViewCell {
     private var retry: (() -> Void)?
     private(set) var representedID: Int?
     private var decodedImageWasEvicted = false
+    /// A developed RAW render; while set it replaces the preview and later preview loads.
     private var developedImage: UIImage?
-    private var originalPreview: UIImage?
+    /// The latest preview image, restored when the developed render is turned off.
+    private var previewImage: UIImage?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -582,9 +586,9 @@ final class ZoomPageCell: UICollectionViewCell {
         loadTask = nil
         retry = nil
         representedID = nil
-        developedImage = nil
-        originalPreview = nil
         decodedImageWasEvicted = false
+        developedImage = nil
+        previewImage = nil
         failureStack.isHidden = true
         zoomView.setImage(nil)
         zoomView.onSingleTap = nil
@@ -607,6 +611,27 @@ final class ZoomPageCell: UICollectionViewCell {
             playerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
         hostedPlayerView = playerView
+    }
+
+    /// Shows a developed RAW render in place of the preview (keeping the zoom, which is
+    /// relative to the fitted size), or restores the preview when `image` is nil.
+    func setDevelopedImage(_ image: UIImage?) {
+        guard image !== developedImage else { return }
+        developedImage = image
+        if let image {
+            zoomView.setImage(image, resetsZoom: false)
+            setShowsPhotoImage(true)
+        } else if let previewImage {
+            zoomView.setImage(previewImage, resetsZoom: false)
+        }
+    }
+
+    /// Shows a loaded preview unless a developed render is on screen.
+    private func showPreview(_ image: UIImage) {
+        previewImage = image
+        guard developedImage == nil else { return }
+        zoomView.setImage(image, resetsZoom: false)
+        setShowsPhotoImage(true)
     }
 
     /// Draws `boxes` (normalized to the oriented image) over the photo; empty hides them.
@@ -652,15 +677,19 @@ final class ZoomPageCell: UICollectionViewCell {
         retry = nil
         if representedID != photo.id {
             hostedPlayerView?.removeFromSuperview()
+            developedImage = nil
+            previewImage = nil
         }
-        developedImage = nil
-        originalPreview = nil
         representedID = photo.id
         decodedImageWasEvicted = false
         failureStack.isHidden = true
         zoomView.onSingleTap = onTap
         zoomView.onZoomStateChanged = onZoomChanged
-        if let placeholder {
+        if let developedImage {
+            // Reconfiguring the same photo keeps its developed render on screen.
+            zoomView.setImage(developedImage)
+            setShowsPhotoImage(true)
+        } else if let placeholder {
             zoomView.setImage(placeholder)
             setShowsPhotoImage(true)
         } else {
@@ -680,8 +709,7 @@ final class ZoomPageCell: UICollectionViewCell {
                     url: photo.thumbnailURL,
                     targetSize: targetSize
                 ), !Task.isCancelled, self?.representedID == photo.id {
-                    self?.zoomView.setImage(small, resetsZoom: false)
-                    self?.setShowsPhotoImage(true)
+                    self?.showPreview(small)
                 }
                 guard !Task.isCancelled else { return }
                 do {
@@ -691,8 +719,7 @@ final class ZoomPageCell: UICollectionViewCell {
                         targetSize: targetSize
                     )
                     guard !Task.isCancelled, self?.representedID == photo.id else { return }
-                    self?.zoomView.setImage(image, resetsZoom: false)
-                    self?.setShowsPhotoImage(true)
+                    self?.showPreview(image)
                 } catch is CancellationError {
                     return
                 } catch {
@@ -703,25 +730,6 @@ final class ZoomPageCell: UICollectionViewCell {
         }
         retry = load
         load()
-    }
-
-    /// Keep pinch/pan in the existing pager while replacing only its image.
-    func setDevelopedImage(_ image: UIImage?) {
-        guard developedImage !== image else { return }
-        if let image {
-            if developedImage == nil { originalPreview = zoomView.image }
-            loadTask?.cancel()
-            failureStack.isHidden = true
-            developedImage = image
-            zoomView.setImage(image)
-            setShowsPhotoImage(true)
-        } else {
-            developedImage = nil
-            zoomView.setImage(originalPreview)
-            setShowsPhotoImage(originalPreview != nil)
-            originalPreview = nil
-            retry?()
-        }
     }
 
     func handleMemoryWarning(isVisible: Bool, activeID: Int?) {

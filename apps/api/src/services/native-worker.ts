@@ -6,6 +6,7 @@ import {
 	detectFaces,
 	discoverPhotos,
 	processPhotosBatch,
+	renderDevelopedRaw,
 	renderExportJpeg,
 	renderFaceCrop,
 	startPhotoProcessing,
@@ -113,6 +114,12 @@ async function execute(
 			// Rendering decodes on this thread and never waits on the shared processing
 			// pool, so an idle scan stream keeps its session (and its next window).
 			response = { id: request.id, result: renderExportJpeg(...request.args) };
+		} else if (request.operation === "renderDevelopedRaw") {
+			// Full RAW development on this thread (raw-develop parallelises internally).
+			response = {
+				id: request.id,
+				result: renderDevelopedRaw(...request.args),
+			};
 		} else if (request.operation === "renderFaceCrop") {
 			// One small thumbnail decode on this thread, like export rendering.
 			response = { id: request.id, result: renderFaceCrop(...request.args) };

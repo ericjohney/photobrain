@@ -703,6 +703,22 @@ actor TestAPI: PhotoBrainAPI {
         return target
     }
 
+    /// Queued `developedRaw` results, consumed in order; empty fails with `DEVELOP_UNAVAILABLE`.
+    var developedResults: [Result<DevelopedRawImage, PhotoBrainAPIError>] = []
+    var developedRequests: [Int] = []
+
+    func setDevelopedResults(_ results: [Result<DevelopedRawImage, PhotoBrainAPIError>]) {
+        developedResults = results
+    }
+
+    func developedRaw(photoId: Int) async throws -> DevelopedRawImage {
+        developedRequests.append(photoId)
+        guard !developedResults.isEmpty else {
+            throw PhotoBrainAPIError.server(status: 503, code: "DEVELOP_UNAVAILABLE", message: "off")
+        }
+        return try developedResults.removeFirst().get()
+    }
+
     func photoFaces(photoId: Int) async throws -> PhotoFacesResponseDTO {
         try await peopleCall(.faces, .faces(photoId: photoId))
         return PhotoFacesResponseDTO(faces: photoFaceList[photoId] ?? [])

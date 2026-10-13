@@ -26,6 +26,8 @@ interface KeyboardShortcutsOptions {
 	toggleVideoPlayback: (() => void) | null;
 	/** Show/hide loupe face boxes (`F`); null unless the loupe shows a still. */
 	toggleFaceBoxes: (() => void) | null;
+	/** Switch the loupe between embedded preview and developed RAW (`R`); null unless available. */
+	toggleDeveloped?: (() => void) | null;
 	enabled?: boolean;
 }
 
@@ -44,6 +46,7 @@ export function useKeyboardShortcuts({
 	downloadActivePhoto,
 	toggleVideoPlayback,
 	toggleFaceBoxes,
+	toggleDeveloped = null,
 	enabled = true,
 }: KeyboardShortcutsOptions) {
 	useEffect(() => {
@@ -140,6 +143,13 @@ export function useKeyboardShortcuts({
 					}
 					break;
 
+				case "r":
+					if (!isCtrlOrCmd && !e.altKey && toggleDeveloped) {
+						e.preventDefault();
+						toggleDeveloped();
+					}
+					break;
+
 				// Panel shortcuts
 				case "tab":
 					e.preventDefault();
@@ -207,5 +217,6 @@ export function useKeyboardShortcuts({
 		downloadActivePhoto,
 		toggleVideoPlayback,
 		toggleFaceBoxes,
+		toggleDeveloped,
 	]);
 }

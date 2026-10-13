@@ -49,6 +49,10 @@ import { useCollections } from "@/hooks/use-collections";
 import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
 import { useJobProgress } from "@/hooks/use-job-progress";
 import { useJunkReview } from "@/hooks/use-junk-review";
+import {
+	developableRawId,
+	useDevelopedPreference,
+} from "@/hooks/use-developed-raw";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import {
 	useLibraryState,
@@ -494,6 +498,16 @@ export function Dashboard() {
 		() => setShowFaces((current) => !current),
 		[],
 	);
+	// `R` / loupe toolbar: developed RAW instead of the embedded preview (persisted).
+	const [showDeveloped, setShowDeveloped] = useDevelopedPreference();
+	const developedAvailable =
+		library.viewMode === "loupe" &&
+		!peopleActive &&
+		developableRawId(library.activePhoto) !== null;
+	const toggleDeveloped = useCallback(
+		() => setShowDeveloped((current) => !current),
+		[setShowDeveloped],
+	);
 	const loupeFacesQuery = trpc.photoFaces.useQuery(
 		{ photoId: activePhotoId ?? 0 },
 		{ enabled: faceBoxesAvailable && showFaces && activePhotoId !== undefined },
@@ -532,6 +546,7 @@ export function Dashboard() {
 				? toggleVideoPlayback
 				: null,
 		toggleFaceBoxes: faceBoxesAvailable ? toggleFaceBoxes : null,
+		toggleDeveloped: developedAvailable ? toggleDeveloped : null,
 	});
 
 	const handlePhotoClick = useCallback(
@@ -790,11 +805,7 @@ export function Dashboard() {
 		// The map has its own query and scope, independent of the photo list.
 		if (mapActive) {
 			return (
-				<Suspense
-					fallback={
-						<Spinner />
-					}
-				>
+				<Suspense fallback={<Spinner />}>
 					<MapView
 						points={photoLocationsQuery.data?.points}
 						error={photoLocationsQuery.error}
@@ -842,9 +853,7 @@ export function Dashboard() {
 		}
 
 		if (loading) {
-			return (
-				<Spinner label="Loading photos..." />
-			);
+			return <Spinner label="Loading photos..." />;
 		}
 
 		if (error) {
@@ -878,6 +887,8 @@ export function Dashboard() {
 					showFaces={showFaces && faceBoxesAvailable}
 					faces={loupeFacesQuery.data?.faces}
 					onFaceClick={focusFaceRow}
+					showDeveloped={showDeveloped}
+					onToggleDeveloped={toggleDeveloped}
 				/>
 			);
 		}
@@ -1019,17 +1030,17 @@ export function Dashboard() {
 			onExit={() => setSearchQuery("")}
 			title={
 				<>
-				{searchResultCount === undefined
-					? "Searching"
-					: `${searchResultCount} ${searchResultCount === 1 ? "result" : "results"}`}{" "}
-				for “{searchQuery}”{selectedFolder ? ` in ${selectedFolder}` : ""}
-				{selectedCollection ? ` in ${selectedCollection.name}` : ""}
-				{searchScope.length > 0 ? ` · ${searchScope.join(" · ")}` : ""}
-				{filters.capturedDate
-					? ` · ${formatCapturedDate(filters.capturedDate)}`
-					: ""}
-				{filters.event ? ` · ${eventTitle(filters.event)}` : ""}
-				{filters.bounds ? " · Map area" : ""}
+					{searchResultCount === undefined
+						? "Searching"
+						: `${searchResultCount} ${searchResultCount === 1 ? "result" : "results"}`}{" "}
+					for “{searchQuery}”{selectedFolder ? ` in ${selectedFolder}` : ""}
+					{selectedCollection ? ` in ${selectedCollection.name}` : ""}
+					{searchScope.length > 0 ? ` · ${searchScope.join(" · ")}` : ""}
+					{filters.capturedDate
+						? ` · ${formatCapturedDate(filters.capturedDate)}`
+						: ""}
+					{filters.event ? ` · ${eventTitle(filters.event)}` : ""}
+					{filters.bounds ? " · Map area" : ""}
 				</>
 			}
 		/>

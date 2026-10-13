@@ -26,6 +26,7 @@ module.exports.perceptualHash = notAvailable("perceptualHash");
 module.exports.processPhoto = notAvailable("processPhoto");
 module.exports.processPhotosBatch = notAvailable("processPhotosBatch");
 module.exports.renderFaceCrop = notAvailable("renderFaceCrop");
+module.exports.renderDevelopedRaw = notAvailable("renderDevelopedRaw");
 module.exports.renderExportJpeg = notAvailable("renderExportJpeg");
 module.exports.startPhotoProcessing = notAvailable("startPhotoProcessing");
 module.exports.validateThumbnails = notAvailable("validateThumbnails");

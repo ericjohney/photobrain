@@ -3,7 +3,6 @@
 //!   raw-develop info <file.RAF>
 //!   raw-develop cfa <file.RAF> <out.u16>
 //!   raw-develop develop <file.RAF> <out.png|out.jpg> [--settings settings.json]
-//!   Output "-" emits a Display P3 JPEG to stdout without writing a file.
 //!                       [--preview] [--dump-linear <out.f32>] [--dump-final <out.f32>]
 
 use raw_develop::{DevelopSettings, Negative, Options, Quality, develop, encode, image::RgbImage};
@@ -13,7 +12,7 @@ use std::time::Instant;
 
 fn usage() -> ExitCode {
   eprintln!(
-    "usage:\n  raw-develop info <file.RAF>\n  raw-develop cfa <file.RAF> <out.u16>\n  raw-develop develop <file.RAF> <out.png|jpg|-> [--settings s.json] [--preview] [--dump-linear f] [--dump-final f]"
+    "usage:\n  raw-develop info <file.RAF>\n  raw-develop cfa <file.RAF> <out.u16>\n  raw-develop develop <file.RAF> <out.png|jpg> [--settings s.json] [--preview] [--dump-linear f] [--dump-final f]"
   );
   ExitCode::from(2)
 }
@@ -99,19 +98,11 @@ fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Resul
   let t1 = Instant::now();
   let out = develop(&neg, &settings, &opts)?;
   let t2 = Instant::now();
-  if output == "-" {
-    // Binary stdout lets the API render without writing an artifact to disk.
-    use std::io::Write;
-    std::io::stdout()
-      .lock()
-      .write_all(&encode::encode(&out.image, encode::Format::Jpeg(92))?)?;
-  } else {
-    encode::write(
-      &out.image,
-      Path::new(output),
-      encode::Format::from_path(Path::new(output)),
-    )?;
-  }
+  encode::write(
+    &out.image,
+    Path::new(output),
+    encode::Format::from_path(Path::new(output)),
+  )?;
   eprintln!(
     "{}x{} decode {:?} develop {:?} encode {:?} (cct {:.0} K, exposure {:+.2} EV, luma NR {:.3})",
     out.image.width,

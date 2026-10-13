@@ -18,12 +18,13 @@ struct LoupeScreen: View {
     @State private var showingInfo = false
     @State private var similarSource: PhotoRecord?
     @State private var collectionSheetPhotoID: CollectionSheetTarget?
-    @StateObject private var rawDevelopment: RawDevelopmentStore
     @StateObject private var exports: ExportStore
     /// The open page's video or Live Photo player; released on page change and dismissal.
     @StateObject private var playback = LoupePlaybackController()
     /// Show Faces: boxes over the paged photos while on.
     @StateObject private var faceBoxes: LoupeFaceBoxesStore
+    /// Show Developed RAW: the open RAW fully developed instead of its embedded preview.
+    @StateObject private var developed: LoupeDevelopedStore
     @Environment(\.showInLibrary) private var showInLibrary
     @State private var bridge = LoupePagerBridge()
     /// The image flying between the grid cell and the loupe; nil when settled.
@@ -54,9 +55,9 @@ struct LoupeScreen: View {
         self.dismiss = dismiss
         self.review = review
         self.transition = transition
-        _rawDevelopment = StateObject(wrappedValue: RawDevelopmentStore(baseURL: api.baseURL))
         _exports = StateObject(wrappedValue: ExportStore(api: api))
         _faceBoxes = StateObject(wrappedValue: LoupeFaceBoxesStore(api: api))
+        _developed = StateObject(wrappedValue: LoupeDevelopedStore(api: api))
     }
 
     private var activeRecord: PhotoRecord? {
@@ -99,8 +100,8 @@ struct LoupeScreen: View {
                     }
                 },
                 onEmpty: dismiss,
-                faceBoxes: rawDevelopment.photoID == activeID ? [:] : faceBoxes.visibleBoxes,
-                developedImages: developedImages,
+                faceBoxes: faceBoxes.visibleBoxes,
+                developedImages: developed.images,
                 onDismissDragActive: { active in
                     withAnimation(.easeOut(duration: 0.15)) { dismissDragging = active }
                 },
@@ -118,13 +119,6 @@ struct LoupeScreen: View {
             )
             .ignoresSafeArea()
             .opacity(transitioning ? 0 : 1)
-
-            if rawDevelopment.isLoading && rawDevelopment.photoID == activeID {
-                ProgressView("Developing RAW…")
-                    .padding(20)
-                    .pbGlass(in: RoundedRectangle(cornerRadius: 16), dark: true)
-                    .accessibilityIdentifier("raw-development-loader")
-            }
 
             if let flight {
                 Color.clear
@@ -157,9 +151,6 @@ struct LoupeScreen: View {
                     } else if let message = curation.errorMessage {
                         PBBanner(message: "Couldn’t save rating. \(message)", dismiss: { curation.dismissError() })
                     }
-                    if let message = rawDevelopment.errorMessage {
-                        PBBanner(message: message, dismiss: rawDevelopment.reset)
-                    }
                     overlayControls
                     Spacer()
                     filmstrip
@@ -179,14 +170,18 @@ struct LoupeScreen: View {
         .presentationBackground(.clear)
         .onAppear {
             playback.show(activeRecord)
+            developed.show(activeRecord)
             runEntrance()
         }
         .onChange(of: activeID) { _, _ in
-            rawDevelopment.show(photoID: activeID)
             playback.show(activeRecord)
             Task { await faceBoxes.load(activeRecord) }
+            developed.show(activeRecord)
         }
-        .onDisappear { playback.release(); rawDevelopment.reset() }
+        .onDisappear {
+            playback.release()
+            developed.release()
+        }
         .statusBarHidden(!showsChrome)
         .exportPresentation(exports)
         .sheet(isPresented: $showingInfo) {
@@ -337,6 +332,16 @@ struct LoupeScreen: View {
                     } label: {
                         Label("Find Similar", systemImage: "sparkle.magnifyingglass")
                     }
+                    if LoupeRendition.developableRawID(for: activeRecord) != nil {
+                        Button {
+                            developed.setOn(!developed.isOn, photo: activeRecord)
+                        } label: {
+                            Label(
+                                developed.isOn ? "Show Embedded Preview" : "Show Developed RAW",
+                                systemImage: "camera.aperture"
+                            )
+                        }
+                    }
                     if !activeRecord.isVideo {
                         Button {
                             let record = activeRecord
@@ -455,47 +460,51 @@ struct LoupeScreen: View {
         }
     }
 
-    /// LIVE (for Live Photos) and Show Faces (for stills) over the top of the photo.
+    /// LIVE (for Live Photos), Show Faces (for stills), and the RAW rendition badge over the
+    /// top of the photo.
     @ViewBuilder
     private var overlayControls: some View {
-        let hasRaw = activeRecord.map(RawDevelopmentStore.supports) ?? false
-        let hasLive = activeRecord?.motionVideoURL != nil && rawDevelopment.photoID != activeID
-        let canShowFaces = rawDevelopment.photoID != activeID && faceBoxes.isShowing && (activeRecord.map { !$0.isVideo } ?? false)
-        if hasLive || canShowFaces || hasRaw {
+        let hasLive = activeRecord?.motionVideoURL != nil
+        let canShowFaces = faceBoxes.isShowing && (activeRecord.map { !$0.isVideo } ?? false)
+        let showsRendition = LoupeRendition.developableRawID(for: activeRecord) != nil
+        if hasLive || canShowFaces || showsRendition {
             HStack(spacing: 8) {
-                if hasRaw { rawDevelopmentButton }
                 if hasLive { liveButton }
                 if canShowFaces { facesButton }
                 Spacer()
+                if showsRendition { renditionBadge }
             }
             .padding(.horizontal, PBSpacing.m)
         }
     }
 
-    private var developedImages: [Int: UIImage] {
-        guard rawDevelopment.photoID == activeID, let image = rawDevelopment.image else { return [:] }
-        return [activeID: image]
-    }
-
-    private var rawDevelopmentButton: some View {
-        let enabled = rawDevelopment.photoID == activeID
+    /// Which rendition of the RAW is on screen: tap to switch.
+    private var renditionBadge: some View {
+        let rendition = developed.isOn ? developed.rendition : .embedded
         return Button {
-            guard let activeRecord else { return }
-            playback.show(nil)
-            rawDevelopment.toggle(activeRecord)
-            if rawDevelopment.photoID == nil { playback.show(activeRecord) }
+            developed.setOn(!developed.isOn, photo: activeRecord)
         } label: {
-            Label(enabled ? "Original preview" : "Develop RAW", systemImage: "slider.horizontal.3")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .foregroundStyle(enabled ? Color.yellow : Color.white)
-                .pbGlass(in: Capsule(), interactive: true, dark: true)
+            HStack(spacing: 6) {
+                if rendition == .developing {
+                    ProgressView().controlSize(.mini).tint(.white)
+                }
+                Text(rendition.label)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .foregroundStyle({
+                if case .developed = rendition { return Color.yellow }
+                return Color.white
+            }())
+            .pbGlass(in: Capsule(), interactive: true, dark: true)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(enabled ? "Show original preview" : "Develop RAW")
-        .accessibilityValue(enabled ? "On" : "Off")
-        .accessibilityIdentifier("raw-development-toggle")
+        .accessibilityIdentifier("loupe-rendition")
+        .accessibilityLabel(rendition.label)
+        .accessibilityHint(developed.isOn ? "Shows the embedded preview" : "Develops the full RAW")
     }
 
     /// Outlines detected faces on the photo; they follow pinch-zoom and pan.
