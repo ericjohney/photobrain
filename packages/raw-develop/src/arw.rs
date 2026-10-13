@@ -10,6 +10,7 @@
 //! | 0x0111/0x0117 StripOffsets/ByteCounts | uncompressed and cRAW data |
 //! | 0x0142..0x0145 Tile* | lossless JPEG tiles |
 //! | 0xc61f/0xc620 DefaultCropOrigin/Size | active area (RawCamera crops to exactly this) |
+//! | 0x7010 SonyToneCurve | cRAW expansion knots |
 //! | 0x7310 BlackLevel | 4 levels, one per CFA position |
 //! | 0x787f WhiteLevel | 3 levels (R, G, B) |
 //! | 0x7313 WB_RGGBLevels | as-shot white balance (RawCamera's highlight factors are R/G, B/G) |
@@ -93,7 +94,14 @@ pub fn parse(data: &[u8]) -> Result<RawMetadata> {
       if compression == 1 {
         RawStorage::Uncompressed { offset, length }
       } else {
-        RawStorage::SonyCompressed { offset, length }
+        let tc = u32s(&t, &raw, 0x7010)?
+          .filter(|v| v.len() == 4)
+          .ok_or_else(|| Error::Malformed("ARW: cRAW without SonyToneCurve (0x7010)".into()))?;
+        RawStorage::SonyCompressed {
+          offset,
+          length,
+          tone_curve: [tc[0], tc[1], tc[2], tc[3]],
+        }
       }
     }
     7 => {

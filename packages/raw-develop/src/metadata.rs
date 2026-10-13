@@ -26,8 +26,13 @@ pub enum RawStorage {
     tile_width: usize,
     tile_height: usize,
   },
-  /// Sony lossy "Compressed RAW" (cRAW): 32-pixel blocks with 7-bit deltas.
-  SonyCompressed { offset: usize, length: usize },
+  /// Sony lossy "Compressed RAW" (cRAW): 32-pixel blocks with 7-bit deltas, expanded
+  /// through `SonyToneCurve` (0x7010).
+  SonyCompressed {
+    offset: usize,
+    length: usize,
+    tone_curve: [u32; 4],
+  },
 }
 
 /// Lens-correction parameter arrays as stored by the camera.

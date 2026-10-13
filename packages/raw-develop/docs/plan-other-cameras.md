@@ -1,6 +1,6 @@
 # Handoff plan: the other cameras in the production library
 
-Status: phases 0 (X100VI), 1 (format-neutral core) and 2 (Sony ARW uncompressed and lossless) are done; phases 3–4 are open. The plan was written on 2026-10-12 after
+Status: phases 0–3 (X100VI, format-neutral core, Sony ARW including lossy cRAW) are done; phase 4 (iPhone ProRAW) is open. The plan was written on 2026-10-12 after
 surveying the production library and running the Apple reference tool on samples of
 every camera. Read [adding-a-camera.md](adding-a-camera.md),
 [pipeline.md](pipeline.md) and [noise-reduction.md](noise-reduction.md) first.
@@ -132,7 +132,7 @@ Ordered by photos covered per unit of effort:
 | 0 | X100VI profile (**done**: ΔE00 0.43, `noise_table.py`, `smoothDSharpenAntiBloom`) | 1 | small, and it proves out the "case A" checklist |
 | 1 | Format-neutral core and Bayer support (**done**: `metadata::RawMetadata`, `tiff.rs`, `unpack/ljpeg.rs` + tile assembly, 2×2 binning) | — | medium (refactor) |
 | 2 | Sony ARW: uncompressed and lossless (**done**: ΔE00 0.05–0.40; see below) | ≈ 4,550 | large |
-| 3 | Sony lossy cRAW | ≈ 250 | small–medium |
+| 3 | Sony lossy cRAW (**done**: bit-exact, `unpack/sony_craw.rs`) | ≈ 250 | small–medium |
 | 4 | iPhone ProRAW DNG | 940 | large (a new pipeline variant) |
 | 5 | Integration into `image-processing` | all | separate change; out of scope here |
 

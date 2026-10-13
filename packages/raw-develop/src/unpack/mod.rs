@@ -3,6 +3,7 @@
 pub mod bitreader;
 pub mod fuji_compressed;
 pub mod ljpeg;
+pub mod sony_craw;
 mod uncompressed;
 
 use crate::error::Result;
@@ -33,8 +34,15 @@ pub fn unpack(data: &[u8], meta: &RawMetadata) -> Result<Vec<u16>> {
       tile_width,
       tile_height,
     } => ljpeg_tiles(data, tiles, *tile_width, *tile_height, meta.raw_width, meta.raw_height),
-    RawStorage::SonyCompressed { .. } => Err(
-      crate::Error::Unsupported(format!("{:?} storage not implemented yet", meta.container)),
+    RawStorage::SonyCompressed {
+      offset,
+      length,
+      tone_curve,
+    } => sony_craw::decode(
+      &data[*offset..*offset + *length],
+      meta.raw_width,
+      meta.raw_height,
+      *tone_curve,
     ),
   }
 }
