@@ -4,6 +4,8 @@ pub mod chroma_nr;
 pub mod debayer;
 pub mod demosaic;
 pub mod detail;
+pub mod dng_detail;
+pub mod dng_look;
 pub mod dextrans;
 pub mod highlights;
 pub mod lens;

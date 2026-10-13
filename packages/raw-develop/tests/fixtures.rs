@@ -38,6 +38,22 @@ fn decoder_is_bit_exact_with_rawcamera() {
   };
   for raf in fixtures(&fx) {
     let stem = raf.file_stem().unwrap().to_string_lossy().to_string();
+    let rgb_ref = refs.join(&stem).join("cfa.rgb.f32");
+    if rgb_ref.exists() {
+      // LinearRaw DNG: RawCamera's provider holds half floats.
+      let (w, h, apple) = load_f32(&rgb_ref);
+      let neg = Negative::open(&raf).unwrap();
+      let (_, ours) = neg.dng.as_ref().expect("DNG");
+      assert_eq!((w, h), (neg.meta.raw_width, neg.meta.raw_height), "{stem}: size");
+      let bad = ours
+        .iter()
+        .zip(&apple)
+        .filter(|(a, b)| half(**a) != **b)
+        .count();
+      assert!(bad == 0, "{stem}: {bad} samples differ from RawCamera");
+      eprintln!("{stem}: bit-exact (half float)");
+      continue;
+    }
     let Ok(apple) = std::fs::read(refs.join(&stem).join("cfa.u16")) else {
       eprintln!("{stem}: no reference cfa.u16");
       continue;
@@ -50,6 +66,12 @@ fn decoder_is_bit_exact_with_rawcamera() {
     );
     eprintln!("{stem}: bit-exact");
   }
+}
+
+/// Round to the nearest IEEE half float (normal range).
+fn half(x: f32) -> f32 {
+  let b = x.to_bits();
+  f32::from_bits((b + 0x0fff + ((b >> 13) & 1)) & !0x1fff)
 }
 
 fn load_f32(p: &Path) -> (usize, usize, Vec<f32>) {

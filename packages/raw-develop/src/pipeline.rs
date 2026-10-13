@@ -12,6 +12,10 @@
 //! 10. hue magnet, gamut map, tone boost -> encoded Display P3       (RAWHueMagnetMR, gmKernel_v7, boost_v7)
 //! 11. orientation, user rotation and crop
 //!
+//! Stage 3 is `deXtrans_v8` for X-Trans and `despeckle_v8` + `deBayer_v8` for Bayer (Sony).
+//! LinearRaw DNGs (Apple ProRAW) branch to `develop_dng`: detail, highlight recovery,
+//! DNG colour, exposure, gain table map, gamut map and the `ProfileToneCurve` LUT.
+//!
 //! `develop` is a pure function of a `Negative` and `DevelopSettings`.
 
 use crate::Negative;
@@ -72,6 +76,9 @@ impl Default for Options {
 
 pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Result<Developed> {
   settings.validate()?;
+  if let Some((info, rgb)) = &neg.dng {
+    return develop_dng(neg, info, rgb, settings, opts);
+  }
   let meta = &neg.meta;
   let profile = CameraProfile::builtin(&meta.model)?;
 
@@ -299,6 +306,108 @@ fn full_dextrans(
   let wbf = wb.map(|v| v as f32);
   img.map_pixels(|p| [p[0] * wbf[0], p[1] * wbf[1], p[2] * wbf[2]]);
   Some(img)
+}
+
+/// DNG LinearRaw (Apple ProRAW): RawCamera's "8.dng" path. The data is already
+/// demosaiced; colour, exposure and tone come from the file's tags, so no camera
+/// profile is used.
+///
+///  1. detail: luma pyramid with edge-masked sharpening + fused chroma NR (dng_detail)
+///  2. highlight recovery (thresholds 1 / 0.9 / 1: the data is not white-balanced)
+///  3. camera -> XYZ D50 (RAWConvert model, dng.rs) -> linear Display P3
+///  4. exposure 2^BaselineExposure (+ user EV)
+///  5. ProfileGainTableMap, gamut map, ProfileToneCurve (dng_look)
+fn develop_dng(
+  neg: &Negative,
+  info: &crate::dng::DngInfo,
+  rgb: &[f32],
+  settings: &DevelopSettings,
+  opts: &Options,
+) -> Result<Developed> {
+  use crate::stages::{dng_detail, dng_look};
+  let meta = &neg.meta;
+  let (w, h) = (meta.raw_width, meta.raw_height);
+  let mut img = RgbImage {
+    width: w,
+    height: h,
+    data: rgb.to_vec(),
+  };
+  if (meta.crop_left, meta.crop_top, meta.crop_width, meta.crop_height) != (0, 0, w, h) {
+    img = img.crop(meta.crop_left, meta.crop_top, meta.crop_width, meta.crop_height);
+  }
+  if opts.quality == Quality::Preview {
+    img = img.downscale(2);
+  }
+
+  let neutral = match settings.white_balance {
+    WhiteBalance::AsShot => info.as_shot_neutral,
+    WhiteBalance::Temperature { .. } => {
+      return Err(crate::Error::Unsupported(
+        "kelvin white balance for DNG files is not implemented yet".into(),
+      ));
+    }
+  };
+  let exposure_ev = info.baseline_exposure + settings.exposure;
+  let gain = 2f64.powf(exposure_ev) as f32;
+
+  // 1. Detail. RawCamera's DNG defaults: chroma NR 0.5, detail 0.5 (our sharpening 1.0).
+  dng_detail::apply(
+    &mut img,
+    &dng_detail::Params {
+      gain,
+      chroma: settings.chroma_noise_reduction,
+      detail: settings.sharpening * 0.5,
+    },
+  );
+
+  // 2. Highlights on unbalanced data.
+  if settings.highlight_recovery {
+    highlights::recover(&mut img, [1.0, 0.9, 1.0]);
+  }
+
+  // 3-4. Colour and exposure.
+  let (c2x, cct) = info.camera_to_xyz_d50(neutral);
+  let m = crate::math::XYZ_D50_TO_LINEAR_P3.mul(&c2x).to_f32();
+  img.map_pixels(|p| {
+    [0, 1, 2].map(|r| (m[r][0] * p[0] + m[r][1] * p[1] + m[r][2] * p[2]) * gain)
+  });
+  let linear = opts.keep_linear.then(|| img.clone());
+
+  // 5. Look.
+  let amount = settings.tone_amount;
+  if let Some(gtm) = &info.gain_table_map {
+    dng_look::gain_table_map(&mut img, gtm, amount);
+  }
+  let tone = dng_look::ToneLut::from_curve(&info.tone_curve);
+  img.map_pixels(|p| {
+    let g = look::gamut_map(p);
+    let q = if amount >= 1.0 {
+      g
+    } else {
+      std::array::from_fn(|k| p[k] + (g[k] - p[k]) * amount)
+    };
+    tone.apply(q, amount).map(|v| srgb_encode(v.clamp(0.0, 1.0)))
+  });
+
+  let orientation = rotate_orientation(meta.orientation, settings.quarter_turns);
+  img = img.oriented(orientation);
+  if let Some(c) = settings.crop {
+    let x0 = (c.x * img.width as f64).round() as usize;
+    let y0 = (c.y * img.height as f64).round() as usize;
+    let cw = ((c.width * img.width as f64).round() as usize).clamp(1, img.width - x0);
+    let ch = ((c.height * img.height as f64).round() as usize).clamp(1, img.height - y0);
+    img = img.crop(x0, y0, cw, ch);
+  }
+  Ok(Developed {
+    image: img,
+    linear,
+    info: DevelopInfo {
+      neutral,
+      cct,
+      exposure_ev,
+      luma_nr: 0.0,
+    },
+  })
 }
 
 /// Full-resolution Bayer demosaic (RawCamera's despeckle_v8 + deBayer_v8 ports) of the

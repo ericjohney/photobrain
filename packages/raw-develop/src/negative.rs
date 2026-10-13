@@ -11,8 +11,11 @@ use std::path::Path;
 
 pub struct Negative {
   pub meta: RawMetadata,
-  /// Full readout mosaic, `meta.raw_width * meta.raw_height`, row-major.
+  /// Full readout mosaic, `meta.raw_width * meta.raw_height`, row-major (empty for
+  /// LinearRaw DNGs).
   pub mosaic: Vec<u16>,
+  /// LinearRaw DNG: tag data and the decoded, linearised RGB (0-1, interleaved).
+  pub dng: Option<(crate::dng::DngInfo, Vec<f32>)>,
 }
 
 impl Negative {
@@ -22,9 +25,22 @@ impl Negative {
   }
 
   pub fn from_bytes(data: &[u8]) -> Result<Self> {
+    if crate::dng::is_dng(data) {
+      let (meta, info) = crate::dng::parse(data)?;
+      let rgb = crate::dng::decode(data, &meta, &info)?;
+      return Ok(Self {
+        meta,
+        mosaic: Vec::new(),
+        dng: Some((info, rgb)),
+      });
+    }
     let meta = parse_metadata(data)?;
     let mosaic = unpack::unpack(data, &meta)?;
-    Ok(Self { meta, mosaic })
+    Ok(Self {
+      meta,
+      mosaic,
+      dng: None,
+    })
   }
 
   /// Parse metadata only (no sensor decode).
@@ -45,6 +61,9 @@ fn parse_metadata(data: &[u8]) -> Result<RawMetadata> {
   }
   if crate::arw::is_arw(data) {
     return crate::arw::parse(data);
+  }
+  if crate::dng::is_dng(data) {
+    return crate::dng::parse(data).map(|(m, _)| m);
   }
   Err(crate::Error::NotRaw)
 }

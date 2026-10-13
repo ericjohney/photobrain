@@ -118,7 +118,17 @@ fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Resul
     write_f32(l, &p)?;
   }
   if let Some(p) = dump_final {
-    write_f32(&out.image, &p)?;
+    // Same products as tools/apple-reference: 4x box-downsampled (.f32) and a
+    // full-resolution 1024px centre crop (<stem>.crop.f32).
+    write_f32(&out.image.downscale(4), &p)?;
+    let im = &out.image;
+    let (cw, ch) = (im.width.min(1024), im.height.min(1024));
+    let crop = im.crop((im.width - cw) / 2, (im.height - ch) / 2, cw, ch);
+    let cp = match p.strip_suffix(".f32") {
+      Some(stem) => format!("{stem}.crop.f32"),
+      None => format!("{p}.crop"),
+    };
+    write_f32(&crop, &cp)?;
   }
   Ok(())
 }

@@ -6,6 +6,7 @@
 //   params.json        CIRAWFilter properties for the file (as-shot defaults)
 //   graph.txt          CI_PRINT_TREE initial render graph (kernel parameters)
 //   cfa.u16            RawCamera's decoded mosaic ("CRawImage" provider), LE u16, full sensor
+//   cfa.rgb.f32        DNG LinearRaw files: the decoded RGB provider (RDF32 layout, top row first)
 //   <variant>.lin.f32  scene-linear Display P3 (pre look/tone) captured at the
 //                      linearSpaceFilter hook, 4x box-downsampled, top row first
 //   <variant>.crop.f32 same, full-resolution 1024x1024 centre crop
@@ -30,6 +31,7 @@
 
 static CIImage *gCfa;
 static size_t gCfaW, gCfaH;
+static int gCfaFormat;
 typedef id (*InitFn)(id, SEL, id, size_t, size_t, int, CGColorSpaceRef, id);
 static InitFn gOrigInit;
 
@@ -39,6 +41,7 @@ static id hookInit(id self, SEL s, id p, size_t w, size_t h, int f, CGColorSpace
     gCfa = r;
     gCfaW = w;
     gCfaH = h;
+    gCfaFormat = f;
   }
   return r;
 }
@@ -213,7 +216,29 @@ int main(int argc, char **argv) {
                                                    error:nil];
     [pj writeToFile:[dir stringByAppendingPathComponent:@"params.json"] atomically:YES];
 
-    if (gCfa) {
+    if (gCfa && gCfaFormat != kCIFormatL16) {
+      // LinearRaw (already demosaiced) provider: dump RGB floats, unmodified.
+      CIContext *raw = [CIContext contextWithOptions:@{
+        kCIContextWorkingColorSpace : [NSNull null],
+        kCIContextOutputColorSpace : [NSNull null],
+        kCIContextWorkingFormat : @(kCIFormatRGBAf),
+      }];
+      float *buf = malloc(gCfaW * gCfaH * 16);
+      [raw render:[gCfa imageBySamplingNearest]
+           toBitmap:buf
+           rowBytes:gCfaW * 16
+             bounds:CGRectMake(0, 0, gCfaW, gCfaH)
+             format:kCIFormatRGBAf
+         colorSpace:nil];
+      float *rgb = malloc(gCfaW * gCfaH * 12);
+      for (size_t i = 0; i < gCfaW * gCfaH; i++)
+        for (int c = 0; c < 3; c++) rgb[i * 3 + c] = buf[i * 4 + c];
+      writeF32([dir stringByAppendingPathComponent:@"cfa.rgb.f32"], rgb, (uint32_t)gCfaW, (uint32_t)gCfaH);
+      free(rgb);
+      free(buf);
+      NSString *meta = [NSString stringWithFormat:@"{\"width\":%zu,\"height\":%zu,\"format\":%d}\n", gCfaW, gCfaH, gCfaFormat];
+      [meta writeToFile:[dir stringByAppendingPathComponent:@"cfa.json"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    } else if (gCfa) {
       size_t bpr = gCfaW * 2;
       NSMutableData *d = [NSMutableData dataWithLength:bpr * gCfaH];
       CIContext *raw = [CIContext contextWithOptions:@{

@@ -393,7 +393,7 @@ mod tests {
     counts[4] = 17;
     let syms: Vec<u8> = (0..=16).collect();
     let mut out = vec![0xff, 0xd8];
-    let mut seg = |m: u8, body: &[u8], out: &mut Vec<u8>| {
+    let seg = |m: u8, body: &[u8], out: &mut Vec<u8>| {
       out.extend_from_slice(&[0xff, m]);
       out.extend_from_slice(&((body.len() + 2) as u16).to_be_bytes());
       out.extend_from_slice(body);

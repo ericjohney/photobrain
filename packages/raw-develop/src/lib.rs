@@ -1,7 +1,8 @@
-//! raw-develop: Fujifilm X-Trans RAF to Display P3, following the stage order of
-//! Apple's RawCamera pipeline (decode, linearise, white balance, demosaic, crop, noise
-//! reduction, lens correction, highlight recovery, camera to linear colour, exposure,
-//! sharpening, look, output).
+//! raw-develop: Fujifilm X-Trans RAF, Sony ARW and Apple ProRAW DNG to Display P3,
+//! following the stage order of Apple's RawCamera pipeline (decode, linearise, white
+//! balance, demosaic, crop, noise reduction, lens correction, highlight recovery, camera to
+//! linear colour, exposure, sharpening, look, output). LinearRaw DNGs take RawCamera's
+//! "8.dng" variant (no demosaic; colour, exposure and tone from DNG tags).
 //!
 //! The crate is standalone: it is not yet wired into `image-processing` scans.
 //!
@@ -17,6 +18,7 @@
 
 pub mod arw;
 pub mod cfa;
+pub mod dng;
 pub mod encode;
 pub mod error;
 pub mod image;
