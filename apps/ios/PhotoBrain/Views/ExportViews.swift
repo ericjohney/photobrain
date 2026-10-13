@@ -106,12 +106,17 @@ private struct ActivitySheetPresenter: UIViewControllerRepresentable {
             activity.completionWithItemsHandler = { [weak self] _, _, _, _ in
                 self?.complete(file)
             }
+            let presenter = topmostPresenter()
             if let popover = activity.popoverPresentationController {
-                popover.sourceView = view
-                popover.sourceRect = view.bounds
+                // This representable is deliberately zero-sized. Anchor the iPad
+                // popover in the visible presenter, including resized windows.
+                popover.sourceView = presenter.view
+                popover.sourceRect = CGRect(
+                    x: presenter.view.bounds.midX, y: presenter.view.bounds.midY,
+                    width: 1, height: 1
+                )
                 popover.permittedArrowDirections = []
             }
-            let presenter = topmostPresenter()
             guard presenter.presentedViewController == nil else {
                 complete(file)
                 return
@@ -122,6 +127,11 @@ private struct ActivitySheetPresenter: UIViewControllerRepresentable {
         /// The view controller currently on screen above this one, e.g. the loupe's cover.
         private func topmostPresenter() -> UIViewController {
             var presenter: UIViewController = self
+            // The representable is a zero-sized child. Its containing controller
+            // supplies the visible bounds used to position the share popover.
+            while let parent = presenter.parent {
+                presenter = parent
+            }
             while let presented = presenter.presentedViewController, !presented.isBeingDismissed {
                 presenter = presented
             }

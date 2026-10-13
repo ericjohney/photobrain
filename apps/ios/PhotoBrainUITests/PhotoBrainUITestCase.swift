@@ -27,10 +27,11 @@ class PhotoBrainUITestCase: XCTestCase {
             app.launchEnvironment["PHOTOBRAIN_UI_TESTS"] = "1"
             // Labels embed formatted dates and counts; pin the locale they are asserted in.
             app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+            XCUIDevice.shared.orientation = .portrait
             app.launch()
-            // A cold launch on a shared CI runner can take 20 s or more; wait for the tab bar
+            // A cold launch on a shared CI runner can take 20 s or more; wait for navigation
             // so the first tap of every test lands on a ready app.
-            XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 60), "App never showed its tab bar")
+            XCTAssertTrue(element("Collections").waitForExistence(timeout: 60), "App never showed its navigation")
         }
     }
 
@@ -155,14 +156,28 @@ class PhotoBrainUITestCase: XCTestCase {
 
     @MainActor
     func openLibrary() {
-        waitFor(app.tabBars.buttons["Library"], timeout: 30).tap()
+        selectTab("Library")
         waitFor(app.staticTexts["library-title"])
     }
 
     @MainActor
     func openCollections() {
-        waitFor(app.tabBars.buttons["Collections"], timeout: 30).tap()
+        selectTab("Collections")
         waitFor(navigationTitle("Collections"))
+    }
+
+    /// iPad exposes tabs at the top or in its sidebar; iPhone keeps its bottom tab bar.
+    @MainActor
+    func selectTab(_ title: String) {
+        let tab = app.tabBars.buttons[title]
+        let sidebarRow = app.cells[title].firstMatch
+        if tab.exists, tab.isHittable {
+            tab.tap()
+        } else if sidebarRow.exists, sidebarRow.isHittable {
+            sidebarRow.tap()
+        } else {
+            waitFor(app.buttons[title].firstMatch, timeout: 30).tap()
+        }
     }
 
     /// Opens the Library's More menu (its label carries review and duplicate counts).

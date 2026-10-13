@@ -56,3 +56,15 @@ jobs:
 
       - name: Run UI flows against the fixture API
         run: apps/ios/scripts/run-ui-tests.sh
+
+      - name: Run iPad UI flows against the fixture API
+        env:
+          IOS_DESTINATION: platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5
+        run: |
+          apps/ios/scripts/run-ui-tests.sh \
+            -only-testing:PhotoBrainUITests/CollectionsSearchFlowTests \
+            -only-testing:PhotoBrainUITests/LibraryFlowTests/testIPadKeepsNavigationAndGroupingAvailableWhileBrowsing \
+            -only-testing:PhotoBrainUITests/LibraryFlowTests/testIPadSharesPhotoFromLoupe \
+            -only-testing:PhotoBrainUITests/LibraryFlowTests/testRotationPreservesOpenPhotoAndMetadata \
+            -only-testing:PhotoBrainUITests/LibraryFlowTests/testLoupeRatesPhotoAndShowsTags \
+            -only-testing:PhotoBrainUITests/LibraryFlowTests/testLivePhotoAndVideoLoupes

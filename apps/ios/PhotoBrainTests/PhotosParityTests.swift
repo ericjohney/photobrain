@@ -38,6 +38,16 @@ final class PhotosParityTests: XCTestCase {
         XCTAssertEqual(LibraryGridViewController.columnCount(width: 402, phoneColumns: nil), 4)
     }
 
+    func testRankedResultsKeepPhoneLayoutAndScaleToTabletWindows() {
+        XCTAssertEqual(PhotoResultsGrid.columnCount(width: 402, featuresTopResult: true), 3)
+        XCTAssertEqual(PhotoResultsGrid.columnCount(width: 820, featuresTopResult: true), 3)
+        XCTAssertEqual(PhotoResultsGrid.columnCount(width: 402), 4)
+        XCTAssertEqual(PhotoResultsGrid.columnCount(width: 402, featuresTopResult: true, isPad: true), 3)
+        XCTAssertEqual(PhotoResultsGrid.columnCount(width: 600, featuresTopResult: true, isPad: true), 5)
+        XCTAssertEqual(PhotoResultsGrid.columnCount(width: 820, featuresTopResult: true, isPad: true), 7)
+        XCTAssertEqual(PhotoResultsGrid.columnCount(width: 1_180, featuresTopResult: true, isPad: true), 8)
+    }
+
     func testGroupingSegmentsMatchPhotos() {
         XCTAssertEqual(LibraryGrouping.segments.map(\.title), ["Years", "Months", "All"])
         XCTAssertEqual(LibraryGrouping.segments.map(\.defaultPhoneColumns), [9, 5, 3])

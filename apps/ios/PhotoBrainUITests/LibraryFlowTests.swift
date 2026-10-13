@@ -1,7 +1,66 @@
+import UIKit
 import XCTest
 
 /// Library, loupe, review, and browse flows against the seeded fixture library.
 final class LibraryFlowTests: PhotoBrainUITestCase {
+    @MainActor
+    func testIPadKeepsNavigationAndGroupingAvailableWhileBrowsing() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad layout") }
+        openLibrary()
+        tap("Years")
+        waitFor(element(startingWith: "2024"))
+        tap("All")
+        app.collectionViews.firstMatch.swipeDown()
+        XCTAssertTrue(app.buttons["Collections"].firstMatch.isHittable)
+        XCTAssertTrue(element("Years").isHittable)
+        if app.buttons["Toggle sidebar"].exists {
+            app.buttons["Toggle sidebar"].tap()
+            XCTAssertTrue(waitFor(element("Collections")).isHittable)
+        }
+        openCollections()
+        tap("Settings")
+        waitFor(navigationTitle("Settings"))
+        goBack()
+        openLibrary()
+        waitFor(gridCell("beach-waves.jpg, 5 stars, Pick"))
+    }
+
+    @MainActor
+    func testIPadSharesPhotoFromLoupe() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad share popover") }
+        openLibrary()
+        gridCell("dog-park-1.jpg").tap()
+        tap("Share")
+        tap("Share Original")
+        waitFor(app.otherElements["ActivityListView"], timeout: 30)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "iPad share popover"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        // iPadOS 26 hosts the actions remotely without exposing them to XCTest.
+        // Dismiss the centered popover by tapping the unobscured backdrop.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.2)).tap()
+        waitFor(element("Close photo"))
+        tap("Close photo")
+        waitFor(gridCell("dog-park-1.jpg"))
+    }
+
+    @MainActor
+    func testRotationPreservesOpenPhotoAndMetadata() {
+        openLibrary()
+        gridCell("dog-park-1.jpg").tap()
+        waitFor(element("Close photo"))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(waitFor(app.cells["Open dog-park-1.jpg"].firstMatch).isSelected)
+        tap("Photo info")
+        waitFor(navigationTitle("Photo Info"))
+        waitFor(element("Tag Dog"))
+        tap("Done")
+        XCUIDevice.shared.orientation = .portrait
+        tap("Close photo")
+        waitFor(gridCell("dog-park-1.jpg"))
+    }
+
     @MainActor
     func testLibraryGridLabelsCurationPairsAndMotion() {
         openLibrary()
@@ -69,7 +128,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         waitFor(element(startingWith: "2024"))
         // The fixture's Years grid fits on screen, so the library is back at its newest edge
         // and the tab bar replaces the switcher.
-        waitFor(app.tabBars.buttons["Collections"])
+        waitFor(app.buttons["Collections"].firstMatch)
     }
 
     @MainActor
@@ -249,7 +308,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
 
     @MainActor
     func testSearchVideoFilterSavesSmartAlbum() async throws {
-        waitFor(app.tabBars.buttons["Search"], timeout: 30).tap()
+        selectTab("Search")
         waitFor(element("Search your library"))
         tap("Add filters")
         waitFor(navigationTitle("Filter"))

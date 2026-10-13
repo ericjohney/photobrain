@@ -40,6 +40,7 @@ struct LibraryScreen: View {
     @AppStorage("com.photobrain.gridColumns") private var storedColumns = ""
     @Environment(\.showInLibrary) private var showInLibrary
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     /// Safe-area insets with the tab bar showing; kept while it is collapsed so the grid's
     /// insets never jump.
     @State private var chromeInsets = EdgeInsets()
@@ -134,7 +135,7 @@ struct LibraryScreen: View {
 
     /// Scrolled back in time: Photos swaps the tab bar for the Years · Months · All switcher.
     private var isBrowsingCollapsed: Bool {
-        store.isBrowsingHistory && showsGroupingControl
+        !isPad && store.isBrowsingHistory && showsGroupingControl
     }
 
     private func updateChromeInsets(_ insets: EdgeInsets) {
@@ -144,7 +145,11 @@ struct LibraryScreen: View {
 
     /// Grid insets: below the title at the oldest edge, above the tab bar at the newest.
     private var gridInsets: EdgeInsets {
-        EdgeInsets(top: chromeInsets.top + 64, leading: 0, bottom: chromeInsets.bottom + PBSpacing.s, trailing: 0)
+        let groupingHeight = isPad && showsGroupingControl ? PBSize.control + PBSpacing.s : 0
+        return EdgeInsets(
+            top: chromeInsets.top + 64, leading: 0,
+            bottom: chromeInsets.bottom + PBSpacing.s + groupingHeight, trailing: 0
+        )
     }
 
     /// Photos' title block over the scrim: Library, the visible date or item count, and glass
@@ -251,6 +256,9 @@ struct LibraryScreen: View {
             if isBrowsingCollapsed {
                 collapsedBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if isPad, showsGroupingControl {
+                collapsedBar
+                    .frame(maxWidth: 420)
             }
         }
         .padding(.bottom, isBrowsingCollapsed ? 0 : PBSpacing.s)

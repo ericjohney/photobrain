@@ -20,6 +20,8 @@ struct SearchScreen: View {
             .navigationBarTitleDisplayMode(.large)
             .searchable(
                 text: $store.query,
+                placement: UIDevice.current.userInterfaceIdiom == .pad
+                    ? .navigationBarDrawer(displayMode: .always) : .automatic,
                 prompt: "Describe a photo"
             )
             .textInputAutocapitalization(.never)
@@ -168,9 +170,13 @@ struct PhotoResultsGrid: View {
     let onSelect: (Int) -> Void
 
     var body: some View {
-        let columns = featuresTopResult ? 3 : Self.columnCount(width: width)
+        let columns = Self.columnCount(
+            width: width, featuresTopResult: featuresTopResult,
+            isPad: UIDevice.current.userInterfaceIdiom == .pad
+        )
         let side = width / CGFloat(columns)
-        let featured = featuresTopResult && records.count >= 3 ? Array(records.prefix(3)) : []
+        let featuredCount = 1 + 2 * (columns - 2)
+        let featured = featuresTopResult && records.count >= 3 ? Array(records.prefix(featuredCount)) : []
         let rest = Array(records.dropFirst(featured.count))
         ScrollView {
             if let header {
@@ -181,17 +187,31 @@ struct PhotoResultsGrid: View {
                     .padding(.horizontal, PBSpacing.l)
                     .padding(.vertical, PBSpacing.s)
             }
-            if featured.count == 3 {
+            if let first = featured.first {
                 HStack(spacing: 1) {
-                    tile(featured[0], side: side * 2)
+                    tile(first, side: side * 2)
                         .frame(width: side * 2 - 1, height: side * 2)
-                    VStack(spacing: 1) {
-                        tile(featured[1], side: side)
-                            .frame(width: side, height: side - 0.5)
-                        tile(featured[2], side: side)
-                            .frame(width: side, height: side - 0.5)
+                    if columns == 3 {
+                        VStack(spacing: 1) {
+                            tile(featured[1], side: side)
+                                .frame(width: side, height: side - 0.5)
+                            tile(featured[2], side: side)
+                                .frame(width: side, height: side - 0.5)
+                        }
+                    } else {
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: columns - 2),
+                            spacing: 1
+                        ) {
+                            ForEach(featured.dropFirst()) { photo in
+                                tile(photo, side: side)
+                                    .frame(height: side - 0.5)
+                            }
+                        }
+                        .frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
+                .frame(height: side * 2)
                 .padding(.bottom, 1)
             }
             LazyVGrid(
@@ -241,12 +261,13 @@ struct PhotoResultsGrid: View {
         )
     }
 
-    static func columnCount(width: CGFloat) -> Int {
+    static func columnCount(width: CGFloat, featuresTopResult: Bool = false, isPad: Bool = false) -> Int {
+        if featuresTopResult, !isPad || width < 560 { return 3 }
         switch width {
-        case ..<560: 4
-        case ..<768: 5
-        case ..<1_024: 7
-        default: 8
+        case ..<560: return 4
+        case ..<768: return 5
+        case ..<1_024: return 7
+        default: return 8
         }
     }
 }

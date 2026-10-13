@@ -5,7 +5,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 ## Current Features
 
 - Web grid and loupe views with keyboard navigation, metadata, folders, and EXIF filters.
-- Native SwiftUI/UIKit iOS 17+ app in `apps/ios` with Library/Collections/Search tabs, a chronological grid and loupe, filters, semantic search, scan recovery, and Debug/Preview/Production configurations.
+- Native SwiftUI/UIKit iOS 17+ app for iPhone and iPad in `apps/ios` with Library/Collections/Search tabs (and an optional iPad sidebar on iPadOS 18+), a chronological grid and loupe, filters, semantic search, scan recovery, and Debug/Preview/Production configurations.
 - Four derived WebP preview sizes: `tiny`, `small`, `medium`, and `large`. Preview color is lossy; original photo files are untouched.
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
@@ -136,6 +136,19 @@ xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -co
 
 The native iOS command requires Xcode 26.6 and matches the unsigned Preview simulator build/test used by CI. The Xcode project also exposes separate Debug and Production schemes/configurations; iOS 17.0 is the minimum deployment target.
 
+The app supports iPhone and iPad, including portrait, landscape, and resized iPad multitasking windows. iPhone keeps its existing bottom tabs and browsing controls. On iPad, navigation stays available while browsing, Years/Months/All controls remain visible, and ranked search grids scale with the window. iPadOS 18+ also offers the system tab/sidebar switcher; iPadOS 17 uses tabs.
+
+Run the fixture-backed UI flows on an iPad simulator with:
+
+```bash
+IOS_DESTINATION='platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5' \
+  apps/ios/scripts/run-ui-tests.sh \
+  -only-testing:PhotoBrainUITests/CollectionsSearchFlowTests \
+  -only-testing:PhotoBrainUITests/LibraryFlowTests/testIPadKeepsNavigationAndGroupingAvailableWhileBrowsing \
+  -only-testing:PhotoBrainUITests/LibraryFlowTests/testIPadSharesPhotoFromLoupe \
+  -only-testing:PhotoBrainUITests/LibraryFlowTests/testRotationPreservesOpenPhotoAndMetadata
+```
+
 ## Configuration
 
 ### API
@@ -262,7 +275,7 @@ The API image applies shared migrations on startup and runs on port 3000. The we
 
 The permanent GitHub Actions build workflow runs API tests/typecheck and web Playwright tests, builds and pushes API and web images, and updates their external ArgoCD image tags on pushes to `main`.
 
-Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` (or by manual dispatch with custom inputs); it validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
+Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator, plus fixture-backed UI flows on iPhone and iPad Air simulators. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` (or by manual dispatch with custom inputs); it validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 
 The release workflow serializes on `ios-production-release`, uses `apps/ios/scripts/allocate-app-store-build.mjs` against App Store Connect plus a run reservation floor, and enforces iOS 17.0 plus the production bundle/API contract. See [iOS distribution](docs/ios-distribution.md) for releasing, signing secrets, and renewal.
 

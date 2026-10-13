@@ -75,6 +75,25 @@ final class LoupeStateTests: XCTestCase {
         XCTAssertTrue(becameEmpty)
     }
 
+    func testTabletWindowResizeKeepsTheActivePageCentered() throws {
+        let controller = PagedLoupeViewController()
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 820, height: 1_180)
+        controller.update(records: RedactedFixture.make(count: 10), activeID: 6)
+        controller.view.layoutIfNeeded()
+        let pager = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? UICollectionView }.first)
+        XCTAssertEqual(pager.contentOffset.x, 5 * 820, accuracy: 1)
+
+        // A wider window makes the active page partly visible at the old offset.
+        // It still needs to be centered, rather than leaving adjacent pages on screen.
+        for width in [CGFloat(1_000), 600, 820] {
+            controller.view.frame.size.width = width
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            XCTAssertEqual(pager.contentOffset.x, 5 * width, accuracy: 1)
+        }
+    }
+
     private func makeCell(photo: PhotoRecord, loader: RedirectAwareImageLoader) -> ZoomPageCell {
         let cell = ZoomPageCell(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         cell.configure(photo: photo, loader: loader, onTap: {}, onZoomChanged: { _ in })

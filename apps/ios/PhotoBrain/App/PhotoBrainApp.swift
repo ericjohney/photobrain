@@ -157,6 +157,7 @@ private struct RootTabView: View {
                 Tab("Collections", systemImage: "rectangle.stack", value: AppTab.collections) { albumsTab }
                 Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) { searchTab }
             }
+            .modifier(PadTabNavigation())
         } else {
             TabView(selection: $navigation.selectedTab) {
                 libraryTab
@@ -285,5 +286,19 @@ private struct RootTabView: View {
     private func applyPendingLink() {
         guard let route = links.takePendingRoute() else { return }
         navigation.apply(route)
+    }
+}
+
+/// Keep the phone's tab behavior; iPad can switch between tabs and a sidebar and
+/// automatically adapts the navigation to a narrower multitasking window.
+@available(iOS 18.0, *)
+private struct PadTabNavigation: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            content.tabViewStyle(.sidebarAdaptable)
+        } else {
+            content
+        }
     }
 }

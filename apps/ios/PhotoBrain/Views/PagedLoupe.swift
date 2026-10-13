@@ -203,7 +203,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             knownCells.allObjects.forEach { $0.zoomView.resetZoom() }
             collectionView.isScrollEnabled = true
         }
-        scrollToActiveID(animated: false)
+        scrollToActiveID(animated: false, force: true)
     }
 
     func update(records nextRecords: [PhotoRecord], activeID requestedID: Int) {
@@ -325,12 +325,14 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             .forEach { $0.reloadDecodedImageIfNeeded() }
     }
 
-    private func scrollToActiveID(animated: Bool) {
+    private func scrollToActiveID(animated: Bool, force: Bool = false) {
         guard collectionView.bounds.width > 0,
               let activeID,
               let index = records.firstIndex(where: { $0.id == activeID }) else { return }
         let target = IndexPath(item: index, section: 0)
-        guard collectionView.indexPathsForVisibleItems.contains(target) == false else { return }
+        // Rotation and iPad window resizing can leave the active page partly visible
+        // at an offset from the old width. Recenter it even if it is still visible.
+        guard force || !collectionView.indexPathsForVisibleItems.contains(target) else { return }
         collectionView.scrollToItem(at: target, at: .centeredHorizontally, animated: animated)
     }
 
