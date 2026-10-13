@@ -66,7 +66,6 @@ final class AppBootstrap: ObservableObject {
                       !search.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                 search.retry()
             }
-            await scans.restore(savedActiveID: await preferences.activeScanID)
             BackupRuntime.shared.coordinator?.onFileCreated = { [weak scans] in scans?.expectImport() }
             self.environment = environment
             self.theme = theme
@@ -80,6 +79,11 @@ final class AppBootstrap: ObservableObject {
             self.review = review
             self.duplicates = duplicates
             self.scans = scans
+            // Show the tabs first: recovering an active scan is a network round trip (up to the
+            // 30 s resource timeout while the server is unreachable). The Activity bar shows
+            // `isRestoring` meanwhile.
+            let savedActiveID = await preferences.activeScanID
+            Task { await scans.restore(savedActiveID: savedActiveID) }
         } catch {
             configurationError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }

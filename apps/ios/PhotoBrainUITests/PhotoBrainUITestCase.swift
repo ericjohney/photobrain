@@ -31,7 +31,14 @@ class PhotoBrainUITestCase: XCTestCase {
             app.launch()
             // A cold launch on a shared CI runner can take 20 s or more; wait for navigation
             // so the first tap of every test lands on a ready app.
-            XCTAssertTrue(element("Collections").waitForExistence(timeout: 60), "App never showed its navigation")
+            if !element("Collections").waitForExistence(timeout: 60) {
+                // Say which launch stage was stuck: still bootstrapping, a configuration error,
+                // or something else entirely (the full hierarchy is in the result bundle).
+                let stage = element("Starting PhotoBrain…").exists
+                    ? "still on \"Starting PhotoBrain…\""
+                    : "state \(app.state.rawValue), \(app.descendants(matching: .any).count) elements"
+                XCTFail("App never showed its navigation (\(stage))")
+            }
         }
     }
 

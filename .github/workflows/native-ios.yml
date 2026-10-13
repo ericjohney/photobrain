@@ -40,6 +40,7 @@ jobs:
             -configuration Preview \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
             CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath "$RUNNER_TEMP/results/unit.xcresult" \
             test
 
       - name: Set up Bun for the UI-test fixture API
@@ -55,16 +56,26 @@ jobs:
         run: brew list sqlite >/dev/null 2>&1 || brew install sqlite
 
       - name: Run UI flows against the fixture API
-        run: apps/ios/scripts/run-ui-tests.sh
+        run: apps/ios/scripts/run-ui-tests.sh -resultBundlePath "$RUNNER_TEMP/results/ui-iphone.xcresult"
 
       - name: Run iPad UI flows against the fixture API
         env:
           IOS_DESTINATION: platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5
         run: |
           apps/ios/scripts/run-ui-tests.sh \
+            -resultBundlePath "$RUNNER_TEMP/results/ui-ipad.xcresult" \
             -only-testing:PhotoBrainUITests/CollectionsSearchFlowTests \
             -only-testing:PhotoBrainUITests/LibraryFlowTests/testIPadKeepsNavigationAndGroupingAvailableWhileBrowsing \
             -only-testing:PhotoBrainUITests/LibraryFlowTests/testIPadSharesPhotoFromLoupe \
             -only-testing:PhotoBrainUITests/LibraryFlowTests/testRotationPreservesOpenPhotoAndMetadata \
             -only-testing:PhotoBrainUITests/LibraryFlowTests/testLoupeRatesPhotoAndShowsTags \
             -only-testing:PhotoBrainUITests/LibraryFlowTests/testLivePhotoAndVideoLoupes
+
+      # Screenshots and accessibility hierarchies of failed tests, for diagnosing CI-only failures.
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresults
+          path: ${{ runner.temp }}/results
+          retention-days: 7

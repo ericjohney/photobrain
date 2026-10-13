@@ -19,9 +19,11 @@ final class SearchStateTests: XCTestCase {
         )
         let store = SearchStore(api: api)
         store.query = "  first  "
-        try? await Task.sleep(for: .milliseconds(400))
+        await waitForSearchRequests(api, count: 1)
         store.query = " second "
-        try? await Task.sleep(for: .milliseconds(450))
+        await waitForRecords(store, [2])
+        // Past the first request's delay: its late response must not replace the newest results.
+        try? await Task.sleep(for: .milliseconds(600))
 
         XCTAssertEqual(store.records.map(\.id), [2])
         XCTAssertEqual(store.state, .results)
@@ -85,8 +87,8 @@ final class SearchStateTests: XCTestCase {
         )
         let store = SearchStore(api: api)
         store.query = "beach"
-        // Debounce has fired; the unfiltered request is in flight for another ~550 ms.
-        try? await Task.sleep(for: .milliseconds(400))
+        // Wait until the debounce has sent the (slow) unfiltered request.
+        await waitForSearchRequests(api, count: 1)
         XCTAssertEqual(store.state, .loading)
 
         store.applyFilters(Self.raw)
@@ -110,14 +112,14 @@ final class SearchStateTests: XCTestCase {
         let store = SearchStore(api: api)
         store.applyFilters(Self.raw)
         store.query = "beach"
-        try? await Task.sleep(for: .milliseconds(400))
+        await waitForSearchRequests(api, count: 1)
 
         store.clearFilters()
         store.query = "sunset"
-        try? await Task.sleep(for: .milliseconds(450))
-        XCTAssertEqual(store.records.map(\.id), [9])
+        await waitForRecords(store, [9])
 
-        try? await Task.sleep(for: .milliseconds(400))
+        // Past the stale request's delay: its late response must be dropped.
+        try? await Task.sleep(for: .milliseconds(700))
         XCTAssertEqual(store.records.map(\.id), [9])
         let requests = await api.recordedSearchRequests()
         XCTAssertEqual(requests.last, TestAPI.SearchKey(query: "sunset", filters: PhotoQuery()))
@@ -222,6 +224,38 @@ final class SearchStateTests: XCTestCase {
 
     private func response(_ query: String, ids: [Int]) -> SearchResponseDTO {
         SearchResponseDTO(photos: ids.map { TestModels.photo(id: $0) }, total: ids.count, query: query)
+    }
+
+    /// Waits (up to 5 s) for `ids`, instead of assuming the 350 ms debounce finished on time.
+    private func waitForRecords(
+        _ store: SearchStore,
+        _ ids: [Int],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while store.records.map(\.id) != ids {
+            guard ContinuousClock.now < deadline else {
+                return XCTFail("Records never became \(ids); got \(store.records.map(\.id))", file: file, line: line)
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    /// Waits (up to 5 s) until `count` search requests have reached the API.
+    private func waitForSearchRequests(
+        _ api: TestAPI,
+        count: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while await api.recordedSearchRequests().count < count {
+            guard ContinuousClock.now < deadline else {
+                return XCTFail("Fewer than \(count) search requests were sent", file: file, line: line)
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
     }
 
     /// Waits for the store to leave its waiting/loading states.
