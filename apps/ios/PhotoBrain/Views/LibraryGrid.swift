@@ -257,6 +257,9 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         )
         let visibleAnchorID = collectionView.indexPathsForVisibleItems.sorted().first
             .flatMap { dataSource.itemIdentifier(for: $0) }
+        // A grid resting at its newest edge stays there when sections change (e.g. event
+        // titles arriving after launch); anchoring the top row would scroll it back in time.
+        let wasAtNewestEdge = didInitialPosition && !opensAtTop && distanceFromNewest <= 2
         currentIDs = nextIDs
         sectionIDs = nextSectionIDs
         var snapshot = NSDiffableDataSourceSnapshot<PhotoSection.ID, Int>()
@@ -272,7 +275,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
             SpikeSignposts.endSnapshot(signpost)
             guard let self else { return }
-            if shouldReset || !didInitialPosition {
+            if shouldReset || !didInitialPosition || wasAtNewestEdge {
                 didInitialPosition = true
                 scrollToInitialEdge()
             } else if let visibleAnchorID, let indexPath = dataSource.indexPath(for: visibleAnchorID) {
