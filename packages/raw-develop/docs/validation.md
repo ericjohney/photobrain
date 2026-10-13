@@ -145,3 +145,10 @@ The largest residuals are fine texture in the busiest frames (DSCF0604, DSCF0229
 kernels run in `f32` on the CPU, while Apple renders on the GPU in half-float tiles
 (`RGBAh`/`Rh`), and `exposureFactor` and the colour/lens fits are approximations, so small
 per-pixel differences remain.
+
+X100VI, `raw-compare final` (quarter scale), profile noise table from ISO-patched graphs:
+
+| Fixture | ISO | Notes | ΔE00 mean | p95 |
+|---|---|---|---|---|
+| DSCF0008 | 500 | portrait orientation | 0.43 | 0.95 |
+| DSCF0008, ISO tag patched | 12800 | exercises `smoothDSharpenAntiBloom` | 0.46 | 0.98 |

@@ -425,7 +425,9 @@ fn anneal_g(src: &P4, ys: &P1, tm: [f32; 3]) -> P4 {
 }
 
 /// smoothDSharpen: one pass of directional smoothing + high-frequency boost.
-fn smooth_d_sharpen(src: &P1, dir: &P4, p: [f32; 4], p2: [f32; 3]) -> P1 {
+/// `anti_bloom` (smoothDSharpenAntiBloom's `parms2.a`) limits the directional blur where
+/// the three samples along the edge span more than that range.
+fn smooth_d_sharpen(src: &P1, dir: &P4, p: [f32; 4], p2: [f32; 3], anti_bloom: Option<f32>) -> P1 {
   P1::map(src.w, src.h, |x, y| {
     let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
     let s2 = src.at(x, y);
@@ -452,7 +454,15 @@ fn smooth_d_sharpen(src: &P1, dir: &P4, p: [f32; 4], p2: [f32; 3]) -> P1 {
     let hi = sm1.max(sm2).max(sm3);
     hf *= (0.5 + (hi - lo - p2[1]) * p2[2]).clamp(0.0, 1.0);
     sm2 += hf * p[3];
-    let dirblur = mix(s2, sm2, p[2]);
+    let blend = match anti_bloom {
+      None => p[2],
+      Some(ab) => {
+        let lo = s1.min(s2).min(s3);
+        let hi = s1.max(s2).max(s3);
+        p[2] * (3.0 * (ab - (hi - lo))).clamp(0.0, 1.0)
+      }
+    };
+    let dirblur = mix(s2, sm2, blend);
     if curvature - p[1] < 0.0 { s2 } else { dirblur }
   })
 }
@@ -464,7 +474,7 @@ fn level_mask(y: &P1, l: &LumaLevel) -> P4 {
   anneal_gc(&dc, y, l.anneal, l.cfactor)
 }
 
-fn sharpen_chain(d: &P1, mask: &P4, chain: &[[f32; 7]], amount: f32) -> P1 {
+fn sharpen_chain(d: &P1, mask: &P4, chain: &[Vec<f32>], amount: f32) -> P1 {
   let mut cur = d.clone();
   for c in chain {
     cur = smooth_d_sharpen(
@@ -472,6 +482,7 @@ fn sharpen_chain(d: &P1, mask: &P4, chain: &[[f32; 7]], amount: f32) -> P1 {
       mask,
       [c[0], c[1], c[2], c[3] * amount],
       [c[4], c[5], c[6]],
+      c.get(7).copied(),
     );
   }
   cur
@@ -646,7 +657,7 @@ mod tests {
       dir_to_c: [-1e-7, 0.0018, 0.0069],
       anneal: [1.4e-9, 1.1e-5, 4.2e-5],
       cfactor: 7.0,
-      sharpen: vec![[1.0, 0.0, 0.3, 0.381, 1.0, 0.0043, 348.8]],
+      sharpen: vec![vec![1.0, 0.0, 0.3, 0.381, 1.0, 0.0043, 348.8]],
       gabor: vec![],
     };
     let recipe = vec![

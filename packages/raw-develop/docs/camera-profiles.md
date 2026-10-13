@@ -5,7 +5,10 @@ Profiles are TOML files in `profiles/`, compiled into the binary by the `BUILTIN
 `src/profile.rs`, and selected by the EXIF/RAF model name:
 
 ```rust
-const BUILTIN: &[(&str, &str)] = &[("X-E5", include_str!("../profiles/fujifilm-x-e5.toml"))];
+const BUILTIN: &[(&str, &str)] = &[
+  ("X-E5", include_str!("../profiles/fujifilm-x-e5.toml")),
+  ("X100VI", include_str!("../profiles/fujifilm-x100vi.toml")),
+];
 ```
 
 `CameraProfile::builtin(model)` matches case-insensitively. A model with no profile fails
@@ -30,7 +33,7 @@ silently to another camera's colour.
 
 ### `[[noise]]`
 
-One entry per 1/3-stop ISO (64–12800 on the X-E5, 21 entries); `noise_for_iso` uses the
+One entry per ISO setting (64–12800 on the X-E5, 21 entries; 64–51200 on the X100VI, 26); `noise_for_iso` uses the
 entry nearest in log2(ISO). Values are read from RawCamera's `CI_PRINT_TREE` graphs for
 this camera (see [adding a camera](adding-a-camera.md#8-transcribe-the-noise-tables) and
 [noise reduction](noise-reduction.md)).
@@ -67,7 +70,7 @@ the white balance, so they are not stored.
 | `dir_to_c` | `DIRToC` `params[0..3]` on that level | `thru_g`, `thru_g3` |
 | `anneal` | `annealGAndC` (or `annealG`) `threshmodel[0..3]` | `thru_g*` |
 | `cfactor` | `annealGAndC` `cfactor` | `thru_g`, `thru_g3` |
-| `sharpen` | each `smoothDSharpen` `parms` (4) + `parms2` (3), finest pass first | `thru_g3`, optionally `thru_g` |
+| `sharpen` | each `smoothDSharpen` `parms` (4) + `parms2` (3), finest pass first; `smoothDSharpenAntiBloom` passes (X100VI ISO ≥ 10000) add `parms2.a` as an 8th value | `thru_g3`, optionally `thru_g` |
 | `gabor` | `gaborToSYAndG` `smoothAmt`, `f1` (4), `f2[0..2]` | `thru_g2` |
 
 The first level must be `thru_g2` or `thru_g3`. `profile::tests::every_builtin_profile_loads`

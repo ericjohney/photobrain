@@ -17,6 +17,7 @@ uses it yet.
 | [Validation and calibration](validation.md) | compare against Apple, run fixture tests, refit a profile |
 | [Using the library](usage.md) | call the crate or the CLI, store edit settings, integrate it later |
 | [Reference: Apple's pipeline](apple-reference.md) | see what we observed in RawCamera and how it maps onto our code |
+| [Plan: other cameras](plan-other-cameras.md) | pick up the handoff plan for the Sony ARW, iPhone ProRAW and X100VI files in the production library |
 
 ## At a glance
 
@@ -34,7 +35,8 @@ RAF file
 
 ## Status
 
-- Supported: Fujifilm X-E5 (X-Trans 5 HR), lossless compressed and uncompressed RAF.
+- Supported: Fujifilm X-E5 and X100VI (X-Trans 5 HR), lossless compressed and uncompressed RAF.
+  Sony ARW and iPhone ProRAW are planned ([plan](plan-other-cameras.md)).
 - The decoder matches Apple's decoded mosaic bit for bit on all 11 calibration files.
 - Final renders match Apple's closely: mean CIEDE2000 is 0.00–0.41 (p95 at most 1.47) on
   every fixture from ISO 64 to 12800 (see [validation](validation.md#current-results)).

@@ -71,9 +71,10 @@ pub struct LumaLevel {
   pub anneal: [f32; 3],
   #[serde(default)]
   pub cfactor: f32,
-  /// smoothDSharpen passes: [step, curvature min, mix, hf gain, perp step, hf thresh, hf slope].
+  /// smoothDSharpen passes: [step, curvature min, mix, hf gain, perp step, hf thresh, hf slope],
+  /// plus an 8th value (anti-bloom range) for smoothDSharpenAntiBloom passes.
   #[serde(default)]
-  pub sharpen: Vec<[f32; 7]>,
+  pub sharpen: Vec<Vec<f32>>,
   /// thru_g2 only: gaborToSYAndG [smoothAmt, f1 (4), f2 (2)].
   #[serde(default)]
   pub gabor: Vec<f32>,
@@ -135,7 +136,10 @@ fn default_base_iso() -> f32 {
   100.0
 }
 
-const BUILTIN: &[(&str, &str)] = &[("X-E5", include_str!("../profiles/fujifilm-x-e5.toml"))];
+const BUILTIN: &[(&str, &str)] = &[
+  ("X-E5", include_str!("../profiles/fujifilm-x-e5.toml")),
+  ("X100VI", include_str!("../profiles/fujifilm-x100vi.toml")),
+];
 
 impl CameraProfile {
   pub fn from_toml(text: &str) -> Result<Self> {
@@ -291,6 +295,11 @@ mod tests {
         );
         if c.luma[0].kind == LevelKind::ThruG2 {
           assert_eq!(c.luma[0].gabor.len(), 7, "{model}: gabor parameters");
+        }
+        for level in &c.luma {
+          for s in &level.sharpen {
+            assert!(matches!(s.len(), 7 | 8), "{model}: sharpen pass has 7 or 8 values");
+          }
         }
         for pass in &c.chroma_passes {
           assert!(pass.scale >= 1, "{model}: chroma NR pass scale");

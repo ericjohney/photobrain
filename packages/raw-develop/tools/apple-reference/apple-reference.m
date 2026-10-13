@@ -159,8 +159,27 @@ static CIRAWFilter *makeFilter(NSURL *url, NSString *variant, Capture *cap) {
 int main(int argc, char **argv) {
   @autoreleasepool {
     if (argc < 3) {
-      fprintf(stderr, "usage: apple-reference <file.RAF> <outdir>\n");
+      fprintf(stderr, "usage: apple-reference <file> <outdir>\n"
+                      "       apple-reference <file> --graph <graph.txt>   (render graph only)\n");
       return 2;
+    }
+    if (argc >= 4 && !strcmp(argv[2], "--graph")) {
+      // Only the CI_PRINT_TREE graph, for noise-table transcription.
+      NSTask *t = [NSTask new];
+      t.executableURL = [NSURL fileURLWithPath:[[NSProcessInfo processInfo] arguments][0]];
+      t.arguments = @[ @(argv[1]), @"--graph-only" ];
+      NSMutableDictionary *env = [[[NSProcessInfo processInfo] environment] mutableCopy];
+      env[@"CI_PRINT_TREE"] = @"1";
+      env[@"APPLE_REF_GRAPH_CHILD"] = @"1";
+      t.environment = env;
+      NSString *gpath = @(argv[3]);
+      [[NSFileManager defaultManager] createFileAtPath:gpath contents:nil attributes:nil];
+      NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:gpath];
+      t.standardError = fh;
+      t.standardOutput = fh;
+      [t launchAndReturnError:nil];
+      [t waitUntilExit];
+      return t.terminationStatus;
     }
     NSURL *url = [NSURL fileURLWithPath:@(argv[1])];
     NSString *dir = @(argv[2]);

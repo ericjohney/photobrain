@@ -4,7 +4,7 @@ Scope: `packages/raw-develop`. Detailed documentation lives in [`docs/`](docs/RE
 
 ## Package Boundary
 
-A standalone Rust library and CLI that develops Fujifilm X-Trans RAF files into Display P3 images, following Apple's RawCamera (Preview/Photos) pipeline: several stages are ports of RawCamera's Core Image kernels, and the rest are calibrated against its renders. It is **not** wired into `image-processing`, scans, thumbnails, or export yet; those still use the embedded JPEG preview. It has no N-API surface and is not part of the Docker image.
+A standalone Rust library and CLI that develops Fujifilm X-Trans RAF files (X-E5, X100VI) into Display P3 images, following Apple's RawCamera (Preview/Photos) pipeline: several stages are ports of RawCamera's Core Image kernels, and the rest are calibrated against its renders. It is **not** wired into `image-processing`, scans, thumbnails, or export yet; those still use the embedded JPEG preview. It has no N-API surface and is not part of the Docker image.
 
 ```bash
 cd packages/raw-develop && cargo test               # unit tests, no RAW files needed
@@ -62,6 +62,8 @@ RAW_DEVELOP_FIXTURES=~/raw-develop-fixtures RAW_DEVELOP_REFS=~/raw-develop-refs 
 
 Fixture tests skip (with a message) when the variables are unset; RAW files are never required by `cargo test`. Calibration scripts are in `tools/calibrate/` (see its README).
 
-## Current Accuracy (11 X-E5 fixtures, ISO 64–12800)
+## Current Accuracy (11 X-E5 fixtures, ISO 64–12800; X100VI)
 
 Decoder: bit-exact on all 11. Final render vs Apple at quarter scale, CIEDE2000 mean 0.00–0.41 (p95 ≤ 1.47) on every fixture, including ISO 10000–12800; see [validation](docs/validation.md#current-results). The fixture test requires mean absolute encoded difference below 0.006 (observed maximum 0.0032). Timings on Apple Silicon for 40 MP: decode about 0.1 s, full develop about 2.5 s, preview about 0.12 s.
+
+X100VI (one fixture; ISO 500 and an ISO-patched 12800 copy): decoder bit-exact, CIEDE2000 mean 0.43 / 0.46. Other cameras in the production library are planned in [docs/plan-other-cameras.md](docs/plan-other-cameras.md).

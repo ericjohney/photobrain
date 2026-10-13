@@ -153,8 +153,21 @@ The `[[noise]]` table is read from RawCamera's render graphs, one entry per 1/3-
      lists that level's `smoothDSharpen` nodes as `parms ++ parms2`, step 1 first. For
      `thru_g2`, `gabor` is `gaborToSYAndG` `[smoothAmt, f1…, f2[0], f2[1]]`.
 
-The X-E5 tables were transcribed with a throwaway parser; any script that follows this
-mapping will do. Do not commit the graphs themselves. Record the RawCamera version in the
+`tools/calibrate/noise_table.py` implements this mapping (it reproduces the X-E5 table):
+
+```bash
+python3 tools/calibrate/noise_table.py ~/raw-develop-refs/<model>/iso-patch/*.graph.txt > /tmp/noise.toml
+```
+
+It stops with "port it first" on a kernel variant the Rust code does not implement yet.
+`target/apple-reference FILE --graph OUT.txt` writes only the render graph, which is all a
+noise entry needs.
+
+You do not need a real file per ISO: RawCamera picks noise parameters from the ISO tag, so
+patching a copy (`exiftool -ISO=N -PhotographicSensitivity=N copy.RAF`) gives that ISO's
+graph. Chroma thresholds match a real file exactly; `rn`, `DIRToC` and anneal values within
+about 1% (checked at X-E5 ISO 800). Prefer real files when you have them and say which
+method was used in the provenance comment. Do not commit the graphs themselves. Record the RawCamera version in the
 provenance comment. `cargo test` checks the table's structure; `raw-compare` per ISO checks
 the values.
 
