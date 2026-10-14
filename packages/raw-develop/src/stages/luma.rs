@@ -544,6 +544,7 @@ fn fine_grain_noise(d0: &P1) -> P1 {
 fn level_mask(y: &P1, l: &LumaLevel) -> P4 {
   let gd = smooth_vf_gdir(&gabor_vf(y));
   let dc = dir_to_c(&gd, y, l.dir_to_c);
+  drop(gd);
   anneal_gc(&dc, y, l.anneal, l.cfactor)
 }
 
@@ -586,25 +587,25 @@ pub fn default_lnr(recipe: &[LumaLevel]) -> f32 {
 
 /// Run the luma pyramid on `y0` (Core Image orientation). `recipe[0]` is the full-
 /// resolution level, `recipe[1..]` the coarser ones (four reductions in total).
-pub fn process(y0: &P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
+pub fn process(y0: P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
   let root = &recipe[0];
   let lnr0 = default_lnr(recipe);
   let lnr_scale = if lnr0 > 0.0 { amt.lnr / lnr0 } else { 1.0 };
 
   let g = match root.kind {
     LevelKind::ThruG2 => gabor_sy_g(
-      y0,
+      &y0,
       root.gabor[0],
       [root.gabor[1], root.gabor[2], root.gabor[3], root.gabor[4]],
       [root.gabor[5], root.gabor[6]],
     ),
-    _ => gabor_y_vf(y0, 0.5),
+    _ => gabor_y_vf(&y0, 0.5),
   };
   // gaborToYAndVF writes the source luminance unchanged in channel 0; only
   // gaborToSYAndG (ThruG2) replaces it with the directionally smoothed Y.
   let l0 = match root.kind {
     LevelKind::ThruG2 => g.channel(0),
-    _ => y0.clone(),
+    _ => y0,
   };
 
   let mut r = vec![l0];
@@ -658,7 +659,11 @@ pub fn process(y0: &P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
     };
   }
 
-  // Full resolution.
+  // Full resolution. The coarser levels are no longer needed.
+  let mut d = d;
+  let mut r = r;
+  d.truncate(1);
+  r.truncate(1);
   let d0 = &d[0];
   let (ro, om) = (root.roparms, root.omparms);
   let hsy = &e;
@@ -686,8 +691,12 @@ pub fn process(y0: &P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
     }
     _ => {
       let gd = smooth_vf_gdir(&g);
+      drop(g);
       let dc = dir_to_c(&gd, &r[0], root.dir_to_c);
+      drop(gd);
       let mask = anneal_gc(&dc, &r[0], root.anneal, root.cfactor);
+      drop(dc);
+      drop(r);
       let sd = sharpen_chain(d0, &mask, &root.sharpen, amt.sharpness);
       let p = root.parms;
       let pb = 1.0 - amt.lnr.clamp(0.0, 1.0);
@@ -758,7 +767,7 @@ mod tests {
     ];
     let src = P1::map(40, 30, |_, _| 0.25);
     let out = process(
-      &src,
+      src,
       &recipe,
       Amounts {
         lnr: 0.05,

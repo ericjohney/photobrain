@@ -483,7 +483,7 @@ pub fn apply(
         *o = (p[0] * LUM[0] + p[1] * LUM[1] + p[2] * LUM[2]) * k;
       }
     });
-    crate::stages::luma::process(&crate::stages::luma::Plane { w, h, d }, &noise.luma, amt)
+    crate::stages::luma::process(crate::stages::luma::Plane { w, h, d }, &noise.luma, amt)
   });
 
   // Expand + gather: filtered chromaticity with the (processed) luminance.
