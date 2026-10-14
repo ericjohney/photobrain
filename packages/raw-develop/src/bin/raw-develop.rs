@@ -3,7 +3,7 @@
 //!   raw-develop info <file.RAF>
 //!   raw-develop cfa <file.RAF> <out.u16>
 //!   raw-develop develop <file.RAF> <out.png|out.jpg> [--settings settings.json]
-//!                       [--preview] [--dump-linear <out.f32>] [--dump-final <out.f32>]
+//!                       [--preview] [--dump-linear <out.f32>] [--dump-final <out.f32>] [--digest]
 
 use raw_develop::{DevelopSettings, Negative, Options, Quality, develop, encode, image::RgbImage};
 use std::path::Path;
@@ -12,7 +12,7 @@ use std::time::Instant;
 
 fn usage() -> ExitCode {
   eprintln!(
-    "usage:\n  raw-develop info <file.RAF>\n  raw-develop cfa <file.RAF> <out.u16>\n  raw-develop develop <file.RAF> <out.png|jpg> [--settings s.json] [--preview] [--dump-linear f] [--dump-final f]"
+    "usage:\n  raw-develop info <file.RAF>\n  raw-develop cfa <file.RAF> <out.u16>\n  raw-develop develop <file.RAF> <out.png|jpg> [--settings s.json] [--preview] [--dump-linear f] [--dump-final f] [--digest]"
   );
   ExitCode::from(2)
 }
@@ -68,10 +68,23 @@ fn write_f32(img: &RgbImage, path: &str) -> raw_develop::Result<()> {
   Ok(())
 }
 
+/// FNV-1a over the exact f32 bit patterns: a bit-exactness fingerprint of a render.
+fn fnv1a(data: &[f32]) -> String {
+  let mut h: u64 = 0xcbf29ce484222325;
+  for v in data {
+    for b in v.to_bits().to_le_bytes() {
+      h ^= b as u64;
+      h = h.wrapping_mul(0x100000001b3);
+    }
+  }
+  format!("{h:016x}")
+}
+
 fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Result<()> {
   let mut settings = DevelopSettings::default();
   let mut opts = Options::default();
   let (mut dump_linear, mut dump_final) = (None, None);
+  let mut digest = false;
   let mut it = rest.iter();
   while let Some(a) = it.next() {
     match a.as_str() {
@@ -85,6 +98,7 @@ fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Resul
       "--preview" => opts.quality = Quality::Preview,
       "--dump-linear" => dump_linear = it.next().cloned(),
       "--dump-final" => dump_final = it.next().cloned(),
+      "--digest" => digest = true,
       other => {
         return Err(raw_develop::Error::Settings(format!(
           "unknown option {other}"
@@ -98,6 +112,9 @@ fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Resul
   let t1 = Instant::now();
   let out = develop(&neg, &settings, &opts)?;
   let t2 = Instant::now();
+  if digest {
+    println!("{}x{} {}", out.image.width, out.image.height, fnv1a(&out.image.data));
+  }
   encode::write(
     &out.image,
     Path::new(output),

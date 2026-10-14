@@ -26,19 +26,24 @@ pub struct Boost {
   pub preserve_hue2: [f32; 3],
 }
 
+impl Boost {
+  /// RawCamera's boost_v7 constants (see docs/color.md).
+  pub const RAWCAMERA: Boost = Boost {
+    breaks: [0.1, 0.2, 0.5, 1.0],
+    c1: [-61.09, 18.418, 0.7191, 0.0],
+    c2: [-12.3, 2.62, 2.415, -0.0604],
+    c3: [2.64815, -4.82889, 3.60078, -0.119185],
+    c4a: [0.492, -1.72, 2.109, 0.119],
+    c4b: [0.0, 0.0, 0.758, 0.426],
+    blend: 0.0,
+    preserve_hue1: [0.25, 0.0, 0.0],
+    preserve_hue2: [0.0, 0.0, 0.0],
+  };
+}
+
 impl Default for Boost {
   fn default() -> Self {
-    Self {
-      breaks: [0.1, 0.2, 0.5, 1.0],
-      c1: [-61.09, 18.418, 0.7191, 0.0],
-      c2: [-12.3, 2.62, 2.415, -0.0604],
-      c3: [2.64815, -4.82889, 3.60078, -0.119185],
-      c4a: [0.492, -1.72, 2.109, 0.119],
-      c4b: [0.0, 0.0, 0.758, 0.426],
-      blend: 0.0,
-      preserve_hue1: [0.25, 0.0, 0.0],
-      preserve_hue2: [0.0, 0.0, 0.0],
-    }
+    Self::RAWCAMERA
   }
 }
 

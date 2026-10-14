@@ -93,4 +93,4 @@ Quarter-scale final render vs Apple, mean CIEDE2000; decoders bit-exact on every
 | Sony A7R V | 13937 (ISO 2000) | 0.21 |
 | iPhone 16/17 Pro Max ProRAW | 16 files, ISO 16–6400, all lenses | 0.05–0.09 |
 
-Timings on Apple Silicon: decode 0.03–0.2 s; full develop about 2.8 s for X-Trans 40 MP, about 5 s for Sony 61 MP, 0.4–0.6 s for iPhone 12 MP.
+Timings on Apple Silicon (M4 Pro, 12 threads): decode 0.03–0.2 s; full develop about 2.0 s for X-Trans 40 MP, 2.4–2.7 s for Sony 61 MP, 0.4 s for iPhone 12 MP. `raw-develop develop … --digest` prints an FNV-1a fingerprint of the exact output floats; performance work must keep it unchanged for every fixture (the hot kernels have interior fast paths and fused passes that are documented as bit-identical to the direct form).

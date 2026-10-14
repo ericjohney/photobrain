@@ -104,23 +104,22 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     meta.crop_height + (meta.crop_top - top),
   );
   let white = profile.white_level;
-  let mut lin = vec![0.0f32; w * h];
-  lin.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
-    let sy = y + top;
-    for (x, out) in row.iter_mut().enumerate() {
-      let sx = x + left;
-      let ch = meta.cfa.at(sy, sx) as usize;
-      let black = meta.black_at(sy, sx) as f32;
-      let v = (neg.sample(sy, sx) as f32 - black) / (white - black);
-      *out = v * wb[ch] as f32;
-    }
-  });
+  // The linearised plane is only an input to the generic demosaics; the RawCamera ports
+  // read the raw mosaic directly, so it is built lazily.
   let cfa = meta.cfa.shifted(top, left);
-  let mosaic = demosaic::Mosaic {
-    width: w,
-    height: h,
-    data: &lin,
-    cfa: &cfa,
+  let linearise = || {
+    let mut lin = vec![0.0f32; w * h];
+    lin.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+      let sy = y + top;
+      for (x, out) in row.iter_mut().enumerate() {
+        let sx = x + left;
+        let ch = meta.cfa.at(sy, sx) as usize;
+        let black = meta.black_at(sy, sx) as f32;
+        let v = (neg.sample(sy, sx) as f32 - black) / (white - black);
+        *out = v * wb[ch] as f32;
+      }
+    });
+    lin
   };
 
   // 3-4. Demosaic and crop to the exact active area.
@@ -132,6 +131,13 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
         None => None,
       };
       let d = d.unwrap_or_else(|| {
+        let lin = linearise();
+        let mosaic = demosaic::Mosaic {
+          width: w,
+          height: h,
+          data: &lin,
+          cfa: &cfa,
+        };
         let mut d = demosaic::full(&mosaic);
         demosaic::refine_luma_chroma(&mosaic, &mut d, 1);
         d
@@ -139,6 +145,13 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
       (d, 1.0f32)
     }
     Quality::Preview => {
+      let lin = linearise();
+      let mosaic = demosaic::Mosaic {
+        width: w,
+        height: h,
+        data: &lin,
+        cfa: &cfa,
+      };
       let b = demosaic::binned(&mosaic);
       // Binned origin is the snapped origin; drop the partial leading cell offset.
       let (dx, dy) = ((meta.crop_left - left) / bin, (meta.crop_top - top) / bin);
@@ -149,7 +162,6 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
       )
     }
   };
-  drop(lin);
 
   // 5. Noise reduction (white-balanced camera space): RawCamera's chroma NR and luma
   // pyramid when the profile has a noise table for this ISO, else the generic filters.
@@ -243,9 +255,11 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   let linear = opts.keep_linear.then(|| img.clone());
 
   // 10. Look.
-  let boost = look::Boost::default();
+  // The constant table lets the compiler fold the zero hue-preserve terms and the
+  // segment breakpoints; the arithmetic is unchanged.
+  const BOOST: look::Boost = look::Boost::RAWCAMERA;
   let amount = settings.tone_amount;
-  img.map_pixels(|p| look::render(p, amount, &boost).map(|v| srgb_encode(v.clamp(0.0, 1.0))));
+  img.map_pixels(|p| look::render(p, amount, &BOOST).map(|v| srgb_encode(v.clamp(0.0, 1.0))));
 
   // 11. Geometry.
   let orientation = rotate_orientation(meta.orientation, settings.quarter_turns);

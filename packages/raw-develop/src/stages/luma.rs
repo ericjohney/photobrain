@@ -33,12 +33,30 @@ impl Px for f32 {
 impl Px for [f32; 4] {
   #[inline(always)]
   fn lerp(a: Self, b: Self, t: f32) -> Self {
-    [
-      a[0] + (b[0] - a[0]) * t,
-      a[1] + (b[1] - a[1]) * t,
-      a[2] + (b[2] - a[2]) * t,
-      a[3] + (b[3] - a[3]) * t,
-    ]
+    #[cfg(target_arch = "aarch64")]
+    {
+      // Same subtract, multiply, add sequence as the scalar form (no fused multiply-add),
+      // so results are bit-identical; just four lanes at once.
+      use std::arch::aarch64::*;
+      // SAFETY: NEON is baseline on aarch64; the arrays are 16 bytes of f32.
+      unsafe {
+        let av = vld1q_f32(a.as_ptr());
+        let bv = vld1q_f32(b.as_ptr());
+        let r = vaddq_f32(av, vmulq_f32(vsubq_f32(bv, av), vdupq_n_f32(t)));
+        let mut o = [0.0f32; 4];
+        vst1q_f32(o.as_mut_ptr(), r);
+        o
+      }
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+      [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        a[3] + (b[3] - a[3]) * t,
+      ]
+    }
   }
 }
 
@@ -54,8 +72,21 @@ type P1 = Plane<f32>;
 type P4 = Plane<[f32; 4]>;
 
 impl<T: Px> Plane<T> {
+  /// Clamp-to-edge sample. Interior taps (the overwhelming majority) skip the clamps and
+  /// bounds checks; the result is identical.
   #[inline(always)]
   fn at(&self, x: isize, y: isize) -> T {
+    if (x as usize) < self.w && (y as usize) < self.h {
+      // SAFETY: both coordinates were just range-checked (negative values wrap to huge
+      // usizes and fail the check).
+      unsafe { *self.d.get_unchecked(y as usize * self.w + x as usize) }
+    } else {
+      self.at_edge(x, y)
+    }
+  }
+
+  #[inline(never)]
+  fn at_edge(&self, x: isize, y: isize) -> T {
     let x = x.clamp(0, self.w as isize - 1) as usize;
     let y = y.clamp(0, self.h as isize - 1) as usize;
     self.d[y * self.w + x]
@@ -70,8 +101,25 @@ impl<T: Px> Plane<T> {
     let y0 = fy.floor();
     let (tx, ty) = (fx - x0, fy - y0);
     let (x0, y0) = (x0 as isize, y0 as isize);
-    let a = T::lerp(self.at(x0, y0), self.at(x0 + 1, y0), tx);
-    let b = T::lerp(self.at(x0, y0 + 1), self.at(x0 + 1, y0 + 1), tx);
+    let (xu, yu) = (x0 as usize, y0 as usize);
+    let (a, b) = if xu + 1 < self.w && yu + 1 < self.h && x0 >= 0 && y0 >= 0 {
+      let i = yu * self.w + xu;
+      // SAFETY: (xu + 1, yu + 1) is inside the plane, so i + w + 1 < d.len().
+      let (p00, p10, p01, p11) = unsafe {
+        (
+          *self.d.get_unchecked(i),
+          *self.d.get_unchecked(i + 1),
+          *self.d.get_unchecked(i + self.w),
+          *self.d.get_unchecked(i + self.w + 1),
+        )
+      };
+      (T::lerp(p00, p10, tx), T::lerp(p01, p11, tx))
+    } else {
+      (
+        T::lerp(self.at_edge(x0, y0), self.at_edge(x0 + 1, y0), tx),
+        T::lerp(self.at_edge(x0, y0 + 1), self.at_edge(x0 + 1, y0 + 1), tx),
+      )
+    };
     T::lerp(a, b, ty)
   }
 
@@ -92,7 +140,7 @@ impl P4 {
     Plane {
       w: self.w,
       h: self.h,
-      d: self.d.iter().map(|p| p[c]).collect(),
+      d: self.d.par_iter().map(|p| p[c]).collect(),
     }
   }
 }
@@ -252,8 +300,10 @@ fn make_d(src: &P1, hsy: &P1) -> P1 {
   P1::map(src.w, src.h, |x, y| src.at(x, y) - expand(hsy, x, y))
 }
 
-/// smoothVF: smooth the vector field (in .gb) along its own direction.
-fn smooth_vf(img: &P4) -> P4 {
+/// smoothVF followed by VFToGDIR: smooth the vector field (in .gb) along its own
+/// direction, then write the (unit direction, magnitude * 0.7) form. VFToGDIR is a pure
+/// per-pixel map, so applying it as each smoothed vector is written saves a pass.
+fn smooth_vf_gdir(img: &P4) -> P4 {
   P4::map(img.w, img.h, |x, y| {
     let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
     let at = |o: [f32; 2], k: f32| gb(img.s(cx + o[0] * k, cy + o[1] * k));
@@ -294,27 +344,19 @@ fn smooth_vf(img: &P4) -> P4 {
     if len([ua[0] + ub[0], ua[1] + ub[1]]) - 0.8 < 0.0 {
       v0 = [mag * n[0], mag * n[1]];
     }
-    [0.0, v0[0], v0[1], 1.0]
+    to_gdir(v0)
   })
 }
 
-/// VFToGDIR: (unit direction, magnitude * 0.7).
-fn vf_to_gdir(img: &P4) -> P4 {
-  Plane {
-    w: img.w,
-    h: img.h,
-    d: img
-      .d
-      .par_iter()
-      .map(|p| {
-        let v = gb(*p);
-        let mag = len(v) * 0.7;
-        let n = norm(v);
-        [n[0], n[1], mag, 1.0]
-      })
-      .collect(),
-  }
+/// VFToGDIR: (unit direction, magnitude * 0.7) of a vector field.
+#[inline(always)]
+fn to_gdir(v: [f32; 2]) -> [f32; 4] {
+  let mag = len(v) * 0.7;
+  let n = norm(v);
+  [n[0], n[1], mag, 1.0]
 }
+
+
 
 /// DIRToC: smoothed direction plus a curvature/coherence measure in alpha.
 fn dir_to_c(dir: &P4, ys: &P1, params: [f32; 3]) -> P4 {
@@ -339,30 +381,42 @@ fn dir_to_c(dir: &P4, ys: &P1, params: [f32; 3]) -> P4 {
       u9[0] * 0.375 + (u8[0] + u10[0]) * 0.25 + (u7[0] + u11[0]) * 0.0625,
       u9[1] * 0.375 + (u8[1] + u10[1]) * 0.25 + (u7[1] + u11[1]) * 0.0625,
     ]);
-    // Samples at -8..8 steps along u9.
-    let mut u = [[0.0f32; 2]; 17];
-    let mut v = [[0.0f32; 2]; 17];
-    for (i, k) in (-8..=8).enumerate() {
-      let p = at(u9, k as f32);
-      let ui = if k == 0 { u9 } else { rg(p) };
-      u[i] = ui;
-      v[i] = [ui[0] * p[2], ui[1] * p[2]];
-    }
-    let v9 = v[8];
-    let mut unit = 0.0f32;
+    // Samples at -8..8 steps along u9. The centre sample (k = 0) is `sd` itself: the
+    // bilinear sample at the pixel centre is exact, so the kernel's `at(u9, 0)` returns
+    // `sd` without going through the sampler.
+    let v9 = [u9[0] * sd[2], u9[1] * sd[2]];
+    let thresh = params[0] + params[1] * yv + params[2] * yv * yv;
+    // `unit` is only used when `scaled >= thresh`, and `scaled` is a sum of
+    // non-negative terms (each clamped at 0). Accumulate `scaled` first (the 16 taps
+    // along u9, same order as the kernel) and evaluate the `unit` terms from the same
+    // samples only when the threshold test can pass. Each term is computed from its
+    // tap pair exactly as before, so the accumulated values are identical.
+    let mut taps = [([0.0f32; 2], [0.0f32; 2]); 8];
     let mut scaled = 0.0f32;
     for i in 0..8 {
-      let j = 16 - i;
-      let e = dot2(u[i], u9).min(dot2(u[j], u9)).max(0.0);
-      let e = e * e;
-      let e = e * e;
-      unit += e * e;
-      scaled += dot2(v[i], v9).min(dot2(v[j], v9)).max(0.0);
+      let k = i as f32 - 8.0;
+      let pa = at(u9, k);
+      let pb = at(u9, -k);
+      let ua = rg(pa);
+      let ub = rg(pb);
+      let va = [ua[0] * pa[2], ua[1] * pa[2]];
+      let vb = [ub[0] * pb[2], ub[1] * pb[2]];
+      taps[i] = (ua, ub);
+      scaled += dot2(va, v9).min(dot2(vb, v9)).max(0.0);
     }
-    let unit = unit * 0.125;
     let scaled = scaled * 50.0;
-    let thresh = params[0] + params[1] * yv + params[2] * yv * yv;
-    let curvature = (if scaled - thresh < 0.0 { 0.0 } else { unit }).clamp(0.0, 1.0);
+    let curvature = if scaled - thresh < 0.0 {
+      0.0
+    } else {
+      let mut unit = 0.0f32;
+      for (ua, ub) in taps {
+        let e = dot2(ua, u9).min(dot2(ub, u9)).max(0.0);
+        let e = e * e;
+        let e = e * e;
+        unit += e * e;
+      }
+      (unit * 0.125).clamp(0.0, 1.0)
+    };
     let r = mix(sd[0], u9[0], curvature);
     let g = mix(sd[1], u9[1], curvature);
     [r, g, sd[2], curvature]
@@ -432,8 +486,13 @@ fn smooth_d_sharpen(src: &P1, dir: &P4, p: [f32; 4], p2: [f32; 3], anti_bloom: O
     let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
     let s2 = src.at(x, y);
     let ds = dir.at(x, y);
-    let off = [ds[0] * p[0], ds[1] * p[0]];
     let curvature = ds[3];
+    // The kernel's final select keeps the centre sample below the curvature cutoff; the
+    // eight taps have no other effect, so decide before gathering them.
+    if curvature - p[1] < 0.0 {
+      return s2;
+    }
+    let off = [ds[0] * p[0], ds[1] * p[0]];
     let perp = [ds[1] * p2[0], -ds[0] * p2[0]];
     let at = |a: f32, b: f32| src.s(cx + off[0] * a + perp[0] * b, cy + off[1] * a + perp[1] * b);
     let s1 = at(1.0, 0.0);
@@ -462,28 +521,48 @@ fn smooth_d_sharpen(src: &P1, dir: &P4, p: [f32; 4], p2: [f32; 3], anti_bloom: O
         p[2] * (3.0 * (ab - (hi - lo))).clamp(0.0, 1.0)
       }
     };
-    let dirblur = mix(s2, sm2, blend);
-    if curvature - p[1] < 0.0 { s2 } else { dirblur }
+    mix(s2, sm2, blend)
+  })
+}
+
+/// FGN: a clamped high-pass of the detail band sampled 1.2 px apart (3x3 taps at
+/// ±1.2). The centre tap is the bilinear sample at the pixel centre, which is the pixel
+/// itself (fraction 0), so it is read directly. The off-centre fractions depend on the
+/// pixel coordinate's rounding, so those stay bilinear samples.
+fn fine_grain_noise(d0: &P1) -> P1 {
+  P1::map(d0.w, d0.h, |x, y| {
+    let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
+    let t = |dx: f32, dy: f32| d0.s(cx + dx * 1.2, cy + dy * 1.2);
+    let b = d0.at(x, y) * 0.859375
+      - (t(0.0, -1.0) + t(-1.0, 0.0) + t(1.0, 0.0) + t(0.0, 1.0)) * 0.1171875
+      - (t(-1.0, -1.0) + t(1.0, -1.0) + t(-1.0, 1.0) + t(1.0, 1.0)) * 0.09765625;
+    b.clamp(-0.015, 0.015)
   })
 }
 
 /// Direction mask for a pyramid level built from luminance `y` (gaborToVF path).
 fn level_mask(y: &P1, l: &LumaLevel) -> P4 {
-  let gd = vf_to_gdir(&smooth_vf(&gabor_vf(y)));
+  let gd = smooth_vf_gdir(&gabor_vf(y));
   let dc = dir_to_c(&gd, y, l.dir_to_c);
   anneal_gc(&dc, y, l.anneal, l.cfactor)
 }
 
 fn sharpen_chain(d: &P1, mask: &P4, chain: &[Vec<f32>], amount: f32) -> P1 {
-  let mut cur = d.clone();
-  for c in chain {
-    cur = smooth_d_sharpen(
-      &cur,
+  let Some((first, rest)) = chain.split_first() else {
+    return d.clone();
+  };
+  let pass = |src: &P1, c: &Vec<f32>| {
+    smooth_d_sharpen(
+      src,
       mask,
       [c[0], c[1], c[2], c[3] * amount],
       [c[4], c[5], c[6]],
       c.get(7).copied(),
-    );
+    )
+  };
+  let mut cur = pass(d, first);
+  for c in rest {
+    cur = pass(&cur, c);
   }
   cur
 }
@@ -521,7 +600,12 @@ pub fn process(y0: &P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
     ),
     _ => gabor_y_vf(y0, 0.5),
   };
-  let l0 = g.channel(0);
+  // gaborToYAndVF writes the source luminance unchanged in channel 0; only
+  // gaborToSYAndG (ThruG2) replaces it with the directionally smoothed Y.
+  let l0 = match root.kind {
+    LevelKind::ThruG2 => g.channel(0),
+    _ => y0.clone(),
+  };
 
   let mut r = vec![l0];
   for _ in 0..4 {
@@ -601,7 +685,7 @@ pub fn process(y0: &P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
       })
     }
     _ => {
-      let gd = vf_to_gdir(&smooth_vf(&g));
+      let gd = smooth_vf_gdir(&g);
       let dc = dir_to_c(&gd, &r[0], root.dir_to_c);
       let mask = anneal_gc(&dc, &r[0], root.anneal, root.cfactor);
       let sd = sharpen_chain(d0, &mask, &root.sharpen, amt.sharpness);
@@ -610,16 +694,7 @@ pub fn process(y0: &P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
       let sharp = p[1] * amt.sharpness;
       // FGN: a clamped high-pass of the full-resolution detail band, sampled 1.2 px
       // apart, added back by addFGN outside the structure mask.
-      let fgn = (root.fine_grain != 0.0).then(|| {
-        P1::map(d0.w, d0.h, |x, y| {
-          let (cx, cy) = (x as f32 + 0.5, y as f32 + 0.5);
-          let t = |dx: f32, dy: f32| d0.s(cx + dx * 1.2, cy + dy * 1.2);
-          let b = t(0.0, 0.0) * 0.859375
-            - (t(0.0, -1.0) + t(-1.0, 0.0) + t(1.0, 0.0) + t(0.0, 1.0)) * 0.1171875
-            - (t(-1.0, -1.0) + t(1.0, -1.0) + t(-1.0, 1.0) + t(1.0, 1.0)) * 0.09765625;
-          b.clamp(-0.015, 0.015)
-        })
-      });
+      let fgn = (root.fine_grain != 0.0).then(|| fine_grain_noise(d0));
       let fg = root.fine_grain;
       P1::map(d0.w, d0.h, |x, y| {
         let s = expand(hsy, x, y);

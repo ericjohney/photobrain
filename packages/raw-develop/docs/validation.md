@@ -194,5 +194,7 @@ the iPhone 16 Pro Max (lossless JPEG) and iPhone 17 Pro Max (JPEG XL), ISO 16–
 ultra-wide, telephoto and front cameras. The full-resolution centre crop of file 116 is 0.08.
 Decode is exact after rounding to half float on every file.
 
-Timings on Apple Silicon: decode 0.03–0.2 s; full develop about 2.8 s for X-Trans 40 MP,
-about 5 s for Sony 61 MP and 0.4–0.6 s for iPhone 12 MP.
+Timings on Apple Silicon: decode 0.03–0.2 s; full develop about 2.0 s for X-Trans 40 MP,
+2.4–2.7 s for Sony 61 MP and 0.4 s for iPhone 12 MP. `raw-develop develop … --digest`
+prints an FNV-1a fingerprint of the exact output floats for bit-exactness checks across
+performance changes.

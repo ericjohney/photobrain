@@ -68,11 +68,43 @@ fn samp(img: &RgbImage, x: f32, y: f32, nf: [f32; 3]) -> [f32; 4] {
 fn extract(img: &RgbImage, nf: [f32; 3], moire: Option<f32>) -> Plane {
   let (w, h) = (img.width.div_ceil(2), img.height.div_ceil(2));
   let mut d = vec![[0.0f32; 4]; w * h];
+  // The moire taps sit at half-pixel offsets of the block corner, so every sample has
+  // fractions of exactly 0 or 0.5 in each axis. Away from the image border the four
+  // source pixels are in range and the lerp reduces to the same arithmetic as
+  // `sample_bilinear` with t = 0 or t = 0.5, evaluated here without the clamps.
+  let samp_fast = |x: f32, y: f32| -> [f32; 4] {
+    let fx = x - 0.5;
+    let fy = y - 0.5;
+    let (x0, y0) = (fx as usize, fy as usize);
+    let (tx, ty) = (fx - x0 as f32, fy - y0 as f32);
+    let i = (y0 * img.width + x0) * 3;
+    let iw = img.width * 3;
+    // SAFETY: callers only use this where x0 + 1 < width and y0 + 1 < height.
+    let g = |k: usize| unsafe { *img.data.get_unchecked(i + k) };
+    let mut o = [0.0f32; 4];
+    for c in 0..3 {
+      let (p00, p10, p01, p11) = (g(c), g(3 + c), g(iw + c), g(iw + 3 + c));
+      let a = p00 + (p10 - p00) * tx;
+      let b = p01 + (p11 - p01) * tx;
+      o[c] = (a + (b - a) * ty) * nf[c];
+    }
+    o[3] = 1.0;
+    o
+  };
   d.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
     for (x, o) in row.iter_mut().enumerate() {
       // destCoord * 2: the corner shared by the 2x2 block -> bilinear = box average.
       let (px, py) = (2.0 * x as f32 + 1.0, 2.0 * y as f32 + 1.0);
-      let s = samp(img, px, py, nf);
+      // Taps reach px ± 2 and py ± 2 (plus one pixel for the bilinear footprint).
+      let interior = x >= 2 && 2 * x + 4 < img.width && y >= 2 && 2 * y + 4 < img.height;
+      let samp = |sx: f32, sy: f32| {
+        if interior {
+          samp_fast(sx, sy)
+        } else {
+          samp(img, sx, sy, nf)
+        }
+      };
+      let s = samp(px, py);
       let Some(hf_factor) = moire else {
         *o = s;
         continue;
@@ -88,7 +120,7 @@ fn extract(img: &RgbImage, nf: [f32; 3], moire: Option<f32>) -> Plane {
         (-0.5, 1.5),
         (1.5, 1.5),
       ];
-      let c: [[f32; 4]; 8] = off.map(|(dx, dy)| samp(img, px + dx, py - dy, nf));
+      let c: [[f32; 4]; 8] = off.map(|(dx, dy)| samp(px + dx, py - dy));
       let ms = c
         .iter()
         .map(|c| {
@@ -496,6 +528,12 @@ pub fn apply(
 }
 
 /// powerBlurLFS over the whole image: returns k-scaled RGB per full-resolution pixel.
+///
+/// Every tap the kernel reads sits on a 2x2-block centre (`cen + {0, ±2, ±4}` with
+/// `|bx| = |by| = 2`), so the bilinear samples are first evaluated once per block into a
+/// half-resolution plane (with a two-cell apron reproducing the clamp-to-edge values at
+/// the borders) and the per-pixel kernel only gathers from it. The values are computed by
+/// the same `sampler` call the direct form used, so the result is identical.
 fn fused_fs(img: &RgbImage, p: &ChromaNrPass, nf: [f32; 3], k: f32, strength: f32) -> Vec<f32> {
   let (w, h) = (img.width, img.height);
   let th = p.threshold;
@@ -510,6 +548,25 @@ fn fused_fs(img: &RgbImage, p: &ChromaNrPass, nf: [f32; 3], k: f32, strength: f3
       1.0,
     ]
   };
+  // Block centres: cen = 2 * floor(p * 0.5) + 1 for p = i + 0.5, i.e. 2 * (i / 2) + 1.
+  // Taps reach cen ± 4, so the plane holds cells -2 ..= n + 1 for n = ceil(dim / 2).
+  const APRON: usize = 2;
+  let (hw, hh) = (w.div_ceil(2), h.div_ceil(2));
+  let (pw, ph) = (hw + 2 * APRON, hh + 2 * APRON);
+  let mut plane = vec![[0.0f32; 4]; pw * ph];
+  plane.par_chunks_mut(pw).enumerate().for_each(|(j, row)| {
+    let ceny = 2.0 * (j as f32 - APRON as f32) + 1.0;
+    for (i, o) in row.iter_mut().enumerate() {
+      let cenx = 2.0 * (i as f32 - APRON as f32) + 1.0;
+      *o = sampler(cenx, ceny);
+    }
+  });
+  let cell = |cenx: f32, ceny: f32| -> [f32; 4] {
+    // cen is an odd integer: cell index (cen - 1) / 2, offset by the apron.
+    let i = ((cenx - 1.0) * 0.5) as isize + APRON as isize;
+    let j = ((ceny - 1.0) * 0.5) as isize + APRON as isize;
+    plane[j as usize * pw + i as usize]
+  };
   let mut out = vec![0.0f32; w * h * 3];
   out.par_chunks_mut(w * 3).enumerate().for_each(|(row, o)| {
     // Core Image destCoord for this row.
@@ -520,7 +577,7 @@ fn fused_fs(img: &RgbImage, p: &ChromaNrPass, nf: [f32; 3], k: f32, strength: f3
       let px = x as f32 + 0.5;
       let cenx = 2.0 * (px * 0.5).floor() + 1.0;
       let bx = ((px - cenx) * 4.0 + 0.5).floor();
-      let n = |dx: f32, dy: f32| sampler(cenx + dx, ceny + dy);
+      let n = |dx: f32, dy: f32| cell(cenx + dx, ceny + dy);
       let n1 = n(0.0, 2.0 * by);
       let n2 = n(bx, 2.0 * by);
       let n3 = n(-bx, by);

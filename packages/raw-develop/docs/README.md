@@ -50,6 +50,6 @@ RAF / ARW / DNG file
   to half float, RawCamera's provider format).
 - Final renders match Apple's closely: mean CIEDE2000 is 0.00–0.46 on every Fuji fixture,
   0.05–0.40 on Sony and 0.05–0.09 on iPhone (see [validation](validation.md#current-results)).
-- On Apple Silicon (CPU, rayon): decode 0.03–0.2 s; full develop about 2.8 s for X-Trans
-  40 MP, about 5 s for Sony 61 MP and 0.4–0.6 s for iPhone 12 MP. The X-Trans
+- On Apple Silicon (CPU, rayon): decode 0.03–0.2 s; full develop about 2.0 s for X-Trans
+  40 MP, 2.4–2.7 s for Sony 61 MP and 0.4 s for iPhone 12 MP. The X-Trans
   one-third-resolution preview takes about 0.12 s.

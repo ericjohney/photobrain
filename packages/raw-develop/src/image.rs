@@ -29,11 +29,13 @@ impl RgbImage {
     self.data.par_chunks_mut(self.width * 3).enumerate()
   }
 
-  /// Apply a per-pixel function in parallel.
+  /// Apply a per-pixel function in parallel (one rayon task per row).
   pub fn map_pixels(&mut self, f: impl Fn([f32; 3]) -> [f32; 3] + Sync) {
-    self.data.par_chunks_mut(3).for_each(|p| {
-      let o = f([p[0], p[1], p[2]]);
-      p.copy_from_slice(&o);
+    let stride = (self.width * 3).max(3);
+    self.data.par_chunks_mut(stride).for_each(|row| {
+      for p in row.as_chunks_mut::<3>().0 {
+        *p = f(*p);
+      }
     });
   }
 

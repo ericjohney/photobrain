@@ -68,8 +68,8 @@ optional on input and defaults to the as-shot (Apple-like) rendering:
   way the API uses `MEDIA_VERSION`.
 - A `Negative` depends only on the file bytes, so it can be cached by content hash.
 - For interactive editing, keep the `Negative` in memory, render `Quality::Preview` on every
-  change (about 0.12 s for X-Trans 40 MP), and render `Full` (about 2.8 s for X-Trans 40 MP,
-  about 5 s for Sony 61 MP, 0.4–0.6 s for iPhone 12 MP) once the user stops changing
+  change (about 0.12 s for X-Trans 40 MP), and render `Full` (about 2.0 s for X-Trans 40 MP,
+  2.4–2.7 s for Sony 61 MP, 0.4 s for iPhone 12 MP) once the user stops changing
   settings. Preview uses the generic NR/sharpening filters, so its fine texture
   differs slightly from the full render.
 

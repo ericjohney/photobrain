@@ -236,30 +236,49 @@ pub fn demosaic(
   let wmax = prm.wb[0].max(prm.wb[1]).max(prm.wb[2]);
   let factors = prm.wb.map(|v| v / wmax * range * 0.5);
 
+  // The kernel reads a 7x7 neighbourhood (offsets within ±3).
+  const R: usize = 3;
+  assert_eq!(mosaic.len(), mw * mh);
   let mut out = RgbImage::new(w, h);
   out.rows_mut().for_each(|(y, row)| {
     let ry = (top + y) as isize;
+    let ty = (py + 6 * (1 + ry as usize / 6) - ry as usize) % 6;
+    // Rows ±3 around ry, with the kernel's periodic (one-tile) edge extension, resolved
+    // once per output row; dy > 0 is north.
+    let rows: [usize; 2 * R + 1] = std::array::from_fn(|i| {
+      // rows[R - dy] is the row ry - dy.
+      let mut r = ry - R as isize + i as isize;
+      if r < 0 {
+        r += 6;
+      } else if r >= mh as isize {
+        r -= 6;
+      }
+      r as usize * mw
+    });
     for x in 0..w {
       let rx = (left + x) as isize;
-      // Sample with the kernel's periodic (one-tile) edge extension; dy > 0 is north.
-      let s = |dx: isize, dy: isize| -> f32 {
-        let mut c = rx + dx;
-        let mut r = ry - dy;
-        if c < 0 {
-          c += 6;
-        } else if c >= mw as isize {
-          c -= 6;
-        }
-        if r < 0 {
-          r += 6;
-        } else if r >= mh as isize {
-          r -= 6;
-        }
-        mosaic[r as usize * mw + c as usize] as f32 * (1.0 / 65535.0)
-      };
       let tx = (rx as usize + px) % 6;
-      let ty = (py + 6 * (1 + ry as usize / 6) - ry as usize) % 6;
-      let o = pixel(&s, tx, ty, black, range, rn, exposureFactor, factors);
+      let o = if rx >= R as isize && rx + (R as isize) < mw as isize {
+        // Interior columns: no horizontal wrap and every index is in range.
+        let s = |dx: isize, dy: isize| -> f32 {
+          let c = (rx + dx) as usize;
+          let i = rows[(R as isize - dy) as usize] + c;
+          // SAFETY: the row base is a valid row start (< mh * mw) and c < mw.
+          unsafe { *mosaic.get_unchecked(i) as f32 * (1.0 / 65535.0) }
+        };
+        pixel(&s, tx, ty, black, range, rn, exposureFactor, factors)
+      } else {
+        let s = |dx: isize, dy: isize| -> f32 {
+          let mut c = rx + dx;
+          if c < 0 {
+            c += 6;
+          } else if c >= mw as isize {
+            c -= 6;
+          }
+          mosaic[rows[(R as isize - dy) as usize] + c as usize] as f32 * (1.0 / 65535.0)
+        };
+        pixel(&s, tx, ty, black, range, rn, exposureFactor, factors)
+      };
       row[x * 3] = o[0];
       row[x * 3 + 1] = o[1];
       row[x * 3 + 2] = o[2];

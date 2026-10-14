@@ -273,8 +273,9 @@ The profile is a compact ICC v4 Display P3 profile generated in code
 ## Performance notes
 
 - Every stage runs in parallel over rows with rayon. On Apple Silicon a full develop takes
-  about 2.8 s for X-Trans 40 MP, about 5 s for Sony 61 MP and 0.4–0.6 s for an iPhone 12 MP
-  DNG; most of it is the ported demosaic and the noise-reduction pyramid. The X-Trans
+  about 2.0 s for X-Trans 40 MP, 2.4–2.7 s for Sony 61 MP and 0.4 s for an iPhone 12 MP
+  DNG; most of it is the luma pyramid's directional gathers (`dir_to_c`, `smoothVF`,
+  `smoothDSharpen`) and the ported demosaic. The X-Trans
   preview takes about 0.12 s.
 - Peak memory is roughly the u16 mosaic plus several full-size f32 buffers (RGB image,
   luma pyramid planes and direction fields).

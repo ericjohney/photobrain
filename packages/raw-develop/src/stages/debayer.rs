@@ -84,10 +84,31 @@ pub fn despeckle(raw: &[f32], w: usize, h: usize, cfa: &CfaPattern, amount: f32,
   let drange = 1.8 / amount;
   let drange_n = amount * 0.4;
   let range_min = 0.005;
+  assert_eq!(raw.len(), w * h);
   let mut out = vec![0.0f32; w * h];
   out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+    // Row offsets ±2 around y with the kernel's edge wrap: rows[2 - dy] is row y - dy.
+    let rows: [usize; 5] = std::array::from_fn(|i| {
+      let r = y as isize - 2 + i as isize;
+      let r = if r < 0 {
+        r.rem_euclid(2) as usize
+      } else if r >= h as isize {
+        h - 2 + ((r - h as isize) % 2) as usize
+      } else {
+        r as usize
+      };
+      r * w
+    });
     for (x, o) in row.iter_mut().enumerate() {
-      let s = |dx: isize, dy: isize| v.at(x as isize + dx, y as isize - dy);
+      let interior = x >= 2 && x + 2 < w;
+      let s = |dx: isize, dy: isize| {
+        if interior {
+          // SAFETY: the row base is a valid row start and x + dx is within 0..w.
+          unsafe { *raw.get_unchecked(rows[(2 - dy) as usize] + (x as isize + dx) as usize) }
+        } else {
+          v.at(x as isize + dx, y as isize - dy)
+        }
+      };
       let is_g = (x + px + y + py) % 2 == 1;
       let O = s(0, 0);
       let (W, E, N, S) = (s(-1, 0), s(1, 0), s(0, 1), s(0, -1));
@@ -214,18 +235,44 @@ pub fn demosaic(
 ) -> Option<RgbImage> {
   let (px, py) = phase(cfa)?;
   let v = View { data: src, w: mw, h: mh };
+  // The kernel reads a 7x7 neighbourhood (offsets within ±3).
+  const R: usize = 3;
+  assert_eq!(src.len(), mw * mh);
   let mut out = RgbImage::new(w, h);
   out.rows_mut().for_each(|(y, row)| {
     let ry = top + y;
+    // Row offsets ±3 around ry with the kernel's edge wrap, resolved once per row:
+    // rows[R - dy] is the start of row ry - dy.
+    let rows: [usize; 2 * R + 1] = std::array::from_fn(|i| {
+      let r = ry as isize - R as isize + i as isize;
+      let r = if r < 0 {
+        r.rem_euclid(2) as usize
+      } else if r >= mh as isize {
+        mh - 2 + ((r - mh as isize) % 2) as usize
+      } else {
+        r as usize
+      };
+      r * mw
+    });
     for x in 0..w {
       let rx = left + x;
-      let s = |dx: isize, dy: isize| v.at(rx as isize + dx, ry as isize - dy);
       // Canonical RGGB tile coordinates: (0,0) R, (1,1) B, else G. The kernel's
       // "isRowB" is the blue row.
       let (tx, ty) = ((rx + px) % 2, (ry + py) % 2);
       let is_g = tx != ty;
       let is_row_b = ty == 1;
-      let o = pixel(&s, is_g, is_row_b, prm);
+      let o = if rx >= R && rx + R < mw {
+        // Interior columns: no horizontal wrap and every index is in range.
+        let s = |dx: isize, dy: isize| {
+          let i = rows[(R as isize - dy) as usize] + (rx as isize + dx) as usize;
+          // SAFETY: the row base is a valid row start (< mh * mw) and the column < mw.
+          unsafe { *src.get_unchecked(i) }
+        };
+        pixel(&s, is_g, is_row_b, prm)
+      } else {
+        let s = |dx: isize, dy: isize| v.at(rx as isize + dx, ry as isize - dy);
+        pixel(&s, is_g, is_row_b, prm)
+      };
       row[x * 3..x * 3 + 3].copy_from_slice(&o);
     }
   });

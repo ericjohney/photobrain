@@ -195,14 +195,22 @@ impl LensCorrection {
         } else {
           1.0
         };
-        for c in 0..3 {
-          let sc = s
-            * match c {
-              0 if do_ca => self.ca_scale(&self.ca_red, r),
-              2 if do_ca => self.ca_scale(&self.ca_blue, r),
-              _ => 1.0,
-            };
-          row[x * 3 + c] = sample_bicubic(src, cx + px * sc, cy + py * sc, c) * gain;
+        if do_ca && (self.ca_red.is_some() || self.ca_blue.is_some()) {
+          for c in 0..3 {
+            let sc = s
+              * match c {
+                0 => self.ca_scale(&self.ca_red, r),
+                2 => self.ca_scale(&self.ca_blue, r),
+                _ => 1.0,
+              };
+            row[x * 3 + c] = sample_bicubic(src, cx + px * sc, cy + py * sc, c) * gain;
+          }
+        } else {
+          // Every channel samples the same source position: one weight set, one gather.
+          let p = sample_bicubic_rgb(src, cx + px * s, cy + py * s);
+          row[x * 3] = p[0] * gain;
+          row[x * 3 + 1] = p[1] * gain;
+          row[x * 3 + 2] = p[2] * gain;
         }
       }
     });
@@ -210,24 +218,72 @@ impl LensCorrection {
   }
 }
 
+/// Catmull-Rom weights for a fractional offset `t` from the left/upper inner tap.
+#[inline(always)]
+fn cubic_weights(t: f32) -> [f32; 4] {
+  let u = 1.0 - t;
+  let w0 = 0.5 * u * u * u - 0.5 * u * u;
+  let w2 = 1.5 * u * u * u - 2.5 * u * u + 1.0;
+  let w12 = -0.5 * u * u + 0.5 * u + 1.0;
+  let w1 = w12 - w2;
+  let w3 = 1.0 - w0 - w12;
+  [w0, w1, w2, w3]
+}
+
+/// `sample_bicubic` for all three channels at once: the same per-channel arithmetic
+/// (weights, tap order, accumulation order) with the gather shared.
+#[inline]
+fn sample_bicubic_rgb(img: &RgbImage, x: f32, y: f32) -> [f32; 3] {
+  let (dx, dy) = (x - 0.5, y - 0.5);
+  let (fx, fy) = (dx.floor(), dy.floor());
+  let (wx, wy) = (cubic_weights(dx - fx), cubic_weights(dy - fy));
+  let (ix, iy) = (fx as isize, fy as isize);
+  let (w, h) = (img.width as isize, img.height as isize);
+  let mut acc = [0.0f32; 3];
+  if ix >= 1 && ix + 2 < w && iy >= 1 && iy + 2 < h {
+    // Interior: the 4x4 footprint is inside the image, no clamping needed.
+    let base = ((iy - 1) as usize * img.width + (ix - 1) as usize) * 3;
+    for j in 0..4 {
+      let r = base + j * img.width * 3;
+      // SAFETY: r + 11 < data.len() by the footprint check above.
+      let px = unsafe { img.data.get_unchecked(r..r + 12) };
+      let mut row = [0.0f32; 3];
+      for i in 0..4 {
+        for c in 0..3 {
+          row[c] += wx[i] * px[i * 3 + c];
+        }
+      }
+      for c in 0..3 {
+        acc[c] += wy[j] * row[c];
+      }
+    }
+  } else {
+    for j in 0..4 {
+      let yy = (iy - 1 + j as isize).clamp(0, h - 1) as usize;
+      let mut row = [0.0f32; 3];
+      for i in 0..4 {
+        let xx = (ix - 1 + i as isize).clamp(0, w - 1) as usize;
+        let p = (yy * img.width + xx) * 3;
+        for c in 0..3 {
+          row[c] += wx[i] * img.data[p + c];
+        }
+      }
+      for c in 0..3 {
+        acc[c] += wy[j] * row[c];
+      }
+    }
+  }
+  acc
+}
+
 /// RawCamera's `radialLens` resampler: a separable 4-tap cubic (Catmull-Rom, a = -0.5)
 /// at a continuous coordinate (pixel centres at i + 0.5), clamped at the edges. Apple
 /// evaluates it with nine bilinear taps; this is the equivalent direct form.
 #[inline]
 fn sample_bicubic(img: &RgbImage, x: f32, y: f32, c: usize) -> f32 {
-  let weights = |t: f32| {
-    // t = fractional offset of the sample from the left/upper of the two inner taps.
-    let u = 1.0 - t;
-    let w0 = 0.5 * u * u * u - 0.5 * u * u;
-    let w2 = 1.5 * u * u * u - 2.5 * u * u + 1.0;
-    let w12 = -0.5 * u * u + 0.5 * u + 1.0;
-    let w1 = w12 - w2;
-    let w3 = 1.0 - w0 - w12;
-    [w0, w1, w2, w3]
-  };
   let (dx, dy) = (x - 0.5, y - 0.5);
   let (fx, fy) = (dx.floor(), dy.floor());
-  let (wx, wy) = (weights(dx - fx), weights(dy - fy));
+  let (wx, wy) = (cubic_weights(dx - fx), cubic_weights(dy - fy));
   let (ix, iy) = (fx as isize, fy as isize);
   let (w, h) = (img.width as isize, img.height as isize);
   let mut acc = 0.0f32;
@@ -274,6 +330,14 @@ mod tests {
       for x in 1..7 {
         let a = sample_bicubic(&im, x as f32 + 0.5, y as f32 + 0.5, 1);
         assert!((a - im.data[(y * 8 + x) * 3 + 1]).abs() < 1e-4);
+      }
+    }
+    // The three-channel gather is bit-identical to the per-channel sampler, inside and
+    // at the edges.
+    for (x, y) in [(0.2, 0.3), (1.7, 2.9), (3.3, 4.6), (7.9, 7.1), (-0.4, 3.0), (5.5, 9.0)] {
+      let rgb = sample_bicubic_rgb(&im, x, y);
+      for c in 0..3 {
+        assert_eq!(rgb[c].to_bits(), sample_bicubic(&im, x, y, c).to_bits());
       }
     }
     // Catmull-Rom halfway weights: -1/16, 9/16, 9/16, -1/16.
