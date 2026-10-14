@@ -277,7 +277,9 @@ The profile is a compact ICC v4 Display P3 profile generated in code
   DNG; most of it is the luma pyramid's directional gathers (`dir_to_c`, `smoothVF`,
   `smoothDSharpen`) and the ported demosaic. The X-Trans
   preview takes about 0.12 s.
-- Peak memory is roughly the u16 mosaic plus several full-size f32 buffers (RGB image,
-  luma pyramid planes and direction fields).
+- Peak memory is roughly the u16 mosaic, the full-size f32 RGB image, chroma NR's
+  half-resolution plane and the luma pyramid's base levels. The full-resolution luma
+  level (direction field, DIRToC, mask, sharpen chain) streams through rolling row
+  windows of a few dozen rows, bit-identical to whole-plane evaluation.
 - Each stage reads a bounded neighbourhood, which leaves room for a tiled/GPU backend
   later. Today the stages run whole-image on the CPU, without a tile scheduler.
