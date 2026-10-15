@@ -1,0 +1,19 @@
+{
+	"$schema": "https://turbo.build/schema.json",
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"inputs": [
+				"src/**",
+				"build.rs",
+				"Cargo.toml",
+				"Cargo.lock",
+				"package.json",
+				"$TURBO_ROOT$/packages/raw-develop/src/**",
+				"$TURBO_ROOT$/packages/raw-develop/profiles/**",
+				"$TURBO_ROOT$/packages/raw-develop/Cargo.toml"
+			],
+			"outputs": ["dist/**"]
+		}
+	}
+}

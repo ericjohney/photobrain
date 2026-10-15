@@ -16,6 +16,15 @@ type NativeOperations = Pick<
 	| "renderFaceCrop"
 >;
 type Operation = keyof NativeOperations;
+/**
+ * Operations whose native call takes a trailing cancel flag (an `Int32Array` over a
+ * `SharedArrayBuffer`): `runCancellable` sets it when its signal aborts mid-run.
+ */
+const CANCELLABLE_OPERATIONS: ReadonlySet<Operation> = new Set([
+	"renderDevelopedRaw",
+]);
+/** Message of a native error raised because the cancel flag was set. */
+export const NATIVE_CANCELLED = "DEVELOP_CANCELLED";
 // Structured clone delivers a native Buffer to this thread as a plain,
 // unshared Uint8Array.
 type OperationResult<K extends Operation> = K extends
@@ -89,6 +98,8 @@ type Consumer = {
 };
 type Pending = {
 	id: number;
+	/** Shared flag the running native call polls; set on abort while running. */
+	cancelFlag?: Int32Array<SharedArrayBuffer>;
 	request?:
 		| OperationRequest
 		| { id: number; operation: "cancelPhotos"; jobId: string };
@@ -138,8 +149,10 @@ export class NativeExecutor {
 	/**
 	 * `run` for a request-scoped caller: rejects with `NativeExecutorBusyError` when
 	 * admission is full, and aborting `signal` withdraws the request while it is still
-	 * queued (rejecting with the abort reason). An operation the worker has already
-	 * started runs to completion.
+	 * queued (rejecting with the abort reason). If the worker has already started it,
+	 * operations that support it (`renderDevelopedRaw`) are stopped through a shared
+	 * cancel flag the native code polls, freeing the worker for the next request;
+	 * others run to completion.
 	 */
 	runCancellable<K extends Operation>(
 		signal: AbortSignal,
@@ -147,13 +160,20 @@ export class NativeExecutor {
 		...args: Parameters<NativeOperations[K]>
 	): Promise<OperationResult<K>> {
 		if (signal.aborted) return Promise.reject(asError(signal.reason));
-		return this.submit(signal, operation, args);
+		if (!CANCELLABLE_OPERATIONS.has(operation))
+			return this.submit(signal, operation, args);
+		const cancelFlag = new Int32Array(new SharedArrayBuffer(4));
+		const native = [...args, cancelFlag] as unknown as Parameters<
+			NativeOperations[K]
+		>;
+		return this.submit(signal, operation, native, cancelFlag);
 	}
 
 	private submit<K extends Operation>(
 		signal: AbortSignal | undefined,
 		operation: K,
 		args: Parameters<NativeOperations[K]>,
+		cancelFlag?: Int32Array<SharedArrayBuffer>,
 	): Promise<OperationResult<K>> {
 		const request = { id: this.nextId++, operation, args } as OperationRequest;
 		if (
@@ -164,7 +184,7 @@ export class NativeExecutor {
 				new Error("Photo paths and relative paths must align"),
 			);
 		}
-		return this.enqueue({ id: request.id, request }, signal);
+		return this.enqueue({ id: request.id, request, cancelFlag }, signal);
 	}
 
 	consumePhotos(
@@ -252,7 +272,13 @@ export class NativeExecutor {
 		const { promise, resolve, reject } = Promise.withResolvers<T>();
 		const withdraw = () => {
 			const index = this.queue.indexOf(entry);
-			if (index < 0) return; // Already started: let it finish.
+			if (index < 0) {
+				// Already started: ask the native call to stop if it can; otherwise it
+				// finishes and its result is discarded by the caller.
+				if (this.active === entry && entry.cancelFlag)
+					Atomics.store(entry.cancelFlag, 0, 1);
+				return;
+			}
 			this.queue.splice(index, 1);
 			reject(asError(signal?.reason));
 			this.releaseCapacity();
@@ -265,7 +291,12 @@ export class NativeExecutor {
 			},
 			reject: (error) => {
 				signal?.removeEventListener("abort", withdraw);
-				reject(error);
+				// A run stopped through its cancel flag rejects like a withdrawn one.
+				reject(
+					signal?.aborted && error.message === NATIVE_CANCELLED
+						? asError(signal.reason)
+						: error,
+				);
 			},
 		};
 		signal?.addEventListener("abort", withdraw, { once: true });

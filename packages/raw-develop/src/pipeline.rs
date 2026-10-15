@@ -63,6 +63,9 @@ pub struct Options {
   pub quality: Quality,
   /// Keep the scene-linear intermediate in `Developed::linear`.
   pub keep_linear: bool,
+  /// Cooperative cancellation: `develop` returns `Error::Cancelled` at the next stage
+  /// boundary (or streamed luma step) after it is set. Never cancels by default.
+  pub cancel: crate::Cancel,
 }
 
 impl Default for Options {
@@ -70,12 +73,15 @@ impl Default for Options {
     Self {
       quality: Quality::Full,
       keep_linear: false,
+      cancel: crate::Cancel::never(),
     }
   }
 }
 
 pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Result<Developed> {
   settings.validate()?;
+  let cancel = &opts.cancel;
+  cancel.check()?;
   if let Some((info, rgb)) = &neg.dng {
     return develop_dng(neg, info, rgb, settings, opts);
   }
@@ -127,7 +133,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     Quality::Full => {
       let d = match noise {
         Some(n) if meta.cfa.is_xtrans() => full_dextrans(neg, profile.white_level, wb, n),
-        Some(n) => full_debayer(neg, &profile, wb, n),
+        Some(n) => full_debayer(neg, &profile, wb, n, cancel)?,
         None => None,
       };
       let d = d.unwrap_or_else(|| {
@@ -163,6 +169,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     }
   };
 
+  cancel.check()?;
   // 5. Noise reduction (white-balanced camera space): RawCamera's chroma NR and luma
   // pyramid when the profile has a noise table for this ISO, else the generic filters.
   let mut luma_nr = settings.luma_noise_reduction.unwrap_or(0.0);
@@ -179,7 +186,8 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
           lnr: luma_nr,
           sharpness: settings.sharpening,
         }),
-      );
+        cancel,
+      )?;
     }
     _ => {
       if settings.luma_noise_reduction.is_none() {
@@ -192,7 +200,8 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
           n,
           settings.chroma_noise_reduction,
           None,
-        );
+          cancel,
+        )?;
       }
       detail::apply(
         &mut img,
@@ -211,6 +220,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     }
   }
 
+  cancel.check()?;
   // 6. Lens correction.
   let lc = LensCorrection::from_source(&meta.lens, profile.distortion_fill_scale);
   let l = &settings.lens;
@@ -218,6 +228,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     img = lc.apply(&img, (l.distortion, l.chromatic_aberration, l.vignetting));
   }
 
+  cancel.check()?;
   // 7. Highlights: channels clip at wb[c] in balanced units.
   if settings.highlight_recovery {
     highlights::recover(&mut img, highlights::thresholds(wb.map(|v| v as f32)));
@@ -254,6 +265,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
 
   let linear = opts.keep_linear.then(|| img.clone());
 
+  cancel.check()?;
   // 10. Look.
   // The constant table lets the compiler fold the zero hue-preserve terms and the
   // segment breakpoints; the arithmetic is unchanged.
@@ -261,6 +273,7 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   let amount = settings.tone_amount;
   img.map_pixels(|p| look::render(p, amount, &BOOST).map(|v| srgb_encode(v.clamp(0.0, 1.0))));
 
+  cancel.check()?;
   // 11. Geometry.
   let orientation = rotate_orientation(meta.orientation, settings.quarter_turns);
   img = img.oriented(orientation);
@@ -364,6 +377,8 @@ fn develop_dng(
   let exposure_ev = info.baseline_exposure + settings.exposure;
   let gain = 2f64.powf(exposure_ev) as f32;
 
+  let cancel = &opts.cancel;
+  cancel.check()?;
   // 1. Detail. RawCamera's DNG defaults: chroma NR 0.5, detail 0.5 (our sharpening 1.0).
   dng_detail::apply(
     &mut img,
@@ -374,6 +389,7 @@ fn develop_dng(
     },
   );
 
+  cancel.check()?;
   // 2. Highlights on unbalanced data.
   if settings.highlight_recovery {
     highlights::recover(&mut img, [1.0, 0.9, 1.0]);
@@ -387,6 +403,7 @@ fn develop_dng(
   });
   let linear = opts.keep_linear.then(|| img.clone());
 
+  cancel.check()?;
   // 5. Look.
   let amount = settings.tone_amount;
   if let Some(gtm) = &info.gain_table_map {
@@ -431,7 +448,8 @@ fn full_debayer(
   profile: &CameraProfile,
   wb: [f64; 3],
   noise: &crate::profile::NoiseIso,
-) -> Option<RgbImage> {
+  cancel: &crate::Cancel,
+) -> Result<Option<RgbImage>> {
   let meta = &neg.meta;
   let black = meta.mean_black();
   let (mw, mh) = (meta.raw_width, meta.raw_height);
@@ -440,23 +458,26 @@ fn full_debayer(
     Some([amount, prevention]) => debayer::despeckle(&raw, mw, mh, &meta.cfa, amount, prevention),
     None => raw,
   };
+  cancel.check()?;
   let prm = debayer::Params {
     black: black / 65535.0,
     range: 65535.0 / (profile.white_level - black),
     rn: noise.demosaic_noise,
     exposure_factor: profile.demosaic_exposure_factor.unwrap_or(2.0),
   };
-  let mut img = debayer::demosaic(
+  let Some(mut img) = debayer::demosaic(
     &src,
     mw,
     mh,
     &meta.cfa,
     (meta.crop_left, meta.crop_top, meta.crop_width, meta.crop_height),
     &prm,
-  )?;
+  ) else {
+    return Ok(None);
+  };
   let wbf = wb.map(|v| v as f32);
   img.map_pixels(|p| [p[0] * wbf[0], p[1] * wbf[1], p[2] * wbf[2]]);
-  Some(img)
+  Ok(Some(img))
 }
 
 /// Compose an EXIF orientation with additional clockwise quarter turns.

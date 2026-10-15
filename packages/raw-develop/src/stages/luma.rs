@@ -802,7 +802,7 @@ pub fn default_lnr(recipe: &[LumaLevel]) -> f32 {
 /// computed by the same per-pixel function as the whole-plane form, from identical
 /// inputs, so the output is bit-identical; halo rows are recomputed by both neighbouring
 /// bands (see `HALO_*`).
-pub fn process(y0: P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
+pub fn process(y0: P1, recipe: &[LumaLevel], amt: Amounts, cancel: &crate::Cancel) -> crate::Result<P1> {
   let root = &recipe[0];
   let lnr0 = default_lnr(recipe);
   let lnr_scale = if lnr0 > 0.0 { amt.lnr / lnr0 } else { 1.0 };
@@ -823,6 +823,7 @@ pub fn process(y0: P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
     _ => (y0, None),
   };
 
+  cancel.check()?;
   let mut r = vec![l0];
   for _ in 0..4 {
     let n = reduce(r.last().unwrap());
@@ -833,6 +834,7 @@ pub fn process(y0: P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
   // Coarse to fine through levels 3, 2, 1.
   let mut e = r[4].clone();
   for k in (1..4).rev() {
+    cancel.check()?;
     let l = recipe.get(k);
     let (dk, rk) = (&d[k - 1], &r[k]);
     e = match l.map(|l| l.kind) {
@@ -892,10 +894,10 @@ pub fn process(y0: P1, recipe: &[LumaLevel], amt: Amounts) -> P1 {
     }
     _ => {
       let lvl = Level0 { root, amt, base: &base, r1: &r1, e: &e };
-      lvl.thru_g3_rolling(&mut out);
+      lvl.thru_g3_rolling(&mut out, cancel)?;
     }
   }
-  Plane::full(w, h, out)
+  Ok(Plane::full(w, h, out))
 }
 
 /// Output rows per full-resolution band (ThruG2, which has no intermediates).
@@ -943,7 +945,7 @@ impl Level0<'_> {
   /// maximum, DIRToC, the mask, the detail band and each sharpen pass) is computed once
   /// per row, in row order, as soon as its inputs reach the halo its kernel reads, and
   /// dropped once no later stage can read it. Only a few dozen rows of each are alive.
-  fn thru_g3_rolling(&self, out: &mut [f32]) {
+  fn thru_g3_rolling(&self, out: &mut [f32], cancel: &crate::Cancel) -> crate::Result<()> {
     let (root, amt, base) = (self.root, self.amt, self.base);
     let (w, h) = (base.w, base.h);
     let chain = &root.sharpen;
@@ -971,6 +973,7 @@ impl Level0<'_> {
 
     let mut y = 0;
     while y < h {
+      cancel.check()?;
       let to = (y + STEP).min(h);
       // Rows each stage must have computed so the next output rows `y .. to` can be
       // produced, walking back from the output through each stage's halo.
@@ -1086,6 +1089,7 @@ impl Level0<'_> {
       fgn.retire_before(to);
       y = to;
     }
+    Ok(())
   }
 
   /// expandPlusDThruG2 for output `rows`, written to `out` (row-parallel caller).
@@ -1193,7 +1197,9 @@ mod tests {
         lnr: 0.05,
         sharpness: 1.0,
       },
-    );
+      &crate::Cancel::never(),
+    )
+    .unwrap();
     for v in out.d {
       assert!((v - 0.25).abs() < 1e-4, "{v}");
     }

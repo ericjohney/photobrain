@@ -183,6 +183,29 @@ describe("off-thread native execution", () => {
 		).rejects.toThrow("navigated away");
 	});
 
+	test("runCancellable stops a running develop through its cancel flag", async () => {
+		const abort = new AbortController();
+		const started = Date.now();
+		const running = executor.runCancellable(
+			abort.signal,
+			"renderDevelopedRaw",
+			"slow",
+			95,
+		);
+		const next = executor.runCancellable(
+			new AbortController().signal,
+			"renderDevelopedRaw",
+			"/next.RAF",
+			95,
+		);
+		await Bun.sleep(100);
+		abort.abort(new Error("navigated away"));
+		await expect(running).rejects.toThrow("navigated away");
+		// The next request did not wait for the 2 s develop to finish.
+		expect((await next).width).toBe(6000);
+		expect(Date.now() - started).toBeLessThan(1500);
+	});
+
 	test("runCancellable still rejects when admission is full", async () => {
 		const work = Array.from({ length: MAX_NATIVE_REQUESTS }, (_, index) =>
 			executor.run("discoverPhotos", index === 0 ? "busy" : String(index)),

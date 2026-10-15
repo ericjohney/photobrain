@@ -17,6 +17,7 @@
 #![allow(clippy::needless_range_loop)]
 
 pub mod arw;
+pub mod cancel;
 pub mod cfa;
 pub mod dng;
 pub mod encode;
@@ -33,6 +34,7 @@ pub mod stages;
 pub mod tiff;
 pub mod unpack;
 
+pub use cancel::Cancel;
 pub use error::{Error, Result};
 pub use negative::Negative;
 pub use pipeline::{Developed, Options, PIPELINE_VERSION, Quality, develop};

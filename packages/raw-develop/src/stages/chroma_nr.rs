@@ -443,14 +443,15 @@ pub fn apply(
   noise: &NoiseIso,
   chroma: f32,
   luma: Option<crate::stages::luma::Amounts>,
-) {
+  cancel: &crate::Cancel,
+) -> crate::Result<()> {
   if img.width < 4 || img.height < 4 {
-    return;
+    return Ok(());
   }
   let do_chroma = chroma > 0.0 && !noise.chroma_passes.is_empty();
   let do_luma = luma.is_some() && !noise.luma.is_empty();
   if !do_chroma && !do_luma {
-    return;
+    return Ok(());
   }
   // RawCamera runs on unbalanced camera RGB scaled by neutralFactors = WB * k with
   // max = 0.5. On balanced input that is a uniform scale k; its tap-weights are 1/WB
@@ -468,10 +469,13 @@ pub fn apply(
   let plane = (do_chroma && !fused).then(|| {
     let mut plane = extract(img, [k, k, k], noise.moire_detect.then_some(1000.0));
     for p in &noise.chroma_passes {
+      cancel.check()?;
       plane = pass(&plane, p, nf, strength);
     }
-    plane
+    Ok::<_, crate::Error>(plane)
   });
+  let plane = plane.transpose()?;
+  cancel.check()?;
 
   // Luma (extractY): k * dot(rgb, LUM), in Core Image orientation (row 0 = bottom).
   let y_out = luma.filter(|_| do_luma).map(|amt| {
@@ -483,8 +487,10 @@ pub fn apply(
         *o = (p[0] * LUM[0] + p[1] * LUM[1] + p[2] * LUM[2]) * k;
       }
     });
-    crate::stages::luma::process(crate::stages::luma::Plane::full(w, h, d), &noise.luma, amt)
+    crate::stages::luma::process(crate::stages::luma::Plane::full(w, h, d), &noise.luma, amt, cancel)
   });
+  let y_out = y_out.transpose()?;
+  cancel.check()?;
 
   // Expand + gather: filtered chromaticity with the (processed) luminance.
   img.rows_mut().for_each(|(y, row)| {
@@ -525,6 +531,7 @@ pub fn apply(
       p[2] = kc[2] * s;
     }
   });
+  Ok(())
 }
 
 /// powerBlurLFS over the whole image: returns k-scaled RGB per full-resolution pixel.
@@ -660,7 +667,7 @@ mod tests {
       for p in im.data.chunks_mut(3) {
         p.copy_from_slice(&[0.4, 0.3, 0.2]);
       }
-      apply(&mut im, [2.0, 1.0, 1.8], &chain(kind), 0.5, None);
+      apply(&mut im, [2.0, 1.0, 1.8], &chain(kind), 0.5, None, &crate::Cancel::never()).unwrap();
       for p in im.data.chunks(3) {
         assert!(
           (p[0] - 0.4).abs() < 1e-5 && (p[1] - 0.3).abs() < 1e-5,
@@ -683,7 +690,7 @@ mod tests {
       p.copy_from_slice(&[0.3 + n, 0.3 - n * 0.5, 0.3 + rnd() * 0.02]);
     }
     let before = im.clone();
-    apply(&mut im, [1.0, 1.0, 1.0], &chain(PassKind::Plain), 0.5, None);
+    apply(&mut im, [1.0, 1.0, 1.0], &chain(PassKind::Plain), 0.5, None, &crate::Cancel::never()).unwrap();
     let var = |im: &RgbImage| {
       im.data
         .chunks(3)

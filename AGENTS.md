@@ -152,7 +152,7 @@ The first CLIP operation may download the FastEmbed model. Set `FASTEMBED_CACHE_
 
 ```bash
 bun run dev              # Turbo starts packages/apps that define a dev script; currently API and web
-bun run dev:api          # API on port 3000
+bun run dev:api          # API on port 3000; first rebuilds the native addon if image-processing or raw-develop sources changed
 bun run dev:web          # Web on port 3001
 ```
 
@@ -308,7 +308,7 @@ Export routes (`apps/api/src/routes/exports.ts`, mounted at `/api`; binary, not 
 - `GET /api/photos/:id/export?size=original|2048|1024` (default `2048`): `original` streams the source bytes unchanged; `2048`/`1024` render a metadata-free (no EXIF/GPS) sRGB JPEG at quality 90 through native `renderExportJpeg` (shared HEIF/RAW-preview decode, orientation applied, long edge fit, never upscaled) on the native executor. Filename `{stem}_{size}.jpg`; RFC 6266 `Content-Disposition` with an ASCII fallback; `Cache-Control: private, no-store`. Errors: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `EXPORT_FAILED`, 503 `EXPORT_BUSY` with `Retry-After` when executor admission is full.
 - `GET /api/collections/:id/export?size=original|2048|1024` (default `original`): streaming STORE ZIP (UTF-8 names, CRC-32, ZIP64 when needed) of every member, unstacked, in captured order (`listCollectionMembers`); duplicate names become `stem (2).ext` case-insensitively; missing/failed members are skipped and listed in a final `export-errors.txt`. Pull-based with at most two renders in flight; ZIP renders wait for executor capacity, and client abort stops further reads/renders. 404 `COLLECTION_NOT_FOUND` before any bytes.
 - Videos export as their unchanged original file for every `size`, including inside collection ZIPs.
-- `GET /api/photos/:id/developed`: the loupe's **Developed** rendition. Develops the RAW with `packages/raw-develop` (native `renderDevelopedRaw`, default settings, full resolution) and returns a Display P3 JPEG (quality 95, embedded ICC) with `X-Developed-Width`/`X-Developed-Height` (CORS-exposed) and `Cache-Control: private, no-store`; rendered on demand on the native executor, never cached or persisted. Supports Fujifilm X-E5/X100VI RAF, Sony A1 II/A7C R/A7R V ARW and Apple ProRAW DNG. Codes: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `NOT_RAW`, 422 `DEVELOP_UNSUPPORTED` (other cameras; message from raw-develop), 503 `DEVELOP_BUSY` with `Retry-After: 1`, 503 `DEVELOP_UNAVAILABLE` when no developer is configured.
+- `GET /api/photos/:id/developed`: the loupe's **Developed** rendition. Develops the RAW with `packages/raw-develop` (native `renderDevelopedRaw`, default settings, full resolution) and returns a Display P3 JPEG (quality 95, embedded ICC) with `X-Developed-Width`/`X-Developed-Height` (CORS-exposed) and `Cache-Control: private, no-store`; rendered on demand on the native executor, never cached or persisted. Supports Fujifilm X-E5/X100VI RAF, Sony A1 II/A7C R/A7R V ARW and Apple ProRAW DNG. Codes: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `NOT_RAW`, 422 `DEVELOP_UNSUPPORTED` (other cameras; message from raw-develop), 503 `DEVELOP_BUSY` with `Retry-After: 1`, 503 `DEVELOP_UNAVAILABLE` when no developer is configured. A client that disconnects cancels its render: a queued render is withdrawn, and a running one stops at raw-develop's next cancellation check (`Options::cancel`, a shared `Int32Array` flag passed to `renderDevelopedRaw`), so the worker moves straight on to the photo the user is now viewing.
 
 Videos and Live Photos: photos carry `mediaType` (`photo`|`video`), `durationMs`, `videoCodec`, and `motionVideoId`. `filterRaw` accepts `all|raw|standard|video` (`standard` = non-RAW stills; `video` excludes motion clips). A video ≤4,000 ms that is the only video on a pair stem holding one still or a RAW pair is a motion clip (`livePhotoSql`): it is hidden from listings, counts, search, similar, map, events, gear stats, on-this-day, and smart albums, and exposed as the still's `motionVideoId`, but remains fetchable by ID. Videos are excluded from junk, quality backfill, and duplicate/burst candidates.
 
@@ -445,7 +445,7 @@ The API and worker must not be described as separate services unless a future ch
 
 1. Update the relevant Rust module under `packages/image-processing/src/`.
 2. Re-export public N-API functions from `src/lib.rs`.
-3. Rebuild with `cd packages/image-processing && bun run build`.
+3. Rebuild with `cd packages/image-processing && bun run build` (`bun run dev:api` does this automatically: its `predev` runs the turbo `build` task, whose inputs include `packages/raw-develop`, so the addon is rebuilt whenever either crate changes and is a cache hit otherwise).
 4. Update `browser.js` if a client-side package import needs a matching browser stub.
 5. Include or update Rust tests where the behavior can be tested without real camera files.
 

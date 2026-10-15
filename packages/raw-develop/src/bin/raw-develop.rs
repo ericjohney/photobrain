@@ -12,7 +12,7 @@ use std::time::Instant;
 
 fn usage() -> ExitCode {
   eprintln!(
-    "usage:\n  raw-develop info <file.RAF>\n  raw-develop cfa <file.RAF> <out.u16>\n  raw-develop develop <file.RAF> <out.png|jpg> [--settings s.json] [--preview] [--dump-linear f] [--dump-final f] [--digest]"
+    "usage:\n  raw-develop info <file.RAF>\n  raw-develop cfa <file.RAF> <out.u16>\n  raw-develop develop <file.RAF> <out.png|jpg> [--settings s.json] [--preview] [--dump-linear f] [--dump-final f] [--digest] [--cancel-after-ms n]"
   );
   ExitCode::from(2)
 }
@@ -96,6 +96,20 @@ fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Resul
           .map_err(|e| raw_develop::Error::Settings(e.to_string()))?;
       }
       "--preview" => opts.quality = Quality::Preview,
+      "--cancel-after-ms" => {
+        // Test hook: cancel the develop from another thread after this many ms.
+        let ms: u64 = it
+          .next()
+          .and_then(|v| v.parse().ok())
+          .ok_or_else(|| raw_develop::Error::Settings("--cancel-after-ms needs a number".into()))?;
+        let token = raw_develop::Cancel::new();
+        let t = token.clone();
+        std::thread::spawn(move || {
+          std::thread::sleep(std::time::Duration::from_millis(ms));
+          t.cancel();
+        });
+        opts.cancel = token;
+      }
       "--dump-linear" => dump_linear = it.next().cloned(),
       "--dump-final" => dump_final = it.next().cloned(),
       "--digest" => digest = true,

@@ -90,8 +90,16 @@ mock.module("@photobrain/image-processing", () => ({
 			JSON.stringify({ path, maxEdge, quality, streamsActive }),
 		);
 	},
-	renderDevelopedRaw(path: string, quality: number) {
+	renderDevelopedRaw(path: string, quality: number, cancel?: Int32Array) {
 		if (path === "throw") throw new Error("develop failed");
+		if (path === "slow") {
+			// Block like a long native develop, polling the cancel flag as raw-develop does.
+			const started = Date.now();
+			while (Date.now() - started < 2000) {
+				if (cancel && Atomics.load(cancel, 0) !== 0)
+					throw new Error("DEVELOP_CANCELLED");
+			}
+		}
 		developedPaths.push(path);
 		return {
 			jpeg: Buffer.from(JSON.stringify({ path, quality })),

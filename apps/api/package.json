@@ -8,6 +8,7 @@
 		"./router": "./src/trpc/router.ts"
 	},
 	"scripts": {
+		"predev": "cd ../.. && turbo run build --filter=@photobrain/image-processing --output-logs=errors-only",
 		"dev": "bun run src/index.ts",
 		"test": "bun test",
 		"bench:import": "bun scripts/benchmark-import.ts",

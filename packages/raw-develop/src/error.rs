@@ -18,6 +18,8 @@ pub enum Error {
   Settings(String),
   #[error("encode: {0}")]
   Encode(String),
+  #[error("cancelled")]
+  Cancelled,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
