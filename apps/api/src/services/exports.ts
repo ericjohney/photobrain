@@ -32,9 +32,13 @@ export type ExportRenderer = {
 	): Promise<Uint8Array<ArrayBuffer>>;
 };
 
-/** Full RAW development on the native executor (loupe "Developed" view). */
+/**
+ * Full RAW development on the native executor (loupe "Developed" view). Aborting
+ * `signal` withdraws a request that has not started yet.
+ */
 export type RawDeveloper = {
-	run(
+	runCancellable(
+		signal: AbortSignal,
 		operation: "renderDevelopedRaw",
 		path: string,
 		quality: number,

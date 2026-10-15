@@ -4,6 +4,7 @@ import type { PhotoStreamInput } from "../services/native-executor";
 import {
 	MAX_NATIVE_REQUESTS,
 	NativeExecutor,
+	NativeExecutorBusyError,
 } from "../services/native-executor";
 
 let executor: NativeExecutor;
@@ -143,6 +144,58 @@ describe("off-thread native execution", () => {
 		await expect(
 			executor.runWhenAdmitted(abort.signal, "renderExportJpeg", "/x", 1, 90),
 		).rejects.toThrow("client went away");
+	});
+
+	test("runCancellable withdraws a queued develop when its caller aborts", async () => {
+		const running = executor.run("discoverPhotos", "busy");
+		const stale = new AbortController();
+		const skipped = executor.runCancellable(
+			stale.signal,
+			"renderDevelopedRaw",
+			"/skipped.RAF",
+			95,
+		);
+		const wanted = executor.runCancellable(
+			new AbortController().signal,
+			"renderDevelopedRaw",
+			"/wanted.RAF",
+			95,
+		);
+		stale.abort(new Error("navigated away"));
+		await expect(skipped).rejects.toThrow("navigated away");
+		expect((await wanted).width).toBe(6000);
+		await running;
+		// Only the request still wanted reached the worker.
+		const ran = JSON.parse(
+			new TextDecoder().decode(
+				await executor.run("renderExportJpeg", "developed-paths", 1, 1),
+			),
+		);
+		expect(ran).toEqual(["/wanted.RAF"]);
+		// An already-aborted signal is rejected without queueing.
+		await expect(
+			executor.runCancellable(
+				stale.signal,
+				"renderDevelopedRaw",
+				"/late.RAF",
+				95,
+			),
+		).rejects.toThrow("navigated away");
+	});
+
+	test("runCancellable still rejects when admission is full", async () => {
+		const work = Array.from({ length: MAX_NATIVE_REQUESTS }, (_, index) =>
+			executor.run("discoverPhotos", index === 0 ? "busy" : String(index)),
+		);
+		await expect(
+			executor.runCancellable(
+				new AbortController().signal,
+				"renderDevelopedRaw",
+				"/overflow.RAF",
+				95,
+			),
+		).rejects.toBeInstanceOf(NativeExecutorBusyError);
+		await Promise.all(work);
 	});
 
 	test("a native exception rejects only that operation", async () => {

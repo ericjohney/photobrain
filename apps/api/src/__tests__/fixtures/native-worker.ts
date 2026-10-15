@@ -5,6 +5,8 @@ import type { PhotoProcessingResult } from "@photobrain/image-processing";
 let sequence = 0;
 let streamsStarted = 0;
 let streamsClosed = 0;
+/** Paths `renderDevelopedRaw` actually ran on, for withdrawal tests. */
+const developedPaths: string[] = [];
 let streamsActive = 0;
 let pulls = 0;
 
@@ -82,12 +84,15 @@ mock.module("@photobrain/image-processing", () => ({
 	// Renders may run beside an open scan stream: they never use its pool.
 	renderExportJpeg(path: string, maxEdge: number, quality: number) {
 		if (path === "throw") throw new Error("render failed");
+		if (path === "developed-paths")
+			return Buffer.from(JSON.stringify(developedPaths));
 		return Buffer.from(
 			JSON.stringify({ path, maxEdge, quality, streamsActive }),
 		);
 	},
 	renderDevelopedRaw(path: string, quality: number) {
 		if (path === "throw") throw new Error("develop failed");
+		developedPaths.push(path);
 		return {
 			jpeg: Buffer.from(JSON.stringify({ path, quality })),
 			width: 6000,

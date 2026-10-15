@@ -182,13 +182,22 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 			width: number;
 			height: number;
 		};
+		// A client that navigates away aborts its request; withdraw the render if it
+		// has not started, so queued renders for photos no longer on screen do not
+		// delay the one the user is waiting for.
+		const signal = context.req.raw.signal;
 		try {
-			developed = await developer.run(
+			developed = await developer.runCancellable(
+				signal,
 				"renderDevelopedRaw",
 				path,
 				DEVELOPED_JPEG_QUALITY,
 			);
 		} catch (error) {
+			if (signal.aborted) {
+				// Nobody is listening; any status will do.
+				return new Response(null, { status: 499 });
+			}
 			if (error instanceof NativeExecutorBusyError) {
 				return errorResponse(
 					"DEVELOP_BUSY",

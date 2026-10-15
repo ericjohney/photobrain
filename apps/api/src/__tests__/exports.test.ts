@@ -403,6 +403,7 @@ describe("export routes", () => {
 		function developerApp(
 			result: "ok" | "busy" | "fail",
 			calls: string[] = [],
+			signals: AbortSignal[] = [],
 		) {
 			const hono = new Hono();
 			hono.route(
@@ -412,7 +413,8 @@ describe("export routes", () => {
 					photoDirectory,
 					renderer: fakeRenderer().renderer,
 					developer: {
-						run: async (_operation, path, quality) => {
+						runCancellable: async (signal, _operation, path, quality) => {
+							signals.push(signal);
 							calls.push(`${basename(path)} q${quality}`);
 							if (result === "busy") throw new NativeExecutorBusyError();
 							if (result === "fail") throw new Error("unsupported camera");
@@ -443,6 +445,21 @@ describe("export routes", () => {
 			});
 			expect(await response.text()).toBe("jpeg");
 			expect(calls).toEqual(["DSCF1.RAF q95"]);
+		});
+
+		test("passes the request's abort signal so a stale render can be withdrawn", async () => {
+			const signals: AbortSignal[] = [];
+			const id = addPhoto({ name: "DSCF2.RAF", isRaw: true });
+			const abort = new AbortController();
+			await developerApp("ok", [], signals).request(
+				new Request(`http://localhost/api/photos/${id}/developed`, {
+					signal: abort.signal,
+				}),
+			);
+			expect(signals).toHaveLength(1);
+			expect(signals[0].aborted).toBe(false);
+			abort.abort();
+			expect(signals[0].aborted).toBe(true);
 		});
 
 		test("non-RAW photos, unsupported cameras and a busy executor are reported", async () => {

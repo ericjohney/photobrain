@@ -135,6 +135,21 @@ export class NativeExecutor {
 		return this.submit(undefined, operation, args);
 	}
 
+	/**
+	 * `run` for a request-scoped caller: rejects with `NativeExecutorBusyError` when
+	 * admission is full, and aborting `signal` withdraws the request while it is still
+	 * queued (rejecting with the abort reason). An operation the worker has already
+	 * started runs to completion.
+	 */
+	runCancellable<K extends Operation>(
+		signal: AbortSignal,
+		operation: K,
+		...args: Parameters<NativeOperations[K]>
+	): Promise<OperationResult<K>> {
+		if (signal.aborted) return Promise.reject(asError(signal.reason));
+		return this.submit(signal, operation, args);
+	}
+
 	private submit<K extends Operation>(
 		signal: AbortSignal | undefined,
 		operation: K,
