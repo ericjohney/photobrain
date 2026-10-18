@@ -6,12 +6,12 @@ import UIKit
 /// on a thumbnail, and tapping jumps to one. A UIKit collection view so only visible frames are
 /// laid out, whatever the library size.
 struct LoupeFilmstrip: UIViewRepresentable {
-    let records: [PhotoRecord]
-    let activeID: Int
+    let records: [LibraryEntry]
+    let activeID: LibraryEntryID
     let height: CGFloat
     let reduceMotion: Bool
     /// The user scrubbed or tapped to `id`; the pager should jump there without animating.
-    let onSelect: (Int) -> Void
+    let onSelect: (LibraryEntryID) -> Void
 
     func makeUIView(context: Context) -> FilmstripView {
         let view = FilmstripView()
@@ -155,17 +155,17 @@ final class FilmstripView: UIView, UICollectionViewDataSource, UICollectionViewD
     private let layout = FilmstripLayout()
     private(set) lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
     private let loader = RedirectAwareImageLoader()
-    private var records: [PhotoRecord] = []
-    private var activeID: Int?
+    private var records: [LibraryEntry] = []
+    private var activeID: LibraryEntryID?
     private var reduceMotion = false
     /// True from the start of a drag until scrolling settles; scroll positions then drive the
     /// open photo instead of following it.
     private(set) var isScrubbing = false
-    private var lastReportedID: Int?
+    private var lastReportedID: LibraryEntryID?
     private var needsInitialCentering = true
     private var lastWidth: CGFloat = 0
-    private var prefetchTasks: [Int: Task<Void, Never>] = [:]
-    var onSelect: ((Int) -> Void)?
+    private var prefetchTasks: [LibraryEntryID: Task<Void, Never>] = [:]
+    var onSelect: ((LibraryEntryID) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -200,7 +200,7 @@ final class FilmstripView: UIView, UICollectionViewDataSource, UICollectionViewD
         }
     }
 
-    func update(records nextRecords: [PhotoRecord], activeID nextActiveID: Int, height: CGFloat, reduceMotion: Bool) {
+    func update(records nextRecords: [LibraryEntry], activeID nextActiveID: LibraryEntryID, height: CGFloat, reduceMotion: Bool) {
         self.reduceMotion = reduceMotion
         layout.itemHeight = height
         let recordsChanged = !nextRecords.sharesStorage(with: records)
@@ -298,7 +298,7 @@ final class FilmstripView: UIView, UICollectionViewDataSource, UICollectionViewD
         ) as! FilmstripCell
         if records.indices.contains(indexPath.item) {
             let photo = records[indexPath.item]
-            cell.configure(photo: photo, active: photo.id == activeID, loader: loader, targetSize: thumbnailSize)
+            cell.configure(item: photo, active: photo.id == activeID, loader: loader, targetSize: thumbnailSize)
         }
         return cell
     }
@@ -306,12 +306,13 @@ final class FilmstripView: UIView, UICollectionViewDataSource, UICollectionViewD
     func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
         let size = thumbnailSize
         for indexPath in indexPaths where records.indices.contains(indexPath.item) {
-            let photo = records[indexPath.item]
-            guard prefetchTasks[photo.id] == nil,
+            let item = records[indexPath.item]
+            // Device photos load from PhotoKit on demand; only server thumbnails prefetch.
+            guard item.local == nil, let photo = item.remote, prefetchTasks[item.id] == nil,
                   photo.thumbnailURL.host != "photos.example.invalid" else { continue }
-            prefetchTasks[photo.id] = Task { [weak self, loader] in
+            prefetchTasks[item.id] = Task { [weak self, loader] in
                 _ = try? await loader.image(for: photo, url: photo.thumbnailURL, targetSize: size)
-                self?.prefetchTasks[photo.id] = nil
+                self?.prefetchTasks[item.id] = nil
             }
         }
     }
@@ -339,7 +340,7 @@ final class FilmstripView: UIView, UICollectionViewDataSource, UICollectionViewD
             guard records.indices.contains(indexPath.item),
                   let cell = collectionView.cellForItem(at: indexPath) as? FilmstripCell else { continue }
             let photo = records[indexPath.item]
-            cell.configure(photo: photo, active: photo.id == activeID, loader: loader, targetSize: thumbnailSize)
+            cell.configure(item: photo, active: photo.id == activeID, loader: loader, targetSize: thumbnailSize)
         }
     }
 }
@@ -350,8 +351,8 @@ final class FilmstripCell: UICollectionViewCell {
 
     private let imageView = UIImageView()
     private var loadTask: Task<Void, Never>?
-    private var displayedURL: URL?
-    private(set) var representedID: Int?
+    private var displayedKey: String?
+    private(set) var representedID: LibraryEntryID?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -378,22 +379,37 @@ final class FilmstripCell: UICollectionViewCell {
         loadTask = nil
     }
 
-    func configure(photo: PhotoRecord, active: Bool, loader: RedirectAwareImageLoader, targetSize: CGSize) {
-        let keepsImage = representedID == photo.id && displayedURL == photo.thumbnailURL && imageView.image != nil
-        representedID = photo.id
-        imageView.alpha = photo.isRejected ? 0.35 : 1
-        accessibilityLabel = "Open \(photo.filename)"
+    func configure(item: LibraryEntry, active: Bool, loader: RedirectAwareImageLoader, targetSize: CGSize) {
+        let key = item.local.map { "asset:\($0.id)" } ?? item.remote?.thumbnailURL.absoluteString
+        let keepsImage = representedID == item.id && displayedKey == key && imageView.image != nil
+        representedID = item.id
+        imageView.alpha = item.isRejected ? 0.35 : 1
+        accessibilityLabel = "Open \(item.remote?.filename ?? item.accessibilityName)"
         setActive(active)
         guard !keepsImage else { return }
         loadTask?.cancel()
         imageView.image = nil
-        displayedURL = nil
-        guard photo.thumbnailURL.host != "photos.example.invalid" else { return }
+        displayedKey = nil
+        let itemID = item.id
+        if let local = item.local {
+            loadTask = Task { @MainActor [weak self] in
+                guard let image = try? await LocalImageLoader.shared.image(
+                    assetID: local.id,
+                    targetSize: targetSize,
+                    highQuality: false,
+                    networkAllowed: false
+                ), !Task.isCancelled, let self, self.representedID == itemID else { return }
+                self.imageView.image = image
+                self.displayedKey = key
+            }
+            return
+        }
+        guard let photo = item.remote, photo.thumbnailURL.host != "photos.example.invalid" else { return }
         loadTask = Task { @MainActor [weak self] in
             guard let image = try? await loader.image(for: photo, url: photo.thumbnailURL, targetSize: targetSize),
-                  !Task.isCancelled, let self, self.representedID == photo.id else { return }
+                  !Task.isCancelled, let self, self.representedID == itemID else { return }
             self.imageView.image = image
-            self.displayedURL = photo.thumbnailURL
+            self.displayedKey = key
         }
     }
 

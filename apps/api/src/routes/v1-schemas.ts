@@ -51,6 +51,8 @@ import {
 	MAX_DEVICE_NAME_LENGTH,
 	MAX_FILENAME_LENGTH,
 	MAX_KNOWN_ASSET_IDS,
+	MAX_UPLOADED_ASSET_PAGE,
+	parseUploadedAssetCursor,
 	UPLOAD_RESOURCES,
 } from "../services/uploads";
 
@@ -867,6 +869,40 @@ export const knownUploadsRequestSchema = z
 			.max(MAX_KNOWN_ASSET_IDS),
 	})
 	.strict();
+
+export const uploadedAssetsQuerySchema = z
+	.object({
+		deviceId: z.string().uuid(),
+		after: z
+			.string()
+			.max(MAX_ASSET_ID_LENGTH + 16)
+			.transform((value, context) => {
+				const cursor = parseUploadedAssetCursor(value);
+				if (!cursor || cursor.assetId.length > MAX_ASSET_ID_LENGTH) {
+					context.addIssue({ code: "custom", message: "Invalid cursor" });
+					return z.NEVER;
+				}
+				return cursor;
+			})
+			.optional(),
+		limit: z.coerce
+			.number()
+			.int()
+			.min(1)
+			.max(MAX_UPLOADED_ASSET_PAGE)
+			.default(MAX_UPLOADED_ASSET_PAGE),
+	})
+	.strict();
+
+export const uploadedAssetsResponseSchema = z.object({
+	assets: z.array(
+		z.object({
+			assetId: z.string().min(1),
+			photoId: z.number().int().positive(),
+		}),
+	),
+	nextCursor: z.string().min(1).nullable(),
+});
 
 export const knownUploadsResponseSchema = z.object({
 	assets: z.array(

@@ -11,8 +11,8 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import type * as NativeAddon from "@photobrain/image-processing";
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { uploadAssets, uploads } from "../db/schema";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { photos, uploadAssets, uploads } from "../db/schema";
 import type { ApiDatabase } from "./photo-catalog";
 
 export const UPLOAD_RESOURCES = [
@@ -523,6 +523,82 @@ export function knownUploads(
 				]
 			: [];
 	});
+}
+
+export const MAX_UPLOADED_ASSET_PAGE = 5000;
+
+export type UploadedAssetPhoto = {
+	assetId: string;
+	/** Catalog photo holding the asset's primary resource. */
+	photoId: number;
+};
+
+/** A position in (photoId, assetId) order, serialized as `{photoId}:{assetId}`. */
+export type UploadedAssetCursor = { photoId: number; assetId: string };
+
+export function formatUploadedAssetCursor(cursor: UploadedAssetCursor) {
+	return `${cursor.photoId}:${cursor.assetId}`;
+}
+
+export function parseUploadedAssetCursor(
+	value: string,
+): UploadedAssetCursor | null {
+	const match = /^(\d{1,15}):(.+)$/s.exec(value);
+	if (!match) return null;
+	return { photoId: Number(match[1]), assetId: match[2] };
+}
+
+/**
+ * One device's uploaded assets that the scanner has imported, in ascending
+ * (photoId, assetId) order after `after`. The photo is the asset's `photo`
+ * resource, else its `video`, else its `alternatePhoto` (a RAW-only asset);
+ * `pairedVideo` clips surface as their still's `motionVideoId` instead. An
+ * upload maps to a photo by its library-relative path, so assets uploaded but
+ * not yet scanned, or whose file was removed, are omitted. New imports get
+ * higher photo IDs, so a client resuming from its last position receives
+ * them without re-reading earlier pages. Pages hold at most `limit` assets.
+ */
+export function uploadedAssetPhotos(
+	database: ApiDatabase,
+	deviceId: string,
+	after: UploadedAssetCursor | undefined,
+	limit: number,
+): { assets: UploadedAssetPhoto[]; nextCursor: string | null } {
+	const preferred = (resource: UploadResource) =>
+		sql<
+			number | null
+		>`max(case when ${uploadAssets.resource} = ${resource} then ${photos.id} end)`;
+	const photoId = sql<number | null>`coalesce(${preferred("photo")}, ${preferred("video")}, ${preferred("alternatePhoto")})`;
+	const rows = database
+		.select({ assetId: uploadAssets.assetId, photoId })
+		.from(uploadAssets)
+		.innerJoin(uploads, eq(uploads.id, uploadAssets.uploadId))
+		.innerJoin(photos, eq(photos.path, uploads.relativePath))
+		.where(
+			and(
+				eq(uploadAssets.deviceId, deviceId.toLowerCase()),
+				inArray(uploadAssets.resource, ["photo", "video", "alternatePhoto"]),
+			),
+		)
+		.groupBy(uploadAssets.assetId)
+		.having(
+			after === undefined
+				? sql`${photoId} is not null`
+				: sql`${photoId} > ${after.photoId} or (${photoId} = ${after.photoId} and ${uploadAssets.assetId} > ${after.assetId})`,
+		)
+		.orderBy(photoId, uploadAssets.assetId)
+		.limit(limit + 1)
+		.all();
+	const page = rows.slice(0, limit).map((row) => ({
+		assetId: row.assetId,
+		photoId: Number(row.photoId),
+	}));
+	const last = page.at(-1);
+	return {
+		assets: page,
+		nextCursor:
+			rows.length > limit && last ? formatUploadedAssetCursor(last) : null,
+	};
 }
 
 /**

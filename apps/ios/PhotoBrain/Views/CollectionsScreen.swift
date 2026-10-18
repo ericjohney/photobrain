@@ -573,18 +573,18 @@ struct ScopedPhotoGrid: View {
         .task {
             if store.loadState == .idle { await store.load() }
         }
-        .loupeCover(isPresented: store.activePhotoID != nil) {
-            if let activeID = store.activePhotoID {
+        .loupeCover(isPresented: store.activeItemID != nil) {
+            if let activeID = store.activeItemID {
                 LoupeScreen(
-                    records: store.orderedRecords,
+                    items: store.orderedItems,
                     activeID: Binding(
-                        get: { store.activePhotoID ?? activeID },
-                        set: { store.activePhotoID = $0 }
+                        get: { store.activeItemID ?? activeID },
+                        set: { store.activeItemID = $0 }
                     ),
                     api: api,
                     curation: store.curation,
                     collections: collections,
-                    dismiss: { store.activePhotoID = nil },
+                    dismiss: { store.activeItemID = nil },
                     transition: loupeTransition
                 )
             }
@@ -615,8 +615,8 @@ struct ScopedPhotoGrid: View {
         case .content:
             LibraryGrid(
                 sections: store.sections,
-                selectedID: $store.activePhotoID,
-                selectedIDs: $store.selectedPhotoIDs,
+                selectedID: $store.activeItemID,
+                selectedIDs: $store.selectedItemIDs,
                 isSelecting: false,
                 resetVersion: store.browsingResetVersion,
                 contentRevision: store.presentationRevision,

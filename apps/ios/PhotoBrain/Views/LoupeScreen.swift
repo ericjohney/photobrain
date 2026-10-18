@@ -2,8 +2,8 @@ import AVFoundation
 import SwiftUI
 
 struct LoupeScreen: View {
-    let records: [PhotoRecord]
-    @Binding var activeID: Int
+    let records: [LibraryEntry]
+    @Binding var activeID: LibraryEntryID
     let api: any PhotoBrainAPI
     @ObservedObject var curation: PhotoCurationCenter
     let collections: CollectionsStore
@@ -36,10 +36,39 @@ struct LoupeScreen: View {
     @State private var didRunEntrance = false
     /// O(1) id lookup; the body reads the open record many times per scrub step.
     @State private var recordIndex = LoupeRecordIndex()
+    /// Share sheet for a device-only photo's original from PhotoKit.
+    @State private var deviceShare: DeviceShareItem?
+    @Environment(\.backupCoordinator) private var backup
 
+    /// Server photos (every screen but the Library): each is its own cell.
     init(
         records: [PhotoRecord],
         activeID: Binding<Int>,
+        api: any PhotoBrainAPI,
+        curation: PhotoCurationCenter,
+        collections: CollectionsStore,
+        dismiss: @escaping () -> Void,
+        review: LoupeReviewActions? = nil,
+        transition: LoupeZoomTransition? = nil
+    ) {
+        self.init(
+            items: records.map(LibraryEntry.init(remote:)),
+            activeID: Binding(
+                get: { .remote(activeID.wrappedValue) },
+                set: { if let id = $0.remotePhotoID { activeID.wrappedValue = id } }
+            ),
+            api: api,
+            curation: curation,
+            collections: collections,
+            dismiss: dismiss,
+            review: review,
+            transition: transition
+        )
+    }
+
+    init(
+        items records: [LibraryEntry],
+        activeID: Binding<LibraryEntryID>,
         api: any PhotoBrainAPI,
         curation: PhotoCurationCenter,
         collections: CollectionsStore,
@@ -60,8 +89,13 @@ struct LoupeScreen: View {
         _developed = StateObject(wrappedValue: LoupeDevelopedStore(api: api))
     }
 
-    private var activeRecord: PhotoRecord? {
+    private var activeItem: LibraryEntry? {
         recordIndex.index(of: activeID, in: records).map { records[$0] }
+    }
+
+    /// The open server photo; nil on a device-only page, which hides server features.
+    private var activeRecord: PhotoRecord? {
+        activeItem?.remote
     }
 
     /// Tag-chip/place-row action for this loupe: closes its sheets and the loupe itself, then
@@ -109,7 +143,7 @@ struct LoupeScreen: View {
                     close(from: frame, image: image, backdrop: opacity)
                 },
                 onSwipeUp: {
-                    guard activeRecord != nil else { return }
+                    guard activeItem != nil else { return }
                     showingInfo = true
                 },
                 placeholder: { id in transition?.image(for: id) },
@@ -160,6 +194,8 @@ struct LoupeScreen: View {
                         } else {
                             curationBar(activeRecord)
                         }
+                    } else if let activeItem, let local = activeItem.local {
+                        deviceBar(activeItem, asset: local)
                     }
                 }
                 .padding(.bottom, PBSpacing.xs)
@@ -169,12 +205,12 @@ struct LoupeScreen: View {
         .preferredColorScheme(.dark)
         .presentationBackground(.clear)
         .onAppear {
-            playback.show(activeRecord)
+            playback.show(item: activeItem)
             developed.show(activeRecord)
             runEntrance()
         }
         .onChange(of: activeID) { _, _ in
-            playback.show(activeRecord)
+            playback.show(item: activeItem)
             Task { await faceBoxes.load(activeRecord) }
             developed.show(activeRecord)
         }
@@ -188,7 +224,13 @@ struct LoupeScreen: View {
             if let activeRecord {
                 PhotoMetadataView(photo: activeRecord, api: api, onSelect: librarySelection, curation: review == nil ? curation : nil)
                     .id(activeRecord.id)
+            } else if let activeItem, let local = activeItem.local {
+                DeviceAssetInfoView(item: activeItem, asset: local)
+                    .id(activeItem.id)
             }
+        }
+        .sheet(item: $deviceShare) { share in
+            DeviceShareSheet(assetID: share.assetID) { deviceShare = nil }
         }
         .sheet(item: $similarSource) { source in
             SimilarPhotosScreen(source: source, api: api, curation: curation, collections: collections) {
@@ -216,10 +258,12 @@ struct LoupeScreen: View {
             Spacer(minLength: 0)
             if let activeRecord {
                 LoupeTitle(photo: activeRecord, api: api, position: position)
-                    .id(activeRecord.id)
+                    .id(activeItem?.id)
+            } else if let activeItem {
+                DeviceLoupeTitle(item: activeItem, position: position)
             }
             Spacer(minLength: 0)
-            if review == nil {
+            if review == nil, activeRecord != nil {
                 moreMenu
             } else {
                 infoButton
@@ -233,7 +277,7 @@ struct LoupeScreen: View {
         GlassIconButton(systemImage: "info", accessibilityLabel: "Photo info", dark: true) {
             showingInfo = true
         }
-        .disabled(activeRecord == nil)
+        .disabled(activeItem == nil)
     }
 
     // MARK: Zoom transition
@@ -264,6 +308,7 @@ struct LoupeScreen: View {
     /// Flies the open photo back into its grid cell (or off the bottom without a grid), then
     /// dismisses without the cover animation.
     private func close(from frame: CGRect?, image: UIImage?, backdrop: Double) {
+        deviceShare = nil
         let current = bridge.controller?.activeImageFrame()
         guard !reduceMotion,
               let image = image ?? current?.1,
@@ -411,6 +456,51 @@ struct LoupeScreen: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Reject")
             .accessibilityAddTraits(rejected ? .isSelected : [])
+        }
+        .padding(.horizontal, PBSpacing.l)
+    }
+
+    /// A device-only photo: Share (its original), its backup state, Info, and Back Up Now.
+    /// Rating, Pick/Reject, collections, and the other server features arrive once the photo
+    /// is backed up and imported.
+    private func deviceBar(_ item: LibraryEntry, asset: LocalAsset) -> some View {
+        let state = item.backupState ?? .notBackedUp
+        return HStack {
+            Button {
+                deviceShare = DeviceShareItem(assetID: asset.id)
+            } label: {
+                GlassIconLabel(systemImage: "square.and.arrow.up", dark: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share")
+            Spacer(minLength: 0)
+            Menu {
+                Section(state.title) {
+                    Button {
+                        backup?.backUpNow()
+                    } label: {
+                        Label("Back Up Now", systemImage: "icloud.and.arrow.up")
+                    }
+                    .disabled(backup?.settings.enabled != true)
+                }
+                if backup?.settings.enabled != true {
+                    Section {
+                        Text("Turn on Backup in Settings to rate, pick, and organize this photo.")
+                    }
+                }
+            } label: {
+                Label(state.title, systemImage: state.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .frame(height: PBSize.control)
+                    .foregroundStyle(state == .failed ? Color.yellow : Color.white)
+                    .pbGlass(in: Capsule(), interactive: true, dark: true)
+            }
+            .accessibilityLabel("Backup")
+            .accessibilityValue(state.accessibilityText)
+            .accessibilityHint("Rating and organizing are available once this photo is backed up")
+            Spacer(minLength: 0)
+            infoButton
         }
         .padding(.horizontal, PBSpacing.l)
     }
@@ -902,18 +992,23 @@ private struct LoupeTitle: View {
     }
 }
 
-/// Maps photo ids to positions in the loupe's records, rebuilt only when the array changes.
+/// Maps item ids to positions in the loupe's records, rebuilt only when the array changes.
 @MainActor
 final class LoupeRecordIndex {
-    private var records: [PhotoRecord] = []
-    private var positions: [Int: Int] = [:]
+    private var items: [LibraryEntry] = []
+    private var positions: [LibraryEntryID: Int] = [:]
 
-    func index(of id: Int, in next: [PhotoRecord]) -> Int? {
-        if !next.sharesStorage(with: records) {
-            records = next
+    func index(of id: LibraryEntryID, in next: [LibraryEntry]) -> Int? {
+        if !next.sharesStorage(with: items) {
+            items = next
             positions = Dictionary(next.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         }
         return positions[id]
+    }
+
+    /// Server-record convenience.
+    func index(of id: Int, in next: [PhotoRecord]) -> Int? {
+        next.firstIndex { $0.id == id }
     }
 }
 
@@ -973,4 +1068,136 @@ private struct PhotoInfoSummary: View {
         if let format = photo.formatBadge { values.append(format) }
         return values
     }
+}
+
+private struct DeviceShareItem: Identifiable {
+    let assetID: String
+    var id: String { assetID }
+}
+
+/// Title for a device-only photo: its date and time.
+private struct DeviceLoupeTitle: View {
+    let item: LibraryEntry
+    let position: (Int, Int)
+
+    var body: some View {
+        let date = item.captureDate
+        let zone = PhotoDateResolver.calendar.timeZone
+        VStack(spacing: 0) {
+            Text(date.formatted(Date.FormatStyle(timeZone: zone).month(.abbreviated).day().year()))
+                .font(.subheadline.weight(.semibold))
+            Text(date.formatted(Date.FormatStyle(timeZone: zone).hour().minute()))
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.75))
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .foregroundStyle(.white)
+        .padding(.horizontal, PBSpacing.l)
+        .frame(minHeight: PBSize.control)
+        .pbGlass(in: Capsule(), dark: true)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue("Photo \(position.0) of \(position.1)")
+    }
+}
+
+/// Info for a device-only photo: what PhotoKit knows, plus its backup state.
+private struct DeviceAssetInfoView: View {
+    let item: LibraryEntry
+    let asset: LocalAsset
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Taken") {
+                        Text(item.captureDate.formatted(Date.FormatStyle(
+                            date: .long,
+                            time: .shortened,
+                            timeZone: PhotoDateResolver.calendar.timeZone
+                        )))
+                    }
+                    if asset.pixelWidth > 0, asset.pixelHeight > 0 {
+                        LabeledContent("Dimensions", value: "\(asset.pixelWidth) × \(asset.pixelHeight)")
+                    }
+                    if asset.isVideo {
+                        LabeledContent("Duration", value: VideoDuration.text(milliseconds: asset.durationMs))
+                    }
+                }
+                Section("Backup") {
+                    let state = item.backupState ?? .notBackedUp
+                    Label(state.title, systemImage: state.systemImage)
+                    Text("Tags, places, people, ratings, and collections appear once this photo is backed up and imported.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if let coordinate = asset.coordinate {
+                    Section("Location") {
+                        PhotoLocationMiniMap(coordinate: coordinate)
+                        LabeledContent("Coordinates", value: coordinate.formatted)
+                    }
+                }
+            }
+            .navigationTitle(asset.isVideo ? "Video Info" : "Photo Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+/// Shares a device photo's original: exported from PhotoKit into a temporary directory that
+/// is deleted when the sheet closes.
+private struct DeviceShareSheet: View {
+    let assetID: String
+    let onFinish: () -> Void
+    @State private var file: URL?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let file {
+                ActivityView(items: [file]) {
+                    try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+                    onFinish()
+                }
+                .ignoresSafeArea()
+            } else if failed {
+                ContentUnavailableView(
+                    "Couldn’t Share",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text("The original isn’t available on this iPhone.")
+                )
+            } else {
+                ProgressView("Preparing…")
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .task {
+            do {
+                file = try await DeviceOriginalExporter.export(assetID: assetID)
+            } catch {
+                failed = true
+            }
+        }
+    }
+}
+
+private struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+    let onComplete: () -> Void
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        controller.completionWithItemsHandler = { _, _, _, _ in onComplete() }
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

@@ -601,6 +601,7 @@ describe("API v1 contract", () => {
 			"/api/v1/smart-albums",
 			"/api/v1/smart-albums/{id}",
 			"/api/v1/uploads",
+			"/api/v1/uploads/assets",
 			"/api/v1/uploads/config",
 			"/api/v1/uploads/known",
 		]);

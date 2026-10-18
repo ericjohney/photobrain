@@ -248,7 +248,7 @@ final class LoupePlaybackControllerTests: XCTestCase {
         let controller = makeController()
         controller.show(video)
 
-        XCTAssertEqual(controller.state, .video(photoID: 1, readyForDisplay: false))
+        XCTAssertEqual(controller.state, .video(photoID: .remote(1), readyForDisplay: false))
         let player = try XCTUnwrap(created.first)
         XCTAssertTrue(controller.player === player)
         XCTAssertEqual(player.url, video.fileURL)
@@ -256,20 +256,20 @@ final class LoupePlaybackControllerTests: XCTestCase {
         XCTAssertFalse(player.isPlaying)
         XCTAssertEqual(player.calls, [])
 
-        controller.playerReadyForDisplay(photoID: 1)
-        XCTAssertEqual(controller.state, .video(photoID: 1, readyForDisplay: true))
+        controller.playerReadyForDisplay(photoID: .remote(1))
+        XCTAssertEqual(controller.state, .video(photoID: .remote(1), readyForDisplay: true))
         XCTAssertFalse(player.isPlaying)
     }
 
     func testReShowingTheSamePageKeepsItsPlayer() {
         let controller = makeController()
         controller.show(video)
-        controller.playerReadyForDisplay(photoID: 1)
+        controller.playerReadyForDisplay(photoID: .remote(1))
         controller.show(video)
 
         XCTAssertEqual(created.count, 1)
         XCTAssertFalse(created[0].isReleased)
-        XCTAssertEqual(controller.state, .video(photoID: 1, readyForDisplay: true))
+        XCTAssertEqual(controller.state, .video(photoID: .remote(1), readyForDisplay: true))
     }
 
     func testPageChangePausesAndReleasesThePreviousPlayer() {
@@ -281,12 +281,12 @@ final class LoupePlaybackControllerTests: XCTestCase {
         XCTAssertEqual(created[0].calls, ["play", "pause", "release"])
         XCTAssertEqual(created.count, 2)
         XCTAssertTrue(controller.player === created[1])
-        XCTAssertEqual(controller.state, .video(photoID: 2, readyForDisplay: false))
+        XCTAssertEqual(controller.state, .video(photoID: .remote(2), readyForDisplay: false))
 
         controller.show(plainStill)
         XCTAssertEqual(created[1].calls, ["pause", "release"])
         XCTAssertNil(controller.player)
-        XCTAssertEqual(controller.state, .still(photoID: 4, hasMotion: false))
+        XCTAssertEqual(controller.state, .still(photoID: .remote(4), hasMotion: false))
     }
 
     func testDismissalPausesAndReleasesAndAllowsReopeningTheSamePage() {
@@ -300,21 +300,21 @@ final class LoupePlaybackControllerTests: XCTestCase {
 
         controller.show(video)
         XCTAssertEqual(created.count, 2)
-        XCTAssertEqual(controller.state, .video(photoID: 1, readyForDisplay: false))
+        XCTAssertEqual(controller.state, .video(photoID: .remote(1), readyForDisplay: false))
     }
 
     func testStaleReadinessForAnotherPageIsIgnored() {
         let controller = makeController()
         controller.show(video)
         controller.show(otherVideo)
-        controller.playerReadyForDisplay(photoID: 1)
-        XCTAssertEqual(controller.state, .video(photoID: 2, readyForDisplay: false))
+        controller.playerReadyForDisplay(photoID: .remote(1))
+        XCTAssertEqual(controller.state, .video(photoID: .remote(2), readyForDisplay: false))
     }
 
     func testLiveTapPlaysMotionMutedOnceThenEndReturnsToStill() throws {
         let controller = makeController()
         controller.show(liveStill)
-        XCTAssertEqual(controller.state, .still(photoID: 3, hasMotion: true))
+        XCTAssertEqual(controller.state, .still(photoID: .remote(3), hasMotion: true))
         XCTAssertTrue(created.isEmpty, "A still prepares no player until LIVE")
 
         controller.playLive()
@@ -322,14 +322,14 @@ final class LoupePlaybackControllerTests: XCTestCase {
         XCTAssertEqual(clip.url, liveStill.motionVideoURL)
         XCTAssertTrue(clip.muted)
         XCTAssertEqual(clip.calls, ["play"])
-        XCTAssertEqual(controller.state, .live(photoID: 3, readyForDisplay: false))
+        XCTAssertEqual(controller.state, .live(photoID: .remote(3), readyForDisplay: false))
         XCTAssertTrue(controller.isPlayingLive)
 
-        controller.playerReadyForDisplay(photoID: 3)
-        XCTAssertEqual(controller.state, .live(photoID: 3, readyForDisplay: true))
+        controller.playerReadyForDisplay(photoID: .remote(3))
+        XCTAssertEqual(controller.state, .live(photoID: .remote(3), readyForDisplay: true))
 
         clip.finish()
-        XCTAssertEqual(controller.state, .still(photoID: 3, hasMotion: true))
+        XCTAssertEqual(controller.state, .still(photoID: .remote(3), hasMotion: true))
         XCTAssertEqual(clip.calls, ["play", "pause", "release"])
         XCTAssertNil(controller.player)
         XCTAssertFalse(controller.isPlayingLive)
@@ -337,7 +337,7 @@ final class LoupePlaybackControllerTests: XCTestCase {
         // It can be replayed after returning to the still.
         controller.playLive()
         XCTAssertEqual(created.count, 2)
-        XCTAssertEqual(controller.state, .live(photoID: 3, readyForDisplay: false))
+        XCTAssertEqual(controller.state, .live(photoID: .remote(3), readyForDisplay: false))
     }
 
     func testLiveTapWhilePlayingIsIgnored() {
@@ -348,7 +348,7 @@ final class LoupePlaybackControllerTests: XCTestCase {
 
         XCTAssertEqual(created.count, 1)
         XCTAssertEqual(created[0].calls, ["play"])
-        XCTAssertEqual(controller.state, .live(photoID: 3, readyForDisplay: false))
+        XCTAssertEqual(controller.state, .live(photoID: .remote(3), readyForDisplay: false))
     }
 
     func testLiveTapWithoutMotionClipOrOnVideoIsIgnored() {
@@ -356,12 +356,12 @@ final class LoupePlaybackControllerTests: XCTestCase {
         controller.show(plainStill)
         controller.playLive()
         XCTAssertTrue(created.isEmpty)
-        XCTAssertEqual(controller.state, .still(photoID: 4, hasMotion: false))
+        XCTAssertEqual(controller.state, .still(photoID: .remote(4), hasMotion: false))
 
         controller.show(video)
         controller.playLive()
         XCTAssertEqual(created.count, 1)
-        XCTAssertEqual(controller.state, .video(photoID: 1, readyForDisplay: false))
+        XCTAssertEqual(controller.state, .video(photoID: .remote(1), readyForDisplay: false))
     }
 
     func testPageChangeDuringLiveReleasesClipAndItsLateEndIsIgnored() {
@@ -373,23 +373,23 @@ final class LoupePlaybackControllerTests: XCTestCase {
 
         XCTAssertEqual(clip.calls, ["play", "pause", "release"])
         clip.finish()
-        XCTAssertEqual(controller.state, .still(photoID: 4, hasMotion: false))
+        XCTAssertEqual(controller.state, .still(photoID: .remote(4), hasMotion: false))
 
         // A late end from the released clip must not cut short a replay on the returned page.
         controller.show(liveStill)
         controller.playLive()
         clip.finish()
-        XCTAssertEqual(controller.state, .live(photoID: 3, readyForDisplay: false))
+        XCTAssertEqual(controller.state, .live(photoID: .remote(3), readyForDisplay: false))
     }
 
     func testVideoEndKeepsTheVideoPageAndPlayer() {
         let controller = makeController()
         controller.show(video)
-        controller.playerReadyForDisplay(photoID: 1)
+        controller.playerReadyForDisplay(photoID: .remote(1))
         created[0].play()
         created[0].finish()
 
-        XCTAssertEqual(controller.state, .video(photoID: 1, readyForDisplay: true))
+        XCTAssertEqual(controller.state, .video(photoID: .remote(1), readyForDisplay: true))
         XCTAssertFalse(created[0].isReleased)
     }
 }

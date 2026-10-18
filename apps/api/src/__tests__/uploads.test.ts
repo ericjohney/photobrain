@@ -24,7 +24,7 @@ import { join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { parseConfig } from "../config";
-import { scanJobs, uploadAssets, uploads } from "../db/schema";
+import { photos, scanJobs, uploadAssets, uploads } from "../db/schema";
 import { createUploadsRouter } from "../routes/uploads";
 import type { ApiDatabase } from "../services/photo-catalog";
 import {
@@ -856,6 +856,121 @@ if (process.env.PHOTOBRAIN_UPLOADS_TEST_CHILD === "1") {
 				Array.from({ length: 1000 }, (_, index) => `id-${index}`),
 			);
 			expect(max.status).toBe(200);
+		});
+
+		test("GET /assets maps scanned uploads to photos, paging and resuming by (photoId, assetId)", async () => {
+			const stored = new Map<string, string>();
+			for (const [index, [assetId, resource, filename]] of [
+				["live", "photo", "IMG_1.HEIC"],
+				["live", "pairedVideo", "IMG_1.MOV"],
+				["raw", "alternatePhoto", "IMG_2.DNG"],
+				["raw", "photo", "IMG_2.JPG"],
+				["rawonly", "alternatePhoto", "IMG_3.DNG"],
+				["clip", "video", "IMG_4.MOV"],
+				["pending", "photo", "IMG_5.HEIC"],
+			].entries()) {
+				const response = await upload(
+					base({ assetId, resource, filename }),
+					bytesOf(`resource-${index}`),
+				);
+				expect(response.status).toBe(201);
+				stored.set(
+					`${assetId}/${resource}`,
+					String((await json(response)).path),
+				);
+			}
+			// The scanner imported everything except `pending`.
+			const photoIds = new Map<string, number>();
+			for (const [key, path] of stored) {
+				if (key.startsWith("pending/")) continue;
+				const now = new Date();
+				const row = database
+					.insert(photos)
+					.values({
+						path,
+						name: path.split("/").at(-1) ?? path,
+						size: 1,
+						createdAt: now,
+						modifiedAt: now,
+					})
+					.returning({ id: photos.id })
+					.get();
+				photoIds.set(key, row.id);
+			}
+			const assets = (query: string) =>
+				app.request(`/api/v1/uploads/assets?${query}`);
+
+			// (photoId, assetId) order: photos were inserted in upload order.
+			const ordered = [
+				{ assetId: "live", photoId: photoIds.get("live/photo") },
+				{ assetId: "raw", photoId: photoIds.get("raw/photo") },
+				{
+					assetId: "rawonly",
+					photoId: photoIds.get("rawonly/alternatePhoto"),
+				},
+				{ assetId: "clip", photoId: photoIds.get("clip/video") },
+			];
+			const all = await assets(`deviceId=${DEVICE}`);
+			expect(all.status).toBe(200);
+			expect(await json(all)).toEqual({ assets: ordered, nextCursor: null });
+
+			const first = await json(await assets(`deviceId=${DEVICE}&limit=2`));
+			expect(first).toEqual({
+				assets: ordered.slice(0, 2),
+				nextCursor: `${photoIds.get("raw/photo")}:raw`,
+			});
+			const second = await json(
+				await assets(
+					`deviceId=${DEVICE}&limit=2&after=${encodeURIComponent(String(first.nextCursor))}`,
+				),
+			);
+			expect(second).toEqual({ assets: ordered.slice(2), nextCursor: null });
+
+			// Resuming from the last seen position returns only later imports.
+			const pendingPath = stored.get("pending/photo") ?? "";
+			const now = new Date();
+			const pending = database
+				.insert(photos)
+				.values({
+					path: pendingPath,
+					name: "IMG_5.HEIC",
+					size: 1,
+					createdAt: now,
+					modifiedAt: now,
+				})
+				.returning({ id: photos.id })
+				.get();
+			const resumed = await json(
+				await assets(
+					`deviceId=${DEVICE}&after=${photoIds.get("clip/video")}:clip`,
+				),
+			);
+			expect(resumed).toEqual({
+				assets: [{ assetId: "pending", photoId: pending.id }],
+				nextCursor: null,
+			});
+
+			expect(await json(await assets(`deviceId=${OTHER_DEVICE}`))).toEqual({
+				assets: [],
+				nextCursor: null,
+			});
+			// Readable with uploads disabled.
+			const disabled = await createApp(false).request(
+				`/api/v1/uploads/assets?deviceId=${DEVICE}`,
+			);
+			expect(disabled.status).toBe(200);
+			for (const query of [
+				"",
+				"deviceId=nope",
+				`deviceId=${DEVICE}&limit=0`,
+				`deviceId=${DEVICE}&limit=5001`,
+				`deviceId=${DEVICE}&after=`,
+				`deviceId=${DEVICE}&after=clip`,
+				`deviceId=${DEVICE}&after=x:clip`,
+				`deviceId=${DEVICE}&extra=1`,
+			]) {
+				expect((await assets(query)).status).toBe(400);
+			}
 		});
 
 		test("photos/uploaded is sent only for created uploads; dispatch failure keeps the file", async () => {

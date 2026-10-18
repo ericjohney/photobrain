@@ -14,7 +14,7 @@ final class LoupeStateTests: XCTestCase {
     }
 
     func testMemoryWarningDuringSwipePreservesDestinationAndReloadsEvictedPageOnDisplay() {
-        let records = RedactedFixture.make(count: 3)
+        let records = RedactedFixture.make(count: 3).map(LibraryEntry.init(remote:))
         let loader = RedirectAwareImageLoader()
         // The grid hands each page its decoded cell image as a placeholder.
         let active = makeCell(photo: records[0], loader: loader)
@@ -61,17 +61,17 @@ final class LoupeStateTests: XCTestCase {
 
     func testControllerPublishesReplacementAndEmptyState() {
         let controller = PagedLoupeViewController()
-        let records = RedactedFixture.make(count: 3)
-        var publishedID: Int?
+        let records = RedactedFixture.make(count: 3).map(LibraryEntry.init(remote:))
+        var publishedID: LibraryEntryID?
         var becameEmpty = false
         controller.onActiveIDChanged = { publishedID = $0 }
         controller.onEmpty = { becameEmpty = true }
 
-        controller.update(records: records, activeID: 2)
-        controller.update(records: [records[0], records[2]], activeID: 2)
-        XCTAssertEqual(publishedID, 3)
+        controller.update(records: records, activeID: .remote(2))
+        controller.update(records: [records[0], records[2]], activeID: .remote(2))
+        XCTAssertEqual(publishedID, .remote(3))
 
-        controller.update(records: [], activeID: 3)
+        controller.update(records: [], activeID: .remote(3))
         XCTAssertTrue(becameEmpty)
     }
 
@@ -79,7 +79,7 @@ final class LoupeStateTests: XCTestCase {
         let controller = PagedLoupeViewController()
         controller.loadViewIfNeeded()
         controller.view.frame = CGRect(x: 0, y: 0, width: 820, height: 1_180)
-        controller.update(records: RedactedFixture.make(count: 10), activeID: 6)
+        controller.update(records: RedactedFixture.make(count: 10).map(LibraryEntry.init(remote:)), activeID: .remote(6))
         controller.view.layoutIfNeeded()
         let pager = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? UICollectionView }.first)
         XCTAssertEqual(pager.contentOffset.x, 5 * 820, accuracy: 1)
@@ -94,9 +94,9 @@ final class LoupeStateTests: XCTestCase {
         }
     }
 
-    private func makeCell(photo: PhotoRecord, loader: RedirectAwareImageLoader) -> ZoomPageCell {
+    private func makeCell(photo: LibraryEntry, loader: RedirectAwareImageLoader) -> ZoomPageCell {
         let cell = ZoomPageCell(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
-        cell.configure(photo: photo, loader: loader, onTap: {}, onZoomChanged: { _ in })
+        cell.configure(item: photo, loader: loader, onTap: {}, onZoomChanged: { _ in })
         return cell
     }
 
@@ -133,7 +133,7 @@ final class LoupeStateTests: XCTestCase {
 
     func testRecordIndexFollowsArrayChanges() {
         let index = LoupeRecordIndex()
-        var records = RedactedFixture.make(count: 4)
+        var records = RedactedFixture.make(count: 4).map(LibraryEntry.init(remote:))
         XCTAssertEqual(index.index(of: records[2].id, in: records), 2)
         let removed = records.remove(at: 0)
         XCTAssertNil(index.index(of: removed.id, in: records))

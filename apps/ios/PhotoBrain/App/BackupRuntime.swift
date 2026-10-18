@@ -1,4 +1,5 @@
 import BackgroundTasks
+import Combine
 import SwiftUI
 import UIKit
 
@@ -14,6 +15,9 @@ final class BackupRuntime {
 
     /// Nil when the app has no valid API configuration.
     let coordinator: BackupCoordinator?
+    /// The Library's camera-roll source; nil when the app has no valid API configuration.
+    let deviceLibrary: DeviceLibrary?
+    private var stateSubscription: AnyCancellable?
     private let session: BackgroundUploadSession?
     private var registeredProcessingTask = false
 
@@ -21,6 +25,7 @@ final class BackupRuntime {
         guard let environment = try? AppEnvironment() else {
             coordinator = nil
             session = nil
+            deviceLibrary = nil
             return
         }
         let fileManager = FileManager.default
@@ -49,8 +54,19 @@ final class BackupRuntime {
             deviceId: deviceId,
             baseURL: environment.apiURL
         )
+        let device = DeviceLibrary(
+            library: PhotoKitAssetLibrary(),
+            api: APIClient(baseURL: environment.apiURL),
+            map: AssetPhotoMap(fileURL: support.appendingPathComponent("asset-photos.json"), deviceId: deviceId)
+        )
+        device.backupStates = coordinator
         self.session = session
         self.coordinator = coordinator
+        deviceLibrary = device
+        stateSubscription = coordinator.$stateRevision
+            .dropFirst()
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak device] _ in device?.backupStatesChanged() }
         coordinator.scheduleBackgroundRun = { [weak self] in self?.scheduleProcessingTask() }
     }
 

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -294,10 +295,12 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         case failed(String)
     }
 
+    /// The server listing (curation overlaid).
     @Published private(set) var records: [PhotoRecord] = [] {
         didSet { cachedCaptureCalendar = nil }
     }
-    @Published private(set) var orderedRecords: [PhotoRecord] = []
+    /// Every cell in display order: server photos merged with this device's photos.
+    @Published private(set) var orderedItems: [LibraryEntry] = []
     @Published private(set) var sections: [PhotoSection] = []
     @Published private(set) var filterOptions: FilterOptionsDTO?
     @Published private(set) var loadState: LoadState = .idle
@@ -306,14 +309,14 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     @Published var filters = LibraryFilters()
     @Published var grouping: LibraryGrouping = .days
     @Published var sort: LibrarySort = .captured
-    @Published var selectedPhotoIDs: Set<Int> = []
+    @Published var selectedItemIDs: Set<LibraryEntryID> = []
     @Published var isSelecting = false
-    @Published var activePhotoID: Int? {
+    @Published var activeItemID: LibraryEntryID? {
         didSet {
-            if activePhotoID == nil, !pendingRemovalIDs.isEmpty { removeRecords(pendingRemovalIDs) }
+            if activeItemID == nil, !pendingRemovalIDs.isEmpty { removeRecords(pendingRemovalIDs) }
         }
     }
-    @Published var firstVisiblePhotoID: Int?
+    @Published var firstVisibleItemID: LibraryEntryID?
     @Published var isAtNewestEdge = true
     @Published var isBrowsingHistory = false
     @Published private(set) var presentationRevision = 0
@@ -323,27 +326,41 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     let curation: PhotoCurationCenter
     /// What every listing covers; only the whole library loads filter options.
     let scope: LibraryScope
+    /// The camera roll merged into the whole-library scope; nil elsewhere and when unavailable.
+    let device: DeviceLibrary?
     private var loadTask: Task<Void, Never>?
     private var generation = 0
     private var recordsByID: [Int: PhotoRecord] = [:]
+    private var itemsByID: [LibraryEntryID: LibraryEntry] = [:]
+    /// Server photo id to the cell showing it (`.local` when the device has the asset).
+    private var itemIDByPhotoID: [Int: LibraryEntryID] = [:]
     private var presentationGeneration = 0
     private var groupingBeforeSelection: LibraryGrouping?
     /// Photos removed from the scoped collection while the loupe is open; dropped on dismissal
     /// so the loupe never pages away underneath the membership sheet.
     private var pendingRemovalIDs: Set<Int> = []
     private var cachedCaptureCalendar: CaptureCalendar?
+    private var deviceSubscription: AnyCancellable?
 
     init(
         api: any PhotoBrainAPI,
         curation: PhotoCurationCenter? = nil,
         scope: LibraryScope = .library,
-        filters: LibraryFilters = LibraryFilters()
+        filters: LibraryFilters = LibraryFilters(),
+        device: DeviceLibrary? = nil
     ) {
         self.api = api
         self.curation = curation ?? PhotoCurationCenter(api: api)
         self.scope = scope
         self.filters = filters
+        self.device = scope == .library ? device : nil
         self.curation.register(self)
+        deviceSubscription = self.device?.$revision
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor in await self?.rebuildPresentation() }
+            }
     }
 
     /// The scoped collection, if this store lists one collection's members.
@@ -351,6 +368,22 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         guard case let .collection(id) = scope else { return nil }
         return id
     }
+
+    /// Server photos in display order (device-only cells omitted).
+    var orderedRecords: [PhotoRecord] { orderedItems.compactMap(\.remote) }
+
+    /// Server photo of the open cell; nil for a device-only photo.
+    var activePhotoID: Int? {
+        get { activeItemID.flatMap { itemsByID[$0]?.remote?.id ?? $0.remotePhotoID } }
+        set { activeItemID = newValue.map { itemIDByPhotoID[$0] ?? .remote($0) } }
+    }
+
+    /// Server photos among the selection, in no particular order.
+    var selectedPhotoIDs: Set<Int> {
+        Set(selectedItemIDs.compactMap { itemsByID[$0]?.remote?.id ?? $0.remotePhotoID })
+    }
+
+    func item(_ id: LibraryEntryID) -> LibraryEntry? { itemsByID[id] }
 
     /// EXIF capture-day counts over the loaded (filtered) records, built once per records change.
     var captureCalendar: CaptureCalendar {
@@ -364,27 +397,36 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     var visibleDateText: String {
         guard !isSelecting,
               isBrowsingHistory,
-              let id = firstVisiblePhotoID,
-              let photo = recordsByID[id] else { return "" }
-        return PhotoDateResolver.date(for: photo).formatted(.dateTime.year().month(.wide).day())
+              let id = firstVisibleItemID,
+              let item = itemsByID[id] else { return "" }
+        return item.captureDate.formatted(
+            Date.FormatStyle(timeZone: PhotoDateResolver.calendar.timeZone).year().month(.wide).day()
+        )
     }
 
     /// `21 Items`; stable while scrolling (pinned section headers show the visible date), so
     /// the navigation bar never resizes mid-scroll.
     var itemCountText: String {
-        records.count == 1 ? "1 Item" : "\(records.count.formatted()) Items"
+        Self.countText(orderedItems.count)
     }
 
     var headerSubtitle: String {
         if isSelecting {
-            switch selectedPhotoIDs.count {
+            switch selectedItemIDs.count {
             case 0: return "Select Items"
             case 1: return "1 Selected"
-            default: return "\(selectedPhotoIDs.count.formatted()) Selected"
+            default: return "\(selectedItemIDs.count.formatted()) Selected"
             }
         }
         if !visibleDateText.isEmpty { return visibleDateText }
-        return records.count == 1 ? "1 Item" : "\(records.count.formatted()) Items"
+        return itemCountText
+    }
+
+    /// Device-only cells shown (not yet on the server).
+    var deviceOnlyCount: Int { orderedItems.lazy.filter(\.isDeviceOnly).count }
+
+    private static func countText(_ count: Int) -> String {
+        count == 1 ? "1 Item" : "\(count.formatted()) Items"
     }
 
     /// Day key (`YYYY-MM-DD`) to the title of the auto event covering it; names day sections.
@@ -401,18 +443,19 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     func load(retainingContent: Bool = true) async {
         generation += 1
         let requestGeneration = generation
-        let previousOrderedIDs = orderedRecords.map(\.id)
+        let previousOrderedIDs = orderedItems.map(\.id)
         loadTask?.cancel()
-        if records.isEmpty || !retainingContent {
+        if orderedItems.isEmpty || !retainingContent {
             loadState = .loading
         }
         refreshError = nil
         let source = PhotoListingSource(scope: scope, filters: filters)
         // Filter metadata is library-wide; scoped screens have no filter UI to feed.
         let loadsFilterOptions = scope == .library
-        let task = Task { [api] in
+        let task = Task { [api, device] in
             let photosTask = Task { try await source.fetch(api) }
             let optionsTask = loadsFilterOptions ? Task { try await api.filterOptions(folder: nil) } : nil
+            let deviceTask = device.map { device in Task { await device.reload() } }
             defer {
                 photosTask.cancel()
                 optionsTask?.cancel()
@@ -420,6 +463,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
 
             do {
                 let photos = try await photosTask.value
+                await deviceTask?.value
                 guard !Task.isCancelled, requestGeneration == generation else { return }
                 pendingRemovalIDs.removeAll()
                 records = curation.overlay(photos.map { PhotoRecord(dto: $0, apiBaseURL: api.baseURL) })
@@ -429,20 +473,25 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
                 }
                 await rebuildPresentation()
                 guard !Task.isCancelled, requestGeneration == generation else { return }
-                selectedPhotoIDs.formIntersection(records.map(\.id))
+                selectedItemIDs.formIntersection(orderedItems.map(\.id))
                 let anchored = PhotoIDAnchor.resolve(
-                    previousID: activePhotoID,
+                    previousID: activeItemID,
                     previousOrderedIDs: previousOrderedIDs,
-                    nextOrderedIDs: orderedRecords.map(\.id)
+                    nextOrderedIDs: orderedItems.map(\.id)
                 )
-                if activePhotoID != nil { activePhotoID = anchored }
-                loadState = records.isEmpty ? .empty : .content
+                if activeItemID != nil { activeItemID = anchored }
+                loadState = orderedItems.isEmpty ? .empty : .content
             } catch is CancellationError {
                 return
             } catch {
+                await deviceTask?.value
                 guard requestGeneration == generation else { return }
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                if records.isEmpty {
+                // Offline: the device's photos still show.
+                if orderedItems.isEmpty, records.isEmpty, device?.assets.isEmpty == false {
+                    await rebuildPresentation()
+                }
+                if orderedItems.isEmpty {
                     loadState = .failed(message)
                 } else {
                     loadState = .content
@@ -475,7 +524,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
             if photoIds.contains(where: { recordsByID[$0] == nil }) {
                 Task { await load() }
             }
-        } else if activePhotoID == nil {
+        } else if activeItemID == nil {
             removeRecords(Set(photoIds))
         } else {
             pendingRemovalIDs.formUnion(photoIds.filter { recordsByID[$0] != nil })
@@ -485,16 +534,21 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     private func removeRecords(_ ids: Set<Int>) {
         pendingRemovalIDs.subtract(ids)
         guard ids.contains(where: { recordsByID[$0] != nil }) else { return }
+        let itemIDs = Set(ids.compactMap { itemIDByPhotoID[$0] })
         records.removeAll { ids.contains($0.id) }
-        for id in ids { recordsByID[id] = nil }
-        selectedPhotoIDs.subtract(ids)
-        orderedRecords.removeAll { ids.contains($0.id) }
-        for index in sections.indices {
-            sections[index].photos.removeAll { ids.contains($0.id) }
+        for id in ids {
+            recordsByID[id] = nil
+            itemIDByPhotoID[id] = nil
         }
-        sections.removeAll { $0.photos.isEmpty }
+        for id in itemIDs { itemsByID[id] = nil }
+        selectedItemIDs.subtract(itemIDs)
+        orderedItems.removeAll { itemIDs.contains($0.id) }
+        for index in sections.indices {
+            sections[index].items.removeAll { itemIDs.contains($0.id) }
+        }
+        sections.removeAll { $0.items.isEmpty }
         presentationRevision &+= 1
-        if case .content = loadState, records.isEmpty { loadState = .empty }
+        if case .content = loadState, orderedItems.isEmpty { loadState = .empty }
     }
 
     /// Patches one record in place (records, lookup, ordered list, and its section) and bumps
@@ -509,13 +563,17 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         if let index = records.firstIndex(where: { $0.id == id }) {
             records[index] = updated
         }
-        if let index = orderedRecords.firstIndex(where: { $0.id == id }) {
-            orderedRecords[index] = updated
-        }
-        for sectionIndex in sections.indices {
-            if let index = sections[sectionIndex].photos.firstIndex(where: { $0.id == id }) {
-                sections[sectionIndex].photos[index] = updated
-                break
+        if let itemID = itemIDByPhotoID[id], var item = itemsByID[itemID] {
+            item.remote = updated
+            itemsByID[itemID] = item
+            if let index = orderedItems.firstIndex(where: { $0.id == itemID }) {
+                orderedItems[index] = item
+            }
+            for sectionIndex in sections.indices {
+                if let index = sections[sectionIndex].items.firstIndex(where: { $0.id == itemID }) {
+                    sections[sectionIndex].items[index] = item
+                    break
+                }
             }
         }
         presentationRevision &+= 1
@@ -542,6 +600,13 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         Task { await load() }
     }
 
+    /// Library Options › Show: which sources the Library lists.
+    func setVisibility(_ visibility: DeviceLibrary.Visibility) {
+        guard let device, device.visibility != visibility else { return }
+        device.visibility = visibility
+        resetBrowsingContext()
+    }
+
     func setSort(_ sort: LibrarySort) async {
         self.sort = sort
         if sort == .added { grouping = .all }
@@ -558,28 +623,33 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     func beginSelection() {
         if !isSelecting { groupingBeforeSelection = grouping }
         isSelecting = true
-        selectedPhotoIDs.removeAll()
+        selectedItemIDs.removeAll()
     }
 
     func endSelection() {
         finishSelection(restoringGrouping: true)
     }
 
-    func activate(_ id: Int) {
+    func activate(_ id: LibraryEntryID) {
         if isSelecting {
-            if selectedPhotoIDs.contains(id) {
-                selectedPhotoIDs.remove(id)
+            if selectedItemIDs.contains(id) {
+                selectedItemIDs.remove(id)
             } else {
-                selectedPhotoIDs.insert(id)
+                selectedItemIDs.insert(id)
             }
         } else {
-            activePhotoID = id
+            activeItemID = id
         }
     }
 
-    func selectFromLongPress(_ id: Int) {
+    /// Server-photo convenience for callers and tests that know only photo ids.
+    func activate(_ photoID: Int) {
+        activate(itemIDByPhotoID[photoID] ?? .remote(photoID))
+    }
+
+    func selectFromLongPress(_ id: LibraryEntryID) {
         if !isSelecting { beginSelection() }
-        selectedPhotoIDs.insert(id)
+        selectedItemIDs.insert(id)
     }
 
     func clearFilters() {
@@ -596,7 +666,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     /// Loupe tag-chip action: closes this store's loupe and narrows the library to `tag`,
     /// keeping the other active filters, then reloads.
     func showTag(_ tag: String) {
-        activePhotoID = nil
+        activeItemID = nil
         var updated = filters
         updated.tag = tag
         applyFilters(updated)
@@ -605,7 +675,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     /// Loupe place-row action: closes this store's loupe and narrows the library to the
     /// place's city (and its country), keeping the other active filters, then reloads.
     func showPlace(_ place: PhotoPlaceDTO) {
-        activePhotoID = nil
+        activeItemID = nil
         applyFilters(filters.selectingPlace(place))
     }
 
@@ -614,25 +684,30 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         case let .tag(tag): showTag(tag)
         case let .place(place): showPlace(place)
         case let .capturedDate(date):
-            activePhotoID = nil
+            activeItemID = nil
             showCapturedDate(date)
         case let .gear(selection):
-            activePhotoID = nil
+            activeItemID = nil
             showGear(selection)
         }
     }
 
-    func observeVisible(firstID: Int?, distanceFromNewest: CGFloat) {
+    func observeVisible(firstID: LibraryEntryID?, distanceFromNewest: CGFloat) {
         let atNewest = distanceFromNewest <= 2
         let browsingHistory = distanceFromNewest >= 24
-        if firstVisiblePhotoID != firstID { firstVisiblePhotoID = firstID }
+        if firstVisibleItemID != firstID { firstVisibleItemID = firstID }
         if isAtNewestEdge != atNewest { isAtNewestEdge = atNewest }
         if isBrowsingHistory != browsingHistory { isBrowsingHistory = browsingHistory }
     }
 
+    /// Server-photo convenience for tests.
+    func observeVisible(firstID: Int?, distanceFromNewest: CGFloat) {
+        observeVisible(firstID: firstID.map { itemIDByPhotoID[$0] ?? .remote($0) }, distanceFromNewest: distanceFromNewest)
+    }
+
     private func finishSelection(restoringGrouping: Bool) {
         isSelecting = false
-        selectedPhotoIDs.removeAll()
+        selectedItemIDs.removeAll()
         defer { groupingBeforeSelection = nil }
         guard restoringGrouping,
               let prior = groupingBeforeSelection,
@@ -643,43 +718,79 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         Task { await rebuildPresentation() }
     }
 
+    /// The cells to present: server photos, merged with this device's photos in the Library.
+    private func mergedItems() -> [LibraryEntry] {
+        guard let device, device.isAvailable, !device.assets.isEmpty else {
+            return records.map(LibraryEntry.init(remote:))
+        }
+        let merged = LibraryMerge.merge(
+            remote: records,
+            assets: device.assets,
+            photoIDsByAsset: device.photoIDsByAsset,
+            filters: filters,
+            includeDeviceOnly: device.visibility != .server,
+            backupState: { device.backupState(assetId: $0) }
+        )
+        switch device.visibility {
+        case .all: return merged
+        case .device: return merged.filter { $0.local != nil }
+        case .server: return merged.filter { $0.remote != nil }
+        }
+    }
+
     private func rebuildPresentation() async {
         presentationGeneration += 1
         let requestedGeneration = presentationGeneration
-        let records = records
+        let items = mergedItems()
         let sort = sort
         let grouping = grouping
         let ranked = scope.isRanked
         let eventTitles = eventTitlesByDay
         let presentation = await Task.detached(priority: .userInitiated) {
             let signpost = SpikeSignposts.beginCapturedPresentation(
-                recordCount: records.count,
+                recordCount: items.count,
                 grouping: grouping,
                 sort: sort
             )
             let presentation = ranked
-                ? LibraryPresentationBuilder.ranked(records)
+                ? LibraryPresentationBuilder.ranked(items: items)
                 : LibraryPresentationBuilder.build(
-                    records: records,
+                    items: items,
                     sort: sort,
                     grouping: grouping,
                     eventTitles: eventTitles
                 )
             SpikeSignposts.endCapturedPresentation(
                 signpost,
-                recordCount: records.count,
+                recordCount: items.count,
                 sectionCount: presentation.sections.count
             )
             return presentation
         }.value
         guard requestedGeneration == presentationGeneration else { return }
-        orderedRecords = presentation.0
-        sections = presentation.1
+        let previousOrderedIDs = orderedItems.map(\.id)
+        orderedItems = presentation.ordered
+        sections = presentation.sections
+        itemsByID.removeAll(keepingCapacity: true)
+        itemIDByPhotoID.removeAll(keepingCapacity: true)
+        for item in orderedItems {
+            itemsByID[item.id] = item
+            if let photoID = item.remote?.id { itemIDByPhotoID[photoID] = item.id }
+        }
+        if let active = activeItemID, itemsByID[active] == nil {
+            activeItemID = PhotoIDAnchor.resolve(
+                previousID: active,
+                previousOrderedIDs: previousOrderedIDs,
+                nextOrderedIDs: orderedItems.map(\.id)
+            )
+        }
+        selectedItemIDs.formIntersection(itemsByID.keys)
+        if case .empty = loadState, !orderedItems.isEmpty { loadState = .content }
         presentationRevision &+= 1
     }
 
     private func resetBrowsingContext() {
-        firstVisiblePhotoID = nil
+        firstVisibleItemID = nil
         isAtNewestEdge = true
         isBrowsingHistory = false
         browsingResetVersion += 1
@@ -687,39 +798,59 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
 }
 
 enum LibraryPresentationBuilder {
-    private struct CapturedRecord {
-        let record: PhotoRecord
+    private struct CapturedItem {
+        let item: LibraryEntry
         let date: Date
     }
 
+    /// Server-record convenience (tests, other callers): every record as a remote cell.
     static func build(
         records: [PhotoRecord],
         sort: LibrarySort,
         grouping: LibraryGrouping,
         eventTitles: [String: String] = [:]
-    ) -> (ordered: [PhotoRecord], sections: [PhotoSection]) {
+    ) -> (ordered: [LibraryEntry], sections: [PhotoSection]) {
+        build(items: records.map(LibraryEntry.init(remote:)), sort: sort, grouping: grouping, eventTitles: eventTitles)
+    }
+
+    /// Recently Added orders server photos by id; device-only photos have no server id yet and
+    /// come last, newest first by capture date.
+    private static func addedOrder(_ left: LibraryEntry, _ right: LibraryEntry) -> Bool {
+        switch (left.remote?.id, right.remote?.id) {
+        case let (l?, r?): return l < r
+        case (.some, nil): return true
+        case (nil, .some): return false
+        case (nil, nil):
+            return left.captureDate == right.captureDate ? left.id < right.id : left.captureDate < right.captureDate
+        }
+    }
+
+    static func build(
+        items: [LibraryEntry],
+        sort: LibrarySort,
+        grouping: LibraryGrouping,
+        eventTitles: [String: String] = [:]
+    ) -> (ordered: [LibraryEntry], sections: [PhotoSection]) {
         if sort == .added {
-            let ordered = records.sorted { $0.id < $1.id }
+            let ordered = items.sorted(by: addedOrder)
             return (ordered, [allSection(ordered)])
         }
 
-        var captured: [CapturedRecord] = []
-        captured.reserveCapacity(records.count)
-        for record in records {
-            captured.append(
-                CapturedRecord(record: record, date: PhotoDateResolver.date(for: record))
-            )
+        var captured: [CapturedItem] = []
+        captured.reserveCapacity(items.count)
+        for item in items {
+            captured.append(CapturedItem(item: item, date: item.captureDate))
         }
         captured.sort { left, right in
             if left.date == right.date {
-                return left.record.id < right.record.id
+                return left.item.id < right.item.id
             }
             return left.date < right.date
         }
-        var ordered: [PhotoRecord] = []
+        var ordered: [LibraryEntry] = []
         ordered.reserveCapacity(captured.count)
-        for item in captured {
-            ordered.append(item.record)
+        for entry in captured {
+            ordered.append(entry.item)
         }
         guard grouping != .all else {
             return (ordered, [allSection(ordered)])
@@ -732,12 +863,12 @@ enum LibraryPresentationBuilder {
         var sections: [PhotoSection] = []
         var currentID: PhotoSection.ID?
         var currentTitle = ""
-        var currentPhotos: [PhotoRecord] = []
+        var currentItems: [LibraryEntry] = []
 
-        for item in captured {
+        for entry in captured {
             let components = PhotoDateResolver.calendar.dateComponents(
                 [.year, .month],
-                from: item.date
+                from: entry.date
             )
             let year = components.year ?? 1
             let month = grouping == .years ? 0 : (components.month ?? 1)
@@ -749,21 +880,21 @@ enum LibraryPresentationBuilder {
             if id != currentID {
                 if let currentID {
                     sections.append(
-                        PhotoSection(id: currentID, title: currentTitle, photos: currentPhotos)
+                        PhotoSection(id: currentID, title: currentTitle, items: currentItems)
                     )
                 }
                 currentID = id
                 currentTitle = grouping == .years
                     ? String(year)
                     : "\(monthSymbols[max(0, min(11, month - 1))]) \(year)"
-                currentPhotos = []
+                currentItems = []
             }
-            currentPhotos.append(item.record)
+            currentItems.append(entry.item)
         }
 
         if let currentID {
             sections.append(
-                PhotoSection(id: currentID, title: currentTitle, photos: currentPhotos)
+                PhotoSection(id: currentID, title: currentTitle, items: currentItems)
             )
         }
         return (ordered, sections)
@@ -773,7 +904,7 @@ enum LibraryPresentationBuilder {
     /// place (detail `May 18, 2024 · 6`); runs of other days collapse into month sections
     /// (`May 2024`, detail `9`). Dates use the GMT capture calendar like every capture date.
     private static func daySections(
-        _ captured: [CapturedRecord],
+        _ captured: [CapturedItem],
         eventTitles: [String: String]
     ) -> [PhotoSection] {
         let calendar = PhotoDateResolver.calendar
@@ -783,17 +914,17 @@ enum LibraryPresentationBuilder {
         var currentID: PhotoSection.ID?
         var currentTitle = ""
         var currentDetailPrefix: String?
-        var currentPhotos: [PhotoRecord] = []
+        var currentItems: [LibraryEntry] = []
 
         func flush() {
             guard let currentID else { return }
-            let count = currentPhotos.count.formatted()
+            let count = currentItems.count.formatted()
             let detail = currentDetailPrefix.map { "\($0) · \(count)" } ?? count
-            sections.append(PhotoSection(id: currentID, title: currentTitle, photos: currentPhotos, detail: detail))
+            sections.append(PhotoSection(id: currentID, title: currentTitle, items: currentItems, detail: detail))
         }
 
-        for item in captured {
-            let parts = calendar.dateComponents([.year, .month, .day], from: item.date)
+        for entry in captured {
+            let parts = calendar.dateComponents([.year, .month, .day], from: entry.date)
             let year = parts.year ?? 1, month = parts.month ?? 1, day = parts.day ?? 1
             let key = EventDayIndex.key(year: year, month: month, day: day)
             let id: PhotoSection.ID
@@ -802,7 +933,7 @@ enum LibraryPresentationBuilder {
             if let event = eventTitles[key] {
                 id = PhotoSection.ID(year: year, month: month, discriminator: "event-\(day)")
                 title = event
-                prefix = item.date.formatted(dateStyle)
+                prefix = entry.date.formatted(dateStyle)
             } else {
                 id = PhotoSection.ID(year: year, month: month, discriminator: "month-after-\(sections.count)")
                 title = "\(monthSymbols[max(0, min(11, month - 1))]) \(year)"
@@ -820,24 +951,28 @@ enum LibraryPresentationBuilder {
                 currentID = id
                 currentTitle = title
                 currentDetailPrefix = prefix
-                currentPhotos = []
+                currentItems = []
             }
-            currentPhotos.append(item.record)
+            currentItems.append(entry.item)
         }
         flush()
         return sections
     }
 
     /// Server order unchanged, as one section.
-    static func ranked(_ records: [PhotoRecord]) -> (ordered: [PhotoRecord], sections: [PhotoSection]) {
-        (records, [allSection(records)])
+    static func ranked(_ records: [PhotoRecord]) -> (ordered: [LibraryEntry], sections: [PhotoSection]) {
+        ranked(items: records.map(LibraryEntry.init(remote:)))
     }
 
-    private static func allSection(_ ordered: [PhotoRecord]) -> PhotoSection {
+    static func ranked(items: [LibraryEntry]) -> (ordered: [LibraryEntry], sections: [PhotoSection]) {
+        (items, [allSection(items)])
+    }
+
+    private static func allSection(_ ordered: [LibraryEntry]) -> PhotoSection {
         PhotoSection(
             id: .init(year: 0, month: 0, discriminator: "all"),
             title: "",
-            photos: ordered
+            items: ordered
         )
     }
 }

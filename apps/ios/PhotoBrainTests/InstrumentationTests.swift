@@ -98,7 +98,7 @@ final class InstrumentationTests: XCTestCase {
             grouping: .months
         )
 
-        XCTAssertEqual(presentation.ordered.map(\.id), [1, 2, 3])
+        XCTAssertEqual(presentation.ordered.map(\.id), [.remote(1), .remote(2), .remote(3)])
         XCTAssertEqual(presentation.sections.map(\.title), ["December 2023", "January 2024"])
         XCTAssertEqual(presentation.sections.map { $0.photos.map(\.id) }, [[1, 2], [3]])
     }

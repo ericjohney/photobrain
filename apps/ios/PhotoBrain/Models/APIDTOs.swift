@@ -730,6 +730,18 @@ struct KnownUploadsResponseDTO: Codable, Equatable, Sendable {
     let assets: [Asset]
 }
 
+/// `GET /uploads/assets`: imported uploads of one device, in (photoId, assetId) order.
+struct UploadedAssetsResponseDTO: Codable, Equatable, Sendable {
+    struct Asset: Codable, Equatable, Sendable {
+        let assetId: String
+        let photoId: Int
+    }
+
+    let assets: [Asset]
+    /// `{photoId}:{assetId}` of the page's last asset when more follow; nil on the last page.
+    let nextCursor: String?
+}
+
 /// `POST /uploads` success body: `201 created` or `200 duplicate`.
 struct UploadResultDTO: Codable, Equatable, Sendable {
     enum Status: String, Codable, Sendable {

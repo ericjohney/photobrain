@@ -38,7 +38,7 @@
 	<key>PhotoBrainEnvironment</key>
 	<string>$(PHOTO_BRAIN_ENVIRONMENT)</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>PhotoBrain backs up your camera roll's original photos and videos to your PhotoBrain server when Backup is turned on in Settings.</string>
+	<string>PhotoBrain shows your camera roll alongside your PhotoBrain library, and backs up its original photos and videos to your server when Backup is turned on in Settings.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).backup</string>

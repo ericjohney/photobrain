@@ -92,8 +92,25 @@ final class AVLoupePlayer: LoupePlayer {
     private(set) var avPlayer: AVPlayer?
     private var endObserver: NSObjectProtocol?
 
-    init(url: URL, muted: Bool, onEnded: @escaping @MainActor () -> Void) {
-        let item = AVPlayerItem(url: url)
+    convenience init(url: URL, muted: Bool, onEnded: @escaping @MainActor () -> Void) {
+        self.init(item: AVPlayerItem(url: url), muted: muted, onEnded: onEnded)
+    }
+
+    /// A camera-roll video: the item arrives from PhotoKit (from iCloud when optimized).
+    convenience init(assetID: String, muted: Bool, onEnded: @escaping @MainActor () -> Void) {
+        self.init(item: nil, muted: muted, onEnded: onEnded)
+        let player = avPlayer
+        itemTask = Task { @MainActor [weak self] in
+            guard let item = await LocalImageLoader.shared.playerItem(assetID: assetID),
+                  !Task.isCancelled, let self, self.avPlayer === player else { return }
+            self.observeEnd(of: item, onEnded: onEnded)
+            player?.replaceCurrentItem(with: item)
+        }
+    }
+
+    private var itemTask: Task<Void, Never>?
+
+    private init(item: AVPlayerItem?, muted: Bool, onEnded: @escaping @MainActor () -> Void) {
         let player = AVPlayer(playerItem: item)
         player.isMuted = muted
         player.actionAtItemEnd = .pause
@@ -105,6 +122,10 @@ final class AVLoupePlayer: LoupePlayer {
         } else {
             try? session.setCategory(.playback, mode: .moviePlayback)
         }
+        if let item { observeEnd(of: item, onEnded: onEnded) }
+    }
+
+    private func observeEnd(of item: AVPlayerItem, onEnded: @escaping @MainActor () -> Void) {
         endObserver = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification,
             object: item,
@@ -123,6 +144,8 @@ final class AVLoupePlayer: LoupePlayer {
     }
 
     func release() {
+        itemTask?.cancel()
+        itemTask = nil
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
         }
@@ -144,11 +167,11 @@ final class AVLoupePlayer: LoupePlayer {
 final class LoupePlaybackController: ObservableObject {
     enum State: Equatable {
         case inactive
-        case still(photoID: Int, hasMotion: Bool)
-        case video(photoID: Int, readyForDisplay: Bool)
-        case live(photoID: Int, readyForDisplay: Bool)
+        case still(photoID: LibraryEntryID, hasMotion: Bool)
+        case video(photoID: LibraryEntryID, readyForDisplay: Bool)
+        case live(photoID: LibraryEntryID, readyForDisplay: Bool)
 
-        var photoID: Int? {
+        var photoID: LibraryEntryID? {
             switch self {
             case .inactive: nil
             case let .still(id, _), let .video(id, _), let .live(id, _): id
@@ -162,16 +185,27 @@ final class LoupePlaybackController: ObservableObject {
         _ onEnded: @escaping @MainActor () -> Void
     ) -> any LoupePlayer
 
+    /// A camera-roll video's player, by asset id.
+    typealias LocalPlayerFactory = @MainActor (
+        _ assetID: String,
+        _ onEnded: @escaping @MainActor () -> Void
+    ) -> any LoupePlayer
+
     /// `player` is always updated before `state`, so `$state` subscribers can read it.
     @Published private(set) var state: State = .inactive
     private(set) var player: (any LoupePlayer)?
-    private var page: PhotoRecord?
+    private var page: LibraryEntry?
     /// Bumped per player; end events from released players are ignored.
     private var generation = 0
     private let makePlayer: PlayerFactory
+    private let makeLocalPlayer: LocalPlayerFactory
 
-    init(makePlayer: @escaping PlayerFactory = { AVLoupePlayer(url: $0, muted: $1, onEnded: $2) }) {
+    init(
+        makePlayer: @escaping PlayerFactory = { AVLoupePlayer(url: $0, muted: $1, onEnded: $2) },
+        makeLocalPlayer: @escaping LocalPlayerFactory = { AVLoupePlayer(assetID: $0, muted: false, onEnded: $1) }
+    ) {
         self.makePlayer = makePlayer
+        self.makeLocalPlayer = makeLocalPlayer
     }
 
     var isPlayingLive: Bool {
@@ -181,23 +215,37 @@ final class LoupePlaybackController: ObservableObject {
 
     /// The open page changed (or reappeared). Re-showing the current page keeps its player.
     func show(_ photo: PhotoRecord?) {
-        if let photo, photo.id == page?.id { return }
+        show(item: photo.map(LibraryEntry.init(remote:)))
+    }
+
+    /// A device video plays from PhotoKit (the original, without a server round trip); a
+    /// server photo from its file route. Re-showing the current page keeps its player.
+    func show(item: LibraryEntry?) {
+        if let item, item.id == page?.id { return }
         releasePlayer()
-        page = photo
-        guard let photo else {
+        page = item
+        guard let item else {
             state = .inactive
             return
         }
-        if photo.isVideo {
-            player = newPlayer(url: photo.fileURL, muted: false)
-            state = .video(photoID: photo.id, readyForDisplay: false)
+        if item.isVideo {
+            if let local = item.local {
+                generation += 1
+                let playerGeneration = generation
+                player = makeLocalPlayer(local.id) { [weak self] in
+                    self?.playbackEnded(generation: playerGeneration)
+                }
+            } else if let remote = item.remote {
+                player = newPlayer(url: remote.fileURL, muted: false)
+            }
+            state = .video(photoID: item.id, readyForDisplay: false)
         } else {
-            state = .still(photoID: photo.id, hasMotion: photo.motionVideoURL != nil)
+            state = .still(photoID: item.id, hasMotion: item.remote?.motionVideoURL != nil)
         }
     }
 
     func playLive() {
-        guard case let .still(photoID, true) = state, let url = page?.motionVideoURL else { return }
+        guard case let .still(photoID, true) = state, let url = page?.remote?.motionVideoURL else { return }
         let live = newPlayer(url: url, muted: true)
         player = live
         state = .live(photoID: photoID, readyForDisplay: false)
@@ -205,7 +253,7 @@ final class LoupePlaybackController: ObservableObject {
     }
 
     /// The view rendered the first frame of the current player for `photoID`.
-    func playerReadyForDisplay(photoID: Int) {
+    func playerReadyForDisplay(photoID: LibraryEntryID) {
         switch state {
         case .video(photoID, false):
             state = .video(photoID: photoID, readyForDisplay: true)

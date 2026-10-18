@@ -45,7 +45,8 @@ final class AppBootstrap: ObservableObject {
             let environment = try AppEnvironment()
             let theme = ThemeController(preference: await preferences.theme, preferences: preferences)
             let curation = PhotoCurationCenter(api: environment.api)
-            let library = LibraryStore(api: environment.api, curation: curation)
+            let device = UITestMode.isActive ? nil : BackupRuntime.shared.deviceLibrary
+            let library = LibraryStore(api: environment.api, curation: curation, device: device)
             let onThisDay = OnThisDayStore(api: environment.api)
             let search = SearchStore(api: environment.api, curation: curation)
             let collections = CollectionsStore(api: environment.api)
@@ -67,6 +68,12 @@ final class AppBootstrap: ObservableObject {
                 search.retry()
             }
             BackupRuntime.shared.coordinator?.onFileCreated = { [weak scans] in scans?.expectImport() }
+            // A finished import may turn device photos into server photos.
+            let reloadLibrary = scans.invalidateLibrary
+            scans.invalidateLibrary = { [weak device] in
+                await device?.refreshServerMapping(force: true)
+                await reloadLibrary?()
+            }
             self.environment = environment
             self.theme = theme
             self.library = library

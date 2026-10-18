@@ -600,7 +600,7 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         running.forEach { $0.cancel() }
     }
 
-    private func get<Response: Decodable>(
+    fileprivate func get<Response: Decodable>(
         path: [String],
         queryItems: [URLQueryItem] = []
     ) async throws -> Response {
@@ -794,6 +794,16 @@ extension APIClient: BackupServerAPI {
             path: ["uploads", "known"],
             body: KnownUploadsRequestDTO(deviceId: deviceId, assetIds: assetIds)
         )
+    }
+}
+
+extension APIClient: UploadedAssetsAPI {
+    func uploadedAssets(deviceId: String, after: String?, limit: Int?) async throws -> UploadedAssetsResponseDTO {
+        guard UUID(uuidString: deviceId) != nil else { throw PhotoBrainAPIError.invalidRequest }
+        var items = [URLQueryItem(name: "deviceId", value: deviceId)]
+        if let after { items.append(URLQueryItem(name: "after", value: after)) }
+        if let limit { items.append(URLQueryItem(name: "limit", value: String(limit))) }
+        return try await get(path: ["uploads", "assets"], queryItems: items)
     }
 }
 

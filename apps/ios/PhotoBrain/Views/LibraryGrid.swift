@@ -3,16 +3,16 @@ import UIKit
 
 struct LibraryGrid: UIViewControllerRepresentable {
     let sections: [PhotoSection]
-    @Binding var selectedID: Int?
-    @Binding var selectedIDs: Set<Int>
+    @Binding var selectedID: LibraryEntryID?
+    @Binding var selectedIDs: Set<LibraryEntryID>
     let isSelecting: Bool
     let resetVersion: Int
     let contentRevision: Int
     /// Open (and reset) at the first item instead of the newest edge at the bottom; for
     /// ranked lists whose best match comes first.
     var opensAtTop = false
-    let onLongPress: (Int) -> Void
-    let onVisibleChange: (Int?, CGFloat) -> Void
+    let onLongPress: (LibraryEntryID) -> Void
+    let onVisibleChange: (LibraryEntryID?, CGFloat) -> Void
     /// Zoom transition for this grid's loupe; selection then presents without the cover animation.
     var transition: LoupeZoomTransition?
     /// Phone column count (3, 5, or 9); nil keeps the width-based default. Wider screens
@@ -78,26 +78,26 @@ struct LibraryGrid: UIViewControllerRepresentable {
 final class LibraryGridViewController: UIViewController, UICollectionViewDelegate, LoupeTransitionSource {
     private let loader = RedirectAwareImageLoader()
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
-    private var dataSource: UICollectionViewDiffableDataSource<PhotoSection.ID, Int>!
-    private var recordsByID: [Int: PhotoRecord] = [:]
-    private var currentIDs: [Int] = []
+    private var dataSource: UICollectionViewDiffableDataSource<PhotoSection.ID, LibraryEntryID>!
+    private var recordsByID: [LibraryEntryID: LibraryEntry] = [:]
+    private var currentIDs: [LibraryEntryID] = []
     private var sectionIDs: [PhotoSection.ID] = []
     private var sectionTitles: [PhotoSection.ID: String] = [:]
     private var sectionDetails: [PhotoSection.ID: String] = [:]
-    private var selectedIDs: Set<Int> = []
+    private var selectedIDs: Set<LibraryEntryID> = []
     private var appliedResetVersion = -1
     private var appliedContentRevision = -1
     private var pendingContentReset = false
     private var didInitialPosition = false
     private let refreshControl = UIRefreshControl()
     private var refreshTask: Task<Void, Never>?
-    var onSelect: ((Int) -> Void)?
-    var onLongPress: ((Int) -> Void)?
-    var onVisibleChange: ((Int?, CGFloat) -> Void)?
+    var onSelect: ((LibraryEntryID) -> Void)?
+    var onLongPress: ((LibraryEntryID) -> Void)?
+    var onVisibleChange: ((LibraryEntryID?, CGFloat) -> Void)?
     var onRefresh: (() async -> Void)?
     var opensAtTop = false
     /// Photo whose cell is hidden while the loupe flies it in or out.
-    private var loupeHiddenID: Int?
+    private var loupeHiddenID: LibraryEntryID?
     var onPinchColumns: ((Int) -> Void)?
     private let topScrim = GradientScrimView()
     private var phoneColumns: Int?
@@ -153,7 +153,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             topScrim.heightAnchor.constraint(equalToConstant: 170),
         ])
 
-        dataSource = UICollectionViewDiffableDataSource<PhotoSection.ID, Int>(collectionView: collectionView) {
+        dataSource = UICollectionViewDiffableDataSource<PhotoSection.ID, LibraryEntryID>(collectionView: collectionView) {
             [weak self] collectionView, indexPath, photoID in
             guard let self,
                   let photo = recordsByID[photoID],
@@ -163,7 +163,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                   ) as? PhotoGridCell else {
                 return nil
             }
-            cell.configure(photo: photo, selected: selectedIDs.contains(photoID), loader: loader)
+            cell.configure(item: photo, selected: selectedIDs.contains(photoID), loader: loader)
             cell.contentView.alpha = loupeHiddenID == photoID ? 0 : 1
             return cell
         }
@@ -189,7 +189,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
 
     func apply(
         sections: [PhotoSection],
-        selectedIDs nextSelectedIDs: Set<Int>,
+        selectedIDs nextSelectedIDs: Set<LibraryEntryID>,
         resetVersion: Int,
         contentRevision: Int
     ) {
@@ -222,9 +222,9 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
 
         appliedContentRevision = contentRevision
         pendingContentReset = false
-        let nextIDs = sections.flatMap(\.photos).map(\.id)
+        let nextIDs = sections.flatMap(\.items).map(\.id)
         let nextSectionIDs = sections.map(\.id)
-        let nextRecords = Dictionary(uniqueKeysWithValues: sections.flatMap(\.photos).map { ($0.id, $0) })
+        let nextRecords = Dictionary(sections.flatMap(\.items).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let reconfigureIDs = LibraryGridDiff.reconfigureIDs(
             previous: recordsByID,
             next: nextRecords,
@@ -262,10 +262,10 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         let wasAtNewestEdge = didInitialPosition && !opensAtTop && distanceFromNewest <= 2
         currentIDs = nextIDs
         sectionIDs = nextSectionIDs
-        var snapshot = NSDiffableDataSourceSnapshot<PhotoSection.ID, Int>()
+        var snapshot = NSDiffableDataSourceSnapshot<PhotoSection.ID, LibraryEntryID>()
         for section in sections {
             snapshot.appendSections([section.id])
-            snapshot.appendItems(section.photos.map(\.id), toSection: section.id)
+            snapshot.appendItems(section.items.map(\.id), toSection: section.id)
         }
         if !reconfigureIDs.isEmpty {
             snapshot.reconfigureItems(reconfigureIDs)
@@ -390,9 +390,9 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         if !animated { scrollToAnchor(anchor) }
     }
 
-    private var pinchAnchorID: Int?
+    private var pinchAnchorID: LibraryEntryID?
 
-    private func scrollToAnchor(_ id: Int?) {
+    private func scrollToAnchor(_ id: LibraryEntryID?) {
         guard let id, let indexPath = dataSource.indexPath(for: id) else { return }
         collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
         publishVisibleState()
@@ -422,7 +422,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         view.window?.bounds ?? UIScreen.main.bounds
     }
 
-    func loupeSourceFrame(for id: Int) -> CGRect? {
+    func loupeSourceFrame(for id: LibraryEntryID) -> CGRect? {
         guard view.window != nil, let indexPath = dataSource.indexPath(for: id) else { return nil }
         guard var attributes = collectionView.layoutAttributesForItem(at: indexPath) else { return nil }
         let visible = collectionView.bounds.inset(by: collectionView.adjustedContentInset)
@@ -434,13 +434,13 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         return collectionView.convert(attributes.frame, to: nil)
     }
 
-    func loupeSourceImage(for id: Int) -> UIImage? {
+    func loupeSourceImage(for id: LibraryEntryID) -> UIImage? {
         guard let indexPath = dataSource.indexPath(for: id),
               let cell = collectionView.cellForItem(at: indexPath) as? PhotoGridCell else { return nil }
         return cell.loadedImage
     }
 
-    func setLoupeHiddenID(_ id: Int?) {
+    func setLoupeHiddenID(_ id: LibraryEntryID?) {
         let previous = loupeHiddenID
         loupeHiddenID = id
         for changed in [previous, id].compactMap({ $0 }) {
@@ -532,19 +532,46 @@ enum LibraryGridDiff {
     /// Items present in both revisions whose rendered content changed, plus items whose
     /// selection changed, in ascending ID order. New items are configured on insertion.
     static func reconfigureIDs(
-        previous: [Int: PhotoRecord],
-        next: [Int: PhotoRecord],
-        changedSelectionIDs: Set<Int>
-    ) -> [Int] {
-        var ids: Set<Int> = changedSelectionIDs.filter { previous[$0] != nil && next[$0] != nil }
-        for (id, record) in next {
-            guard let old = previous[id], rendersDifferently(old, record) else { continue }
+        previous: [LibraryEntryID: LibraryEntry],
+        next: [LibraryEntryID: LibraryEntry],
+        changedSelectionIDs: Set<LibraryEntryID>
+    ) -> [LibraryEntryID] {
+        var ids: Set<LibraryEntryID> = changedSelectionIDs.filter { previous[$0] != nil && next[$0] != nil }
+        for (id, item) in next {
+            guard let old = previous[id], rendersDifferently(old, item) else { continue }
             ids.insert(id)
         }
         return ids.sorted()
     }
 
-    /// Every field `PhotoGridCell.configure` draws: image, format badge, label, rating, and flag.
+    /// Server-record convenience: records keyed by photo id.
+    static func reconfigureIDs(
+        previous: [Int: PhotoRecord],
+        next: [Int: PhotoRecord],
+        changedSelectionIDs: Set<Int>
+    ) -> [Int] {
+        reconfigureIDs(
+            previous: Dictionary(uniqueKeysWithValues: previous.map { (LibraryEntryID.remote($0.key), LibraryEntry(remote: $0.value)) }),
+            next: Dictionary(uniqueKeysWithValues: next.map { (LibraryEntryID.remote($0.key), LibraryEntry(remote: $0.value)) }),
+            changedSelectionIDs: Set(changedSelectionIDs.map(LibraryEntryID.remote))
+        ).compactMap(\.remotePhotoID)
+    }
+
+    /// Every field `PhotoGridCell.configure` draws.
+    static func rendersDifferently(_ old: LibraryEntry, _ new: LibraryEntry) -> Bool {
+        switch (old.remote, new.remote) {
+        case let (oldRecord?, newRecord?):
+            if rendersDifferently(oldRecord, newRecord) { return true }
+        case (nil, nil):
+            break
+        default:
+            return true
+        }
+        return old.backupState != new.backupState || old.local != new.local
+    }
+
+    /// Every field `PhotoGridCell.configure` draws for a server photo: image, format badge,
+    /// label, rating, and flag.
     static func rendersDifferently(_ old: PhotoRecord, _ new: PhotoRecord) -> Bool {
         old.thumbnailURL != new.thumbnailURL
             || old.rating != new.rating
@@ -664,14 +691,16 @@ private final class PhotoGridCell: UICollectionViewCell {
     private let ratingLabel = UILabel()
     private let flagView = UIImageView()
     private var loadTask: Task<Void, Never>?
-    private(set) var representedID: Int?
-    /// Thumbnail URL whose image is currently displayed; lets curation/selection
-    /// reconfigures keep the loaded image instead of flashing the placeholder.
-    private var displayedURL: URL?
+    private(set) var representedID: LibraryEntryID?
+    /// Image source whose image is currently displayed; lets curation/selection reconfigures
+    /// keep the loaded image instead of flashing the placeholder.
+    private var displayedKey: String?
+    /// Device-only backup state (top left): not backed up, queued, uploading, failed.
+    private let backupBadge = UIImageView()
 
     /// The decoded thumbnail, or nil while the placeholder shows.
     var loadedImage: UIImage? {
-        displayedURL == nil ? nil : imageView.image
+        displayedKey == nil ? nil : imageView.image
     }
 
     override init(frame: CGRect) {
@@ -743,7 +772,19 @@ private final class PhotoGridCell: UICollectionViewCell {
         contentView.addSubview(checkmark)
         contentView.addSubview(rawBadge)
         contentView.addSubview(trailingBadges)
+        backupBadge.contentMode = .scaleAspectFit
+        backupBadge.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .caption1)
+            .applying(UIImage.SymbolConfiguration(weight: .semibold))
+        backupBadge.layer.shadowColor = UIColor.black.cgColor
+        backupBadge.layer.shadowOpacity = 0.6
+        backupBadge.layer.shadowRadius = 2
+        backupBadge.layer.shadowOffset = .zero
+        backupBadge.isHidden = true
+        backupBadge.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(backupBadge)
         NSLayoutConstraint.activate([
+            backupBadge.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 5),
+            backupBadge.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 5),
             imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -772,34 +813,74 @@ private final class PhotoGridCell: UICollectionViewCell {
         loadTask?.cancel()
         loadTask = nil
         representedID = nil
-        displayedURL = nil
+        displayedKey = nil
         imageView.image = nil
         imageView.alpha = 1
         checkmark.isHidden = true
+        backupBadge.isHidden = true
         rawBadge.isHidden = true
         curationBadge.isHidden = true
         mediaBadge.isHidden = true
     }
 
-    func configure(photo: PhotoRecord, selected: Bool, loader: RedirectAwareImageLoader) {
-        let keepsImage = representedID == photo.id && displayedURL == photo.thumbnailURL
-        representedID = photo.id
-        imageView.alpha = photo.isRejected ? Self.rejectedAlpha : 1
+    /// Image source currently displayed: the thumbnail URL or `asset:<id>`.
+    private func imageKey(for item: LibraryEntry) -> String {
+        if let local = item.local { return "asset:\(local.id)" }
+        return item.remote?.thumbnailURL.absoluteString ?? ""
+    }
+
+    func configure(item: LibraryEntry, selected: Bool, loader: RedirectAwareImageLoader) {
+        let key = imageKey(for: item)
+        let keepsImage = representedID == item.id && displayedKey == key
+        representedID = item.id
+        imageView.alpha = item.isRejected ? Self.rejectedAlpha : 1
         checkmark.isHidden = !selected
-        let badge = photo.formatBadge
+        let badge = item.formatBadge
         rawBadge.text = badge
         rawBadge.isHidden = badge == nil
-        configureCurationBadge(rating: photo.rating, flag: photo.flag)
-        configureMediaBadge(photo.mediaBadge)
-        let base = photo.accessibilityName
-        accessibilityLabel = base + CurationBadgeText.accessibilitySuffix(rating: photo.rating, flag: photo.flag)
+        configureCurationBadge(rating: item.rating, flag: item.flag)
+        configureMediaBadge(item.mediaBadge)
+        configureBackupBadge(item.backupState)
+        var label = item.accessibilityName + CurationBadgeText.accessibilitySuffix(rating: item.rating, flag: item.flag)
+        if let state = item.backupState { label += ", \(state.accessibilityText)" }
+        accessibilityLabel = label
         accessibilityTraits = selected ? [.button, .selected] : [.button]
 
         guard !keepsImage else { return }
         loadTask?.cancel()
-        displayedURL = nil
+        displayedKey = nil
         imageView.image = nil
-        guard photo.thumbnailURL.host != "photos.example.invalid" else { return }
+        let itemID = item.id
+        if let local = item.local {
+            // The device copy loads instantly and offline, even once the server has it.
+            loadTask = Task { @MainActor [weak self] in
+                let target = self?.bounds.size ?? CGSize(width: 160, height: 160)
+                let image = try? await LocalImageLoader.shared.image(
+                    assetID: local.id,
+                    targetSize: target,
+                    highQuality: false,
+                    networkAllowed: false
+                ) { degraded in
+                    guard self?.representedID == itemID, self?.displayedKey == nil else { return }
+                    self?.imageView.image = degraded
+                }
+                guard !Task.isCancelled, self?.representedID == itemID else { return }
+                if let image {
+                    self?.imageView.image = image
+                    self?.displayedKey = key
+                } else if let remote = item.remote {
+                    self?.loadRemote(remote, itemID: itemID, key: key, loader: loader)
+                }
+            }
+            return
+        }
+        guard let photo = item.remote, photo.thumbnailURL.host != "photos.example.invalid" else { return }
+        loadRemote(photo, itemID: itemID, key: key, loader: loader)
+    }
+
+    /// `key` is the cell's image key: a synced cell whose device copy is unavailable keeps its
+    /// asset key, so reconfigures keep this server image instead of reloading.
+    private func loadRemote(_ photo: PhotoRecord, itemID: LibraryEntryID, key: String, loader: RedirectAwareImageLoader) {
         loadTask = Task { @MainActor [weak self] in
             let target = self?.bounds.size ?? CGSize(width: 160, height: 160)
             guard let image = try? await loader.image(
@@ -808,10 +889,20 @@ private final class PhotoGridCell: UICollectionViewCell {
                 targetSize: target
             ),
                   !Task.isCancelled,
-                  self?.representedID == photo.id else { return }
+                  self?.representedID == itemID else { return }
             self?.imageView.image = image
-            self?.displayedURL = photo.thumbnailURL
+            self?.displayedKey = key
         }
+    }
+
+    private func configureBackupBadge(_ state: LocalBackupState?) {
+        guard let state else {
+            backupBadge.isHidden = true
+            return
+        }
+        backupBadge.image = UIImage(systemName: state.systemImage)
+        backupBadge.tintColor = state == .failed ? .systemYellow : .white
+        backupBadge.isHidden = false
     }
 
     private func configureMediaBadge(_ badge: MediaBadge?) {

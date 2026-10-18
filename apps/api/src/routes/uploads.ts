@@ -8,12 +8,15 @@ import {
 	storeUpload,
 	UploadError,
 	type UploadErrorCode,
+	uploadedAssetPhotos,
 } from "../services/uploads";
 import {
 	errorResponseSchema,
 	knownUploadsRequestSchema,
 	knownUploadsResponseSchema,
 	uploadConfigResponseSchema,
+	uploadedAssetsQuerySchema,
+	uploadedAssetsResponseSchema,
 	uploadQuerySchema,
 	uploadResultSchema,
 } from "./v1-schemas";
@@ -109,6 +112,32 @@ export function createUploadsRouter(dependencies: UploadRouteDependencies) {
 			});
 		} catch (error) {
 			console.error("Known uploads lookup failed:", error);
+			return errorResponse(
+				"INTERNAL_ERROR",
+				"The request could not be completed",
+				500,
+			);
+		}
+	});
+
+	// Imported photos of this device's uploaded assets, so the native client can
+	// show each camera-roll asset once alongside the server catalog. Readable
+	// while uploads are disabled: it reports what was already uploaded.
+	router.get("/assets", (context) => {
+		const query = uploadedAssetsQuerySchema.safeParse(context.req.query());
+		if (!query.success) return invalidRequest();
+		try {
+			return jsonResponse(
+				uploadedAssetsResponseSchema,
+				uploadedAssetPhotos(
+					dependencies.database,
+					query.data.deviceId,
+					query.data.after,
+					query.data.limit,
+				),
+			);
+		} catch (error) {
+			console.error("Uploaded assets lookup failed:", error);
 			return errorResponse(
 				"INTERNAL_ERROR",
 				"The request could not be completed",

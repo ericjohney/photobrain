@@ -344,7 +344,21 @@ struct PhotoSection: Identifiable, Hashable, Sendable {
 
     let id: ID
     let title: String
-    var photos: [PhotoRecord]
+    var items: [LibraryEntry]
     /// Secondary header text, e.g. `Thursday · 9`; `nil` shows the title alone.
     var detail: String?
+
+    init(id: ID, title: String, items: [LibraryEntry], detail: String? = nil) {
+        self.id = id
+        self.title = title
+        self.items = items
+        self.detail = detail
+    }
+
+    init(id: ID, title: String, photos: [PhotoRecord], detail: String? = nil) {
+        self.init(id: id, title: title, items: photos.map(LibraryEntry.init(remote:)), detail: detail)
+    }
+
+    /// The section's server photos (device-only cells omitted).
+    var photos: [PhotoRecord] { items.compactMap(\.remote) }
 }

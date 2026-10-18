@@ -4,8 +4,8 @@ import SwiftUI
 import UIKit
 
 struct PagedLoupe: UIViewControllerRepresentable {
-    let records: [PhotoRecord]
-    @Binding var activeID: Int
+    let records: [LibraryEntry]
+    @Binding var activeID: LibraryEntryID
     /// Drives the open page's video or Live Photo player; the loupe owns its lifetime.
     let playback: LoupePlaybackController
     /// Insets the video controls so the loupe chrome does not cover them.
@@ -24,7 +24,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
     /// Swipe up on an unzoomed photo (Photos opens the info panel).
     var onSwipeUp: (() -> Void)?
     /// A decoded image to show before a page's thumbnail loads (the grid cell's image).
-    var placeholder: ((Int) -> UIImage?)?
+    var placeholder: ((LibraryEntryID) -> UIImage?)?
     var bridge: LoupePagerBridge?
     /// While the info panel is up, a downward swipe closes it instead of the loupe.
     var infoVisible = false
@@ -96,15 +96,15 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
     private let loader = RedirectAwareImageLoader()
     private let knownCells = NSHashTable<ZoomPageCell>.weakObjects()
-    private var records: [PhotoRecord] = []
-    private var activeID: Int?
-    var onActiveIDChanged: ((Int) -> Void)?
+    private var records: [LibraryEntry] = []
+    private var activeID: LibraryEntryID?
+    var onActiveIDChanged: ((LibraryEntryID) -> Void)?
     var onTap: (() -> Void)?
     var onEmpty: (() -> Void)?
     var onDismissDragActive: ((Bool) -> Void)?
     var onDismissRequest: ((CGRect?, UIImage?, Double) -> Void)?
     var onSwipeUp: (() -> Void)?
-    var placeholderProvider: ((Int) -> UIImage?)?
+    var placeholderProvider: ((LibraryEntryID) -> UIImage?)?
     var infoVisible = false
     var onSwipeDownToCloseInfo: (() -> Void)?
     private lazy var verticalPan = UIPanGestureRecognizer(target: self, action: #selector(handleVerticalPan(_:)))
@@ -127,7 +127,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         didSet {
             guard faceBoxes != oldValue else { return }
             knownCells.allObjects.forEach { cell in
-                cell.setFaceBoxes(cell.representedID.flatMap { faceBoxes[$0] } ?? [])
+                cell.setFaceBoxes(cell.representedPhotoID.flatMap { faceBoxes[$0] } ?? [])
             }
         }
     }
@@ -137,7 +137,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         didSet {
             guard developedImages != oldValue else { return }
             knownCells.allObjects.forEach { cell in
-                cell.setDevelopedImage(cell.representedID.flatMap { developedImages[$0] })
+                cell.setDevelopedImage(cell.representedPhotoID.flatMap { developedImages[$0] })
             }
         }
     }
@@ -206,7 +206,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         scrollToActiveID(animated: false, force: true)
     }
 
-    func update(records nextRecords: [PhotoRecord], activeID requestedID: Int) {
+    func update(records nextRecords: [LibraryEntry], activeID requestedID: LibraryEntryID) {
         loadViewIfNeeded()
         // SwiftUI re-passes the same array on every activeID change (each filmstrip scrub
         // step); skip the O(n) record diff then.
@@ -228,8 +228,8 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         )
         let recordsChanged = previousIDs != nextIDs
         let refreshedIndexes = recordsChanged ? [] : records.indices.filter {
-            records[$0].largeThumbnailURL != nextRecords[$0].largeThumbnailURL
-                || records[$0].thumbnailURL != nextRecords[$0].thumbnailURL
+            records[$0].remote?.largeThumbnailURL != nextRecords[$0].remote?.largeThumbnailURL
+                || records[$0].remote?.thumbnailURL != nextRecords[$0].remote?.thumbnailURL
         }
         records = nextRecords
         activeID = anchoredID
@@ -266,15 +266,15 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         }
         let photo = records[indexPath.item]
         cell.configure(
-            photo: photo,
+            item: photo,
             placeholder: placeholderProvider?(photo.id),
             loader: loader,
             onTap: { [weak self] in self?.onTap?() },
             onZoomChanged: { [weak self] _ in self?.updatePagingAvailability() }
         )
         knownCells.add(cell)
-        cell.setFaceBoxes(faceBoxes[photo.id] ?? [])
-        cell.setDevelopedImage(developedImages[photo.id])
+        cell.setFaceBoxes(photo.remote.flatMap { faceBoxes[$0.id] } ?? [])
+        cell.setDevelopedImage(photo.remote.flatMap { developedImages[$0.id] })
         syncPlayerHost()
         return cell
     }
@@ -479,7 +479,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
     }
 
     /// Until the first frame is ready the page keeps showing its large thumbnail.
-    private func observeReadiness(of host: AVPlayerViewController, photoID: Int?) {
+    private func observeReadiness(of host: AVPlayerViewController, photoID: LibraryEntryID?) {
         readyObservation?.invalidate()
         guard let photoID else { return }
         readyObservation = host.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] host, _ in
@@ -536,7 +536,9 @@ final class ZoomPageCell: UICollectionViewCell {
     private let retryButton = UIButton(type: .system)
     private var loadTask: Task<Void, Never>?
     private var retry: (() -> Void)?
-    private(set) var representedID: Int?
+    private(set) var representedID: LibraryEntryID?
+    /// Server photo of the represented page, for face boxes and developed renders.
+    private(set) var representedPhotoID: Int?
     private var decodedImageWasEvicted = false
     /// A developed RAW render; while set it replaces the preview and later preview loads.
     private var developedImage: UIImage?
@@ -588,6 +590,7 @@ final class ZoomPageCell: UICollectionViewCell {
         loadTask = nil
         retry = nil
         representedID = nil
+        representedPhotoID = nil
         decodedImageWasEvicted = false
         developedImage = nil
         previewImage = nil
@@ -669,7 +672,7 @@ final class ZoomPageCell: UICollectionViewCell {
     }
 
     func configure(
-        photo: PhotoRecord,
+        item: LibraryEntry,
         placeholder: UIImage? = nil,
         loader: RedirectAwareImageLoader,
         onTap: @escaping () -> Void,
@@ -677,12 +680,13 @@ final class ZoomPageCell: UICollectionViewCell {
     ) {
         loadTask?.cancel()
         retry = nil
-        if representedID != photo.id {
+        if representedID != item.id {
             hostedPlayerView?.removeFromSuperview()
             developedImage = nil
             previewImage = nil
         }
-        representedID = photo.id
+        representedID = item.id
+        representedPhotoID = item.remote?.id
         decodedImageWasEvicted = false
         failureStack.isHidden = true
         zoomView.onSingleTap = onTap
@@ -699,42 +703,88 @@ final class ZoomPageCell: UICollectionViewCell {
             setShowsPhotoImage(false)
         }
 
-        guard photo.largeThumbnailURL.host != "photos.example.invalid" else { return }
         let targetSize = bounds.size == .zero ? UIScreen.main.bounds.size : bounds.size
-        let load = { [weak self] in
-            guard let self else { return }
-            self.failureStack.isHidden = true
-            self.loadTask?.cancel()
-            self.loadTask = Task { @MainActor [weak self] in
-                if let small = try? await loader.image(
-                    for: photo,
-                    url: photo.thumbnailURL,
-                    targetSize: targetSize
-                ), !Task.isCancelled, self?.representedID == photo.id {
-                    self?.showPreview(small)
-                }
-                guard !Task.isCancelled else { return }
-                do {
-                    let image = try await loader.image(
-                        for: photo,
-                        url: photo.largeThumbnailURL,
-                        targetSize: targetSize
-                    )
-                    guard !Task.isCancelled, self?.representedID == photo.id else { return }
-                    self?.showPreview(image)
-                } catch is CancellationError {
-                    return
-                } catch {
-                    guard self?.representedID == photo.id else { return }
-                    self?.failureStack.isHidden = false
+        let itemID = item.id
+        let load: () -> Void
+        if let local = item.local {
+            // The device copy: degraded first, then full quality, from iCloud if optimized.
+            load = { [weak self] in
+                guard let self else { return }
+                self.failureStack.isHidden = true
+                self.loadTask?.cancel()
+                self.loadTask = Task { @MainActor [weak self] in
+                    do {
+                        let image = try await LocalImageLoader.shared.image(
+                            assetID: local.id,
+                            targetSize: targetSize,
+                            highQuality: false,
+                            networkAllowed: true
+                        ) { degraded in
+                            guard self?.representedID == itemID else { return }
+                            self?.showPreview(degraded)
+                        }
+                        guard !Task.isCancelled, self?.representedID == itemID else { return }
+                        self?.showPreview(image)
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        guard let self, self.representedID == itemID else { return }
+                        if let remote = item.remote {
+                            await self.loadRemote(remote, itemID: itemID, loader: loader, targetSize: targetSize)
+                        } else {
+                            self.failureStack.isHidden = false
+                        }
+                    }
                 }
             }
+        } else if let photo = item.remote, photo.largeThumbnailURL.host != "photos.example.invalid" {
+            load = { [weak self] in
+                guard let self else { return }
+                self.failureStack.isHidden = true
+                self.loadTask?.cancel()
+                self.loadTask = Task { @MainActor [weak self] in
+                    await self?.loadRemote(photo, itemID: itemID, loader: loader, targetSize: targetSize)
+                }
+            }
+        } else {
+            return
         }
         retry = load
         load()
     }
 
-    func handleMemoryWarning(isVisible: Bool, activeID: Int?) {
+    /// The server's small thumbnail, then its large one.
+    private func loadRemote(
+        _ photo: PhotoRecord,
+        itemID: LibraryEntryID,
+        loader: RedirectAwareImageLoader,
+        targetSize: CGSize
+    ) async {
+        if let small = try? await loader.image(
+            for: photo,
+            url: photo.thumbnailURL,
+            targetSize: targetSize
+        ), !Task.isCancelled, representedID == itemID {
+            showPreview(small)
+        }
+        guard !Task.isCancelled else { return }
+        do {
+            let image = try await loader.image(
+                for: photo,
+                url: photo.largeThumbnailURL,
+                targetSize: targetSize
+            )
+            guard !Task.isCancelled, representedID == itemID else { return }
+            showPreview(image)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard representedID == itemID else { return }
+            failureStack.isHidden = false
+        }
+    }
+
+    func handleMemoryWarning(isVisible: Bool, activeID: LibraryEntryID?) {
         guard !isVisible, representedID != activeID else { return }
         evictDecodedImage()
     }
@@ -928,9 +978,9 @@ final class FaceBoxOverlayView: UIView {
 /// into view first) and can hide that cell while the photo is in flight.
 @MainActor
 protocol LoupeTransitionSource: AnyObject {
-    func loupeSourceFrame(for id: Int) -> CGRect?
-    func loupeSourceImage(for id: Int) -> UIImage?
-    func setLoupeHiddenID(_ id: Int?)
+    func loupeSourceFrame(for id: LibraryEntryID) -> CGRect?
+    func loupeSourceImage(for id: LibraryEntryID) -> UIImage?
+    func setLoupeHiddenID(_ id: LibraryEntryID?)
     var loupeContainerBounds: CGRect { get }
 }
 
@@ -940,9 +990,9 @@ protocol LoupeTransitionSource: AnyObject {
 final class LoupeZoomTransition {
     weak var source: (any LoupeTransitionSource)?
 
-    func frame(for id: Int) -> CGRect? { source?.loupeSourceFrame(for: id) }
-    func image(for id: Int) -> UIImage? { source?.loupeSourceImage(for: id) }
-    func setHidden(_ id: Int?) { source?.setLoupeHiddenID(id) }
+    func frame(for id: LibraryEntryID) -> CGRect? { source?.loupeSourceFrame(for: id) }
+    func image(for id: LibraryEntryID) -> UIImage? { source?.loupeSourceImage(for: id) }
+    func setHidden(_ id: LibraryEntryID?) { source?.setLoupeHiddenID(id) }
     var containerBounds: CGRect { source?.loupeContainerBounds ?? UIScreen.main.bounds }
 
     /// Presents or dismisses a loupe without the system cover animation.

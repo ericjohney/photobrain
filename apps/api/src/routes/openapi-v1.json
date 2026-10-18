@@ -2263,7 +2263,7 @@
 						"schema": {
 							"type": "string",
 							"minLength": 1,
-							"maxLength": 256
+							"maxLength": 272
 						}
 					},
 					{
@@ -2440,6 +2440,63 @@
 								}
 							}
 						}
+					}
+				}
+			}
+		},
+		"/api/v1/uploads/assets": {
+			"get": {
+				"operationId": "uploadedAssets",
+				"description": "This device's uploaded assets that have been imported, each with the catalog photo holding its primary resource (photo, else video, else RAW alternate). Assets uploaded but not yet scanned are omitted. Ordered by (photoId, assetId); new imports get higher photo IDs, so resuming from the last seen asset returns only them. Readable while uploads are disabled.",
+				"parameters": [
+					{
+						"name": "deviceId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "after",
+						"in": "query",
+						"required": false,
+						"description": "Return assets after this position in (photoId, assetId) order, written `{photoId}:{assetId}`: a previous page's `nextCursor`, or the last asset already seen to receive only later imports.",
+						"schema": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 272
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 5000,
+							"default": 5000
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Imported uploaded assets",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UploadedAssetsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/InvalidRequest"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
 					}
 				}
 			}
@@ -4610,6 +4667,35 @@
 							"minLength": 1,
 							"maxLength": 256
 						}
+					}
+				}
+			},
+			"UploadedAssetsResponse": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["assets", "nextCursor"],
+				"properties": {
+					"assets": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["assetId", "photoId"],
+							"properties": {
+								"assetId": {
+									"type": "string",
+									"minLength": 1
+								},
+								"photoId": {
+									"type": "integer",
+									"minimum": 1
+								}
+							}
+						}
+					},
+					"nextCursor": {
+						"type": ["string", "null"],
+						"minLength": 1
 					}
 				}
 			},

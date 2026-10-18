@@ -84,7 +84,7 @@ final class BackupSessionEvents: UploadSessionEvents, @unchecked Sendable {
 /// Plans and drives camera-roll uploads: at most `maximumConcurrentUploads` files are exported
 /// or uploading at once; every outcome is recorded in the ledger before the UI hears about it.
 @MainActor
-final class BackupCoordinator: ObservableObject {
+final class BackupCoordinator: ObservableObject, BackupStateProviding {
     struct ActiveUpload: Equatable, Identifiable, Sendable {
         /// The transfer's temporary file name (its task description).
         let id: String
@@ -183,6 +183,43 @@ final class BackupCoordinator: ObservableObject {
 
     var isBusy: Bool {
         runTask != nil || !exporting.isEmpty || !ledger.transfers.isEmpty
+    }
+
+    // MARK: - Library badges
+
+    /// Bumped whenever an asset's backup state may have changed (plan, upload, failure).
+    @Published private(set) var stateRevision = 0 {
+        didSet { cachedStates = nil }
+    }
+    private var cachedStates: (failed: Set<String>, uploaded: Set<String>, uploading: Set<String>)?
+
+    /// Where `assetId` stands for the Library's device-only badges. An asset the plan left out
+    /// (backup off, a video while videos are excluded, an unsupported format) is not backed up.
+    func backupState(assetId: String) -> LocalBackupState {
+        guard settings.enabled, authorization.canRead else { return .notBackedUp }
+        let states = assetStates()
+        if states.uploading.contains(assetId) { return .uploading }
+        if states.failed.contains(assetId) { return .failed }
+        if remainingByAsset[assetId] != nil { return .queued }
+        if states.uploaded.contains(assetId) { return .uploaded }
+        return hasPlanned ? .notBackedUp : .queued
+    }
+
+    private func assetStates() -> (failed: Set<String>, uploaded: Set<String>, uploading: Set<String>) {
+        if let cachedStates { return cachedStates }
+        let snapshot = ledger.snapshot
+        var failed = Set(snapshot.retries.keys.map(\.assetId))
+        var uploaded: Set<String> = []
+        for (key, record) in snapshot.records {
+            switch record.status {
+            case .uploaded: uploaded.insert(key.assetId)
+            case .skipped: failed.insert(key.assetId)
+            }
+        }
+        let uploading = Set(snapshot.transfers.values.map(\.key.assetId)).union(exporting.keys.map(\.assetId))
+        let states = (failed, uploaded, uploading)
+        cachedStates = states
+        return states
     }
 
     // MARK: - Settings
@@ -415,6 +452,7 @@ final class BackupCoordinator: ObservableObject {
         hasPlanned = true
         refreshFailures()
         scheduleRetry(at: nextRetry)
+        stateRevision &+= 1
     }
 
     private func scheduleRetry(at date: Date?) {
@@ -473,6 +511,7 @@ final class BackupCoordinator: ObservableObject {
     private func startExport(_ item: BackupItem, config: UploadConfigDTO) {
         let tempName = UUID().uuidString + item.fileExtension
         exporting[item.key] = tempName
+        stateRevision &+= 1
         let file = temporaryDirectory.appendingPathComponent(tempName)
         let directory = temporaryDirectory
         let library = library
@@ -536,6 +575,7 @@ final class BackupCoordinator: ObservableObject {
             }
             let request = UploadRequestBuilder.request(url: url, allowsCellularAccess: settings.allowCellular)
             ledger.beginTransfer(BackupLedger.Transfer(key: item.key, filename: item.filename, tempName: tempName))
+            stateRevision &+= 1
             uploads.append(ActiveUpload(id: tempName, filename: item.filename, sent: 0, expected: size))
             transport.startUpload(request, fromFile: file, description: tempName)
         }
@@ -559,6 +599,7 @@ final class BackupCoordinator: ObservableObject {
         defer {
             refreshFailures()
             pump()
+            stateRevision &+= 1
         }
         guard let result else { return }
         let name = result.transfer.filename

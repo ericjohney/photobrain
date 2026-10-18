@@ -87,18 +87,18 @@ struct LibraryScreen: View {
                 completed: { store.endSelection() }
             )
         }
-        .loupeCover(isPresented: store.activePhotoID != nil) {
-            if let activeID = store.activePhotoID {
+        .loupeCover(isPresented: store.activeItemID != nil) {
+            if let activeID = store.activeItemID {
                 LoupeScreen(
-                    records: store.orderedRecords,
+                    items: store.orderedItems,
                     activeID: Binding(
-                        get: { store.activePhotoID ?? activeID },
-                        set: { store.activePhotoID = $0 }
+                        get: { store.activeItemID ?? activeID },
+                        set: { store.activeItemID = $0 }
                     ),
                     api: environment.api,
                     curation: store.curation,
                     collections: collections,
-                    dismiss: { store.activePhotoID = nil },
+                    dismiss: { store.activeItemID = nil },
                     transition: loupeTransition
                 )
             }
@@ -177,6 +177,13 @@ struct LibraryScreen: View {
             }
             if !store.isSelecting, store.filters.isActive {
                 filteredCapsule
+                if let device = store.device, device.visibility != .server, device.isAvailable,
+                   !device.assets.isEmpty,
+                   device.assets.first.map({ LocalFilterSupport.matches($0, filters: store.filters) == nil }) == true {
+                    Text("Photos not yet backed up are hidden by this filter.")
+                        .font(.footnote)
+                        .shadow(color: overPhotos ? .black.opacity(0.35) : .clear, radius: 4)
+                }
             }
             if let error = store.refreshError {
                 PBBanner(message: "Couldn’t refresh. Cached photos are still shown.", retry: { Task { await store.load() } })
@@ -211,7 +218,7 @@ struct LibraryScreen: View {
             moreMenu
             glassTextButton("Select") { store.beginSelection() }
                 .accessibilityLabel("Select photos")
-                .disabled(store.records.isEmpty)
+                .disabled(store.orderedItems.isEmpty)
         }
     }
 
@@ -316,6 +323,20 @@ struct LibraryScreen: View {
                     )
                 }
             }
+            if let device = store.device, device.isAvailable {
+                Section {
+                    Menu {
+                        Picker("Show", selection: visibilityBinding(device)) {
+                            ForEach(DeviceLibrary.Visibility.allCases) { visibility in
+                                Text(visibility.title).tag(visibility)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Label("Show: \(device.visibility.title)", systemImage: "iphone.and.arrow.forward")
+                    }
+                }
+            }
             Section {
                 Button {
                     optionsPresented = true
@@ -327,6 +348,10 @@ struct LibraryScreen: View {
             GlassIconLabel(systemImage: "line.3.horizontal.decrease")
         }
         .accessibilityLabel("Library options")
+    }
+
+    private func visibilityBinding(_ device: DeviceLibrary) -> Binding<DeviceLibrary.Visibility> {
+        Binding(get: { device.visibility }, set: { store.setVisibility($0) })
     }
 
     private var quickFilterBinding: Binding<LibraryQuickFilter?> {
@@ -344,7 +369,7 @@ struct LibraryScreen: View {
     // MARK: Grouping and density
 
     private var showsGroupingControl: Bool {
-        !store.isSelecting && store.sort == .captured && !store.records.isEmpty
+        !store.isSelecting && store.sort == .captured && !store.orderedItems.isEmpty
     }
 
     /// Photos' glass Years · Months · All switcher.
@@ -435,8 +460,8 @@ struct LibraryScreen: View {
         default:
             LibraryGrid(
                 sections: store.sections,
-                selectedID: $store.activePhotoID,
-                selectedIDs: $store.selectedPhotoIDs,
+                selectedID: $store.activeItemID,
+                selectedIDs: $store.selectedItemIDs,
                 isSelecting: store.isSelecting,
                 resetVersion: store.browsingResetVersion,
                 contentRevision: store.presentationRevision,
@@ -536,6 +561,10 @@ private struct LibraryOptionsView: View {
                         .foregroundStyle(.primary)
                         .accessibilityAddTraits(store.sort == sort ? .isSelected : [])
                     }
+                }
+
+                if let device = store.device {
+                    LibraryVisibilitySection(store: store, device: device)
                 }
 
                 Section("Library") {
@@ -1184,5 +1213,48 @@ private struct PlaceFilterRow: View {
     private var accessibilityText: String {
         let name = detail.map { "\(text), \($0)" } ?? text
         return count.map { "\(name), \(CountText.photos($0))" } ?? name
+    }
+}
+
+/// Library Options › Show: All Photos, On This iPhone, or On Server, with what the device side
+/// holds and why it may be empty.
+private struct LibraryVisibilitySection: View {
+    @ObservedObject var store: LibraryStore
+    @ObservedObject var device: DeviceLibrary
+
+    var body: some View {
+        Section {
+            let _ = device.revision
+            if device.isAvailable {
+                Picker("Show", selection: Binding(get: { device.visibility }, set: { store.setVisibility($0) })) {
+                    ForEach(DeviceLibrary.Visibility.allCases) { visibility in
+                        Text(visibility.title).tag(visibility)
+                    }
+                }
+            } else if device.canRequestAccess {
+                Button {
+                    Task { await device.requestAccess() }
+                } label: {
+                    Label("Show Photos on This iPhone", systemImage: "iphone")
+                }
+            } else {
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Label("Allow Photos Access in Settings", systemImage: "photo.badge.exclamationmark")
+                }
+            }
+        } header: {
+            Text("Show")
+        } footer: {
+            if device.isAvailable {
+                let deviceOnly = store.deviceOnlyCount
+                Text(deviceOnly == 0
+                    ? "Every photo on this iPhone is in your PhotoBrain library."
+                    : "\(CountText.of(deviceOnly, "photo", "photos")) on this iPhone \(deviceOnly == 1 ? "isn’t" : "aren’t") on the server yet. Turn on Backup in Settings to add them.")
+            }
+        }
     }
 }
