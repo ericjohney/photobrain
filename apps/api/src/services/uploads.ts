@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import type * as NativeAddon from "@photobrain/image-processing";
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { photos, uploadAssets, uploads } from "../db/schema";
 import type { ApiDatabase } from "./photo-catalog";
 
