@@ -156,7 +156,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         let day = app.collectionViews.cells.allElementsBoundByIndex.first {
             $0.frame.minY > 100 && $0.frame.maxY < 750
         } ?? app.collectionViews.cells.firstMatch
-        XCTAssertGreaterThan(waitFor(day).frame.width, wide * 2, "Months shows day covers")
+        XCTAssertGreaterThan(waitFor(day).frame.width, wide, "Months shows grouped covers larger than All thumbnails")
         day.tap()
         XCTAssertTrue(waitFor(element("All")).isSelected)
         XCTAssertFalse(element("Close photo").exists, "A cover drills into time instead of opening the loupe")

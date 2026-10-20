@@ -53,6 +53,25 @@ final class PhotosParityTests: XCTestCase {
         XCTAssertEqual(LibraryGrouping.segments.map(\.defaultPhoneColumns), [9, 5, 3])
     }
 
+    func testMonthMosaicFitsEveryDayWithoutOverlapsOrEmptySlots() {
+        for count in 1...31 {
+            let frames = LibraryMonthMosaic.frames(count: count, width: 362)
+            XCTAssertEqual(frames.count, count)
+            for (index, frame) in frames.enumerated() {
+                XCTAssertGreaterThan(frame.width, 0)
+                XCTAssertGreaterThan(frame.height, 0)
+                XCTAssertGreaterThanOrEqual(frame.minX, 0)
+                XCTAssertLessThanOrEqual(frame.maxX, 362)
+                for other in frames.dropFirst(index + 1) {
+                    XCTAssertFalse(frame.intersects(other))
+                }
+            }
+        }
+        let trio = LibraryMonthMosaic.frames(count: 3, width: 362)
+        XCTAssertGreaterThan(trio[0].width, trio[1].width)
+        XCTAssertEqual(trio[0].maxY, trio[2].maxY, accuracy: 0.001)
+    }
+
     func testTimeCardsKeepEveryDayAndMapHiddenMembersToTheirCover() {
         let records = [
             TestModels.photo(id: 1, taken: "2024-05-02T10:00:00Z"),

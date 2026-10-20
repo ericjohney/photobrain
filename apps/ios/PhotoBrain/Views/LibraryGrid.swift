@@ -178,7 +178,8 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                   ) as? PhotoGridCell else {
                 return nil
             }
-            cell.configure(item: photo, selected: selectedIDs.contains(photoID), loader: loader)
+            cell.configure(item: photo, selected: selectedIDs.contains(photoID), loader: loader,
+                           usesLargeThumbnail: cardTitles[photoID] != nil)
             cell.setTimeTitle(cardTitles[photoID], isYear: timeGrouping == .years,
                               dateLabel: photo.captureDate.formatted(
                                 Date.FormatStyle(timeZone: PhotoDateResolver.calendar.timeZone).year().month(.wide).day()))
@@ -633,9 +634,20 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             if let self, timeGrouping == .years || timeGrouping == .months {
                 let item = NSCollectionLayoutItem(layoutSize: .init(
                     widthDimension: .fractionalWidth(1), heightDimension: .fractionalHeight(1)))
-                let group = NSCollectionLayoutGroup.horizontal(layoutSize: .init(
-                    widthDimension: .fractionalWidth(1), heightDimension: .fractionalWidth(0.74)),
-                    subitems: [item])
+                let group: NSCollectionLayoutGroup
+                if timeGrouping == .months {
+                    let snapshot = dataSource.snapshot()
+                    let count = snapshot.sectionIdentifiers[safe: sectionIndex].map { snapshot.numberOfItems(inSection: $0) } ?? 0
+                    let frames = LibraryMonthMosaic.frames(count: count, width: width - 40)
+                    group = .custom(layoutSize: .init(widthDimension: .fractionalWidth(1),
+                                                     heightDimension: .absolute(max(1, frames.last.map { $0.maxY } ?? 1)))) { _ in
+                        frames.map { NSCollectionLayoutGroupCustomItem(frame: $0) }
+                    }
+                } else {
+                    group = .horizontal(layoutSize: .init(
+                        widthDimension: .fractionalWidth(1), heightDimension: .fractionalWidth(0.74)),
+                        subitems: [item])
+                }
                 let section = NSCollectionLayoutSection(group: group)
                 section.interGroupSpacing = 12
                 section.contentInsets = .init(top: timeGrouping == .years ? 12 : 0, leading: 20, bottom: 28, trailing: 20)
@@ -684,6 +696,37 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     }
 }
 
+/// Three chronological day covers share a row: one feature and two smaller tiles.
+/// Sparse months fill their final row without leaving empty tile slots.
+enum LibraryMonthMosaic {
+    static func frames(count: Int, width: CGFloat) -> [CGRect] {
+        guard count > 0, width > 0 else { return [] }
+        let gap: CGFloat = 6
+        var frames: [CGRect] = []
+        var y: CGFloat = 0
+        while frames.count < count {
+            let remaining = count - frames.count
+            let height = width * 0.64
+            if remaining == 1 {
+                frames.append(CGRect(x: 0, y: y, width: width, height: height))
+            } else if remaining == 2 {
+                let half = (width - gap) / 2
+                frames.append(CGRect(x: 0, y: y, width: half, height: half * 1.15))
+                frames.append(CGRect(x: half + gap, y: y, width: half, height: half * 1.15))
+            } else {
+                let feature = (width - gap) * 0.6
+                let small = width - feature - gap
+                frames.append(CGRect(x: 0, y: y, width: feature, height: height))
+                frames.append(CGRect(x: feature + gap, y: y, width: small, height: (height - gap) / 2))
+                frames.append(CGRect(x: feature + gap, y: y + (height + gap) / 2,
+                                     width: small, height: (height - gap) / 2))
+            }
+            y += height + gap
+        }
+        return frames
+    }
+}
+
 /// A display projection only: the store retains every photo for search, selection and loupe.
 /// Cover identities survive switching levels, and every hidden member maps to its cover.
 enum LibraryTimeCards {
@@ -716,7 +759,9 @@ enum LibraryTimeCards {
                 for member in bucket { result.representatives[member.id] = cover.id }
                 result.titles[cover.id] = grouping == .years ? section.title : String(calendar.component(.day, from: cover.captureDate))
             }
-            result.sections.append(PhotoSection(id: section.id, title: grouping == .years ? "" : section.title, items: covers))
+            let title = grouping == .months ? section.items.first?.captureDate.formatted(
+                Date.FormatStyle(timeZone: calendar.timeZone).year().month(.abbreviated)) ?? section.title : ""
+            result.sections.append(PhotoSection(id: section.id, title: title, items: covers))
         }
         return result
     }
@@ -865,7 +910,7 @@ private final class PhotoSectionHeader: UICollectionReusableView {
     func setTitle(_ title: String, detail: String?, isMonthCard: Bool = false) {
         self.isMonthCard = isMonthCard
         label.font = UIFontMetrics(forTextStyle: isMonthCard ? .title2 : .headline)
-            .scaledFont(for: .systemFont(ofSize: isMonthCard ? 24 : 17, weight: .bold))
+            .scaledFont(for: .systemFont(ofSize: isMonthCard ? 22 : 17, weight: .bold))
         directionalLayoutMargins = .init(top: 0, leading: isMonthCard ? 0 : 16, bottom: 0, trailing: 16)
         label.text = title
         detailLabel.text = detail
@@ -881,6 +926,8 @@ private final class PhotoGridCell: UICollectionViewCell {
     private static let rejectedAlpha: CGFloat = 0.35
     private let imageView = UIImageView()
     private let timeLabel = UILabel()
+    private var timeTitleLeading: NSLayoutConstraint!
+    private var timeTitleTop: NSLayoutConstraint!
     private let checkmark = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
     private let rawBadge = UILabel()
     private let curationBadge = UIStackView()
@@ -978,9 +1025,11 @@ private final class PhotoGridCell: UICollectionViewCell {
         timeLabel.layer.shadowOffset = .zero
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(timeLabel)
+        timeTitleTop = timeLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16)
+        timeTitleLeading = timeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20)
         NSLayoutConstraint.activate([
-            timeLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
-            timeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            timeTitleTop,
+            timeTitleLeading,
             timeLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -20),
         ])
         contentView.addSubview(checkmark)
@@ -1038,13 +1087,13 @@ private final class PhotoGridCell: UICollectionViewCell {
     }
 
     /// Image source currently displayed: the thumbnail URL or `asset:<id>`.
-    private func imageKey(for item: LibraryEntry) -> String {
+    private func imageKey(for item: LibraryEntry, usesLargeThumbnail: Bool) -> String {
         if let local = item.local { return "asset:\(local.id)" }
-        return item.remote?.thumbnailURL.absoluteString ?? ""
+        return (usesLargeThumbnail ? item.remote?.largeThumbnailURL : item.remote?.thumbnailURL)?.absoluteString ?? ""
     }
 
-    func configure(item: LibraryEntry, selected: Bool, loader: RedirectAwareImageLoader) {
-        let key = imageKey(for: item)
+    func configure(item: LibraryEntry, selected: Bool, loader: RedirectAwareImageLoader, usesLargeThumbnail: Bool) {
+        let key = imageKey(for: item, usesLargeThumbnail: usesLargeThumbnail)
         let keepsImage = representedID == item.id && displayedKey == key
         representedID = item.id
         imageView.alpha = item.isRejected ? Self.rejectedAlpha : 1
@@ -1083,23 +1132,23 @@ private final class PhotoGridCell: UICollectionViewCell {
                     self?.imageView.image = image
                     self?.displayedKey = key
                 } else if let remote = item.remote {
-                    self?.loadRemote(remote, itemID: itemID, key: key, loader: loader)
+                    self?.loadRemote(remote, itemID: itemID, key: key, loader: loader, usesLargeThumbnail: usesLargeThumbnail)
                 }
             }
             return
         }
         guard let photo = item.remote, photo.thumbnailURL.host != "photos.example.invalid" else { return }
-        loadRemote(photo, itemID: itemID, key: key, loader: loader)
+        loadRemote(photo, itemID: itemID, key: key, loader: loader, usesLargeThumbnail: usesLargeThumbnail)
     }
 
     /// `key` is the cell's image key: a synced cell whose device copy is unavailable keeps its
     /// asset key, so reconfigures keep this server image instead of reloading.
-    private func loadRemote(_ photo: PhotoRecord, itemID: LibraryEntryID, key: String, loader: RedirectAwareImageLoader) {
+    private func loadRemote(_ photo: PhotoRecord, itemID: LibraryEntryID, key: String, loader: RedirectAwareImageLoader, usesLargeThumbnail: Bool) {
         loadTask = Task { @MainActor [weak self] in
             let target = self?.bounds.size ?? CGSize(width: 160, height: 160)
             guard let image = try? await loader.image(
                 for: photo,
-                url: photo.thumbnailURL,
+                url: usesLargeThumbnail ? photo.largeThumbnailURL : photo.thumbnailURL,
                 targetSize: target
             ),
                   !Task.isCancelled,
@@ -1112,8 +1161,18 @@ private final class PhotoGridCell: UICollectionViewCell {
     func setTimeTitle(_ title: String?, isYear: Bool, dateLabel: String) {
         timeLabel.text = title
         timeLabel.isHidden = title == nil
-        timeLabel.font = UIFontMetrics(forTextStyle: .title1).scaledFont(for: .systemFont(ofSize: isYear ? 28 : 24, weight: .bold))
+        timeLabel.font = UIFontMetrics(forTextStyle: .title1).scaledFont(for: .systemFont(ofSize: isYear ? 28 : 18, weight: isYear ? .bold : .medium))
         timeLabel.adjustsFontForContentSizeCategory = true
+        timeTitleLeading.constant = isYear ? 20 : 12
+        timeTitleTop.constant = isYear ? 16 : 10
+        // Time covers are navigation previews; curation and format badges belong in All.
+        if title != nil {
+            rawBadge.isHidden = true
+            trailingBadges.isHidden = true
+            backupBadge.isHidden = true
+        } else {
+            trailingBadges.isHidden = false
+        }
         contentView.layer.cornerRadius = title == nil ? 0 : 12
         contentView.layer.cornerCurve = .continuous
         contentView.clipsToBounds = true
