@@ -29,6 +29,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
     /// While the info panel is up, a downward swipe closes it instead of the loupe.
     var infoVisible = false
     var onSwipeDownToCloseInfo: (() -> Void)?
+    var onZoomChanged: ((Bool) -> Void)?
 
     func makeUIViewController(context: Context) -> PagedLoupeViewController {
         let controller = PagedLoupeViewController()
@@ -57,6 +58,10 @@ struct PagedLoupe: UIViewControllerRepresentable {
     }
 
     private func assignGestureCallbacks(_ controller: PagedLoupeViewController) {
+        // A reset can arrive during a representable update; publish after that update.
+        controller.onZoomChanged = { zoomed in
+            DispatchQueue.main.async { onZoomChanged?(zoomed) }
+        }
         controller.onDismissDragActive = onDismissDragActive
         controller.onDismissRequest = onDismissRequest
         controller.onSwipeUp = onSwipeUp
@@ -104,6 +109,8 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
     var onDismissDragActive: ((Bool) -> Void)?
     var onDismissRequest: ((CGRect?, UIImage?, Double) -> Void)?
     var onSwipeUp: (() -> Void)?
+    var onZoomChanged: ((Bool) -> Void)?
+    private(set) var isZoomed = false
     var placeholderProvider: ((LibraryEntryID) -> UIImage?)?
     var infoVisible = false
     var onSwipeDownToCloseInfo: (() -> Void)?
@@ -285,6 +292,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         forItemAt indexPath: IndexPath
     ) {
         (cell as? ZoomPageCell)?.reloadDecodedImageIfNeeded()
+        updatePagingAvailability()
         syncPlayerHost()
     }
 
@@ -350,6 +358,9 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             .compactMap { $0 as? ZoomPageCell }
             .contains { $0.zoomView.zoomScale > 1.001 }
         collectionView.isScrollEnabled = !zoomed
+        guard zoomed != isZoomed else { return }
+        isZoomed = zoomed
+        onZoomChanged?(zoomed)
     }
 
     // MARK: Vertical gestures
@@ -923,8 +934,21 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
     }
 
     @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
-        let targetScale = zoomScale > minimumZoomScale ? minimumZoomScale : min(3, maximumZoomScale)
-        setZoomScale(targetScale, animated: true)
+        guard hasImage else { return }
+        if zoomScale > minimumZoomScale + 0.001 {
+            setZoomScale(minimumZoomScale, animated: true)
+        } else {
+            // Magnify the detail under the finger, as Photos does.
+            let scale = min(3, maximumZoomScale)
+            let point = recognizer.location(in: imageView)
+            let size = CGSize(width: bounds.width / scale, height: bounds.height / scale)
+            zoom(to: CGRect(
+                x: point.x - size.width / 2,
+                y: point.y - size.height / 2,
+                width: size.width,
+                height: size.height
+            ), animated: true)
+        }
     }
 }
 

@@ -13,6 +13,30 @@ final class LoupeStateTests: XCTestCase {
         XCTAssertEqual(zoom.zoomScale, 1)
     }
 
+    func testZoomPublishesOnlyStateChangesAndRestoresPagingAtFit() throws {
+        let controller = PagedLoupeViewController()
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 400, height: 800)
+        controller.update(records: RedactedFixture.make(count: 3).map(LibraryEntry.init(remote:)), activeID: .remote(1))
+        controller.view.layoutIfNeeded()
+        let pager = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? UICollectionView }.first)
+        let cell = try XCTUnwrap(pager.visibleCells.compactMap { $0 as? ZoomPageCell }.first)
+        cell.zoomView.setImage(UIGraphicsImageRenderer(size: CGSize(width: 400, height: 800)).image { _ in })
+        var changes: [Bool] = []
+        controller.onZoomChanged = { changes.append($0) }
+
+        cell.zoomView.setZoomScale(2, animated: false)
+        cell.zoomView.setZoomScale(3, animated: false)
+        XCTAssertTrue(controller.isZoomed)
+        XCTAssertFalse(pager.isScrollEnabled)
+        XCTAssertEqual(changes, [true], "Pinch updates must not repeatedly animate the chrome")
+
+        cell.zoomView.resetZoom()
+        XCTAssertFalse(controller.isZoomed)
+        XCTAssertTrue(pager.isScrollEnabled)
+        XCTAssertEqual(changes, [true, false])
+    }
+
     func testMemoryWarningDuringSwipePreservesDestinationAndReloadsEvictedPageOnDisplay() {
         let records = RedactedFixture.make(count: 3).map(LibraryEntry.init(remote:))
         let loader = RedirectAwareImageLoader()

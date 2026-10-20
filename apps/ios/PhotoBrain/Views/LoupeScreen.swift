@@ -15,6 +15,8 @@ struct LoupeScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var chromeVisible = true
+    @State private var isZoomed = false
+    @State private var zoomControlsVisible = false
     @State private var showingInfo = false
     @State private var similarSource: PhotoRecord?
     @State private var collectionSheetPhotoID: CollectionSheetTarget?
@@ -113,7 +115,7 @@ struct LoupeScreen: View {
     }
 
     private var showsChrome: Bool {
-        chromeVisible && !transitioning && !dismissDragging
+        (isZoomed ? zoomControlsVisible : chromeVisible) && !transitioning && !dismissDragging
     }
 
     var body: some View {
@@ -124,15 +126,7 @@ struct LoupeScreen: View {
                 activeID: $activeID,
                 playback: playback,
                 chromeVisible: chromeVisible,
-                onTap: {
-                    if reduceMotion {
-                        chromeVisible.toggle()
-                    } else {
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            chromeVisible.toggle()
-                        }
-                    }
-                },
+                onTap: toggleChrome,
                 onEmpty: dismiss,
                 faceBoxes: faceBoxes.visibleBoxes,
                 developedImages: developed.images,
@@ -149,7 +143,15 @@ struct LoupeScreen: View {
                 placeholder: { id in transition?.image(for: id) },
                 bridge: bridge,
                 infoVisible: showingInfo,
-                onSwipeDownToCloseInfo: { showingInfo = false }
+                onSwipeDownToCloseInfo: { showingInfo = false },
+                onZoomChanged: { zoomed in
+                    zoomControlsVisible = false
+                    if reduceMotion {
+                        isZoomed = zoomed
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.18)) { isZoomed = zoomed }
+                    }
+                }
             )
             .ignoresSafeArea()
             .opacity(transitioning ? 0 : 1)
@@ -187,7 +189,9 @@ struct LoupeScreen: View {
                     }
                     overlayControls
                     Spacer()
-                    filmstrip
+                    if !isZoomed {
+                        filmstrip
+                    }
                     if let activeRecord {
                         if let review {
                             reviewBar(activeRecord, review: review)
@@ -244,8 +248,21 @@ struct LoupeScreen: View {
         .accessibilityAction(named: "Close photo") {
             close(from: nil, image: nil, backdrop: 1)
         }
-        .accessibilityAction(named: chromeVisible ? "Hide controls" : "Show controls") {
-            chromeVisible.toggle()
+        .accessibilityAction(named: showsChrome ? "Hide controls" : "Show controls", toggleChrome)
+    }
+
+    private func toggleChrome() {
+        let toggle = {
+            if isZoomed {
+                zoomControlsVisible.toggle()
+            } else {
+                chromeVisible.toggle()
+            }
+        }
+        if reduceMotion {
+            toggle()
+        } else {
+            withAnimation(.easeInOut(duration: 0.18), toggle)
         }
     }
 

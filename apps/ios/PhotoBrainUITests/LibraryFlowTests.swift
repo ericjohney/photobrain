@@ -96,6 +96,27 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
     }
 
     @MainActor
+    func testLoupeZoomCoversFilmstripAndRestoresControlsAtFit() {
+        openLibrary()
+        gridCell("dog-park-1.jpg").tap()
+        waitFor(element("Close photo"))
+        let thumbnail = app.cells["Open dog-park-1.jpg"].firstMatch
+        XCTAssertTrue(waitFor(thumbnail).isHittable)
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.doubleTap()
+        waitForAbsence(element("Close photo"))
+        XCTAssertFalse(thumbnail.exists, "The filmstrip must yield to the enlarged image")
+        // Photos lets a tap reveal the toolbars over the magnified image, but the
+        // filmstrip stays covered so it cannot intercept panning near the bottom.
+        center.tap()
+        waitFor(element("Close photo"))
+        XCTAssertFalse(thumbnail.exists)
+        center.doubleTap()
+        waitFor(element("Close photo"))
+        XCTAssertTrue(waitFor(thumbnail).isHittable)
+    }
+
+    @MainActor
     func testLoupeSwipesUpForInfoAndDownToClose() {
         openLibrary()
         gridCell("dog-park-1.jpg").tap()
