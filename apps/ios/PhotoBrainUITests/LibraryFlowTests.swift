@@ -146,9 +146,21 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         // Scrolling back in time swaps the tab bar for Photos' Years · Months · All switcher.
         app.collectionViews.firstMatch.swipeDown()
         tap("Years")
-        waitFor(element(startingWith: "2024"))
-        // The fixture's Years grid fits on screen, so the library is back at its newest edge
-        // and the tab bar replaces the switcher.
+        let years = app.collectionViews.cells.matching(NSPredicate(format: "label MATCHES %@", "[0-9]{4}"))
+        waitFor(years.firstMatch)
+        let year = years.allElementsBoundByIndex.first { $0.frame.minY > 100 && $0.frame.maxY < 750 } ?? years.firstMatch
+        XCTAssertGreaterThan(year.frame.width, wide * 2, "Years shows a cover card")
+        XCTAssertTrue(element("Months").isHittable, "Grouping stays available even when cards fit on screen")
+        year.tap()
+        XCTAssertTrue(waitFor(element("Months")).isSelected)
+        let day = app.collectionViews.cells.allElementsBoundByIndex.first {
+            $0.frame.minY > 100 && $0.frame.maxY < 750
+        } ?? app.collectionViews.cells.firstMatch
+        XCTAssertGreaterThan(waitFor(day).frame.width, wide * 2, "Months shows day covers")
+        day.tap()
+        XCTAssertTrue(waitFor(element("All")).isSelected)
+        XCTAssertFalse(element("Close photo").exists, "A cover drills into time instead of opening the loupe")
+        app.buttons["Library"].firstMatch.tap()
         waitFor(app.buttons["Collections"].firstMatch)
     }
 

@@ -614,9 +614,10 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         await rebuildPresentation()
     }
     func setGrouping(_ grouping: LibraryGrouping) async {
+        guard self.grouping != grouping else { return }
         self.grouping = grouping
         if grouping != .all { sort = .captured }
-        resetBrowsingContext()
+        // Time grouping is a zoom through this date, not a new browsing context.
         await rebuildPresentation()
     }
 

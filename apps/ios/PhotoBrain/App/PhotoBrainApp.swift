@@ -228,6 +228,7 @@ private struct RootTabView: View {
 
     var body: some View {
         tabs
+        .tint(.blue)
         .sheet(item: $navigation.presentedRoute) { route in
             NavigationStack {
                 Group {

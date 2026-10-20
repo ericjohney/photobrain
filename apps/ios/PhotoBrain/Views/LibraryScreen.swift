@@ -45,6 +45,7 @@ struct LibraryScreen: View {
     /// insets never jump.
     @State private var chromeInsets = EdgeInsets()
     @State private var scrollToNewestVersion = 0
+    @State private var timeSwitcherRevealed = false
 
     var body: some View {
         NavigationStack {
@@ -57,7 +58,7 @@ struct LibraryScreen: View {
                         content
                             .padding(.top, 64)
                     }
-                    header
+                    if !showsTimeCards { header }
                 }
                 .overlay(alignment: .bottom) { bottomChrome }
                 .onAppear { updateChromeInsets(proxy.safeAreaInsets) }
@@ -65,7 +66,7 @@ struct LibraryScreen: View {
             }
             .toolbar(.hidden, for: .navigationBar)
 
-            .toolbar(isBrowsingCollapsed ? .hidden : .visible, for: .tabBar)
+            .toolbar(isPad ? .visible : .hidden, for: .tabBar)
             .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: isBrowsingCollapsed)
             .navigationDestination(item: $utility) { destination in
                 utilityScreen(destination)
@@ -133,9 +134,13 @@ struct LibraryScreen: View {
         store.loadState == .content
     }
 
-    /// Scrolled back in time: Photos swaps the tab bar for the Years · Months · All switcher.
+    /// Years and Months replace the title and dense grid with cover cards.
+    private var showsTimeCards: Bool {
+        !store.isSelecting && store.sort == .captured && (store.grouping == .years || store.grouping == .months)
+    }
+
     private var isBrowsingCollapsed: Bool {
-        !isPad && store.isBrowsingHistory && showsGroupingControl
+        !isPad && (store.isBrowsingHistory || showsTimeCards) && showsGroupingControl
     }
 
     private func updateChromeInsets(_ insets: EdgeInsets) {
@@ -147,8 +152,8 @@ struct LibraryScreen: View {
     private var gridInsets: EdgeInsets {
         let groupingHeight = isPad && showsGroupingControl ? PBSize.control + PBSpacing.s : 0
         return EdgeInsets(
-            top: chromeInsets.top + 64, leading: 0,
-            bottom: chromeInsets.bottom + PBSpacing.s + groupingHeight, trailing: 0
+            top: chromeInsets.top + (showsTimeCards ? 8 : 64), leading: 0,
+            bottom: chromeInsets.bottom + (isPad ? PBSpacing.s : PBSize.control + PBSpacing.l) + groupingHeight, trailing: 0
         )
     }
 
@@ -260,38 +265,94 @@ struct LibraryScreen: View {
     private var bottomChrome: some View {
         VStack(spacing: PBSpacing.s) {
             ActivityBar(coordinator: scans)
-            if isBrowsingCollapsed {
-                collapsedBar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if isPad, showsGroupingControl {
-                collapsedBar
-                    .frame(maxWidth: 420)
+            if !isPad {
+                phoneBar
+            } else if showsGroupingControl {
+                groupingSwitcher.frame(maxWidth: 420)
             }
         }
-        .padding(.bottom, isBrowsingCollapsed ? 0 : PBSpacing.s)
+        .padding(.bottom, isPad ? PBSpacing.s : (isBrowsingCollapsed ? -4 : -12))
     }
 
-    private var collapsedBar: some View {
+    /// One persistent glass capsule contracts around the Library icon. The time switcher
+    /// enters beside it; replacing a system tab bar cannot preserve that geometry.
+    private var phoneBar: some View {
         HStack(spacing: PBSpacing.s) {
-            Button {
-                scrollToNewestVersion += 1
-            } label: {
-                GlassIconLabel(systemImage: "photo.on.rectangle", tint: PBColor.accent)
+            HStack(spacing: 0) {
+                Button {
+                    Task {
+                        await store.setGrouping(.days)
+                        scrollToNewestVersion += 1
+                    }
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: "photo.on.rectangle.fill")
+                            .font(.system(size: 26, weight: .medium))
+                        if !isBrowsingCollapsed {
+                            Text("Library").font(.system(size: 10, weight: .semibold))
+                                .transition(.opacity)
+                        }
+                    }
+                    .foregroundStyle(Color.blue)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: isBrowsingCollapsed ? 48 : 54)
+                    .background {
+                        if !isBrowsingCollapsed { Capsule().fill(Color.primary.opacity(0.07)) }
+                    }
+                    .contentShape(Capsule())
+                }
+                .accessibilityLabel("Library")
+                .accessibilityAddTraits(.isSelected)
+                .accessibilityHint("Scrolls to the newest photos")
+                if !isBrowsingCollapsed {
+                    Button { selectedTab = .collections } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "rectangle.stack.fill")
+                                .font(.system(size: 26, weight: .medium))
+                            Text("Collections").font(.system(size: 10, weight: .medium))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .contentShape(Capsule())
+                    }
+                    .accessibilityLabel("Collections")
+                    .transition(.opacity)
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Library")
-            .accessibilityHint("Scrolls to the newest photos")
-            groupingSwitcher
-            Button {
-                selectedTab = .search
-            } label: {
-                GlassIconLabel(systemImage: "magnifyingglass")
+            .padding(isBrowsingCollapsed ? 0 : 4)
+            .frame(width: isBrowsingCollapsed ? 48 : 192, height: isBrowsingCollapsed ? 48 : 62)
+            .pbGlass(in: Capsule(), interactive: true)
+            if isBrowsingCollapsed && timeSwitcherRevealed {
+                groupingSwitcher
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
+            Button { selectedTab = .search } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: isBrowsingCollapsed ? 25 : 27, weight: .medium))
+                    .frame(width: isBrowsingCollapsed ? 48 : 62, height: isBrowsingCollapsed ? 48 : 62)
+                    .pbGlass(in: Circle(), interactive: true)
+            }
             .accessibilityLabel("Search")
         }
-        .padding(.horizontal, PBSpacing.l)
-        .padding(.bottom, PBSpacing.xs)
+        .buttonStyle(.plain)
+        .padding(.horizontal, isBrowsingCollapsed ? 28 : 20)
+        .animation(reduceMotion || UITestMode.isActive ? nil : .spring(response: 0.42, dampingFraction: 0.88), value: isBrowsingCollapsed)
+        .task(id: isBrowsingCollapsed) {
+            guard isBrowsingCollapsed else {
+                timeSwitcherRevealed = false
+                return
+            }
+            // Let the tab capsule contract first, then lift the time switcher into the gap.
+            if !reduceMotion && !UITestMode.isActive {
+                try? await Task.sleep(for: .milliseconds(160))
+            }
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion || UITestMode.isActive ? nil : .smooth(duration: 0.3)) {
+                timeSwitcherRevealed = true
+            }
+        }
     }
 
     /// Photos-style More menu: Sort and a single-choice Filter, then Library Options.
@@ -383,7 +444,7 @@ struct LibraryScreen: View {
                     Text(grouping.title)
                         .font(.subheadline.weight(selected ? .semibold : .regular))
                         .frame(maxWidth: .infinity)
-                        .frame(height: PBSize.control - 8)
+                        .frame(height: 40)
                         .background {
                             if selected {
                                 Capsule().fill(Color.primary.opacity(0.14))
@@ -468,9 +529,14 @@ struct LibraryScreen: View {
                 onLongPress: store.selectFromLongPress,
                 onVisibleChange: store.observeVisible,
                 transition: loupeTransition,
-                columns: currentColumns,
+                columns: showsTimeCards ? (columnsByGrouping["days"] ?? 3) : currentColumns,
                 onPinchColumns: storeColumns,
                 fullBleedInsets: gridInsets,
+                usesTimeCards: !store.isSelecting && store.sort == .captured,
+                onDrillIntoGroup: { id in
+                    store.observeVisible(firstID: id, distanceFromNewest: 24)
+                    Task { await store.setGrouping(store.grouping == .years ? .months : .days) }
+                },
                 scrollToNewestVersion: scrollToNewestVersion,
                 onRefresh: {
                     await scans.manualLibraryRefresh()

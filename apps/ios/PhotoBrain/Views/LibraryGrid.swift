@@ -23,6 +23,9 @@ struct LibraryGrid: UIViewControllerRepresentable {
     /// chrome, with these insets, a dark top scrim, and section headers that scroll away.
     /// Nil keeps the system's automatic insets and pinned headers.
     var fullBleedInsets: EdgeInsets?
+    /// Library-only cover projection; other result grids retain all their cells.
+    var usesTimeCards = false
+    var onDrillIntoGroup: ((LibraryEntryID) -> Void)?
     /// Bumped to scroll back to the newest photos (the collapsed bar's Library button).
     var scrollToNewestVersion = 0
     let onRefresh: () async -> Void
@@ -36,6 +39,7 @@ struct LibraryGrid: UIViewControllerRepresentable {
             resetVersion: resetVersion,
             contentRevision: contentRevision
         )
+        controller.performPendingNewestScroll()
         return controller
     }
 
@@ -47,6 +51,7 @@ struct LibraryGrid: UIViewControllerRepresentable {
             resetVersion: resetVersion,
             contentRevision: contentRevision
         )
+        controller.performPendingNewestScroll()
     }
 
     private func configure(_ controller: LibraryGridViewController) {
@@ -61,6 +66,8 @@ struct LibraryGrid: UIViewControllerRepresentable {
             }
         }
         transition?.source = controller
+        controller.usesTimeCards = usesTimeCards
+        controller.onDrillIntoGroup = onDrillIntoGroup
         controller.onLongPress = onLongPress
         controller.opensAtTop = opensAtTop
         controller.onVisibleChange = onVisibleChange
@@ -70,7 +77,7 @@ struct LibraryGrid: UIViewControllerRepresentable {
         controller.setFullBleedInsets(fullBleedInsets.map {
             UIEdgeInsets(top: $0.top, left: 0, bottom: $0.bottom, right: 0)
         })
-        controller.scrollToNewest(version: scrollToNewestVersion)
+        controller.requestScrollToNewest(version: scrollToNewestVersion)
     }
 }
 
@@ -100,6 +107,14 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     private var loupeHiddenID: LibraryEntryID?
     var onPinchColumns: ((Int) -> Void)?
     private let topScrim = GradientScrimView()
+    var usesTimeCards = false
+    var onDrillIntoGroup: ((LibraryEntryID) -> Void)?
+    private var timeGrouping: LibraryGrouping?
+    private var cardTitles: [LibraryEntryID: String] = [:]
+    private var representatives: [LibraryEntryID: LibraryEntryID] = [:]
+    private var transitionOverlay: UIView?
+    private var updatingGrouping = false
+    private var drillAnchor: LibraryEntryID?
     private var phoneColumns: Int?
     private var fullBleed: UIEdgeInsets?
     private var pinchHandled = false
@@ -164,6 +179,9 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                 return nil
             }
             cell.configure(item: photo, selected: selectedIDs.contains(photoID), loader: loader)
+            cell.setTimeTitle(cardTitles[photoID], isYear: timeGrouping == .years,
+                              dateLabel: photo.captureDate.formatted(
+                                Date.FormatStyle(timeZone: PhotoDateResolver.calendar.timeZone).year().month(.wide).day()))
             cell.contentView.alpha = loupeHiddenID == photoID ? 0 : 1
             return cell
         }
@@ -178,7 +196,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
                   ) as? PhotoSectionHeader else {
                 return nil
             }
-            header.setTitle(sectionTitles[sectionID] ?? "", detail: sectionDetails[sectionID])
+            header.setTitle(sectionTitles[sectionID] ?? "", detail: sectionDetails[sectionID], isMonthCard: timeGrouping == .months)
             return header
         }
     }
@@ -188,7 +206,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     }
 
     func apply(
-        sections: [PhotoSection],
+        sections sourceSections: [PhotoSection],
         selectedIDs nextSelectedIDs: Set<LibraryEntryID>,
         resetVersion: Int,
         contentRevision: Int
@@ -203,7 +221,10 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         if resetRequested { pendingContentReset = true }
         let shouldReset = resetRequested || (pendingContentReset && appliedContentRevision != contentRevision)
 
-        if appliedContentRevision == contentRevision {
+        let nextGrouping = usesTimeCards
+            ? sourceSections.first.flatMap { LibraryGrouping(rawValue: $0.id.discriminator) }
+            : nil
+        if appliedContentRevision == contentRevision, nextGrouping == timeGrouping {
             guard !changedSelectionIDs.isEmpty || shouldReset else { return }
             if !changedSelectionIDs.isEmpty {
                 let reconfigureIDs = changedSelectionIDs.filter { recordsByID[$0] != nil }
@@ -220,12 +241,31 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             return
         }
 
+        let groupingChanged = nextGrouping != timeGrouping && didInitialPosition
+        let anchor = drillAnchor ?? centeredVisibleID()
+        drillAnchor = nil
+        if groupingChanged {
+            transitionOverlay?.removeFromSuperview()
+            transitionOverlay = nil
+            collectionView.alpha = 1
+            collectionView.isUserInteractionEnabled = true
+            updatingGrouping = true
+        }
+        let oldRepresentatives = representatives
+        let oldCells = groupingChanged && !UIAccessibility.isReduceMotionEnabled ? captureCells() : [:]
+        let projection = LibraryTimeCards.project(sourceSections, grouping: nextGrouping, preferredID: anchor)
+        let sections = projection.sections
+        representatives = projection.representatives
+        cardTitles = projection.titles
+        timeGrouping = nextGrouping
+        topScrim.isHidden = fullBleed == nil || nextGrouping == .years || nextGrouping == .months
+        if groupingChanged { collectionView.setCollectionViewLayout(makeLayout(), animated: false) }
         appliedContentRevision = contentRevision
         pendingContentReset = false
         let nextIDs = sections.flatMap(\.items).map(\.id)
         let nextSectionIDs = sections.map(\.id)
         let nextRecords = Dictionary(sections.flatMap(\.items).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let reconfigureIDs = LibraryGridDiff.reconfigureIDs(
+        let reconfigureIDs = groupingChanged ? nextIDs.filter { recordsByID[$0] != nil } : LibraryGridDiff.reconfigureIDs(
             previous: recordsByID,
             next: nextRecords,
             changedSelectionIDs: changedSelectionIDs
@@ -243,7 +283,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
 
         // Same items in the same order (e.g. a rating/flag edit): refresh only the changed
         // cells in place so the scroll position and layout are untouched.
-        if layoutUnchanged, !shouldReset, didInitialPosition {
+        if layoutUnchanged, !groupingChanged, !shouldReset, didInitialPosition {
             guard !reconfigureIDs.isEmpty else { return }
             var snapshot = dataSource.snapshot()
             snapshot.reconfigureItems(reconfigureIDs)
@@ -275,19 +315,30 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
             SpikeSignposts.endSnapshot(signpost)
             guard let self else { return }
-            if shouldReset || !didInitialPosition || wasAtNewestEdge {
+            if groupingChanged {
+                collectionView.layoutIfNeeded()
+                scrollToAnchor(anchor.map { self.representatives[$0] ?? $0 })
+                animateGrouping(from: oldCells, oldRepresentatives: oldRepresentatives)
+            } else if shouldReset || !didInitialPosition || wasAtNewestEdge {
                 didInitialPosition = true
                 scrollToInitialEdge()
             } else if let visibleAnchorID, let indexPath = dataSource.indexPath(for: visibleAnchorID) {
                 collectionView.scrollToItem(at: indexPath, at: .top, animated: false)
             }
+            updatingGrouping = false
+            performPendingNewestScroll()
             publishVisibleState()
         }
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard let id = dataSource.itemIdentifier(for: indexPath) else { return }
-        onSelect?(id)
+        if timeGrouping == .years || timeGrouping == .months {
+            drillAnchor = id
+            onDrillIntoGroup?(id)
+        } else {
+            onSelect?(id)
+        }
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -334,7 +385,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             collectionView.contentInset = .zero
             collectionView.verticalScrollIndicatorInsets = .zero
         }
-        topScrim.isHidden = insets == nil
+        topScrim.isHidden = insets == nil || timeGrouping == .years || timeGrouping == .months
         if wasFullBleed != (insets != nil) {
             collectionView.collectionViewLayout.invalidateLayout()
         }
@@ -346,13 +397,27 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     }
 
     private var appliedScrollToNewest = 0
+    private var pendingNewestScroll = false
 
-    func scrollToNewest(version: Int) {
+    func requestScrollToNewest(version: Int) {
         guard version != appliedScrollToNewest else { return }
         appliedScrollToNewest = version
+        pendingNewestScroll = true
+    }
+
+    func performPendingNewestScroll() {
+        guard pendingNewestScroll, !updatingGrouping, transitionOverlay == nil else { return }
+        pendingNewestScroll = false
+        collectionView.layoutIfNeeded()
         let bottom = collectionView.contentSize.height - collectionView.bounds.height
             + collectionView.adjustedContentInset.bottom
-        collectionView.setContentOffset(CGPoint(x: 0, y: max(-collectionView.adjustedContentInset.top, bottom)), animated: true)
+        collectionView.setContentOffset(CGPoint(x: 0, y: max(-collectionView.adjustedContentInset.top, bottom)),
+                                        animated: !UIAccessibility.isReduceMotionEnabled && !UITestMode.isActive)
+        publishVisibleState()
+    }
+
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        publishVisibleState()
     }
 
     private var distanceFromNewest: CGFloat {
@@ -378,6 +443,10 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
         loadViewIfNeeded()
         guard columns != phoneColumns else { return }
         let animated = phoneColumns != nil && view.window != nil
+        if timeGrouping == .years || timeGrouping == .months {
+            phoneColumns = columns
+            return
+        }
         phoneColumns = columns
         let anchor = pinchAnchorID ?? collectionView.indexPathsForVisibleItems.sorted().dropFirst(
             collectionView.indexPathsForVisibleItems.count / 2
@@ -399,6 +468,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     }
 
     @objc private func pinched(_ pinch: UIPinchGestureRecognizer) {
+        guard timeGrouping != .years, timeGrouping != .months else { return }
         switch pinch.state {
         case .began:
             pinchHandled = false
@@ -413,6 +483,75 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             onPinchColumns?(next)
         default:
             break
+        }
+    }
+
+    private func centeredVisibleID() -> LibraryEntryID? {
+        let center = CGPoint(x: collectionView.bounds.midX, y: collectionView.bounds.midY)
+        return collectionView.indexPathsForVisibleItems.min {
+            let left = collectionView.layoutAttributesForItem(at: $0)?.center ?? .zero
+            let right = collectionView.layoutAttributesForItem(at: $1)?.center ?? .zero
+            return hypot(left.x - center.x, left.y - center.y) < hypot(right.x - center.x, right.y - center.y)
+        }.flatMap { dataSource.itemIdentifier(for: $0) }
+    }
+
+    private struct CellSnapshot {
+        let view: UIView
+        let frame: CGRect
+    }
+
+    private func captureCells() -> [LibraryEntryID: CellSnapshot] {
+        var result: [LibraryEntryID: CellSnapshot] = [:]
+        for cell in collectionView.visibleCells {
+            guard let path = collectionView.indexPath(for: cell),
+                  let id = dataSource.itemIdentifier(for: path),
+                  let snapshot = cell.snapshotView(afterScreenUpdates: false) else { continue }
+            result[id] = CellSnapshot(view: snapshot, frame: cell.convert(cell.bounds, to: view))
+        }
+        return result
+    }
+
+    /// Animate actual photo rectangles between the cover and grid layouts. Mapping every
+    /// member to its cover also lets the surrounding thumbnails gather into that card.
+    private func animateGrouping(from old: [LibraryEntryID: CellSnapshot], oldRepresentatives: [LibraryEntryID: LibraryEntryID]) {
+        guard !old.isEmpty else { return }
+        transitionOverlay?.removeFromSuperview()
+        collectionView.alpha = 1
+        collectionView.layoutIfNeeded()
+        let target = captureCells()
+        let overlay = UIView(frame: view.bounds)
+        overlay.isUserInteractionEnabled = false
+        view.insertSubview(overlay, belowSubview: topScrim)
+        transitionOverlay = overlay
+        var moves: [(UIView, CGRect, CGFloat)] = []
+        for (id, source) in old {
+            source.view.frame = source.frame
+            overlay.addSubview(source.view)
+            let destination = target[representatives[id] ?? id]?.frame ?? source.frame.insetBy(dx: 20, dy: 20)
+            moves.append((source.view, destination, 0))
+        }
+        for (id, destination) in target {
+            destination.view.frame = old[oldRepresentatives[id] ?? id]?.frame ?? destination.frame
+            destination.view.alpha = 0
+            overlay.addSubview(destination.view)
+            moves.append((destination.view, destination.frame, 1))
+        }
+        collectionView.alpha = 0
+        collectionView.isUserInteractionEnabled = false
+        UIView.animate(withDuration: 0.48, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0,
+                       options: [.beginFromCurrentState, .allowUserInteraction]) {
+            for (snapshot, frame, alpha) in moves {
+                snapshot.frame = frame
+                snapshot.alpha = alpha
+            }
+        } completion: { [weak self] _ in
+            overlay.removeFromSuperview()
+            guard let self, transitionOverlay === overlay else { return }
+            transitionOverlay = nil
+            collectionView.alpha = 1
+            collectionView.isUserInteractionEnabled = true
+            performPendingNewestScroll()
+            publishVisibleState()
         }
     }
 
@@ -468,6 +607,7 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     }
 
     private func publishVisibleState() {
+        guard !updatingGrouping, transitionOverlay == nil else { return }
         let visible = collectionView.indexPathsForVisibleItems.sorted()
         let firstID = visible.first.flatMap { dataSource.itemIdentifier(for: $0) }
         onVisibleChange?(firstID, distanceFromNewest)
@@ -490,6 +630,23 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
     private func makeLayout() -> UICollectionViewLayout {
         UICollectionViewCompositionalLayout { [weak self] sectionIndex, environment in
             let width = environment.container.effectiveContentSize.width
+            if let self, timeGrouping == .years || timeGrouping == .months {
+                let item = NSCollectionLayoutItem(layoutSize: .init(
+                    widthDimension: .fractionalWidth(1), heightDimension: .fractionalHeight(1)))
+                let group = NSCollectionLayoutGroup.horizontal(layoutSize: .init(
+                    widthDimension: .fractionalWidth(1), heightDimension: .fractionalWidth(0.74)),
+                    subitems: [item])
+                let section = NSCollectionLayoutSection(group: group)
+                section.interGroupSpacing = 12
+                section.contentInsets = .init(top: timeGrouping == .years ? 12 : 0, leading: 20, bottom: 28, trailing: 20)
+                if timeGrouping == .months {
+                    let header = NSCollectionLayoutBoundarySupplementaryItem(layoutSize: .init(
+                        widthDimension: .fractionalWidth(1), heightDimension: .estimated(52)),
+                        elementKind: UICollectionView.elementKindSectionHeader, alignment: .top)
+                    section.boundarySupplementaryItems = [header]
+                }
+                return section
+            }
             let columns = Self.columnCount(width: width, phoneColumns: self?.phoneColumns)
             let item = NSCollectionLayoutItem(
                 layoutSize: NSCollectionLayoutSize(
@@ -524,6 +681,44 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             }
             return section
         }
+    }
+}
+
+/// A display projection only: the store retains every photo for search, selection and loupe.
+/// Cover identities survive switching levels, and every hidden member maps to its cover.
+enum LibraryTimeCards {
+    struct Projection {
+        var sections: [PhotoSection]
+        var representatives: [LibraryEntryID: LibraryEntryID]
+        var titles: [LibraryEntryID: String]
+    }
+
+    static func project(_ sections: [PhotoSection], grouping: LibraryGrouping?, preferredID: LibraryEntryID?) -> Projection {
+        guard grouping == .years || grouping == .months else {
+            return Projection(sections: sections, representatives: [:], titles: [:])
+        }
+        var result = Projection(sections: [], representatives: [:], titles: [:])
+        let calendar = PhotoDateResolver.calendar
+        for section in sections {
+            let buckets: [[LibraryEntry]]
+            if grouping == .years {
+                buckets = [section.items]
+            } else {
+                let days = Dictionary(grouping: section.items) { calendar.startOfDay(for: $0.captureDate) }
+                buckets = days.keys.sorted().map { days[$0] ?? [] }
+            }
+            var covers: [LibraryEntry] = []
+            for bucket in buckets {
+                guard let cover = bucket.first(where: { $0.id == preferredID }) ?? bucket.max(by: {
+                    $0.rating == $1.rating ? $0.captureDate < $1.captureDate : $0.rating < $1.rating
+                }) else { continue }
+                covers.append(cover)
+                for member in bucket { result.representatives[member.id] = cover.id }
+                result.titles[cover.id] = grouping == .years ? section.title : String(calendar.component(.day, from: cover.captureDate))
+            }
+            result.sections.append(PhotoSection(id: section.id, title: grouping == .years ? "" : section.title, items: covers))
+        }
+        return result
     }
 }
 
@@ -615,6 +810,7 @@ private final class PhotoSectionHeader: UICollectionReusableView {
     private let background = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
     private let label = UILabel()
     private let detailLabel = UILabel()
+    private var isMonthCard = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -661,12 +857,16 @@ private final class PhotoSectionHeader: UICollectionReusableView {
 
     /// Blurred unless Reduce Transparency is on or the app runs under UI tests.
     private func applyBackground() {
-        let opaque = UIAccessibility.isReduceTransparencyEnabled || UITestMode.isActive
+        let opaque = isMonthCard || UIAccessibility.isReduceTransparencyEnabled || UITestMode.isActive
         background.isHidden = opaque
         backgroundColor = opaque ? .systemBackground : .clear
     }
 
-    func setTitle(_ title: String, detail: String?) {
+    func setTitle(_ title: String, detail: String?, isMonthCard: Bool = false) {
+        self.isMonthCard = isMonthCard
+        label.font = UIFontMetrics(forTextStyle: isMonthCard ? .title2 : .headline)
+            .scaledFont(for: .systemFont(ofSize: isMonthCard ? 24 : 17, weight: .bold))
+        directionalLayoutMargins = .init(top: 0, leading: isMonthCard ? 0 : 16, bottom: 0, trailing: 16)
         label.text = title
         detailLabel.text = detail
         detailLabel.isHidden = detail == nil
@@ -680,6 +880,7 @@ private final class PhotoGridCell: UICollectionViewCell {
     static let reuseIdentifier = "PhotoGridCell"
     private static let rejectedAlpha: CGFloat = 0.35
     private let imageView = UIImageView()
+    private let timeLabel = UILabel()
     private let checkmark = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
     private let rawBadge = UILabel()
     private let curationBadge = UIStackView()
@@ -769,6 +970,19 @@ private final class PhotoGridCell: UICollectionViewCell {
         trailingBadges.addArrangedSubview(curationBadge)
         trailingBadges.addArrangedSubview(mediaBadge)
         contentView.addSubview(imageView)
+        timeLabel.textColor = .white
+        timeLabel.numberOfLines = 2
+        timeLabel.layer.shadowColor = UIColor.black.cgColor
+        timeLabel.layer.shadowOpacity = 0.8
+        timeLabel.layer.shadowRadius = 8
+        timeLabel.layer.shadowOffset = .zero
+        timeLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(timeLabel)
+        NSLayoutConstraint.activate([
+            timeLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            timeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            timeLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -20),
+        ])
         contentView.addSubview(checkmark)
         contentView.addSubview(rawBadge)
         contentView.addSubview(trailingBadges)
@@ -892,6 +1106,22 @@ private final class PhotoGridCell: UICollectionViewCell {
                   self?.representedID == itemID else { return }
             self?.imageView.image = image
             self?.displayedKey = key
+        }
+    }
+
+    func setTimeTitle(_ title: String?, isYear: Bool, dateLabel: String) {
+        timeLabel.text = title
+        timeLabel.isHidden = title == nil
+        timeLabel.font = UIFontMetrics(forTextStyle: .title1).scaledFont(for: .systemFont(ofSize: isYear ? 28 : 24, weight: .bold))
+        timeLabel.adjustsFontForContentSizeCategory = true
+        contentView.layer.cornerRadius = title == nil ? 0 : 12
+        contentView.layer.cornerCurve = .continuous
+        contentView.clipsToBounds = true
+        if let title {
+            accessibilityLabel = isYear ? title : dateLabel
+            accessibilityHint = isYear ? "Shows months in this year" : "Shows all photos from this day"
+        } else {
+            accessibilityHint = nil
         }
     }
 
