@@ -13,19 +13,20 @@
 //! 11. orientation, user rotation and crop
 //!
 //! Stage 3 is `deXtrans_v8` for X-Trans and `despeckle_v8` + `deBayer_v8` for Bayer (Sony).
-//! LinearRaw DNGs (Apple ProRAW) branch to `develop_dng`: detail, highlight recovery,
-//! DNG colour, exposure, gain table map, gamut map and the `ProfileToneCurve` LUT.
+//! LinearRaw DNGs (Apple ProRAW) branch to `prepare_dng` and the prepared renderer:
+//! detail, highlight recovery, DNG colour, exposure, gain table map, gamut map and
+//! the `ProfileToneCurve` LUT.
 //!
 //! `develop` is a pure function of a `Negative` and `DevelopSettings`.
 
 use crate::Negative;
 use crate::error::Result;
 use crate::image::RgbImage;
-use crate::math::srgb_encode;
+use crate::prepared::{DngRender, MosaicRender, Prepared, RenderPipeline};
 use crate::profile::CameraProfile;
 use crate::settings::{DevelopSettings, WhiteBalance};
 use crate::stages::{
-  chroma_nr, debayer, demosaic, detail, dextrans, highlights, lens::LensCorrection, look, luma,
+  chroma_nr, debayer, demosaic, detail, dextrans, highlights, lens::LensCorrection, luma,
 };
 use rayon::prelude::*;
 
@@ -79,11 +80,19 @@ impl Default for Options {
 }
 
 pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Result<Developed> {
+  prepare(neg, settings, opts)?.into_developed(settings, opts)
+}
+
+/// Prepare an owned working image for repeated exposure, tone and geometry edits.
+///
+/// RAF/ARW stop after highlight recovery; DNG stops before exposure-dependent detail.
+/// Without resizing, `prepare(...).render(...)` is bit-identical to `develop(...)`.
+pub fn prepare(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Result<Prepared> {
   settings.validate()?;
   let cancel = &opts.cancel;
   cancel.check()?;
   if let Some((info, rgb)) = &neg.dng {
-    return develop_dng(neg, info, rgb, settings, opts);
+    return prepare_dng(neg, info, rgb, settings, opts);
   }
   let meta = &neg.meta;
   let profile = CameraProfile::builtin(&meta.model)?;
@@ -234,67 +243,23 @@ pub fn develop(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     highlights::recover(&mut img, highlights::thresholds(wb.map(|v| v as f32)));
   }
 
-  // 8. Camera -> linear Display P3, exposure.
-  let (m, cct) = profile.balanced_camera_to_display_p3(neutral);
-  let exposure_ev =
-    profile.baseline_exposure - meta.raw_exposure_bias.unwrap_or(0.0) + settings.exposure;
-  let gain = 2f64.powf(exposure_ev) as f32;
-  let m = m.to_f32();
-  let br = profile.black_render;
-  img.map_pixels(|p| {
-    [
-      (m[0][0] * p[0] + m[0][1] * p[1] + m[0][2] * p[2] - br) * gain,
-      (m[1][0] * p[0] + m[1][1] * p[1] + m[1][2] * p[2] - br) * gain,
-      (m[2][0] * p[0] + m[2][1] * p[1] + m[2][2] * p[2] - br) * gain,
-    ]
-  });
-
-  // 9. Sharpening (scene-linear P3), when the luma pyramid did not already sharpen.
-  if noise.is_none() || opts.quality != Quality::Full {
-    detail::apply(
-      &mut img,
-      &detail::DetailParams {
-        luma_nr: 0.0,
-        chroma_nr: 0.0,
-        sharpen: settings.sharpening,
-        scale,
-        noise: 1.0,
-      },
-    );
-  }
-
-  let linear = opts.keep_linear.then(|| img.clone());
-
   cancel.check()?;
-  // 10. Look.
-  // The constant table lets the compiler fold the zero hue-preserve terms and the
-  // segment breakpoints; the arithmetic is unchanged.
-  const BOOST: look::Boost = look::Boost::RAWCAMERA;
-  let amount = settings.tone_amount;
-  img.map_pixels(|p| look::render(p, amount, &BOOST).map(|v| srgb_encode(v.clamp(0.0, 1.0))));
-
-  cancel.check()?;
-  // 11. Geometry.
-  let orientation = rotate_orientation(meta.orientation, settings.quarter_turns);
-  img = img.oriented(orientation);
-  if let Some(c) = settings.crop {
-    let x0 = (c.x * img.width as f64).round() as usize;
-    let y0 = (c.y * img.height as f64).round() as usize;
-    let cw = ((c.width * img.width as f64).round() as usize).clamp(1, img.width - x0);
-    let ch = ((c.height * img.height as f64).round() as usize).clamp(1, img.height - y0);
-    img = img.crop(x0, y0, cw, ch);
-  }
-
-  Ok(Developed {
-    image: img,
-    linear,
-    info: DevelopInfo {
+  let (matrix, cct) = profile.balanced_camera_to_display_p3(neutral);
+  Ok(Prepared::new(
+    img,
+    settings,
+    opts,
+    meta.orientation,
+    RenderPipeline::Mosaic(MosaicRender {
+      matrix: matrix.to_f32(),
+      black_render: profile.black_render,
+      baseline_exposure: profile.baseline_exposure - meta.raw_exposure_bias.unwrap_or(0.0),
       neutral,
       cct,
-      exposure_ev,
       luma_nr,
-    },
-  })
+      sharpen_scale: (noise.is_none() || opts.quality != Quality::Full).then_some(scale),
+    }),
+  ))
 }
 
 /// Full-resolution X-Trans demosaic (RawCamera's deXtrans_v8 port) of the active area,
@@ -335,37 +300,15 @@ fn full_dextrans(
   Some(img)
 }
 
-/// DNG LinearRaw (Apple ProRAW): RawCamera's "8.dng" path. The data is already
-/// demosaiced; colour, exposure and tone come from the file's tags, so no camera
-/// profile is used.
-///
-///  1. detail: luma pyramid with edge-masked sharpening + fused chroma NR (dng_detail)
-///  2. highlight recovery (thresholds 1 / 0.9 / 1: the data is not white-balanced)
-///  3. camera -> XYZ D50 (RAWConvert model, dng.rs) -> linear Display P3
-///  4. exposure 2^BaselineExposure (+ user EV)
-///  5. ProfileGainTableMap, gamut map, ProfileToneCurve (dng_look)
-fn develop_dng(
+/// DNG preparation retains cropped linear camera RGB before detail: the detail
+/// graph takes the exposure gain and cannot be cached across exposure changes.
+fn prepare_dng(
   neg: &Negative,
   info: &crate::dng::DngInfo,
   rgb: &[f32],
   settings: &DevelopSettings,
   opts: &Options,
-) -> Result<Developed> {
-  use crate::stages::{dng_detail, dng_look};
-  let meta = &neg.meta;
-  let (w, h) = (meta.raw_width, meta.raw_height);
-  let mut img = RgbImage {
-    width: w,
-    height: h,
-    data: rgb.to_vec(),
-  };
-  if (meta.crop_left, meta.crop_top, meta.crop_width, meta.crop_height) != (0, 0, w, h) {
-    img = img.crop(meta.crop_left, meta.crop_top, meta.crop_width, meta.crop_height);
-  }
-  if opts.quality == Quality::Preview {
-    img = img.downscale(2);
-  }
-
+) -> Result<Prepared> {
   let neutral = match settings.white_balance {
     WhiteBalance::AsShot => info.as_shot_neutral,
     WhiteBalance::Temperature { .. } => {
@@ -374,71 +317,46 @@ fn develop_dng(
       ));
     }
   };
-  let exposure_ev = info.baseline_exposure + settings.exposure;
-  let gain = 2f64.powf(exposure_ev) as f32;
-
-  let cancel = &opts.cancel;
-  cancel.check()?;
-  // 1. Detail. RawCamera's DNG defaults: chroma NR 0.5, detail 0.5 (our sharpening 1.0).
-  dng_detail::apply(
-    &mut img,
-    &dng_detail::Params {
-      gain,
-      chroma: settings.chroma_noise_reduction,
-      detail: settings.sharpening * 0.5,
-    },
-  );
-
-  cancel.check()?;
-  // 2. Highlights on unbalanced data.
-  if settings.highlight_recovery {
-    highlights::recover(&mut img, [1.0, 0.9, 1.0]);
+  let meta = &neg.meta;
+  let (w, h) = (meta.raw_width, meta.raw_height);
+  let mut img = RgbImage {
+    width: w,
+    height: h,
+    data: rgb.to_vec(),
+  };
+  if (
+    meta.crop_left,
+    meta.crop_top,
+    meta.crop_width,
+    meta.crop_height,
+  ) != (0, 0, w, h)
+  {
+    img = img.crop(
+      meta.crop_left,
+      meta.crop_top,
+      meta.crop_width,
+      meta.crop_height,
+    );
   }
-
-  // 3-4. Colour and exposure.
+  if opts.quality == Quality::Preview {
+    img = img.downscale(2);
+  }
+  opts.cancel.check()?;
   let (c2x, cct) = info.camera_to_xyz_d50(neutral);
-  let m = crate::math::XYZ_D50_TO_LINEAR_P3.mul(&c2x).to_f32();
-  img.map_pixels(|p| {
-    [0, 1, 2].map(|r| (m[r][0] * p[0] + m[r][1] * p[1] + m[r][2] * p[2]) * gain)
-  });
-  let linear = opts.keep_linear.then(|| img.clone());
-
-  cancel.check()?;
-  // 5. Look.
-  let amount = settings.tone_amount;
-  if let Some(gtm) = &info.gain_table_map {
-    dng_look::gain_table_map(&mut img, gtm, amount);
-  }
-  let tone = dng_look::ToneLut::from_curve(&info.tone_curve);
-  img.map_pixels(|p| {
-    let g = look::gamut_map(p);
-    let q = if amount >= 1.0 {
-      g
-    } else {
-      std::array::from_fn(|k| p[k] + (g[k] - p[k]) * amount)
-    };
-    tone.apply(q, amount).map(|v| srgb_encode(v.clamp(0.0, 1.0)))
-  });
-
-  let orientation = rotate_orientation(meta.orientation, settings.quarter_turns);
-  img = img.oriented(orientation);
-  if let Some(c) = settings.crop {
-    let x0 = (c.x * img.width as f64).round() as usize;
-    let y0 = (c.y * img.height as f64).round() as usize;
-    let cw = ((c.width * img.width as f64).round() as usize).clamp(1, img.width - x0);
-    let ch = ((c.height * img.height as f64).round() as usize).clamp(1, img.height - y0);
-    img = img.crop(x0, y0, cw, ch);
-  }
-  Ok(Developed {
-    image: img,
-    linear,
-    info: DevelopInfo {
+  Ok(Prepared::new(
+    img,
+    settings,
+    opts,
+    meta.orientation,
+    RenderPipeline::Dng(Box::new(DngRender {
+      matrix: crate::math::XYZ_D50_TO_LINEAR_P3.mul(&c2x).to_f32(),
+      baseline_exposure: info.baseline_exposure,
       neutral,
       cct,
-      exposure_ev,
-      luma_nr: 0.0,
-    },
-  })
+      gain_table_map: info.gain_table_map.clone(),
+      tone: crate::stages::dng_look::ToneLut::from_curve(&info.tone_curve),
+    })),
+  ))
 }
 
 /// Full-resolution Bayer demosaic (RawCamera's despeckle_v8 + deBayer_v8 ports) of the
@@ -453,7 +371,11 @@ fn full_debayer(
   let meta = &neg.meta;
   let black = meta.mean_black();
   let (mw, mh) = (meta.raw_width, meta.raw_height);
-  let raw: Vec<f32> = neg.mosaic.par_iter().map(|&v| v as f32 * (1.0 / 65535.0)).collect();
+  let raw: Vec<f32> = neg
+    .mosaic
+    .par_iter()
+    .map(|&v| v as f32 * (1.0 / 65535.0))
+    .collect();
   let src = match noise.despeckle {
     Some([amount, prevention]) => debayer::despeckle(&raw, mw, mh, &meta.cfa, amount, prevention),
     None => raw,
@@ -470,7 +392,12 @@ fn full_debayer(
     mw,
     mh,
     &meta.cfa,
-    (meta.crop_left, meta.crop_top, meta.crop_width, meta.crop_height),
+    (
+      meta.crop_left,
+      meta.crop_top,
+      meta.crop_width,
+      meta.crop_height,
+    ),
     &prm,
   ) else {
     return Ok(None);
@@ -478,47 +405,4 @@ fn full_debayer(
   let wbf = wb.map(|v| v as f32);
   img.map_pixels(|p| [p[0] * wbf[0], p[1] * wbf[1], p[2] * wbf[2]]);
   Ok(Some(img))
-}
-
-/// Compose an EXIF orientation with additional clockwise quarter turns.
-fn rotate_orientation(o: u16, turns: u8) -> u16 {
-  // Orientation as (rotation quarter turns clockwise, mirrored) applied to the sensor image.
-  let (rot, mirror) = match o {
-    2 => (0, true),
-    3 => (2, false),
-    4 => (2, true),
-    5 => (3, true),
-    6 => (1, false),
-    7 => (1, true),
-    8 => (3, false),
-    _ => (0, false),
-  };
-  let rot = (rot + turns as u16) % 4;
-  match (rot, mirror) {
-    (0, false) => 1,
-    (0, true) => 2,
-    (2, false) => 3,
-    (2, true) => 4,
-    (3, true) => 5,
-    (1, false) => 6,
-    (1, true) => 7,
-    (3, false) => 8,
-    _ => unreachable!(),
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn orientation_composition() {
-    assert_eq!(rotate_orientation(1, 1), 6);
-    assert_eq!(rotate_orientation(8, 1), 1);
-    assert_eq!(rotate_orientation(6, 2), 8);
-    for o in 1..=8 {
-      assert_eq!(rotate_orientation(o, 0), o);
-      assert_eq!(rotate_orientation(rotate_orientation(o, 3), 1), o);
-    }
-  }
 }

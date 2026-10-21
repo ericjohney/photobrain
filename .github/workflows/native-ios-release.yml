@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'apps/ios/**'
+      - 'packages/raw-develop/**'
   workflow_dispatch:
     inputs:
       bundle_id:
@@ -60,6 +61,11 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Rust for on-device RAW development
+        uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
       - name: Set up Xcode 26.6
         uses: maxim-lobanov/setup-xcode@v1

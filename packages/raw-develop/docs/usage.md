@@ -10,7 +10,7 @@ let out = develop(&neg, &DevelopSettings::default(), &Options::default())?;
 encode::write(&out.image, "out.png".as_ref(), encode::Format::Png16)?;
 
 // Fast preview: one third of the resolution for X-Trans, one half for Bayer.
-let preview = develop(&neg, &DevelopSettings::default(), &Options { quality: Quality::Preview, keep_linear: false })?;
+let preview = develop(&neg, &DevelopSettings::default(), &Options { quality: Quality::Preview, ..Options::default() })?;
 let jpeg_bytes = encode::encode(&preview.image, encode::Format::Jpeg(90))?;
 ```
 
@@ -61,17 +61,67 @@ optional on input and defaults to the as-shot (Apple-like) rendering:
   stored settings fail loudly rather than being silently reinterpreted.
 - Bump `SETTINGS_VERSION` and add a migration when fields change meaning.
 
+## Repeated editing
+
+```rust
+use raw_develop::{prepare, DevelopSettings, Negative, Options, Quality};
+
+let negative = Negative::open("DSCF0970.RAF")?;
+let mut settings = DevelopSettings::default();
+let options = Options { quality: Quality::Preview, ..Options::default() };
+let working = prepare(&negative, &settings, &options)?.with_max_edge(2048)?;
+drop(negative); // the working image owns all its render inputs
+
+settings.exposure = 0.5;
+let brighter = working.render(&settings, &options)?;
+settings.exposure = -0.5;
+let darker = working.render(&settings, &options)?; // no accumulated gain
+```
+
+`Prepared` is immutable and owns a linear, unclamped RGB float image plus render metadata.
+Exposure, tone amount, crop and quarter turns can change between renders. Changing white
+balance, highlight recovery, luma/chroma NR, sharpening, lens settings or quality returns
+`Error::Settings`: prepare a new working image for those controls. The cancellation token
+and `keep_linear` can change per render. A cancelled request does not invalidate the cache.
+
+The boundaries differ by format:
+
+- **RAF/ARW:** preparation includes demosaic, white balance, camera-space NR, lens
+  correction and highlight recovery. Rendering runs colour/exposure, any generic
+  preview sharpening, the look and geometry. Preview sharpening remains after exposure
+  and is not a per-pixel operation.
+- **ProRAW DNG:** preparation crops the decoded camera RGB and bins it for preview.
+  Rendering reruns the detail graph because its thresholds depend on exposure, followed
+  by highlight recovery, colour/exposure, the gain map, look and geometry. DNG exposure
+  edits therefore do more work than RAF/ARW; no stale detail result is reused.
+
+Without `with_max_edge`, prepared renders are bit-identical to `develop` at the same
+settings and quality. `develop` uses this same split internally, transferring the working
+image instead of cloning another full-size buffer.
+
+`with_max_edge` consumes the larger working image and area-resamples it to fit the positive
+limit, preserving aspect ratio (to whole pixels), without upscaling. It preserves negative
+values and highlights above 1.0. This is an **approximate preview**: downsampling before
+nonlinear look/detail stages does not equal downsampling a completed render. It is not a
+replacement for full-resolution export or pixel-level detail inspection. `dimensions()`
+reports working dimensions before orientation/crop; `pixel_bytes()` counts its RGB pixels,
+not total process memory. Preparing a screen proxy still incurs the original preparation
+and decode peak; this API does not yet implement an on-disk working-negative format.
+
 ## Caching and versions
 
 - `PIPELINE_VERSION`: bump when output for the same file and settings changes (profile
   refits, algorithm changes). Cache keys for rendered output should include it, the same
   way the API uses `MEDIA_VERSION`.
 - A `Negative` depends only on the file bytes, so it can be cached by content hash.
-- For interactive editing, keep the `Negative` in memory, render `Quality::Preview` on every
-  change (about 0.12 s for X-Trans 40 MP), and render `Full` (about 2.0 s for X-Trans 40 MP,
-  2.4–2.7 s for Sony 61 MP, 0.4 s for iPhone 12 MP) once the user stops changing
-  settings. Preview uses the generic NR/sharpening filters, so its fine texture
-  differs slightly from the full render.
+- For repeated exposure/tone edits, keep a `Prepared` image rather than rerunning the
+  entire preview pipeline. Retain a `Negative` separately only if re-preparing earlier
+  stages without decoding again is worth its memory cost. Cache identity must include the
+  source identity, pipeline version, preparation settings, quality and any resize limit.
+- Preview uses different demosaic/NR/sharpening from Full. Full rendering is still about
+  2.0 s for X-Trans 40 MP, 2.4–2.7 s for Sony 61 MP and 0.4 s for iPhone 12 MP on the
+  documented desktop hardware. Benchmark repeat rendering separately; desktop results
+  do not establish iPhone performance.
 
 ## CLI
 
@@ -81,7 +131,20 @@ raw-develop cfa F.RAF out.u16                           # decoded mosaic, LE u16
 raw-develop develop F.RAF out.png|out.jpg [--preview] [--settings s.json] \
                     [--dump-linear l.f32] [--dump-final f.f32]
 raw-compare final|linear ours.f32 apple.f32             # ΔE00 report
+raw-edit-bench --max-edge 2048 --iterations 30 --threads 4 F.RAF F.ARW F.DNG
 ```
+
+`raw-edit-bench` outputs one JSON record per input: decode, preparation and resize times,
+working dimensions/pixel bytes, and repeated exposure-render p50/p95/max latency. Three
+warm-up renders are excluded. The timed interval includes cloning the immutable working
+pixels, all remaining stages, and output allocations, but excludes encoding, file/network
+I/O, UI presentation, destruction of the returned output and the final output digest. It sweeps exposure
+around the requested baseline, clipped to the supported range. `--settings s.json` changes
+the baseline; `--full` prepares full-quality pixels before resizing. The Rayon pool size is
+explicit and reported; use `--threads` to test constrained CPU budgets.
+
+See [interactive editing](interactive-editing.md) for measured repeat-render timings and
+the remaining native iOS work.
 
 ## Integrating with the app
 
@@ -90,20 +153,12 @@ Done today: `image-processing` path-depends on `raw_develop` and exposes
 for the loupe's opt-in "Developed" view (web toggle / `R`, iOS ⋯ menu). Renders are full
 resolution, default settings, and not cached.
 
-Planned shape, for when this replaces the embedded-preview path in `image-processing`:
-
-1. `image-processing` adds a path dependency on `raw_develop`, then in `decode.rs` tries
-   `Negative::from_bytes` + `develop(Quality::Preview or Full)` for supported RAWs. It falls
-   back to the exiftool embedded preview on `Error::Unsupported`.
-2. Convert P3 to the thumbnail pipeline's expectations. Either tag WebP thumbnails and
-   exports with the P3 ICC profile (preferred: browsers and iOS colour-manage it), or convert
-   to sRGB with gamut compression.
-3. Bump `MEDIA_VERSION` so existing RAW thumbnails regenerate.
-4. Add an N-API surface for edits, for example
-   `developRaw(path, settingsJson, { maxEdge, format }) → Buffer`, run on the native
-   executor like `renderExportJpeg`.
-5. Store `DevelopSettings` JSON per photo in the database, and include `PIPELINE_VERSION`
-   plus a settings hash in thumbnail and export cache keys.
+Native iOS **Edit RAW** uses the C bridge in `ffi/`, a serial Swift actor, Display P3
+presentation and a session-only exposure slider. The build script can also package an
+XCFramework. See [interactive editing](interactive-editing.md) for build setup and behavior.
+Persisted editing also needs per-photo `DevelopSettings` in the database and cache keys
+containing the source identity, `PIPELINE_VERSION` and settings hash. Neither app currently
+saves these adjustments.
 
 The whole pipeline is CPU-only today and runs fine in the Linux Docker image. A GPU (wgpu)
 backend can replace individual stages later, because each stage is a bounded-neighbourhood

@@ -14,7 +14,13 @@
  * Environment: `UI_TEST_PORT` (default 0 = any free port), `UI_TEST_DIR`
  * (default: a fresh temporary directory, removed on exit).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { plugin } from "bun";
@@ -243,7 +249,17 @@ function writeThumbnails(key: string) {
 function writeOriginal(relativePath: string) {
 	const path = join(photoDirectory, relativePath);
 	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, WEBP);
+	// A tiny synthetic sensor mosaic exercises the real on-device Rust editor.
+	// Other media retain the existing deterministic placeholder.
+	const bytes = relativePath.toLowerCase().endsWith(".arw")
+		? readFileSync(
+				join(
+					import.meta.dir,
+					"../../../packages/raw-develop/tests/fixtures/synthetic.ARW",
+				),
+			)
+		: WEBP;
+	writeFileSync(path, bytes);
 }
 
 // ---------------------------------------------------------------------------

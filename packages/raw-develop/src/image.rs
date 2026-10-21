@@ -91,6 +91,43 @@ impl RgbImage {
     out
   }
 
+  /// Area-resample a nonempty image to fit a positive maximum edge. Linear values
+  /// are neither gamma-encoded nor clamped: negative values and highlight headroom
+  /// survive. Unlike integer binning, all source rows and columns contribute.
+  pub(crate) fn resize_to_fit(&self, max_edge: usize) -> RgbImage {
+    assert!(max_edge > 0 && self.width > 0 && self.height > 0);
+    let edge = self.width.max(self.height);
+    if edge <= max_edge {
+      return self.clone();
+    }
+    let width = (self.width * max_edge / edge).max(1);
+    let height = (self.height * max_edge / edge).max(1);
+    let sx = self.width as f64 / width as f64;
+    let sy = self.height as f64 / height as f64;
+    let mut out = RgbImage::new(width, height);
+    out.rows_mut().for_each(|(y, row)| {
+      let (y0, y1) = (y as f64 * sy, (y + 1) as f64 * sy);
+      for x in 0..width {
+        let (x0, x1) = (x as f64 * sx, (x + 1) as f64 * sx);
+        let mut sum = [0.0f64; 3];
+        for iy in y0.floor() as usize..(y1.ceil() as usize).min(self.height) {
+          let wy = ((iy + 1) as f64).min(y1) - (iy as f64).max(y0);
+          for ix in x0.floor() as usize..(x1.ceil() as usize).min(self.width) {
+            let wx = ((ix + 1) as f64).min(x1) - (ix as f64).max(x0);
+            let i = (iy * self.width + ix) * 3;
+            for c in 0..3 {
+              sum[c] += self.data[i + c] as f64 * wx * wy;
+            }
+          }
+        }
+        for c in 0..3 {
+          row[x * 3 + c] = (sum[c] / (sx * sy)) as f32;
+        }
+      }
+    });
+    out
+  }
+
   /// Apply an EXIF orientation (1-8) to produce the display-oriented image.
   pub fn oriented(&self, orientation: u16) -> RgbImage {
     let (w, h) = (self.width, self.height);
@@ -156,5 +193,20 @@ mod tests {
     let d = im.downscale(2);
     assert_eq!((d.width, d.height), (2, 1));
     assert_eq!(d.px(0, 0)[0], (0.0 + 1.0 + 4.0 + 5.0) / 4.0);
+  }
+
+  #[test]
+  fn resize_preserves_headroom_and_uses_edge_pixels() {
+    let mut im = RgbImage::new(5, 3);
+    for p in im.data.chunks_mut(3) {
+      p.copy_from_slice(&[-0.25, 2.5, 0.0]);
+    }
+    im.data[(5 * 3 - 1) * 3 + 2] = 15.0;
+    let small = im.resize_to_fit(2);
+    assert_eq!((small.width, small.height), (2, 1));
+    assert!(small.data.chunks(3).all(|p| p[0] == -0.25 && p[1] == 2.5));
+    assert!((small.px(1, 0)[2] - 2.0).abs() < 1e-6);
+    assert_eq!(im.resize_to_fit(5).data, im.data);
+    assert_eq!(RgbImage::new(1, 100).resize_to_fit(1).height, 1);
   }
 }

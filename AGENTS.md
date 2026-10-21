@@ -20,7 +20,7 @@ Read the guide for the area being changed:
 - [Web application](apps/web/AGENTS.md)
 - [Native iOS application source and XCTest](apps/ios); [TestFlight distribution, signing, and secrets](docs/ios-distribution.md)
 - [Rust image processing](packages/image-processing/AGENTS.md)
-- [Rust RAW development: Fujifilm RAF, Sony ARW, Apple ProRAW DNG (loupe "Developed" view only)](packages/raw-develop/AGENTS.md)
+- [Rust RAW development: Fujifilm RAF, Sony ARW, Apple ProRAW DNG (loupe Developed view and local iOS exposure editing)](packages/raw-develop/AGENTS.md)
 - [Database and migrations](packages/db/AGENTS.md)
 - [Shared utilities](packages/utils/AGENTS.md)
 - [Shared TypeScript configuration](packages/config/AGENTS.md)
@@ -39,7 +39,7 @@ packages/
   config/                 Shared TypeScript configuration package
   db/                     Drizzle schema and migration files
   image-processing/       Rust N-API addon and browser stub
-  raw-develop/            Rust RAW (X-Trans RAF, Sony ARW, ProRAW DNG) -> Display P3 pipeline (loupe "Developed" view only)
+  raw-develop/            Rust RAW (X-Trans RAF, Sony ARW, ProRAW DNG) -> Display P3 pipeline (loupe Developed view and local iOS exposure editing)
   utils/                  Shared TypeScript helpers and thumbnail configuration
 docs/
   superpowers/            Historical design specifications and implementation plans
@@ -104,7 +104,7 @@ The 7,961-file corpus needs at most 399 media completion windows and 498 embeddi
 8. Generate a double-gradient perceptual hash from the oriented source, then resize once to a `large` preview bounded at 1,600 pixels and derive smaller thumbnails from that preview using original-derived target dimensions. Bundled libwebp now applies lossy color quality 80/85/85/90 for tiny/small/medium/large, with lossless alpha encoding. Derived pixels are not lossless; originals, orientation handling, pHash input, and EXIF extraction are unchanged. Thumbnail errors fail the photo result rather than marking it ready.
 9. Defer CLIP image embeddings to the Inngest embedding function.
 
-Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a RAW developer, used only by the on-demand loupe **Developed** view (`GET /api/photos/:id/developed`), not by scans, thumbnails, or export, for Fujifilm X-Trans RAF, Sony ARW (uncompressed, lossless and lossy cRAW) and Apple ProRAW DNG (bit-exact decoders, rendering that follows and is validated against Apple's RawCamera). There is no current histogram-matching implementation.
+Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a RAW developer, used by the on-demand loupe **Developed** view (`GET /api/photos/:id/developed`) and the iOS loupe’s local **Edit RAW** exposure preview, not by scans, thumbnails, or export, for Fujifilm X-Trans RAF, Sony ARW (uncompressed, lossless and lossy cRAW) and Apple ProRAW DNG (bit-exact decoders, rendering that follows and is validated against Apple's RawCamera). There is no current histogram-matching implementation.
 
 ### Database and vectors
 
@@ -160,7 +160,7 @@ There is no worker command. Configure an Inngest development/runtime service sep
 
 ### Native iOS simulator
 
-Native iOS requires Xcode 26.6. The app targets iOS 17+ and has separate Debug, Preview, and Production configurations. With Xcode 26.6 selected, run the same unsigned Preview simulator build/test used by CI:
+Native iOS requires Xcode 26.6 and rustup Rust 1.98.0 with the iOS device/simulator targets (see [local RAW editing](packages/raw-develop/docs/interactive-editing.md#build-and-package)). The app targets iOS 17+ and has separate Debug, Preview, and Production configurations. With Xcode 26.6 selected, run the same unsigned Preview simulator build/test used by CI:
 
 ```bash
 xcodebuild \
@@ -368,6 +368,8 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 
 ### Native iOS
 
+Local RAW editing: the loupe ⋯ **Edit RAW** action downloads the untouched RAW through the original export route, then uses `packages/raw-develop/ffi` through `Library/RawEditing.swift`. `NativeRawEditRenderer` serialises the owned C session on a Swift actor; `LoupeRawEditStore` coalesces exposure changes, uses 1024-edge previews while dragging and 2048 on release, and displays RGBA8 in Display P3 without JPEG encoding. Edits are preview-only and discarded on close, paging, backgrounding or memory warnings. Downloaded originals and render/session handles are released on success, error and cancellation. Xcode builds a destination-specific Rust static library before Swift compilation; the same script can package a device + universal simulator XCFramework. CI and releases pin Rust 1.98.0. See [interactive editing](packages/raw-develop/docs/interactive-editing.md).
+
 `apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library and Collections tabs plus a separate search tab (`Tab(role: .search)` on iOS 18+), like Photos; People lives in Collections; a grid and loupe; a simple Library Filter menu plus full filtering in Search (media type, EXIF, tags, places, minimum rating, flag; with or without a query), loupe **Find Similar** results, loupe star/Pick/Reject curation (`PhotoCurationCenter` coalesces in-flight PATCHes per photo and rolls back on failure across Library, Search, and Similar), collections (cover-card grid with create/rename/delete, collection-scoped grid/loupe detail, loupe **Add to Collection** sheet), theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. `PreferencesStore` (`apps/ios/PhotoBrain/App/AppEnvironment.swift`) persists theme and the active scan ID in `UserDefaults.standard` under `com.photobrain.theme` and `com.photobrain.activeScanId`.
 
 Design on iOS: `apps/ios/PhotoBrain/DesignSystem/DesignSystem.swift` holds the shared tokens (`PBSpacing`, `PBRadius`, `PBColor`, `PBSize`), `pbGlass` (Liquid Glass on iOS 26, material earlier, opaque under Reduce Transparency), and `GlassIconButton`, `FilterChip`, `PBBanner`, `PBSectionHeader`, and `CoverCard`; the brand tint is the `AccentColor` asset. Library follows Apple Photos: a full-screen grid runs under the status bar and tab bar with a dark top scrim, and a floating title ("Library" over the visible date or item count) with glass buttons (a filter/options menu and **Select**) replaces the navigation bar. The menu holds Sort, a single-choice **Filter** submenu — All Items, Picks, Rated 4★+, Photos, Videos, RAW, Rejected, which replaces rather than stacks — and Library Options. A **Filtered: …** capsule clears the filter, an empty filter shows a named state with **Show All Items**, and section headers scroll with their photos. Scrolling back in time hides the tab bar and shows a glass Library button (scrolls to the newest photos), a **Years · Months · All** switcher, and a Search button; returning to the newest edge restores the tab bar. It opens at the newest edge; pinching steps the grid through 3/5/9 phone columns (`LibraryGridViewController.nextColumns`), remembered per grouping in `@AppStorage("com.photobrain.gridColumns")`. **All** (`LibraryGrouping.days`) gives each day an auto event with a place covers its own section titled with the place (`EventDayIndex`) and groups other days by month. Loading tiles are neutral grey (`SyntheticThumbnail`). The loupe zooms out of its grid cell (`loupeCover` presents it over full screen with the grid still rendered; `LoupeZoomTransition` flies the cell image), swipes down to shrink back into the cell (`LoupeDismissGesture`), and swipes up for Photo Info. Its glass chrome is back, a city/date title (with ★ rating), and ⋯ (Rating, Add to Collection, Find Similar, Show/Hide Faces) on top; Share, ♡ (Pick), ⓘ, and Reject at the bottom, above a compact UIKit filmstrip (`LoupeFilmstrip`) whose centered thumbnail widens continuously; dragging it scrubs the open photo without paging animation, and it settles on a thumbnail. The info sheet opens at medium/large detents with a summary card and a star-rating row. The Collections tab shows Memories, People, My Albums, Smart Albums, and a Utilities list (Review, Duplicates, Map, Calendar, Gear Stats); Search's idle state shows example prompts and Places/Cameras/Categories tiles. Tag and place chips, browse tiles, memory dates, calendar days, and gear rows all open **Search** filtered to them (the `showInLibrary` environment action, kept by name, routes to `SearchStore.show`); with an empty query Search lists the filtered photos newest first, and typing combines the query with the filters.
@@ -419,7 +421,7 @@ There is no worker image.
 - Builds and pushes API and web Docker targets.
 - Updates API/web image tags in the external ArgoCD repository on pushes to `main`.
 
-Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**`, with default inputs (or by manual dispatch with custom inputs); it validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight. Apple identities, GitHub secrets, tester setup, and certificate renewal are recorded in [iOS distribution](docs/ios-distribution.md).
+Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**`, with default inputs (or by manual dispatch with custom inputs); it validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight. Apple identities, GitHub secrets, tester setup, and certificate renewal are recorded in [iOS distribution](docs/ios-distribution.md).
 
 `native-ios-release.yml` serializes on the `ios-production-release` concurrency group and uses `apps/ios/scripts/allocate-app-store-build.mjs`, which chooses a build number above both App Store Connect history and the run reservation floor; it enforces the production bundle/API contract and iOS 17.0 minimum.
 

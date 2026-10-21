@@ -62,6 +62,7 @@ pub fn gain_table_map(img: &mut RgbImage, m: &GainTableMap, strength: f32) {
 /// boost_lut with RawCamera's DNG parameters: a 256-entry LUT sampled from
 /// `ProfileToneCurve`, linear extension above 1 with the curve's end slope, a shadow
 /// gain easing from `shadow` (0.9) to 1 over 0-0.1, and `amount` mixing with the input.
+#[derive(Clone, Debug)]
 pub struct ToneLut {
   lut: [f32; 256],
   slope: f32,

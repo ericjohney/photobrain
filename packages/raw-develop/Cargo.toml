@@ -18,6 +18,10 @@ path = "src/bin/raw-develop.rs"
 name = "raw-compare"
 path = "src/bin/raw-compare.rs"
 
+[[bin]]
+name = "raw-edit-bench"
+path = "src/bin/raw-edit-bench.rs"
+
 [dependencies]
 rayon = "1.10"
 thiserror = "2"

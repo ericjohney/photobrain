@@ -10,7 +10,7 @@ A standalone Rust library and CLI that develops RAW files into Display P3 images
 - Sony Bayer ARW (ILCE-1M2 / A1 II, ILCE-7CR / A7C R, ILCE-7RM5 / A7R V): uncompressed 14-bit, lossless compressed (tiled lossless JPEG, Compression 7) and lossy "Compressed RAW" / cRAW (Compression 32767).
 - Apple ProRAW DNG (iPhone 16 Pro Max lossless JPEG tiles, iPhone 17 Pro Max JPEG XL tiles; DNG 1.6/1.7 LinearRaw). No camera profile: colour, exposure and tone come from DNG tags.
 
-Its only app integration is the loupe's on-demand **Developed** view: `image-processing` path-depends on it and exposes `renderDevelopedRaw(path, quality, cancel?)` (`src/develop.rs`; `cancel` is an `Int32Array` over a `SharedArrayBuffer` that stops the develop when element 0 becomes non-zero), served by `GET /api/photos/:id/developed`. The addon's turbo `build` task lists this crate's sources as inputs, so `bun run dev:api` rebuilds the addon after any change here. Scans, thumbnails, and export still use the embedded JPEG preview. The Docker builder copies this package for that path dependency.
+The server integration is the loupe's on-demand **Developed** view: `image-processing` path-depends on it and exposes `renderDevelopedRaw(path, quality, cancel?)` (`src/develop.rs`; `cancel` is an `Int32Array` over a `SharedArrayBuffer` that stops the develop when element 0 becomes non-zero), served by `GET /api/photos/:id/developed`. The addon's turbo `build` task lists this crate's sources as inputs, so `bun run dev:api` rebuilds the addon after any change here. Scans, thumbnails, and export still use the embedded JPEG preview. The Docker builder copies this package for that path dependency.
 
 ```bash
 cd packages/raw-develop && cargo test               # unit tests, no RAW files needed
@@ -21,6 +21,8 @@ target/release/raw-compare final|linear <ours.f32> <apple.f32>   # ΔE00 against
 ```
 
 `turbo run build` picks up the `build` script (`cargo build --release`). JPEG XL decoding uses the `jxl-oxide` crate (MIT/Apache-2.0) behind the default cargo feature `jxl`; without it, JPEG XL DNGs return `Error::Unsupported`.
+
+Native iOS also links `ffi/` through `apps/ios/scripts/build-raw-develop.sh` for the loupe’s session-only **Edit RAW** exposure editor. An owned opaque C session caches 2048/1024-edge prepared images; Swift serialises it on an actor, coalesces slider requests and presents RGBA8 Display P3. The script builds the selected Xcode destination or packages an XCFramework with `--xcframework`. Rust 1.98.0/iOS targets are pinned separately in `ffi/rust-toolchain.toml`; `ffi/Cargo.lock` is independent of the engine CLI lock. Header ownership/cancellation rules are in `ffi/include/RawDevelop.h`. See [interactive editing](docs/interactive-editing.md).
 
 ## Public API
 
@@ -34,10 +36,12 @@ encode::write(&out.image, path, encode::Format::Png16)?;  // PNG/JPEG with embed
 - `develop` is a pure function of `(Negative, DevelopSettings, Options)`, built for edit features: `DevelopSettings` is serde JSON with `settings_version` (white balance as-shot or kelvin/tint, exposure EV, highlight recovery, luma/chroma NR, sharpening, tone amount, lens toggles, normalised crop, quarter turns). Unknown fields are rejected; omitted fields take as-shot defaults. Kelvin/tint white balance is not yet implemented for DNG (`Error::Unsupported`).
 - `Options { quality: Full | Preview, keep_linear, cancel }`. `cancel` (`Cancel`, default never) is checked between stages and between streamed luma steps; once set, `develop` returns `Error::Cancelled` within about 0.1 s. Checks never touch pixel values, so output is unchanged. `Full` runs the ported demosaic (`deXtrans_v8`, or `despeckle_v8` + `deBayer_v8` for Bayer) and RawCamera's chroma NR and luma pyramid. `Preview` bins each 3x3 X-Trans cell (exact 5G/2R/2B, one-third resolution) or 2x2 Bayer cell (half resolution), and uses the generic `stages/detail.rs` filters for luma NR and sharpening.
 - `PIPELINE_VERSION` must be bumped when output changes for the same input and settings (mirror of the API's `MEDIA_VERSION` contract, for future caching).
+- `prepare(negative, settings, options)` returns an owned immutable `Prepared` working image. `Prepared::render` reuses it for exposure, tone amount, crop and quarter turns; other setting/quality changes return `Error::Settings` and require preparing again. RAF/ARW cache after highlight recovery; DNG caches before its exposure-dependent detail graph (which reruns on every exposure edit). Preview/fallback sharpening also stays after exposure. `with_max_edge` optionally area-resamples the working pixels without clipping linear headroom; it is an approximate screen preview, not bit-exact downsampled output. Unresized one-shot and prepared renders are bit-identical; the one-shot path transfers its buffer to avoid another full-size clone. See [usage](docs/usage.md#repeated-editing).
 
 ## Code Layout
 
 - `src/metadata.rs`: `RawMetadata`; `src/negative.rs`: container detection and decode.
+- `src/prepared.rs`: reusable working image, render-setting validation, format-specific late stages and output geometry. `src/bin/raw-edit-bench.rs`: JSON benchmark of decode/preparation/resize and warmed repeated exposure renders (`--max-edge`, `--iterations`, `--threads`, `--full`, `--settings`). No encoding, network or UI latency is included.
 - `src/tiff.rs`: shared bounded TIFF reader (`read_ifd0_exif`), used by RAF, ARW and DNG.
 - `src/raf/`, `src/arw.rs`, `src/dng.rs`: containers. ARW reads the raw SubIFD (Photometric 32803): `DefaultCropOrigin`/`DefaultCropSize` (RawCamera crops to exactly this), `BlackLevel` 0x7310, `WhiteLevel` 0x787f, `WB_RGGBLevels` 0x7313 (plain; no SR2 decryption), `SonyToneCurve` 0x7010, `DistortionCorrection` 0x7036 + `DistortionCorrParams` 0x7037. DNG reads LinearRaw tiles, `LinearizationTable`, colour/exposure tags, `ProfileToneCurve` and the DNG 1.7 `ProfileGainTableMap`.
 - `src/unpack/`: `fuji_compressed.rs`, `ljpeg.rs` (ITU-T T.81 lossless JPEG, all seven predictors, restart intervals, point transform; tile assembly in `mod.rs`), `sony_craw.rs` (cRAW), JPEG XL through `jxl-oxide`.
@@ -56,7 +60,7 @@ RAF and ARW (mosaic):
 7. Look (`stages/look.rs`): `RAWHueMagnetMR` → `gmKernel_v7` → `boost_v7` (linear), then the sRGB transfer to encoded Display P3.
 8. Orientation, user rotation and crop.
 
-LinearRaw DNG (`develop_dng`): detail (`stages/dng_detail.rs`) → highlight recovery with thresholds `[1, 0.9, 1]` → camera to XYZ D50 → linear Display P3 → exposure `2^BaselineExposure` → `profileGainTableMap` → `gmKernel_v7` → `boost_lut` from `ProfileToneCurve` → sRGB transfer → orientation. Colour follows RawCamera's `RAWConvert`: the white xy is found from `AsShotNeutral` by iterating CCT → interpolated XYZ-to-camera (`AnalogBalance` × `ColorMatrix`, mired weighting); a forward matrix is synthesised per calibration illuminant (Bradford adaptation to D50, ratios clamped to [0.1, 10]) and interpolated with the same weight. Every detail parameter is a constant or a multiple of the exposure gain, so there are no per-phone tables.
+LinearRaw DNG (`prepare_dng` + prepared renderer): detail (`stages/dng_detail.rs`) → highlight recovery with thresholds `[1, 0.9, 1]` → camera to XYZ D50 → linear Display P3 → exposure `2^BaselineExposure` → `profileGainTableMap` → `gmKernel_v7` → `boost_lut` from `ProfileToneCurve` → sRGB transfer → orientation. Colour follows RawCamera's `RAWConvert`: the white xy is found from `AsShotNeutral` by iterating CCT → interpolated XYZ-to-camera (`AnalogBalance` × `ColorMatrix`, mired weighting); a forward matrix is synthesised per calibration illuminant (Bradford adaptation to D50, ratios clamped to [0.1, 10]) and interpolated with the same weight. Every detail parameter is a constant or a multiple of the exposure gain, so there are no per-phone tables.
 
 ## Invariants
 

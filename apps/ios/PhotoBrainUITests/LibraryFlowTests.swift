@@ -4,6 +4,31 @@ import XCTest
 /// Library, loupe, review, and browse flows against the seeded fixture library.
 final class LibraryFlowTests: PhotoBrainUITestCase {
     @MainActor
+    func testLocalRawExposureEditorResetsAndCloses() {
+        openLibrary()
+        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        tap("More")
+        tap("Edit RAW")
+        let slider = app.sliders["raw-edit-exposure"]
+        waitFor(slider, timeout: 30)
+        waitFor(element("Preview only · Changes aren’t saved"))
+        slider.adjust(toNormalizedSliderPosition: 0.75)
+        let value = app.staticTexts["raw-edit-value"]
+        XCTAssertFalse(value.label.contains("+0.00"))
+        tap("Reset")
+        XCTAssertEqual(value.label, "+0.00 EV")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "On-device RAW exposure editor"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        tap("Close editor")
+        waitForAbsence(slider)
+        waitFor(element("Share"))
+        tap("Close photo")
+        waitFor(gridCell("beach-sunset.jpg, ARW plus JPG pair"))
+    }
+
+    @MainActor
     func testIPadKeepsNavigationAndGroupingAvailableWhileBrowsing() throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad layout") }
         openLibrary()

@@ -1,0 +1,17 @@
+[package]
+name = "raw_develop_ffi"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+raw_develop = { path = ".." }
+rayon = "1.10"
+
+[profile.release]
+lto = "thin"
+debug = 1

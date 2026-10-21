@@ -27,6 +27,8 @@ struct LoupeScreen: View {
     @StateObject private var faceBoxes: LoupeFaceBoxesStore
     /// Show Developed RAW: the open RAW fully developed instead of its embedded preview.
     @StateObject private var developed: LoupeDevelopedStore
+    @StateObject private var rawEditor: LoupeRawEditStore
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.showInLibrary) private var showInLibrary
     @State private var bridge = LoupePagerBridge()
     /// The image flying between the grid cell and the loupe; nil when settled.
@@ -89,6 +91,7 @@ struct LoupeScreen: View {
         _exports = StateObject(wrappedValue: ExportStore(api: api))
         _faceBoxes = StateObject(wrappedValue: LoupeFaceBoxesStore(api: api))
         _developed = StateObject(wrappedValue: LoupeDevelopedStore(api: api))
+        _rawEditor = StateObject(wrappedValue: LoupeRawEditStore(api: api))
     }
 
     private var activeItem: LibraryEntry? {
@@ -115,7 +118,7 @@ struct LoupeScreen: View {
     }
 
     private var showsChrome: Bool {
-        (isZoomed ? zoomControlsVisible : chromeVisible) && !transitioning && !dismissDragging
+        (rawEditor.isActive || (isZoomed ? zoomControlsVisible : chromeVisible)) && !transitioning && !dismissDragging
     }
 
     var body: some View {
@@ -129,7 +132,7 @@ struct LoupeScreen: View {
                 onTap: toggleChrome,
                 onEmpty: dismiss,
                 faceBoxes: faceBoxes.visibleBoxes,
-                developedImages: developed.images,
+                developedImages: rawEditor.isActive ? rawEditor.images : developed.images,
                 onDismissDragActive: { active in
                     withAnimation(.easeOut(duration: 0.15)) { dismissDragging = active }
                 },
@@ -189,17 +192,21 @@ struct LoupeScreen: View {
                     }
                     overlayControls
                     Spacer()
-                    if !isZoomed {
+                    if rawEditor.isActive {
+                        rawEditControls
+                    } else if !isZoomed {
                         filmstrip
                     }
-                    if let activeRecord {
-                        if let review {
-                            reviewBar(activeRecord, review: review)
-                        } else {
-                            curationBar(activeRecord)
+                    if !rawEditor.isActive {
+                        if let activeRecord {
+                            if let review {
+                                reviewBar(activeRecord, review: review)
+                            } else {
+                                curationBar(activeRecord)
+                            }
+                        } else if let activeItem, let local = activeItem.local {
+                            deviceBar(activeItem, asset: local)
                         }
-                    } else if let activeItem, let local = activeItem.local {
-                        deviceBar(activeItem, asset: local)
                     }
                 }
                 .padding(.bottom, PBSpacing.xs)
@@ -214,12 +221,26 @@ struct LoupeScreen: View {
             runEntrance()
         }
         .onChange(of: activeID) { _, _ in
+            rawEditor.end()
             playback.show(item: activeItem)
             Task { await faceBoxes.load(activeRecord) }
             developed.show(activeRecord)
         }
         .onDisappear {
             playback.release()
+            developed.release()
+            rawEditor.end()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                rawEditor.end()
+                developed.release()
+            } else if phase == .active, !rawEditor.isActive {
+                developed.show(activeRecord)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            rawEditor.end()
             developed.release()
         }
         .statusBarHidden(!showsChrome)
@@ -396,6 +417,18 @@ struct LoupeScreen: View {
                     }
                     if LoupeRendition.developableRawID(for: activeRecord) != nil {
                         Button {
+                            if rawEditor.isActive {
+                                endRawEdit()
+                            } else {
+                                developed.release()
+                                rawEditor.start(activeRecord)
+                                chromeVisible = true
+                                zoomControlsVisible = true
+                            }
+                        } label: {
+                            Label(rawEditor.isActive ? "Close RAW Editor" : "Edit RAW", systemImage: "slider.horizontal.3")
+                        }
+                        Button {
                             developed.setOn(!developed.isOn, photo: activeRecord)
                         } label: {
                             Label(
@@ -403,6 +436,7 @@ struct LoupeScreen: View {
                                 systemImage: "camera.aperture"
                             )
                         }
+                        .disabled(rawEditor.isActive)
                     }
                     if !activeRecord.isVideo {
                         Button {
@@ -588,6 +622,7 @@ struct LoupeScreen: View {
     /// Which rendition of the RAW is on screen: tap to switch.
     private var renditionBadge: some View {
         let rendition = developed.isOn ? developed.rendition : .embedded
+        let label = rawEditor.isActive ? rawEditor.label : rendition.label
         return Button {
             developed.setOn(!developed.isOn, photo: activeRecord)
         } label: {
@@ -595,7 +630,7 @@ struct LoupeScreen: View {
                 if rendition == .developing {
                     ProgressView().controlSize(.mini).tint(.white)
                 }
-                Text(rendition.label)
+                Text(label)
                     .monospacedDigit()
                     .lineLimit(1)
             }
@@ -609,9 +644,70 @@ struct LoupeScreen: View {
             .pbGlass(in: Capsule(), interactive: true, dark: true)
         }
         .buttonStyle(.plain)
+        .disabled(rawEditor.isActive)
         .accessibilityIdentifier("loupe-rendition")
-        .accessibilityLabel(rendition.label)
+        .accessibilityLabel(label)
         .accessibilityHint(developed.isOn ? "Shows the embedded preview" : "Develops the full RAW")
+    }
+
+    private func endRawEdit() {
+        guard rawEditor.isActive else { return }
+        rawEditor.end()
+        developed.show(activeRecord)
+    }
+
+    private var rawEditControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("RAW exposure").font(.headline)
+                Spacer()
+                Button("Close editor", action: endRawEdit)
+                    .accessibilityIdentifier("raw-edit-close")
+            }
+            Text("Preview only · Changes aren’t saved")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.7))
+            switch rawEditor.phase {
+            case .downloading, .preparing:
+                HStack {
+                    ProgressView().tint(.white)
+                    Text(rawEditor.label).font(.subheadline).monospacedDigit()
+                }
+                .accessibilityIdentifier("raw-edit-loading")
+            case .ready:
+                HStack {
+                    Text("Exposure")
+                    Spacer()
+                    Text(String(format: "%+.2f EV", rawEditor.exposure)).monospacedDigit()
+                        .accessibilityIdentifier("raw-edit-value")
+                    Button("Reset") { rawEditor.setExposure(0) }
+                        .disabled(rawEditor.exposure == 0)
+                }
+                Slider(
+                    value: Binding(get: { rawEditor.exposure }, set: { rawEditor.setExposure($0) }),
+                    in: -3...3, step: 0.05,
+                    onEditingChanged: { rawEditor.setDragging($0) }
+                )
+                .tint(.white)
+                .accessibilityLabel("RAW exposure")
+                .accessibilityValue(String(format: "%+.2f EV", rawEditor.exposure))
+                .accessibilityIdentifier("raw-edit-exposure")
+            case let .failed(message):
+                Text(message).font(.subheadline).foregroundStyle(.white.opacity(0.7))
+                    .accessibilityIdentifier("raw-edit-error")
+                Button("Try again") {
+                    if let activeRecord { rawEditor.start(activeRecord) }
+                }
+            case .inactive:
+                EmptyView()
+            }
+        }
+        .foregroundStyle(.white)
+        .tint(.white)
+        .padding(PBSpacing.m)
+        .frame(maxWidth: 600)
+        .pbGlass(in: RoundedRectangle(cornerRadius: 20), dark: true)
+        .padding(.horizontal, PBSpacing.m)
     }
 
     /// Outlines detected faces on the photo; they follow pinch-zoom and pan.

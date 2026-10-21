@@ -1,12 +1,12 @@
 # Pipeline
 
-`pipeline::develop` (in `src/pipeline.rs`) runs these stages in order. Each one names the
-Apple RawCamera node it corresponds to (see [apple-reference.md](apple-reference.md)).
+`pipeline::develop` (`src/pipeline.rs` and `src/prepared.rs`) runs these stages in order.
+Each one names the Apple RawCamera node it corresponds to (see [apple-reference.md](apple-reference.md)).
 Stages marked *port* are translations of RawCamera's Core Image kernels; their module docs
 name the kernels.
 
 There are two variants. RAF and ARW files (a sensor mosaic) take the stages below. LinearRaw
-DNGs (Apple ProRAW) are already demosaiced and branch to `develop_dng`, RawCamera's "8.dng"
+DNGs (Apple ProRAW) are already demosaiced and use RawCamera's "8.dng"
 path; see [LinearRaw DNG](#linearraw-dng-apple-proraw).
 
 | # | Stage | Code | RawCamera node |
@@ -16,7 +16,7 @@ path; see [LinearRaw DNG](#linearraw-dng-apple-proraw).
 | 3 | chroma NR + luma pyramid, gathered | `stages/chroma_nr.rs`, `stages/luma.rs` (*ports*) | `powerBlur*`, luma pyramid, `YAndRGBGather` |
 | 4 | lens (distortion, bicubic) | `stages/lens.rs` | `radialLens` |
 | 5 | highlight recovery | `stages/highlights.rs` (*port*) | `RAWRecoverHighlightsV2` |
-| 6 | camera → linear Display P3 + exposure | `pipeline.rs`, `profile.rs` | `color_matrix` nodes |
+| 6 | camera → linear Display P3 + exposure | `prepared.rs`, `profile.rs` | `color_matrix` nodes |
 | 7 | hue magnet, gamut map, boost | `stages/look.rs` (*port*) | `RAWHueMagnetMR`, `gmKernel_v7`, `boost_v7` |
 | 8 | sRGB transfer | `math::srgb_encode` | `tagcolorspace DisplayP3` |
 | 9 | orientation / rotate / crop | `image.rs` | `affine` |
@@ -44,7 +44,8 @@ parsers share the bounded TIFF reader in `src/tiff.rs`.
 RAF and ARW unpack to a `u16` mosaic covering the full sensor readout (7872×5196 on the X-E5,
 including masked borders). DNG unpacks to linear RGB plus `dng::DngInfo` (the colour, exposure
 and tone tags). This is the expensive, settings-independent part (0.03–0.2 s). Keep the
-`Negative` and call `develop` again for each edit.
+`Negative` for changing early-stage settings. For exposure/tone edits, call `prepare`
+once and reuse its `Prepared` image (see [repeated editing](usage.md#repeated-editing)).
 
 - **ARW** reads the raw SubIFD (Photometric 32803): `ImageWidth`/`ImageLength`,
   `Compression`, `CFAPattern`, `StripOffsets` or `Tile*`, `DefaultCropOrigin`/`DefaultCropSize`
@@ -232,8 +233,8 @@ coordinates.
 
 ## LinearRaw DNG (Apple ProRAW)
 
-`develop_dng` handles DNGs whose data is already linear RGB. It follows RawCamera's "8.dng"
-graph:
+`prepare_dng` and the DNG renderer in `prepared.rs` handle already-linear RGB. They follow
+RawCamera's "8.dng" graph:
 
 1. **Detail** (`stages/dng_detail.rs`, *port*): `extractY`,
    `gaborFiltersToSmoothedLuminanceAndGradient`, 5×5 `reduce`, `expandAndMakeDetails`,

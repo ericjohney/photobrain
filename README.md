@@ -199,6 +199,8 @@ The production Bun server reads `API_URL`, `HOST`, and `PORT`. It injects the AP
 
 ### Native iOS
 
+Building the app requires Xcode 26.6 and rustup Rust 1.98.0 with iOS device and simulator targets. The Xcode build phase compiles the local RAW engine automatically. See [RAW editing setup](packages/raw-develop/docs/interactive-editing.md#build-and-package). In the loupe, **Edit RAW** provides an on-device exposure preview; adjustments are temporary and are not saved or exported.
+
 The native app's `PhotoBrainAPIURL` comes from the selected file under `apps/ios/Config`. Debug uses `http://localhost:3000`; Preview and Production use the configured non-local HTTPS origin and reject local/insecure origins.
 
 ## API Overview
@@ -275,7 +277,7 @@ The API image applies shared migrations on startup and runs on port 3000. The we
 
 The permanent GitHub Actions build workflow runs API tests/typecheck and web Playwright tests, builds and pushes API and web images, and updates their external ArgoCD image tags on pushes to `main`.
 
-Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator, plus fixture-backed UI flows on iPhone and iPad Air simulators. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` (or by manual dispatch with custom inputs); it validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
+Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator, plus fixture-backed UI flows on iPhone and iPad Air simulators. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**` (or by manual dispatch with custom inputs); it validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 
 The release workflow serializes on `ios-production-release`, uses `apps/ios/scripts/allocate-app-store-build.mjs` against App Store Connect plus a run reservation floor, and enforces iOS 17.0 plus the production bundle/API contract. See [iOS distribution](docs/ios-distribution.md) for releasing, signing secrets, and renewal.
 
