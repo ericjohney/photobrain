@@ -84,6 +84,11 @@ balance, highlight recovery, luma/chroma NR, sharpening, lens settings or qualit
 `Error::Settings`: prepare a new working image for those controls. The cancellation token
 and `keep_linear` can change per render. A cancelled request does not invalidate the cache.
 
+Full Adobe rendering also reuses preparation for the supported `adobe_tone` controls.
+It retains scene measurements from the original camera image, including when the working
+pixels are resized for a screen preview. See [Adobe tone controls](adobe-engine.md#tone-controls)
+for the current supported controls and their native slider units.
+
 The boundaries differ by format:
 
 - **RAF/ARW:** preparation includes demosaic, white balance, camera-space NR, lens

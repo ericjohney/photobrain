@@ -26,6 +26,7 @@ impl Default for LensSettings {
   /// Matches Apple's as-shot rendering, which corrects distortion only (its graph has
   /// `radialLens`, never the per-channel `radialLensRB`), leaving the camera's
   /// chromatic aberration and vignetting curves unapplied.
+  /// Full Adobe always applies its mandatory embedded CA opcode separately.
   fn default() -> Self {
     Self {
       distortion: true,
@@ -44,6 +45,46 @@ pub struct Crop {
   pub height: f64,
 }
 
+/// Camera Raw NR controls in Adobe's integer slider units (0-100).
+/// When present these override the shared noise-reduction amounts on the full
+/// Adobe engine. Apple and binned previews do not use this block.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AdobeNoiseReduction {
+  pub color: u8,
+  pub detail: u8,
+  pub smoothness: u8,
+  pub luminance: u8,
+  pub luminance_detail: u8,
+  pub luminance_contrast: u8,
+}
+
+impl Default for AdobeNoiseReduction {
+  fn default() -> Self {
+    Self {
+      color: 25,
+      detail: 50,
+      smoothness: 50,
+      luminance: 0,
+      luminance_detail: 50,
+      luminance_contrast: 0,
+    }
+  }
+}
+
+/// Camera Raw's five integer Basic tone controls. Exposure uses the shared
+/// `DevelopSettings::exposure` field, in EV. These controls are specific to the
+/// full Adobe engine and are independent of its noise-reduction controls.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AdobeTone {
+  pub contrast: i32,
+  pub highlights: i32,
+  pub shadows: i32,
+  pub whites: i32,
+  pub blacks: i32,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DevelopSettings {
@@ -57,6 +98,11 @@ pub struct DevelopSettings {
   pub luma_noise_reduction: Option<f32>,
   /// Colour noise reduction 0-1.
   pub chroma_noise_reduction: f32,
+  /// Optional Adobe NR controls. Omitted: shared amounts rounded to integer
+  /// 0-100 sliders (absent luma = 0), details/smoothness 50, luma contrast 0.
+  pub adobe_noise_reduction: Option<AdobeNoiseReduction>,
+  /// Camera Raw tone sliders, each -100..100 (omitted = zero).
+  pub adobe_tone: Option<AdobeTone>,
   /// Sharpening 0-2.
   pub sharpening: f32,
   /// Tone curve strength 0-1 (0 = flat transfer encode).
@@ -76,6 +122,8 @@ impl Default for DevelopSettings {
       highlight_recovery: true,
       luma_noise_reduction: None,
       chroma_noise_reduction: 0.5,
+      adobe_noise_reduction: None,
+      adobe_tone: None,
       sharpening: 1.0,
       tone_amount: 1.0,
       lens: LensSettings::default(),
@@ -112,6 +160,33 @@ impl DevelopSettings {
       if !(0.0..=hi).contains(&v) {
         return Err(crate::Error::Settings(format!("{name} out of range")));
       }
+    }
+    if let Some(nr) = &self.adobe_noise_reduction
+      && [
+        nr.color,
+        nr.detail,
+        nr.smoothness,
+        nr.luminance,
+        nr.luminance_detail,
+        nr.luminance_contrast,
+      ]
+      .iter()
+      .any(|&v| v > 100)
+    {
+      return bad("Adobe noise reduction controls must be within 0-100");
+    }
+    if let Some(tone) = &self.adobe_tone
+      && [
+        tone.contrast,
+        tone.highlights,
+        tone.shadows,
+        tone.whites,
+        tone.blacks,
+      ]
+      .iter()
+      .any(|v| !(-100..=100).contains(v))
+    {
+      return bad("Adobe tone controls must be within -100..100");
     }
     if let Some(c) = self.crop {
       let ok = c.x >= 0.0
@@ -151,5 +226,49 @@ mod tests {
     assert_eq!(partial.white_balance, WhiteBalance::AsShot);
     assert!(partial.validate().is_ok());
     assert!(serde_json::from_str::<DevelopSettings>(r#"{"bogus": 1}"#).is_err());
+  }
+
+  #[test]
+  fn adobe_noise_reduction_uses_integer_sliders_and_validates_limits() {
+    let settings: DevelopSettings =
+      serde_json::from_str(r#"{"adobe_noise_reduction": {}}"#).unwrap();
+    assert_eq!(
+      settings.adobe_noise_reduction,
+      Some(AdobeNoiseReduction::default())
+    );
+    assert!(settings.validate().is_ok());
+    let settings: DevelopSettings = serde_json::from_str(
+      r#"{"adobe_noise_reduction": {"color": 62, "detail": 80, "smoothness": 75}}"#,
+    )
+    .unwrap();
+    assert!(settings.validate().is_ok());
+    assert_eq!(
+      serde_json::from_str::<DevelopSettings>(&serde_json::to_string(&settings).unwrap()).unwrap(),
+      settings
+    );
+    let invalid: DevelopSettings =
+      serde_json::from_str(r#"{"adobe_noise_reduction": {"detail": 101}}"#).unwrap();
+    assert!(invalid.validate().is_err());
+    assert!(
+      serde_json::from_str::<DevelopSettings>(r#"{"adobe_noise_reduction": {"color": 25.5}}"#)
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn adobe_tone_controls_are_integer_and_bounded() {
+    let settings: DevelopSettings = serde_json::from_str(
+      r#"{"adobe_tone":{"contrast":50,"highlights":-100,"shadows":100,"whites":25,"blacks":-40}}"#,
+    )
+    .unwrap();
+    assert!(settings.validate().is_ok());
+    assert_eq!(
+      serde_json::from_str::<DevelopSettings>(&serde_json::to_string(&settings).unwrap()).unwrap(),
+      settings
+    );
+    let invalid: DevelopSettings =
+      serde_json::from_str(r#"{"adobe_tone":{"whites":101}}"#).unwrap();
+    assert!(invalid.validate().is_err());
+    assert!(serde_json::from_str::<DevelopSettings>(r#"{"adobe_tone":{"contrast":0.5}}"#).is_err());
   }
 }

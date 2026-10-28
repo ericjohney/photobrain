@@ -134,6 +134,26 @@ pub fn parse(data: &[u8]) -> Result<RawMetadata> {
     chromatic_aberration: fuji.get(0xf00f).map(|e| e.values_f64(&tiff)).transpose()?,
     vignetting: fuji.get(0xf010).map(|e| e.values_f64(&tiff)).transpose()?,
   });
+  let shift = |tag| -> Result<Option<i32>> {
+    let Some(entry) = fuji.get(tag) else {
+      return Ok(None);
+    };
+    if entry.typ != 9 || entry.count != 1 {
+      return malformed("invalid signed IBIS shift");
+    }
+    Ok(Some(entry.values_f64(&tiff)?[0] as i32))
+  };
+  let fuji_ibis_shift = shift(0xf011)?.zip(shift(0xf012)?).map(|(x, y)| [x, y]);
+  let fuji_daylight_wb = fuji
+    .get(0xf00c)
+    .map(|e| e.values_f64(&tiff))
+    .transpose()?
+    .and_then(|values| {
+      values
+        .chunks_exact(4)
+        .find(|v| v[3] == 21.0)
+        .map(|v| [v[1], v[0], v[2]])
+    });
 
   let abs_strip = cfa_offset + strip_offset;
   let compressed = data.get(abs_strip..abs_strip + 2) == Some(&[0x49, 0x53]);
@@ -183,6 +203,11 @@ pub fn parse(data: &[u8]) -> Result<RawMetadata> {
     storage,
     orientation: 1,
     iso: None,
+    exposure_time: None,
+    sony_raw_format: None,
+    sony_daylight_wb: None,
+    fuji_ibis_shift,
+    fuji_daylight_wb,
     raw_exposure_bias,
     lens,
     lens_model: None,

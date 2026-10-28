@@ -82,6 +82,18 @@ pub struct RawMetadata {
   /// EXIF orientation (1-8).
   pub orientation: u16,
   pub iso: Option<u32>,
+  /// Exposure duration in seconds, from EXIF ExposureTime or ShutterSpeedValue.
+  pub exposure_time: Option<f64>,
+  /// Sony raw format (tag 0x7000): 0 uncompressed, 2 cRAW, 4 lossless JPEG.
+  pub sony_raw_format: Option<u32>,
+  /// Per-body daylight R/G/B levels from Sony's encrypted SR2 metadata. These
+  /// calibrate Adobe's Bayer pre-gain independently of the as-shot white balance.
+  pub sony_daylight_wb: Option<[f64; 3]>,
+  /// Fuji sensor shift [horizontal, vertical] in tenths of a pixel (signed
+  /// FujiIFD 0xf011/0xf012), used by Adobe's embedded lateral CA correction.
+  pub fuji_ibis_shift: Option<[i32; 2]>,
+  /// Per-body daylight R/G/B levels from FujiIFD WB_GRBLevelsStandard (D65).
+  pub fuji_daylight_wb: Option<[f64; 3]>,
   /// Fuji RawExposureBias (CFA header 0x9650) in EV, when present.
   pub raw_exposure_bias: Option<f64>,
   pub lens: LensSource,

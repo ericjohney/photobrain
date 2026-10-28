@@ -39,6 +39,11 @@ fn negative(container: Container) -> Negative {
       },
       orientation: 6,
       iso: Some(3200),
+      exposure_time: None,
+      sony_raw_format: None,
+      sony_daylight_wb: None,
+      fuji_ibis_shift: None,
+      fuji_daylight_wb: None,
       raw_exposure_bias: Some(-0.5),
       lens: LensSource::None,
       lens_model: None,
@@ -150,6 +155,142 @@ fn repeated_edits_match_one_shot_for_all_formats_and_qualities() {
       );
     }
   }
+}
+
+#[test]
+fn adobe_noise_reduction_is_reusable_and_settings_are_fenced() {
+  let Some(profiles) = std::env::var_os("ADOBE_PROFILE_DIR") else {
+    eprintln!("ADOBE_PROFILE_DIR unset; skipping external-profile Adobe prepare check");
+    return;
+  };
+  let neg = negative(Container::Raf);
+  let opts = Options {
+    engine: raw_develop::Engine::Adobe,
+    adobe_profile_dir: Some(profiles.into()),
+    keep_linear: true,
+    ..Default::default()
+  };
+  let mut settings = DevelopSettings {
+    sharpening: 0.0,
+    luma_noise_reduction: Some(0.0),
+    adobe_noise_reduction: Some(raw_develop::settings::AdobeNoiseReduction {
+      color: 25,
+      detail: 50,
+      smoothness: 50,
+      ..Default::default()
+    }),
+    ..Default::default()
+  };
+  let prepared = prepare(&neg, &settings, &opts).unwrap();
+  for exposure in [-1.0, 0.75] {
+    settings.exposure = exposure;
+    let repeated = prepared.render(&settings, &opts).unwrap();
+    let direct = develop(&neg, &settings, &opts).unwrap();
+    assert_eq!(bits(&repeated.image.data), bits(&direct.image.data));
+    assert_eq!(
+      bits(&repeated.linear.unwrap().data),
+      bits(&direct.linear.unwrap().data)
+    );
+  }
+  for (exposure, contrast, highlights, shadows, whites, blacks) in [
+    (0.7, 30, 0, 0, 20, -25),
+    (-2.0, -100, 0, 0, -100, 100),
+    (2.5, 100, 0, 0, 100, -100),
+    (0.7, 30, -50, 40, 20, -25),
+    (-1.0, -20, 50, -40, -15, 30),
+  ] {
+    settings.exposure = exposure;
+    settings.adobe_tone = Some(raw_develop::settings::AdobeTone {
+      contrast,
+      highlights,
+      shadows,
+      whites,
+      blacks,
+      ..Default::default()
+    });
+    let repeated = prepared.render(&settings, &opts).unwrap();
+    let direct = develop(&neg, &settings, &opts).unwrap();
+    assert_eq!(bits(&repeated.image.data), bits(&direct.image.data));
+    assert_eq!(
+      bits(&repeated.linear.unwrap().data),
+      bits(&direct.linear.unwrap().data)
+    );
+  }
+  // A cancelled edit can retry against the same owned scene/guide cache.
+  let token = raw_develop::Cancel::new();
+  token.cancel();
+  let cancelled = Options {
+    cancel: token,
+    quality: opts.quality,
+    engine: opts.engine,
+    adobe_profile_dir: opts.adobe_profile_dir.clone(),
+    keep_linear: opts.keep_linear,
+  };
+  assert!(matches!(
+    prepared.render(&settings, &cancelled),
+    Err(Error::Cancelled)
+  ));
+  assert_eq!(
+    bits(&prepared.render(&settings, &opts).unwrap().image.data),
+    bits(&develop(&neg, &settings, &opts).unwrap().image.data)
+  );
+  let proxy = prepare(&neg, &settings, &opts)
+    .unwrap()
+    .with_max_edge(37)
+    .unwrap();
+  let output = proxy.render(&settings, &opts).unwrap();
+  assert_eq!(output.image.width.max(output.image.height), 37);
+  assert!(output.image.data.iter().all(|value| value.is_finite()));
+  settings.adobe_tone = None;
+  let active = prepared.working_image().data.clone();
+  settings.adobe_noise_reduction.as_mut().unwrap().color = 0;
+  assert!(matches!(
+    prepared.render(&settings, &opts),
+    Err(Error::Settings(_))
+  ));
+  let unfiltered = prepare(&neg, &settings, &opts).unwrap();
+  assert_ne!(bits(&active), bits(&unfiltered.working_image().data));
+  settings.adobe_noise_reduction.as_mut().unwrap().luminance = 70;
+  settings
+    .adobe_noise_reduction
+    .as_mut()
+    .unwrap()
+    .luminance_detail = 11;
+  settings
+    .adobe_noise_reduction
+    .as_mut()
+    .unwrap()
+    .luminance_contrast = 22;
+  assert!(matches!(
+    unfiltered.render(&settings, &opts),
+    Err(Error::Settings(_))
+  ));
+  let luma_filtered = prepare(&neg, &settings, &opts).unwrap();
+  assert_ne!(
+    bits(&unfiltered.working_image().data),
+    bits(&luma_filtered.working_image().data)
+  );
+  let repeated = luma_filtered.render(&settings, &opts).unwrap();
+  let direct = develop(&neg, &settings, &opts).unwrap();
+  assert_eq!(bits(&repeated.image.data), bits(&direct.image.data));
+  assert_eq!(
+    bits(&repeated.linear.unwrap().data),
+    bits(&direct.linear.unwrap().data)
+  );
+  // Adobe-only controls do not alter the default Apple engine.
+  settings.adobe_tone = Some(raw_develop::settings::AdobeTone {
+    contrast: 30,
+    highlights: -50,
+    shadows: 40,
+    whites: 20,
+    blacks: -25,
+  });
+  let apple = Options::default();
+  let with_controls = develop(&neg, &settings, &apple).unwrap();
+  settings.adobe_noise_reduction = None;
+  settings.adobe_tone = None;
+  let plain = develop(&neg, &settings, &apple).unwrap();
+  assert_eq!(bits(&with_controls.image.data), bits(&plain.image.data));
 }
 
 #[test]

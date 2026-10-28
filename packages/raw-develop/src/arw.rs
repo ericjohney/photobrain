@@ -105,13 +105,19 @@ pub fn parse(data: &[u8]) -> Result<RawMetadata> {
       }
     }
     7 => {
-      let offs = u32s(&t, &raw, 0x0144)?.ok_or_else(|| Error::Malformed("ARW: TileOffsets".into()))?;
-      let lens = u32s(&t, &raw, 0x0145)?.ok_or_else(|| Error::Malformed("ARW: TileByteCounts".into()))?;
+      let offs =
+        u32s(&t, &raw, 0x0144)?.ok_or_else(|| Error::Malformed("ARW: TileOffsets".into()))?;
+      let lens =
+        u32s(&t, &raw, 0x0145)?.ok_or_else(|| Error::Malformed("ARW: TileByteCounts".into()))?;
       if offs.len() != lens.len() {
         return malformed("ARW: tile table sizes differ");
       }
       RawStorage::LosslessJpegTiles {
-        tiles: offs.iter().zip(&lens).map(|(&o, &l)| (o as usize, l as usize)).collect(),
+        tiles: offs
+          .iter()
+          .zip(&lens)
+          .map(|(&o, &l)| (o as usize, l as usize))
+          .collect(),
         tile_width: need(one(&t, &raw, 0x0142)?, "TileWidth")?,
         tile_height: need(one(&t, &raw, 0x0143)?, "TileLength")?,
       }
@@ -147,7 +153,8 @@ pub fn parse(data: &[u8]) -> Result<RawMetadata> {
   let g = (wb[1] + wb[2]) * 0.5;
   let as_shot_wb = [wb[0] / g, 1.0, wb[3] / g];
 
-  let arr = |tag: u16| -> Result<Option<Vec<f64>>> { raw.get(tag).map(|e| e.values_f64(&t)).transpose() };
+  let arr =
+    |tag: u16| -> Result<Option<Vec<f64>>> { raw.get(tag).map(|e| e.values_f64(&t)).transpose() };
   // RawCamera applies distortion only when the camera flags it (DistortionCorrection
   // 0x7036 = 1; it ignores the CA and vignetting arrays).
   let dist_on = one(&t, &raw, 0x7036)?.unwrap_or(0) != 0;
@@ -175,6 +182,11 @@ pub fn parse(data: &[u8]) -> Result<RawMetadata> {
     storage,
     orientation: 1,
     iso: None,
+    exposure_time: None,
+    sony_raw_format: one(&t, &raw, 0x7000)?,
+    sony_daylight_wb: crate::adobe::bayer::calibration::read_daylight(&t, &ifd0)?,
+    fuji_ibis_shift: None,
+    fuji_daylight_wb: None,
     raw_exposure_bias: None,
     lens,
     lens_model: None,

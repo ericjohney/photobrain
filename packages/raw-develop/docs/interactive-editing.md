@@ -72,8 +72,9 @@ approximate preview; full-resolution rendering remains the source of final outpu
   settings invalidation, bounded previews and tiny edge crops.
 - The area resampler preserves negative values and highlight headroom above 1.0.
 
-Unresized prepared output is bit-identical to one-shot output. `PIPELINE_VERSION` stays at
-2 because this refactor preserves the existing render contract.
+Unresized prepared output is bit-identical to one-shot output. The original Prepared
+refactor preserved pipeline version 2. The current version is 5 following the secondary
+Adobe engine's modern tone/output integration; the Apple render contract is unchanged.
 
 ## Native iOS implementation
 

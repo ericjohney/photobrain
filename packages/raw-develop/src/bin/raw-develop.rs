@@ -83,7 +83,7 @@ fn fnv1a(data: &[f32]) -> String {
 fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Result<()> {
   let mut settings = DevelopSettings::default();
   let mut opts = Options::default();
-  let (mut dump_linear, mut dump_final) = (None, None);
+  let (mut dump_linear, mut dump_final, mut dump_working) = (None, None, None::<String>);
   let mut digest = false;
   let mut it = rest.iter();
   while let Some(a) = it.next() {
@@ -96,6 +96,10 @@ fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Resul
           .map_err(|e| raw_develop::Error::Settings(e.to_string()))?;
       }
       "--preview" => opts.quality = Quality::Preview,
+      "--adobe" => opts.engine = raw_develop::Engine::Adobe,
+      "--adobe-profiles" => {
+        opts.adobe_profile_dir = it.next().map(std::path::PathBuf::from);
+      }
       "--cancel-after-ms" => {
         // Test hook: cancel the develop from another thread after this many ms.
         let ms: u64 = it
@@ -112,6 +116,7 @@ fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Resul
       }
       "--dump-linear" => dump_linear = it.next().cloned(),
       "--dump-final" => dump_final = it.next().cloned(),
+      "--dump-working" => dump_working = it.next().cloned(),
       "--digest" => digest = true,
       other => {
         return Err(raw_develop::Error::Settings(format!(
@@ -124,10 +129,20 @@ fn run_develop(input: &str, output: &str, rest: &[String]) -> raw_develop::Resul
   let t0 = Instant::now();
   let neg = Negative::open(input)?;
   let t1 = Instant::now();
+  if let Some(p) = &dump_working {
+    // Balanced camera RGB at the render boundary (before colour), sensor orientation.
+    let prepared = raw_develop::prepare(&neg, &settings, &opts)?;
+    write_f32(prepared.working_image(), p)?;
+  }
   let out = develop(&neg, &settings, &opts)?;
   let t2 = Instant::now();
   if digest {
-    println!("{}x{} {}", out.image.width, out.image.height, fnv1a(&out.image.data));
+    println!(
+      "{}x{} {}",
+      out.image.width,
+      out.image.height,
+      fnv1a(&out.image.data)
+    );
   }
   encode::write(
     &out.image,

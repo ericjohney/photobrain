@@ -31,7 +31,7 @@ use crate::stages::{
 use rayon::prelude::*;
 
 /// Bumped whenever developed output changes for the same input and settings.
-pub const PIPELINE_VERSION: u32 = 2;
+pub const PIPELINE_VERSION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Quality {
@@ -40,6 +40,18 @@ pub enum Quality {
   /// Binned to one third (X-Trans, 3x3 cells) or one half (Bayer, 2x2) resolution: fast
   /// previews and thumbnails.
   Preview,
+}
+
+/// Development engine. Decode is shared; Adobe has its own full X-Trans/Bayer
+/// demosaic, mandatory cleanup, lens corrections, colour and tone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Engine {
+  /// Apple RawCamera rendering (default).
+  #[default]
+  Apple,
+  /// Reconstructed Camera Raw 18.7 rendering with an Adobe DCP profile.
+  /// RAF and ARW only; binned previews use the DNG SDK baseline renderer.
+  Adobe,
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +79,11 @@ pub struct Options {
   /// Cooperative cancellation: `develop` returns `Error::Cancelled` at the next stage
   /// boundary (or streamed luma step) after it is set. Never cancels by default.
   pub cancel: crate::Cancel,
+  /// Colour and tone back end.
+  pub engine: Engine,
+  /// Directory holding Adobe DCP profiles for `Engine::Adobe`; falls back to the
+  /// `ADOBE_PROFILE_DIR` environment variable.
+  pub adobe_profile_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -75,6 +92,8 @@ impl Default for Options {
       quality: Quality::Full,
       keep_linear: false,
       cancel: crate::Cancel::never(),
+      engine: Engine::Apple,
+      adobe_profile_dir: None,
     }
   }
 }
@@ -92,10 +111,24 @@ pub fn prepare(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   let cancel = &opts.cancel;
   cancel.check()?;
   if let Some((info, rgb)) = &neg.dng {
+    if opts.engine == Engine::Adobe {
+      return Err(crate::Error::Unsupported(
+        "Adobe engine supports RAF and ARW only".into(),
+      ));
+    }
     return prepare_dng(neg, info, rgb, settings, opts);
   }
   let meta = &neg.meta;
   let profile = CameraProfile::builtin(&meta.model)?;
+  let adobe_dcp = match opts.engine {
+    Engine::Adobe => {
+      let dir = crate::adobe::profile_dir(opts.adobe_profile_dir.as_deref())?;
+      let path = crate::adobe::dcp::Dcp::find_adobe_standard(&dir, &meta.make, &meta.model)?;
+      crate::adobe::baseline_exposure(meta)?;
+      Some(crate::adobe::dcp::Dcp::open(&path)?)
+    }
+    Engine::Apple => None,
+  };
 
   let noise = profile.noise_for_iso(meta.iso);
 
@@ -104,6 +137,13 @@ pub fn prepare(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   let neutral = match settings.white_balance {
     WhiteBalance::AsShot => [1.0 / as_shot[0], 1.0, 1.0 / as_shot[2]],
     WhiteBalance::Temperature { kelvin, tint } => profile.neutral_for_temperature(kelvin, tint),
+  };
+  let neutral = if adobe_dcp.is_some() {
+    // Adobe's demosaic cleanup uses the recorded sensor neutral. Requested
+    // temperature/tint is applied later by its own colour specification.
+    crate::adobe::xtrans::rounded_neutral([1.0 / as_shot[0], 1.0, 1.0 / as_shot[2]])
+  } else {
+    neutral
   };
   let wb = [1.0 / neutral[0], 1.0, 1.0 / neutral[2]];
 
@@ -118,7 +158,14 @@ pub fn prepare(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
     meta.crop_width + (meta.crop_left - left),
     meta.crop_height + (meta.crop_top - top),
   );
-  let white = profile.white_level;
+  let adobe = adobe_dcp.is_some();
+  // Adobe normalises with the file's white level (2^bits - 1 when absent) and keeps
+  // negative values after black subtraction; RawCamera clips at its own level.
+  let white = if adobe {
+    crate::adobe::white_level(meta)
+  } else {
+    profile.white_level
+  };
   // The linearised plane is only an input to the generic demosaics; the RawCamera ports
   // read the raw mosaic directly, so it is built lazily.
   let cfa = meta.cfa.shifted(top, left);
@@ -141,6 +188,17 @@ pub fn prepare(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   let (mut img, scale) = match opts.quality {
     Quality::Full => {
       let d = match noise {
+        // The Adobe engine does not use RawCamera's NR-integrated demosaics.
+        _ if adobe && meta.cfa.is_xtrans() => {
+          Some(crate::adobe::xtrans::develop_preserved_with_lens(
+            neg, neutral,
+            true, // Embedded CA is mandatory; AutoLateralCA is a separate Adobe control.
+            cancel,
+          )?)
+        }
+        _ if adobe => Some(crate::adobe::bayer::develop_unbalanced_active(
+          neg, true, cancel,
+        )?),
         Some(n) if meta.cfa.is_xtrans() => full_dextrans(neg, profile.white_level, wb, n),
         Some(n) => full_debayer(neg, &profile, wb, n, cancel)?,
         None => None,
@@ -182,7 +240,10 @@ pub fn prepare(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   // 5. Noise reduction (white-balanced camera space): RawCamera's chroma NR and luma
   // pyramid when the profile has a noise table for this ISO, else the generic filters.
   let mut luma_nr = settings.luma_noise_reduction.unwrap_or(0.0);
+  // Adobe NR runs after its own camera-to-RIMM transform below.
+  let noise = if adobe { None } else { noise };
   match noise {
+    _ if adobe => {}
     Some(n) if opts.quality == Quality::Full => {
       let default = luma::default_lnr(&n.luma);
       luma_nr = settings.luma_noise_reduction.unwrap_or(default);
@@ -233,17 +294,54 @@ pub fn prepare(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
   // 6. Lens correction.
   let lc = LensCorrection::from_source(&meta.lens, profile.distortion_fill_scale);
   let l = &settings.lens;
-  if !lc.is_identity() && (l.distortion || l.chromatic_aberration || l.vignetting) {
-    img = lc.apply(&img, (l.distortion, l.chromatic_aberration, l.vignetting));
+  // Full Adobe paths own their lens stages. In particular, normal Sony Adobe
+  // rendering does not apply the embedded distortion curve used by RawCamera;
+  // its optional correction requires an external LCP.
+  let adobe_full = adobe && opts.quality == Quality::Full;
+  if !adobe_full && !lc.is_identity() && (l.distortion || l.chromatic_aberration || l.vignetting) {
+    img = lc.apply(
+      &img,
+      (l.distortion, !adobe && l.chromatic_aberration, l.vignetting),
+    );
   }
 
   cancel.check()?;
   // 7. Highlights: channels clip at wb[c] in balanced units.
-  if settings.highlight_recovery {
+  if settings.highlight_recovery && !(adobe && opts.quality == Quality::Full) {
     highlights::recover(&mut img, highlights::thresholds(wb.map(|v| v as f32)));
   }
 
   cancel.check()?;
+  if let Some(dcp) = &adobe_dcp {
+    let luma_nr = settings
+      .adobe_noise_reduction
+      .as_ref()
+      .map_or(luma_nr, |nr| f32::from(nr.luminance) * 0.01);
+    let mut render = crate::adobe::AdobeRender::new(
+      dcp,
+      meta,
+      neutral,
+      luma_nr,
+      &settings.white_balance,
+      opts.quality == Quality::Full,
+    )?;
+    render.prepare_camera(&mut img, dcp, meta, settings, cancel)?;
+    if opts.quality == Quality::Full && !meta.cfa.is_xtrans() {
+      img = img.crop(
+        meta.crop_left,
+        meta.crop_top,
+        meta.crop_width,
+        meta.crop_height,
+      );
+    }
+    return Ok(Prepared::new(
+      img,
+      settings,
+      opts,
+      meta.orientation,
+      RenderPipeline::Adobe(Box::new(render)),
+    ));
+  }
   let (matrix, cct) = profile.balanced_camera_to_display_p3(neutral);
   Ok(Prepared::new(
     img,

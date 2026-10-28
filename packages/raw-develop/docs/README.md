@@ -17,6 +17,7 @@ derived from, its output. It is a standalone Rust crate; the app uses it only fo
 | [Adding a camera](adding-a-camera.md) | support a new body (a new X-Trans model, another Sony, a Bayer Fuji, or another make) |
 | [Validation and calibration](validation.md) | compare against Apple, run fixture tests, refit a profile |
 | [Using the library](usage.md) | call the crate or the CLI, store edit settings, integrate it later |
+| [Adobe engine](adobe-engine.md) | use the secondary Adobe engine, six NR controls, exact stage checks and remaining tone/lens work |
 | [Interactive editing](interactive-editing.md) | inspect repeat-render measurements and the remaining iOS work |
 | [Reference: Apple's pipeline](apple-reference.md) | see what we observed in RawCamera and how it maps onto our code |
 | [Plan: other cameras](plan-other-cameras.md) | read how the Sony ARW, iPhone ProRAW and X100VI support was built, and what remains |

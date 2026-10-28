@@ -35,10 +35,11 @@ pub(crate) struct DngRender {
 #[derive(Clone, Debug)]
 pub(crate) enum RenderPipeline {
   Mosaic(MosaicRender),
+  Adobe(Box<crate::adobe::AdobeRender>),
   Dng(Box<DngRender>),
 }
 
-/// Owned, immutable working image, reusable for exposure, tone, rotation and crop.
+/// Owned working image, reusable for exposure, Adobe tone controls, rotation and crop.
 ///
 /// Use [`crate::prepare`] once, then [`Self::render`] for each slider position.
 /// Changes to white balance, detail, highlight recovery, lens settings or quality
@@ -75,7 +76,15 @@ impl Prepared {
     (self.image.width, self.image.height)
   }
 
-  /// Bytes occupied by the working RGB float pixels (excludes small render metadata).
+  /// The working pixels: white-balanced camera RGB for RAF/ARW (white = 1,1,1),
+  /// after demosaic, noise reduction, lens correction and highlight recovery.
+  /// Full Adobe preparation instead stores preserved-black linear ProPhoto
+  /// (RIMM), after its camera-input transform and chroma/luminance noise reduction.
+  pub fn working_image(&self) -> &RgbImage {
+    &self.image
+  }
+
+  /// Bytes occupied by the working RGB pixels, excluding cached scene/guide data.
   pub fn pixel_bytes(&self) -> usize {
     self.image.data.len() * size_of::<f32>()
   }
@@ -105,14 +114,21 @@ impl Prepared {
   pub fn render(&self, settings: &DevelopSettings, opts: &Options) -> Result<Developed> {
     settings.validate()?;
     opts.cancel.check()?;
-    // All fields except these four were consumed by preparation. Keep the check
-    // conservative for DNG too, even for settings currently ignored by that path.
+    // Exposure, tone and geometry are applied after the preparation boundary.
+    // Keep other changes fenced even on paths that currently ignore them.
     let mut preparation = settings.clone();
     preparation.exposure = self.settings.exposure;
     preparation.tone_amount = self.settings.tone_amount;
     preparation.crop = self.settings.crop;
     preparation.quarter_turns = self.settings.quarter_turns;
-    if preparation != self.settings || opts.quality != self.quality {
+    let engine = match self.pipeline {
+      RenderPipeline::Adobe(_) => crate::Engine::Adobe,
+      _ => crate::Engine::Apple,
+    };
+    if engine == crate::Engine::Adobe {
+      preparation.adobe_tone = self.settings.adobe_tone.clone();
+    }
+    if preparation != self.settings || opts.quality != self.quality || opts.engine != engine {
       return Err(Error::Settings(
         "settings or quality changed before the render boundary; call prepare again".into(),
       ));
@@ -186,6 +202,18 @@ fn finish(
           cct: m.cct,
           exposure_ev,
           luma_nr: m.luma_nr,
+        },
+      )
+    }
+    RenderPipeline::Adobe(a) => {
+      let linear = a.render(&mut img, settings, opts.keep_linear, cancel)?;
+      (
+        linear,
+        DevelopInfo {
+          neutral: a.neutral,
+          cct: a.cct,
+          exposure_ev: a.baseline_exposure + a.effective_user_exposure(settings.exposure),
+          luma_nr: a.luma_nr,
         },
       )
     }

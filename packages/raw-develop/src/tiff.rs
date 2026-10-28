@@ -230,6 +230,14 @@ pub fn read_ifd0_exif(
   if let Some(exif_off) = ifd0.get(0x8769).map(|e| e.value_u32(tiff, 0)).transpose()? {
     let exif = tiff.ifd(exif_off as usize)?;
     meta.iso = exif.get(0x8827).map(|e| e.value_u32(tiff, 0)).transpose()?;
+    meta.exposure_time = match exif.get(0x829a) {
+      Some(e) => Some(e.value_f64(tiff, 0)?),
+      None => exif
+        .get(0x9201)
+        .map(|e| e.value_f64(tiff, 0).map(|apex| 2.0f64.powf(-apex)))
+        .transpose()?,
+    };
+    meta.exposure_time = meta.exposure_time.filter(|v| v.is_finite() && *v > 0.0);
     meta.lens_model = exif.get(0xa434).map(|e| e.ascii(tiff)).transpose()?;
     meta.focal_length = exif.get(0x920a).map(|e| e.value_f64(tiff, 0)).transpose()?;
   }
