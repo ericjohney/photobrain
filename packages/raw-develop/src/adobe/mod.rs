@@ -448,7 +448,18 @@ impl AdobeRender {
       });
       l
     });
-    self.prepare_color(img, cancel)?;
+    // For spatial edits without vignetting, the pointwise black/profile
+    // conversion can feed tone directly, preserving every u16/float boundary.
+    // Global edits benchmark faster with the separate, simpler colour pass.
+    let fuse_color = self.scene.is_some()
+      && self.vignette.is_none()
+      && settings
+        .adobe_tone
+        .as_ref()
+        .is_some_and(|tone| tone.highlights != 0 || tone.shadows != 0);
+    if !fuse_color {
+      self.prepare_color(img, cancel)?;
+    }
     if let Some(linear) = &mut linear {
       self.apply_vignette(linear, false, cancel)?;
     }
@@ -500,7 +511,12 @@ impl AdobeRender {
           controls.highlights,
           post_setup.log_flare,
         );
-        let post = scene.active_post(&post_stage, mask, cancel)?;
+        let post = scene.active_post_for_controls(
+          [controls.shadows, controls.highlights],
+          &post_stage,
+          mask,
+          cancel,
+        )?;
         let stage = tone::spatial::Stage::new(
           &mask.source,
           &mask.filtered,
@@ -529,6 +545,13 @@ impl AdobeRender {
       tone::blacks::Blacks::mosaic(&info, controls.blacks, None, None).apply(&mut exposure_stage);
       let output = output::Output::new(space);
       let color = self.modern_color.as_ref().expect("full Adobe colour state");
+      let input_pixel = |pixel| {
+        if fuse_color {
+          color.input_pixel(pixel)
+        } else {
+          pixel
+        }
+      };
       let render_pixel = |pixel| {
         let pixel = exposure_stage.pixel(pixel);
         let pixel = pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v)));
@@ -551,7 +574,7 @@ impl AdobeRender {
             cancel.check()?;
             for (x, pixel) in row.chunks_exact_mut(3).enumerate() {
               let rgb = stage.pixel(
-                [pixel[0], pixel[1], pixel[2]],
+                input_pixel([pixel[0], pixel[1], pixel[2]]),
                 cache.sample(mask, size, x, y),
               );
               pixel.copy_from_slice(&render_pixel(rgb));

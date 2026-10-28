@@ -12,7 +12,9 @@ pub(crate) fn remove_black_table(black: f64) -> Vec<u16> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ColorTable {
-  map: HueSatMap,
+  dims: [usize; 3],
+  // Pad each entry so SIMD never reads past the final profile coefficient.
+  data: Vec<[f32; 4]>,
   encoded: bool,
   gain: f32,
   amount: f32,
@@ -27,12 +29,13 @@ impl ColorTable {
     amount: f32,
     overrange: bool,
   ) -> Self {
-    let mut map = map.clone();
-    for p in &mut map.data {
-      p[0] *= 1.0 / 60.0;
-    }
     Self {
-      map,
+      dims: map.dims,
+      data: map
+        .data
+        .iter()
+        .map(|p| [p[0] * (1.0 / 60.0), p[1], p[2], 0.0])
+        .collect(),
       encoded,
       gain,
       amount,
@@ -42,7 +45,7 @@ impl ColorTable {
 
   #[inline]
   pub(crate) fn pixel(&self, mut p: [f32; 3]) -> [f32; 3] {
-    let [hd, sd, vd] = self.map.dims;
+    let [hd, sd, vd] = self.dims;
     if self.overrange {
       p = p.map(|x| x.max(0.0));
       if vd > 1 {
@@ -67,19 +70,7 @@ impl ColorTable {
     } else {
       (0, 0.0)
     };
-    let at = |v: usize, h: usize, s: usize, c: usize| self.map.data[(v * hd + h % hd) * sd + s][c];
-    let hue =
-      |v: usize, s: usize, c: usize| hf.mul_add(at(v, hi + 1, s, c), (1.0 - hf) * at(v, hi, s, c));
-    let value = |s: usize, c: usize| {
-      let low = hue(vi, s, c);
-      if vd > 1 {
-        vf.mul_add(hue(vi + 1, s, c), (1.0 - vf) * low)
-      } else {
-        low
-      }
-    };
-    let delta: [f32; 3] =
-      std::array::from_fn(|c| sf.mul_add(value(si + 1, c), (1.0 - sf) * value(si, c)));
+    let delta = self.interpolate(hi, si, vi, hf, sf, vf);
     h = self.amount.mul_add(delta[0], h);
     let saturation = s * (1.0 + self.amount * (delta[1] - 1.0)).max(0.0);
     let scale = (1.0 + self.amount * (delta[2] - 1.0)).max(0.0);
@@ -100,6 +91,54 @@ impl ColorTable {
       });
     }
     out
+  }
+
+  #[inline]
+  fn interpolate(&self, hi: usize, si: usize, vi: usize, hf: f32, sf: f32, vf: f32) -> [f32; 3] {
+    let [hd, sd, vd] = self.dims;
+    let plane = hd * sd;
+    let base = vi * plane + si;
+    // Resolve hue wrap and the four/eight table addresses once per pixel,
+    // rather than repeating integer division and indexing for every channel.
+    let h0 = hi * sd;
+    let h1 = if hi + 1 == hd { 0 } else { (hi + 1) * sd };
+    let mut low = lerp(self.data[base + h0], self.data[base + h1], hf);
+    let mut high = lerp(self.data[base + h0 + 1], self.data[base + h1 + 1], hf);
+    if vd > 1 {
+      let base = base + plane;
+      let next_low = lerp(self.data[base + h0], self.data[base + h1], hf);
+      let next_high = lerp(self.data[base + h0 + 1], self.data[base + h1 + 1], hf);
+      low = lerp(low, next_low, vf);
+      high = lerp(high, next_high, vf);
+    }
+    // Preserve the native hue -> value -> saturation FMA boundaries.
+    let delta = lerp(low, high, sf);
+    [delta[0], delta[1], delta[2]]
+  }
+}
+
+/// Independent coefficient lanes, preserving the rounded product and native
+/// FMA. There are no reciprocal estimates or horizontal floating-point sums.
+#[inline(always)]
+fn lerp(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+  #[cfg(target_arch = "aarch64")]
+  {
+    use std::arch::aarch64::*;
+    let mut out = [0.0; 4];
+    // AArch64 includes NEON/FMA; each pointer addresses four valid floats.
+    unsafe {
+      let product = vmulq_n_f32(vld1q_f32(a.as_ptr()), 1.0 - t);
+      vst1q_f32(
+        out.as_mut_ptr(),
+        vfmaq_n_f32(product, vld1q_f32(b.as_ptr()), t),
+      );
+    }
+    out
+  }
+  #[cfg(not(target_arch = "aarch64"))]
+  {
+    // Exact portable fallback; LLVM can vectorize it on FMA-enabled targets.
+    std::array::from_fn(|c| t.mul_add(b[c], (1.0 - t) * a[c]))
   }
 }
 

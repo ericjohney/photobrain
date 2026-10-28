@@ -1,6 +1,6 @@
 //! Decode/prepare once, then measure repeated exposure renders without encoding or I/O.
 
-use raw_develop::{DevelopSettings, Negative, Options, Quality, prepare};
+use raw_develop::{DevelopSettings, Engine, Negative, Options, Quality, prepare};
 use serde::Serialize;
 use std::hint::black_box;
 use std::process::ExitCode;
@@ -9,6 +9,7 @@ use std::time::Instant;
 #[derive(Serialize)]
 struct Record {
   file: String,
+  engine: &'static str,
   quality: &'static str,
   threads: usize,
   source_dimensions: [usize; 2],
@@ -17,6 +18,7 @@ struct Record {
   decode_ms: f64,
   prepare_ms: f64,
   resize_ms: f64,
+  first_render_ms: f64,
   iterations: usize,
   render_p50_ms: f64,
   render_p95_ms: f64,
@@ -30,6 +32,8 @@ struct Config {
   threads: usize,
   settings: DevelopSettings,
   full: bool,
+  engine: Engine,
+  adobe_profile_dir: Option<std::path::PathBuf>,
   files: Vec<String>,
 }
 
@@ -40,6 +44,8 @@ fn config() -> Result<Config, String> {
     threads: std::thread::available_parallelism().map_or(1, usize::from),
     settings: DevelopSettings::default(),
     full: false,
+    engine: Engine::Apple,
+    adobe_profile_dir: None,
     files: Vec::new(),
   };
   let mut args = std::env::args().skip(1);
@@ -65,6 +71,10 @@ fn config() -> Result<Config, String> {
         .map_err(|e| format!("{path}: {e}"))?;
       }
       "--full" => cfg.full = true,
+      "--adobe" => cfg.engine = Engine::Adobe,
+      "--adobe-profiles" => {
+        cfg.adobe_profile_dir = Some(args.next().ok_or("--adobe-profiles needs a path")?.into());
+      }
       "--" => {
         cfg.files.extend(args);
         break;
@@ -75,7 +85,7 @@ fn config() -> Result<Config, String> {
   }
   if cfg.files.is_empty() {
     return Err(
-      "usage: raw-edit-bench [--max-edge 2048] [--iterations 30] [--threads N] [--full] [--settings s.json] FILE..."
+      "usage: raw-edit-bench [--max-edge 2048] [--iterations 30] [--threads N] [--full] [--adobe] [--adobe-profiles DIR] [--settings s.json] FILE..."
         .into(),
     );
   }
@@ -85,6 +95,8 @@ fn config() -> Result<Config, String> {
 
 fn run(cfg: &Config, file: &str) -> raw_develop::Result<Record> {
   let opts = Options {
+    engine: cfg.engine,
+    adobe_profile_dir: cfg.adobe_profile_dir.clone(),
     quality: if cfg.full {
       Quality::Full
     } else {
@@ -105,9 +117,14 @@ fn run(cfg: &Config, file: &str) -> raw_develop::Result<Record> {
   let resize_ms = t.elapsed().as_secs_f64() * 1000.0;
   let (width, height) = prepared.dimensions();
   let mut settings = cfg.settings.clone();
+  // The first spatial edit can build a cached mask; measure it separately.
+  let t = Instant::now();
+  let first = prepared.render(&settings, &opts)?;
+  let first_render_ms = t.elapsed().as_secs_f64() * 1000.0;
+  black_box(first);
   // Warm the repeated path before timing. Exposure varies around the requested
   // baseline (clamped to its validated range) rather than re-rendering one value.
-  for _ in 0..3 {
+  for _ in 0..2 {
     black_box(prepared.render(&settings, &opts)?);
   }
   let mut times = Vec::with_capacity(cfg.iterations);
@@ -133,6 +150,11 @@ fn run(cfg: &Config, file: &str) -> raw_develop::Result<Record> {
   let percentile = |p: f64| times[((times.len() as f64 * p).ceil() as usize).saturating_sub(1)];
   Ok(Record {
     file: file.into(),
+    engine: if cfg.engine == Engine::Adobe {
+      "adobe"
+    } else {
+      "apple"
+    },
     quality: if cfg.full { "full" } else { "preview" },
     threads: cfg.threads,
     source_dimensions,
@@ -141,6 +163,7 @@ fn run(cfg: &Config, file: &str) -> raw_develop::Result<Record> {
     decode_ms,
     prepare_ms,
     resize_ms,
+    first_render_ms,
     iterations: cfg.iterations,
     render_p50_ms: percentile(0.5),
     render_p95_ms: percentile(0.95),

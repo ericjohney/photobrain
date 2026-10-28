@@ -1,6 +1,66 @@
 use super::*;
 use std::path::Path;
 
+#[test]
+fn interpolation_matches_scalar_reference_at_wraps_and_endpoints() {
+  let mut seed = 17u32;
+  let mut next = || {
+    seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+    seed
+  };
+  for dims in [[1, 2, 1], [2, 2, 1], [5, 4, 1], [5, 4, 3], [90, 25, 32]] {
+    let [hd, sd, vd] = dims;
+    let table = ColorTable {
+      dims,
+      data: (0..hd * sd * vd)
+        .map(|_| {
+          let [h, s, v] = std::array::from_fn(|_| ((next() >> 8) as f32 / 16777216.0 - 0.5) * 16.0);
+          [h, s, v, 0.0]
+        })
+        .collect(),
+      encoded: false,
+      gain: 1.0,
+      amount: 1.0,
+      overrange: false,
+    };
+    for sample in 0..20000 {
+      let hi = next() as usize % hd;
+      let si = next() as usize % (sd - 1);
+      let vi = if vd == 1 {
+        0
+      } else {
+        next() as usize % (vd - 1)
+      };
+      let mut fraction = || match sample % 17 {
+        0 => 0.0,
+        1 => 1.0,
+        _ => (next() >> 8) as f32 / 16777216.0,
+      };
+      let [hf, sf, vf] = std::array::from_fn(|_| fraction());
+      // Original scalar kernel: independent table addressing for each channel.
+      let at = |v: usize, h: usize, s: usize, c: usize| table.data[(v * hd + h % hd) * sd + s][c];
+      let hue = |v: usize, s: usize, c: usize| {
+        hf.mul_add(at(v, hi + 1, s, c), (1.0 - hf) * at(v, hi, s, c))
+      };
+      let value = |s: usize, c: usize| {
+        let low = hue(vi, s, c);
+        if vd > 1 {
+          vf.mul_add(hue(vi + 1, s, c), (1.0 - vf) * low)
+        } else {
+          low
+        }
+      };
+      let expected: [f32; 3] =
+        std::array::from_fn(|c| sf.mul_add(value(si + 1, c), (1.0 - sf) * value(si, c)));
+      assert_eq!(
+        table.interpolate(hi, si, vi, hf, sf, vf).map(f32::to_bits),
+        expected.map(f32::to_bits),
+        "{dims:?}, sample {sample}"
+      );
+    }
+  }
+}
+
 fn read_image(path: &Path) -> Vec<[f32; 3]> {
   let h: serde_json::Value =
     serde_json::from_slice(&std::fs::read(path.with_extension("json")).unwrap()).unwrap();
@@ -106,10 +166,8 @@ fn captured_modern_color_tables() {
       }
     }
     let table = ColorTable {
-      map: HueSatMap {
-        dims: [hd, sd, vd],
-        data,
-      },
+      dims: [hd, sd, vd],
+      data: data.into_iter().map(|[h, s, v]| [h, s, v, 0.0]).collect(),
       encoded: object[0x58..0x60].iter().any(|&v| v != 0) && vd > 1,
       gain: f(0x70),
       amount: f(0x74),
@@ -133,19 +191,17 @@ fn captured_modern_color_tables() {
         false,
       );
       let differing = derived
-        .map
         .data
         .iter()
-        .zip(&table.map.data)
+        .zip(&table.data)
         .flat_map(|(a, b)| a.iter().zip(b))
         .filter(|(a, b)| a != b)
         .count();
       eprintln!("{name}: {differing} profile map values differ");
       for (a, b) in derived
-        .map
         .data
         .iter()
-        .zip(&table.map.data)
+        .zip(&table.data)
         .filter(|(a, b)| a != b)
         .take(5)
       {

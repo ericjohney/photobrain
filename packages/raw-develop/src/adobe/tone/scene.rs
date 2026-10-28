@@ -6,6 +6,13 @@ use super::{
   stats_image::{self, GrayLogImage, SmallImage},
 };
 use crate::{Error, Result, adobe::dcp::Dcp, metadata::RawMetadata, settings::WhiteBalance};
+use std::sync::{Arc, Mutex};
+
+#[derive(Debug)]
+struct ActivePost {
+  controls: [i32; 2],
+  statistics: Statistics,
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct Scene {
@@ -15,9 +22,46 @@ pub(crate) struct Scene {
   pub(crate) flare: f64,
   pub(crate) camera: SmallImage,
   pub(crate) post_image: PostToneImage,
+  active_post_cache: Arc<Mutex<Option<ActivePost>>>,
 }
 
 impl Scene {
+  /// This measurement resets exposure/whites/contrast/blacks and depends only
+  /// on H/S within this immutable prepared scene. Retain one result, shared by
+  /// resized proxies, rather than growing a cache for every slider position.
+  pub(crate) fn active_post_for_controls(
+    &self,
+    controls: [i32; 2],
+    stage: &super::post_map::Stage,
+    mask: &super::mask::Mask,
+    cancel: &crate::Cancel,
+  ) -> Result<Statistics> {
+    cancel.check()?;
+    {
+      let cached = self
+        .active_post_cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+      if let Some(cached) = cached.as_ref()
+        && cached.controls == controls
+      {
+        return Ok(cached.statistics.clone());
+      }
+    }
+    // Compute outside the mutex. Concurrent edits may duplicate a measurement
+    // but cannot publish a result under another edit's control key.
+    let statistics = self.active_post(stage, mask, cancel)?;
+    cancel.check()?;
+    *self
+      .active_post_cache
+      .lock()
+      .unwrap_or_else(|e| e.into_inner()) = Some(ActivePost {
+      controls,
+      statistics: statistics.clone(),
+    });
+    Ok(statistics)
+  }
+
   pub(crate) fn active_post(
     &self,
     stage: &super::post_map::Stage,
@@ -62,6 +106,7 @@ impl Scene {
       flare,
       camera: image.clone(),
       post_image,
+      active_post_cache: Arc::new(Mutex::new(None)),
     })
   }
 }

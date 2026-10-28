@@ -364,6 +364,100 @@ Sony linear DNGs retain the active sensor area; the test compares every pixel
 of DefaultCrop. `RAW_DEVELOP_ADOBE_BAYER_TRACE` additionally enables exact core
 and composed-chain checks. Normal `cargo test` needs no external files.
 
+## Performance and exact-output optimization
+
+Measured 2026-10-28 on an M4 Pro, 12 Rayon threads, 48 GiB RAM, release build.
+Inputs are the validated 40 MP X-E5 and 60 MP A7R V RAWs. Settings use colour
+NR 25, luminance NR 0, sharpening 0, embedded Fuji distortion on, and vignetting
+off. Global tone uses default Basic controls and exposure 0; spatial tone uses
+exposure +0.7, Contrast 30, Highlights -50, Shadows 40, Whites 20 and Blacks -25.
+
+The comparison uses the archived pre-optimization executable from `6641db1`
+(with the same benchmark instrumentation) and the optimized executable. Each
+case ran twice in fresh processes, alternating before/after order and reversing
+that order in the second round. Values below are the median of the two run
+medians, each containing seven full-image or 30 proxy exposure edits after
+three warm-up renders. These are local timing samples, not confidence bounds.
+
+| Cached edit | X-E5 before → after | Time saved | A7R V before → after | Time saved |
+| --- | ---: | ---: | ---: | ---: |
+| Full image, global tone | 680 → 546 ms | 20% | 1,038 → 897 ms | 14% |
+| Full image, spatial tone | 1,481 → 1,214 ms | 18% | 2,260 → 1,857 ms | 18% |
+| 2048-edge proxy, global tone | 48.4 → 37.8 ms | 22% | 46.5 → 38.7 ms | 17% |
+| 2048-edge proxy, spatial tone | 113.0 → 87.8 ms | 22% | 117.6 → 83.8 ms | 29% |
+
+The older standalone baseline reported 820/1,222 ms for global full images and
+1,638/2,342 ms for spatial full images (Fuji/Sony). The fresh paired baseline
+above is faster, so the percentages use it rather than overstating the gain
+against the earlier sample.
+
+| First full image / process memory | X-E5 | A7R V |
+| --- | ---: | ---: |
+| Global, before → after | 5.17 → 4.89 s | 4.05 → 3.52 s |
+| Spatial, before → after | 6.50 → 6.03 s | 5.89 → 5.43 s |
+| Optimized peak RSS, global / spatial | 2.06 / 2.26 GiB | 2.65 / 2.97 GiB |
+
+First-image times include file read/decode, preparation and the first render;
+the OS file cache was not flushed. Preparation and initial spatial-mask work
+remain substantial. Peak RSS is essentially unchanged. The proxy cases use
+Full preparation followed by `with_max_edge(2048)`, not the binned Preview
+engine. The benchmark excludes encoding, output writes, network and UI latency.
+Measurements cover the Rust Adobe engine.
+
+### Retained changes and exactness gates
+
+Profiling identified profile-table interpolation as a large render hotspot.
+The retained changes are:
+
+- Resolve hue wrapping and four/eight table addresses once per pixel instead
+  of repeating modulo and address calculations for each coefficient.
+- Store three profile coefficients in padded four-float entries and interpolate
+  independent lanes with AArch64 NEON multiply/FMA. The rounded product and
+  hue → value → saturation FMA order are unchanged. No horizontal sums,
+  approximate reciprocals/transcendentals or fast-math reassociation are used.
+  Other architectures retain the exact portable `f32::mul_add` implementation;
+  only AArch64 performance was measured.
+- Feed profile input directly into spatial tone when vignetting is off,
+  preserving every integer/float quantization boundary. A trial of global
+  fusion regressed timing and was removed; global edits retain their simpler
+  separate colour pass. Vignette and Preview paths retain their stages.
+- Retain one post-tone statistics result per immutable prepared scene, keyed by
+  Highlights/Shadows. That measurement resets Exposure/Contrast/Whites/Blacks,
+  so edits to those controls reuse identical statistics. Changing H/S replaces
+  the entry; resized proxies share it. Cancellation/errors are not cached.
+
+Every optimization step passed all 11 composed native-capture cases: 4,569,327
+final channels with identical float bits, including both H/S directions and
+Fuji distortion/vignetting. The SIMD interpolation also matches the original
+scalar kernel in 100,000 cases (300,000 coefficient comparisons) covering five
+2D/3D table shapes, hue wrap and interpolation endpoints. Native 2D/3D colour
+captures remain exact. All ten full-image/proxy/NR25 benchmark cases retain the
+original full-output float digest, including all 32 paired timing runs for the
+eight global/spatial cases. Prepared-render tests check changed controls,
+cache reuse/replacement, cancellation/retry and shared versus fresh proxies.
+The full release test suite passes with real DCP profiles available.
+
+These checks cover the tested inputs/settings and captured boundaries, rather
+than proving every possible camera/profile/settings combination. Output
+contracts and `PIPELINE_VERSION` 5 are unchanged; Apple remains the default.
+RAWs, profiles, captures, timing logs and archived executables remain external
+to the repository.
+
+Reproduce with caller-owned RAWs, profiles and the settings described above:
+
+```bash
+cargo build --release --bin raw-edit-bench
+ADOBE_PROFILE_DIR=/path/to/CameraProfiles \
+target/release/raw-edit-bench --adobe --full --threads 12 \
+  --max-edge 2048 --iterations 30 --settings settings.json original.RAF
+```
+
+Use a maximum edge larger than the original and seven iterations for the
+full-image sample. JSON reports engine, decode, preparation, resize,
+first-render and warmed-render times plus the final exact-float digest.
+`/usr/bin/time -l` supplies process peak RSS on macOS. Encoding and UI latency
+need separate measurements.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match

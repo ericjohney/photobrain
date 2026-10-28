@@ -197,7 +197,11 @@ fn adobe_noise_reduction_is_reusable_and_settings_are_fenced() {
     (-2.0, -100, 0, 0, -100, 100),
     (2.5, 100, 0, 0, 100, -100),
     (0.7, 30, -50, 40, 20, -25),
+    // Same H/S, different global controls: reuse post-tone statistics.
+    (-0.4, -25, -50, 40, -30, 15),
     (-1.0, -20, 50, -40, -15, 30),
+    // Return to the previous H/S after replacing the bounded cache entry.
+    (0.7, 30, -50, 40, 20, -25),
   ] {
     settings.exposure = exposure;
     settings.adobe_tone = Some(raw_develop::settings::AdobeTone {
@@ -234,11 +238,16 @@ fn adobe_noise_reduction_is_reusable_and_settings_are_fenced() {
     bits(&prepared.render(&settings, &opts).unwrap().image.data),
     bits(&develop(&neg, &settings, &opts).unwrap().image.data)
   );
-  let proxy = prepare(&neg, &settings, &opts)
+  let proxy = prepared.clone().with_max_edge(37).unwrap();
+  let output = proxy.render(&settings, &opts).unwrap();
+  let fresh_proxy = prepare(&neg, &settings, &opts)
     .unwrap()
     .with_max_edge(37)
     .unwrap();
-  let output = proxy.render(&settings, &opts).unwrap();
+  assert_eq!(
+    bits(&output.image.data),
+    bits(&fresh_proxy.render(&settings, &opts).unwrap().image.data)
+  );
   assert_eq!(output.image.width.max(output.image.height), 37);
   assert!(output.image.data.iter().all(|value| value.is_finite()));
   settings.adobe_tone = None;
