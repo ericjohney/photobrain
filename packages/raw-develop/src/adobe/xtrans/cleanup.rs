@@ -250,7 +250,7 @@ pub(super) fn apply(img: &mut RgbImage, params: &Parameters) {
     *pixel = params.before(*pixel);
   }
   let (w, h) = (img.width, img.height);
-  let before = img.data.clone();
+  let mut before = img.data.clone();
   for y in 1..h - 1 {
     for x in 1..w - 1 {
       for c in 1..3 {
@@ -266,8 +266,11 @@ pub(super) fn apply(img: &mut RgbImage, params: &Parameters) {
       }
     }
   }
-  let before = img.data.clone();
+  // The median snapshot is no longer read. Reuse it for the directional pass,
+  // then release it before allocating the luma reconstruction plane.
+  before.copy_from_slice(&img.data);
   super::bilateral::apply(&before, img);
+  drop(before);
   let weights = [
     0.885_462_6_f32,
     0.109_030_835,

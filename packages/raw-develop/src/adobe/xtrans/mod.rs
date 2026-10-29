@@ -20,7 +20,7 @@ use cleanup::Parameters;
 use rayon::prelude::*;
 
 const HALO: usize = 32;
-const TILE: usize = 192;
+const TILE: usize = 288;
 
 #[inline(always)]
 fn fm(a: f32, b: f32, c: f32) -> f32 {
@@ -399,6 +399,15 @@ pub(crate) fn develop_preserved_with_lens(
 }
 
 fn develop_preserved(neg: &Negative, neutral: [f64; 3], cancel: &Cancel) -> Result<RgbImage> {
+  develop_preserved_tiled(neg, neutral, cancel, TILE)
+}
+
+fn develop_preserved_tiled(
+  neg: &Negative,
+  neutral: [f64; 3],
+  cancel: &Cancel,
+  tile_size: usize,
+) -> Result<RgbImage> {
   cancel.check()?;
   let meta = &neg.meta;
   if !matches!(meta.model.as_str(), "X-E5" | "X100VI") || meta.bits_per_sample > 16 {
@@ -420,54 +429,64 @@ fn develop_preserved(neg: &Negative, neutral: [f64; 3], cancel: &Cancel) -> Resu
   let offset = noise_offset(meta.iso.unwrap_or(100));
   let (w, h) = (meta.crop_width, meta.crop_height);
   let mut img = RgbImage::new(w, h);
-  // Parallel strips own disjoint output rows. Each worker keeps only one tile's
-  // activity/cleanup buffers, rather than nineteen full-resolution planes.
+  // Partition each strip into disjoint tile rows, then let Rayon schedule the
+  // two-dimensional tiles independently. Larger tiles amortize the halo work
+  // without leaving only a few whole strips for the pool to balance.
   img
     .data
-    .par_chunks_mut(w * 3 * TILE)
+    .par_chunks_mut(w * 3 * tile_size)
     .enumerate()
     .try_for_each(|(ty, strip)| -> Result<()> {
-      let oh = (h - ty * TILE).min(TILE);
-      for tx in (0..w).step_by(TILE) {
-        cancel.check()?;
-        let ow = (w - tx).min(TILE);
-        let (tw, th) = (ow + 2 * HALO, oh + 2 * HALO);
-        let top = (meta.crop_top + ty * TILE) as isize - HALO as isize;
-        let left = (meta.crop_left + tx) as isize - HALO as isize;
-        let mut pin = Plane::new(tw, th, 0.0);
-        // dng_image::Get(edge_repeat,6,6): repeat the first/last six
-        // rows/columns of the active crop, keeping the CFA phase intact.
-        let bound = |v: isize, origin: usize, n: usize| -> usize {
-          let v = v - origin as isize;
-          origin
-            + if v < 0 {
-              v.rem_euclid(6) as usize
-            } else if v >= n as isize {
-              n - 1 - (n as isize - 1 - v).rem_euclid(6) as usize
-            } else {
-              v as usize
-            }
-        };
-        for y in 0..th {
-          for x in 0..tw {
-            let v = neg.sample(
-              bound(top + y as isize, meta.crop_top, h),
-              bound(left + x as isize, meta.crop_left, w),
-            );
-            pin.set(y, x, lut[v as usize]);
-          }
-        }
-        let mut tile = demosaic(&pin, top - py as isize, left - px as isize, &params, offset);
-        cleanup::apply(&mut tile, &params);
-        for y in 0..oh {
-          for x in 0..ow {
-            let src = ((y + HALO) * tw + x + HALO) * 3;
-            let dst = (y * w + tx + x) * 3;
-            strip[dst..dst + 3].copy_from_slice(&tile.data[src..src + 3]);
-          }
+      let oh = (h - ty * tile_size).min(tile_size);
+      let mut tiles: Vec<Vec<&mut [f32]>> = (0..w.div_ceil(tile_size))
+        .map(|_| Vec::with_capacity(oh))
+        .collect();
+      for row in strip.chunks_mut(w * 3) {
+        for (tile, part) in tiles.iter_mut().zip(row.chunks_mut(tile_size * 3)) {
+          tile.push(part);
         }
       }
-      Ok(())
+      tiles
+        .into_par_iter()
+        .enumerate()
+        .try_for_each(|(tx, rows)| -> Result<()> {
+          cancel.check()?;
+          let tx = tx * tile_size;
+          let ow = (w - tx).min(tile_size);
+          let (tw, th) = (ow + 2 * HALO, oh + 2 * HALO);
+          let top = (meta.crop_top + ty * tile_size) as isize - HALO as isize;
+          let left = (meta.crop_left + tx) as isize - HALO as isize;
+          let mut pin = Plane::new(tw, th, 0.0);
+          // dng_image::Get(edge_repeat,6,6): repeat the first/last six
+          // rows/columns of the active crop, keeping the CFA phase intact.
+          let bound = |v: isize, origin: usize, n: usize| -> usize {
+            let v = v - origin as isize;
+            origin
+              + if v < 0 {
+                v.rem_euclid(6) as usize
+              } else if v >= n as isize {
+                n - 1 - (n as isize - 1 - v).rem_euclid(6) as usize
+              } else {
+                v as usize
+              }
+          };
+          for y in 0..th {
+            for x in 0..tw {
+              let v = neg.sample(
+                bound(top + y as isize, meta.crop_top, h),
+                bound(left + x as isize, meta.crop_left, w),
+              );
+              pin.set(y, x, lut[v as usize]);
+            }
+          }
+          let mut tile = demosaic(&pin, top - py as isize, left - px as isize, &params, offset);
+          cleanup::apply(&mut tile, &params);
+          for (y, row) in rows.into_iter().enumerate() {
+            let src = ((y + HALO) * tw + HALO) * 3;
+            row.copy_from_slice(&tile.data[src..src + ow * 3]);
+          }
+          Ok(())
+        })
     })?;
   Ok(img)
 }

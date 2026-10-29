@@ -149,7 +149,10 @@ impl EmbeddedDistortion {
   pub(crate) fn apply(&self, mut src: RgbImage, cancel: &Cancel) -> Result<RgbImage> {
     assert_eq!([src.width, src.height], self.active);
     let maps = transport_maps();
-    let mut encoded = vec![0u16; src.data.len()];
+    // Unmap the immutable transport snapshot at stage return. Retaining these
+    // pages in the heap can overlap the following NR stage's packed source.
+    let mut encoded_map = memmap2::MmapMut::map_anon(src.data.len() * size_of::<u16>())?;
+    let encoded: &mut [u16] = bytemuck::cast_slice_mut(&mut encoded_map);
     encoded
       .par_chunks_mut(src.width * 3)
       .zip(src.data.par_chunks(src.width * 3))

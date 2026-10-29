@@ -1,6 +1,86 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
+#[test]
+fn larger_independent_tiles_preserve_float_bits_and_cfa_phase() {
+  use crate::metadata::{Container, LensSource, RawMetadata, RawStorage};
+  let serial = rayon::ThreadPoolBuilder::new()
+    .num_threads(1)
+    .build()
+    .unwrap();
+  let parallel = rayon::ThreadPoolBuilder::new()
+    .num_threads(4)
+    .build()
+    .unwrap();
+  for (case, (width, height)) in [(13, 19), (191, 193), (385, 389), (773, 401)]
+    .into_iter()
+    .enumerate()
+  {
+    for pattern in 0..2 {
+      let raw_width = width + 19;
+      let raw_height = height + 17;
+      let neg = Negative {
+        meta: RawMetadata {
+          container: Container::Raf,
+          make: "FUJIFILM".into(),
+          model: if pattern == 0 { "X-E5" } else { "X100VI" }.into(),
+          raw_width,
+          raw_height,
+          crop_top: 11,
+          crop_left: 13,
+          crop_width: width,
+          crop_height: height,
+          bits_per_sample: 14,
+          black_levels: vec![1024; 36],
+          white_level: Some(16383),
+          as_shot_wb: [1.8, 1.0, 1.6],
+          cfa: crate::cfa::CfaPattern::xtrans_default().shifted(case, case + pattern),
+          storage: RawStorage::Uncompressed {
+            offset: 0,
+            length: 0,
+          },
+          orientation: 1,
+          iso: Some(if pattern == 0 { 64 } else { 12800 }),
+          exposure_time: None,
+          sony_raw_format: None,
+          sony_daylight_wb: None,
+          fuji_ibis_shift: None,
+          fuji_daylight_wb: None,
+          raw_exposure_bias: None,
+          lens: LensSource::None,
+          lens_model: None,
+          focal_length: None,
+        },
+        mosaic: (0..raw_width * raw_height)
+          .map(|i| {
+            if pattern == 0 {
+              ((i * 1297 + (i / raw_width) * 7919) % 16384) as u16
+            } else {
+              [0, 1024, 16383][i % 3]
+            }
+          })
+          .collect(),
+        dng: None,
+      };
+      let neutral = rounded_neutral(neg.meta.as_shot_wb.map(|v| 1.0 / v));
+      let expected =
+        serial.install(|| develop_preserved_tiled(&neg, neutral, &Cancel::never(), 192).unwrap());
+      let actual = parallel
+        .install(|| develop_preserved_tiled(&neg, neutral, &Cancel::never(), TILE).unwrap());
+      assert!(actual.data.iter().all(|v| v.is_finite()));
+      assert_eq!(
+        actual.data.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+        expected
+          .data
+          .iter()
+          .map(|v| v.to_bits())
+          .collect::<Vec<_>>(),
+        "{width}x{height}, pattern {pattern}"
+      );
+    }
+  }
+}
+
 fn capture(root: &Path, tag: &str) -> (RgbImage, isize, isize) {
   let h: serde_json::Value =
     serde_json::from_slice(&std::fs::read(root.join(format!("{tag}.json"))).unwrap()).unwrap();

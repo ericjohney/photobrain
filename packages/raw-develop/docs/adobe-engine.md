@@ -257,8 +257,9 @@ controlled global or spatial tone capture. No reference files are needed by ordi
 
 ## X-Trans implementation and validation
 
-The implementation uses bounded tiles (192-pixel output, 32-pixel halo) and Rayon
-strips. It has no Adobe runtime dependency and uses portable Rust `f32::mul_add`
+The implementation uses bounded tiles (288-pixel output, 32-pixel halo) and Rayon
+tasks for disjoint two-dimensional tiles. It has no Adobe runtime dependency and
+uses portable Rust `f32::mul_add`
 to preserve the observed CPU arithmetic. Cancellation is checked per tile.
 
 The recovered chain is:
@@ -969,6 +970,126 @@ also retain baseline digests for full global images and spatial 2048 proxies.
 
 A fresh physical-device check again reports no connected iPhone. Desktop
 timings and memory results do not establish on-device performance.
+
+### Eighth performance pass: Fuji tile scheduling and scratch lifetime
+
+This pass starts at `8d5823a` and targets Fuji first-image preparation and peak
+memory. Temporary stage probes on the X-E5 benchmark RAW put demosaic plus
+mandatory cleanup at approximately 1.21–1.51 s. Default user NR takes
+approximately 0.64–1.03 s, rising to 1.73–2.09 s with luminance NR 25. Embedded
+CA, guide construction and distortion each take approximately 0.12–0.27 s.
+Cleanup accounts for most of the summed per-tile elapsed time within demosaic.
+These instrumented observations locate work; they are not final paired timings.
+All temporary timers are removed before the final build.
+
+X-Trans output tiles grow from 192 to 288 pixels, retaining the 32-pixel halo
+and the original sensor-relative CFA phase, edge-repeat rules, demosaic,
+cleanup, float association and integer boundaries. Both tile sizes are
+divisible by six. For interior tiles, padded area per output pixel falls from
+approximately 1.78 to 1.49, reducing padded work per output pixel by 16%. This is a
+geometric work reduction, not a measured whole-engine speedup.
+
+Simply enlarging strip tasks would leave too few tasks for the thread pool.
+Each output strip is instead partitioned into vectors of disjoint mutable row
+slices, one vector per tile. Rayon can schedule the two-dimensional tiles
+independently. The vectors retain only slice metadata; they do not allocate a
+second RGB image. Workers retain one tile's existing activity/cleanup scratch,
+then copy its output rows into the borrowed destination. Cancellation remains
+checked per tile, and errors return no completed image. No unsafe code is added.
+
+The initial 384-pixel trial improves Fuji global preparation in three paired
+runs, but raises proxy peak RSS by approximately 90–140 MiB. It is not retained
+alone. Fuji distortion still used a heap-backed full-image u16 snapshot, whose
+released pages could remain resident while NR allocated another packed source.
+That snapshot now uses the same anonymous `memmap2`/safe `bytemuck` views as CA
+and NR; its pages unmap at distortion's return. No files are mapped, and all
+transport tables, sample values, warp arithmetic and output writes are unchanged.
+An isolated two-round comparison against the larger-tile prototype reduces
+peak RSS by approximately 220–234 MiB, with identical whole-output digests.
+
+The 384-pixel design still raises spatial-case peak RSS by approximately
+64–68 MiB in the first full sweep. Cleanup originally retains two successive
+RGB snapshots: the median input and then the directional-pass input. It now
+copies the directional input into the existing snapshot and drops it before
+allocating luma reconstruction scratch. No samples or operations change.
+Three paired proxy trials reduce peak RSS by approximately 12–30 MiB, with
+preparation differences within approximately 2% in either direction. The
+retained tile size is reduced to 288 to limit concurrent tile scratch further.
+
+Three focused pairs against `8d5823a` then improve preparation by approximately
+8–11% across Fuji global, spatial and NR25 proxies. Peak RSS falls by
+approximately 35 MiB for spatial, 182 MiB for global and 219 MiB for NR25.
+These short trials select the retained implementation; the broader comparison
+below measures the final build independently.
+
+The final sweep uses three fresh-process rounds for each version and all ten
+Fuji/Sony full-size/proxy cases, alternating execution order. Each process runs
+three initial/warmup renders, then seven full-size or 30 proxy edits. Values
+are medians of three process samples, not confidence bounds. The same M4 Pro,
+12 threads, RAWs, DCPs and settings are used for both versions. Filesystem
+caches are not cleared; encoding, network and UI latency are excluded. Builds,
+reference checks and stage probes do not run during these measurements.
+
+| Case | Preparation (s), before → after | Peak RSS (GiB), before → after | Cached edit (ms), before → after |
+| --- | ---: | ---: | ---: |
+| X-E5 global full | 2.54 → 2.35 | 2.064 → 1.879 | 272.65 → 255.24 |
+| X-E5 spatial full | 2.41 → 2.05 | 2.258 → 2.231 | 599.06 → 576.75 |
+| X-E5 NR25 full | 3.72 → 3.53 | 2.141 → 1.924 | 290.27 → 252.41 |
+| X-E5 global 2048 | 2.76 → 2.36 | 1.396 → 1.221 | 21.52 → 21.15 |
+| X-E5 spatial 2048 | 2.51 → 2.15 | 1.403 → 1.376 | 47.75 → 42.69 |
+| A7R V global full | 2.23 → 1.86 | 2.642 → 2.638 | 405.16 → 419.41 |
+| A7R V spatial full | 1.88 → 1.82 | 2.968 → 2.962 | 901.42 → 896.77 |
+| A7R V NR25 full | 3.35 → 3.53 | 2.694 → 2.696 | 416.64 → 407.72 |
+| A7R V global 2048 | 1.94 → 2.10 | 1.639 → 1.633 | 19.61 → 23.85 |
+| A7R V spatial 2048 | 2.40 → 1.98 | 1.717 → 1.712 | 48.95 → 46.82 |
+
+All 60 process output digests match the original baseline. Fuji peak RSS falls
+by approximately 27–223 MiB across the five cases. Full-size preparation
+medians fall by 5–15%, but only spatial preparation improves in all three
+rounds. Global preparation reverses direction; NR25 preparation is slower
+in two rounds despite its lower aggregate. First usable full-image medians
+fall from 3.08 to 2.81 s (global), 3.47 to 3.24 s (spatial), and 4.35 to
+3.94 s (NR25), including decode, preparation and the first render.
+
+Fuji cached NR25 improves in all three rounds. Other Fuji cached cases reverse
+direction between rounds. Sony full global cached edits and global proxies
+are slower in all three rounds of this sweep. Sony NR25 preparation is
+approximately 5.5% slower in aggregate, and its global-proxy preparation is
+approximately 8.3% slower; these preparation comparisons reverse direction
+between rounds. Sony peak RSS differs by at most approximately 7 MiB in the
+sweep. This pass changes no Sony-specific kernels; the measured differences
+on that path have no established cause. The results do not establish uniform
+engine gains.
+
+A separate four-round recheck uses 180 proxy edits and 15 full-size edits per
+process to investigate Sony global timing. The proxy slowdown does not
+reproduce: process-median aggregates are 20.78 → 19.88 ms. Full-size global
+edits remain slower, 406.88 → 432.00 ms (6.2%), with three of four pairs slower.
+Full-size peak RSS is approximately 63 MiB higher in this longer recheck;
+the pass establishes no Sony memory improvement. All 16 recheck digests match.
+Disassembly comparisons of the profile-colour, exposure and output batches,
+the prepared/Adobe render entrypoints and 72 render-related functions find
+matching instruction counts and operation/register sequences after normalizing
+addresses and immediates. This rules out an obvious extra-instruction change
+in the inspected functions, but does not establish the regression's cause.
+The Fuji preparation/memory gains are retained with this Sony cached-edit
+regression explicitly recorded as a remaining tradeoff.
+
+The differential tile test compares the former 192-pixel lattice at one thread
+with 288-pixel tiles at four threads. Eight synthetic RAW cases cover tiny and
+odd dimensions, both sides of tile joins, shifted CFA phases, nonzero crop
+origins, both Fuji model names, ISO 64/12800, full-range codes and extrema.
+Every float bit matches, and all produced pixels are finite. The release suite
+passes 215 library tests, six prepared integration tests with real DCPs and the
+compile doctest. All 11 composed native-output captures remain exact
+(4,569,327 channels), as do six complete Fuji linear-CA references and five
+Sony DefaultCrop references. All 17 NR capture invocations and ten additional
+whole-output comparisons on five X100VI, A1 II and A7C R RAWs retain exact
+results for full global images and spatial 2048 proxies. Apple remains the
+default and `PIPELINE_VERSION` remains 5. No dependencies or unsafe code are added.
+
+A fresh `devicectl` check reports no connected physical iPhone. Desktop timing
+and memory measurements do not establish phone latency or thermal behaviour.
 
 ## Remaining work
 
