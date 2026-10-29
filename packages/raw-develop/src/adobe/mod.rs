@@ -167,6 +167,17 @@ struct ModernColor {
 }
 
 impl ModernColor {
+  fn input_pixels4(&self, pixels: [[f32; 3]; 4]) -> [[f32; 3]; 4] {
+    let pixels = pixels.map(|p| {
+      p.map(|v| bayer::tables::normalized(self.remove_black[bayer::tables::code(v) as usize]))
+    });
+    let pixels = self
+      .hue_sat
+      .as_ref()
+      .map_or(pixels, |table| table.pixels4(pixels));
+    pixels.map(|p| p.map(|v| bayer::tables::normalized(bayer::tables::code(v))))
+  }
+
   fn input_pixel(&self, p: [f32; 3]) -> [f32; 3] {
     let p =
       p.map(|v| bayer::tables::normalized(self.remove_black[bayer::tables::code(v) as usize]));
@@ -562,6 +573,18 @@ impl AdobeRender {
           .map_or(pixel, |table| table.pixel(pixel));
         pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v)))
       };
+      let before_primary_four = |pixels: [[f32; 3]; 4]| {
+        let pixels = pixels.map(|pixel| {
+          exposure_stage
+            .pixel(pixel)
+            .map(|v| bayer::tables::normalized(bayer::tables::code(v)))
+        });
+        let pixels = color
+          .look
+          .as_ref()
+          .map_or(pixels, |table| table.pixels4(pixels));
+        pixels.map(|p| p.map(|v| bayer::tables::normalized(bayer::tables::code(v))))
+      };
       let after_primary = |pixel| {
         let pixel = contrast.as_ref().map_or(pixel, |stage| stage.pixel(pixel));
         output.pixel(pixel)
@@ -569,7 +592,7 @@ impl AdobeRender {
       let render_pixel = |pixel| after_primary(primary.pixel(before_primary(pixel)));
       let render_four = |pixels: [[f32; 3]; 4]| {
         primary
-          .pixels4(pixels.map(before_primary))
+          .pixels4(before_primary_four(pixels))
           .map(after_primary)
       };
       if let Some((cache, mask, stage, _)) = spatial {
@@ -585,7 +608,14 @@ impl AdobeRender {
             let spatial_pixel =
               |x, pixel| stage.pixel(input_pixel(pixel), cache.sample(mask, size, x, y));
             for (i, batch) in batches.iter_mut().enumerate() {
-              *batch = render_four(std::array::from_fn(|j| spatial_pixel(i * 4 + j, batch[j])));
+              let pixels = if fuse_color {
+                color.input_pixels4(*batch)
+              } else {
+                *batch
+              };
+              *batch = render_four(std::array::from_fn(|j| {
+                stage.pixel(pixels[j], cache.sample(mask, size, i * 4 + j, y))
+              }));
             }
             for (i, pixel) in tail.iter_mut().enumerate() {
               *pixel = render_pixel(spatial_pixel(tail_start + i, *pixel));
@@ -593,7 +623,20 @@ impl AdobeRender {
             Ok::<_, Error>(())
           })?;
       } else {
-        img.map_pixels(render_pixel);
+        img
+          .data
+          .par_chunks_mut((img.width * 3).max(3))
+          .try_for_each(|row| {
+            cancel.check()?;
+            let (batches, tail) = row.as_chunks_mut::<3>().0.as_chunks_mut::<4>();
+            for batch in batches {
+              *batch = before_primary_four(*batch).map(|p| after_primary(primary.pixel(p)));
+            }
+            for p in tail {
+              *p = render_pixel(*p);
+            }
+            Ok::<_, Error>(())
+          })?;
       }
       cancel.check()?;
       return Ok(linear);
@@ -649,6 +692,23 @@ impl AdobeRender {
   /// The production black-removal/profile-map/vignette boundary. Kept separate
   /// so composed RAW capture checks exercise the same operations as rendering.
   pub(crate) fn prepare_color(&self, img: &mut RgbImage, cancel: &crate::Cancel) -> Result<()> {
+    if let Some(color) = &self.modern_color {
+      img
+        .data
+        .par_chunks_mut((img.width * 3).max(3))
+        .try_for_each(|row| {
+          cancel.check()?;
+          let (batches, tail) = row.as_chunks_mut::<3>().0.as_chunks_mut::<4>();
+          for batch in batches {
+            *batch = color.input_pixels4(*batch);
+          }
+          for p in tail {
+            *p = color.input_pixel(*p);
+          }
+          Ok::<_, Error>(())
+        })?;
+      return self.apply_vignette(img, true, cancel);
+    }
     let srgb = self
       .hue_sat_encode
       .then(|| Table1d::from_fn(4096, |x| srgb_encode(x as f32) as f64));

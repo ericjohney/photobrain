@@ -52,6 +52,10 @@ Mandatory X-Trans cleanup and default chroma NR use an exact median-selection
 network (fractional NR ranks keep their full sort). X-Trans directional cleanup
 also batches four independent pixels with AArch64 NEON, preserving all 68 tap
 contributions and scalar rounding/FMA order; other targets retain scalar code.
+Profile colour also batches four independent pixels on AArch64: HSV conversion
+and encoded-value arithmetic use exact division/FMA, while coefficient gathers
+retain checked indexing and the original hue/value/saturation interpolation.
+The black-removal and u16 boundaries remain intact, including fused spatial edits.
 
 ## Code Layout
 

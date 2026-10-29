@@ -2,6 +2,82 @@ use super::*;
 use std::path::Path;
 
 #[test]
+fn batched_colour_matches_scalar_bits() {
+  let mut seed = 17u32;
+  let mut next = || {
+    seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+    seed
+  };
+  for dims in [[1, 2, 1], [5, 4, 1], [5, 4, 3], [90, 25, 32]] {
+    for encoded in [false, true] {
+      for overrange in [false, true] {
+        for amount in [0.0, 0.65, 1.0] {
+          let table = ColorTable {
+            dims,
+            data: (0..dims.into_iter().product())
+              .map(|_| {
+                [
+                  ((next() >> 16) as f32 / 65535.0 - 0.5) * 0.5,
+                  0.7 + (next() >> 16) as f32 / 65535.0 * 0.6,
+                  0.7 + (next() >> 16) as f32 / 65535.0 * 0.6,
+                  0.0,
+                ]
+              })
+              .collect(),
+            encoded,
+            gain: 0.83,
+            amount,
+            overrange,
+          };
+          for sample in 0..2000 {
+            let pixels = std::array::from_fn(|i| {
+              std::array::from_fn(|c| {
+                let n = next();
+                match sample % 23 {
+                  0 => {
+                    if (i + c) % 2 == 0 {
+                      -0.0
+                    } else {
+                      0.0
+                    }
+                  }
+                  1 => 1.0,
+                  2 => f32::from_bits(n & 0x807f_ffff),
+                  3 => [0.0031308, 0.040449936, 0.5][c],
+                  4 => (n >> 16) as f32 / 65535.0 * 8.0,
+                  5 => {
+                    if c == i % 3 {
+                      1.0
+                    } else {
+                      0.0
+                    }
+                  }
+                  6 => {
+                    if c == i % 3 {
+                      f32::NAN
+                    } else {
+                      0.5
+                    }
+                  }
+                  _ => (n >> 16) as f32 / 65535.0 * 1.5 - 0.25,
+                }
+              })
+            });
+            let actual = table.pixels4(pixels);
+            let expected = pixels.map(|p| table.pixel(p));
+            assert_eq!(
+              actual.map(|p| p.map(f32::to_bits)),
+              expected.map(|p| p.map(f32::to_bits)),
+              "{dims:?}, encoded {encoded}, overrange {overrange}, amount {amount}, sample {sample}, {pixels:?}"
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+#[test]
 fn interpolation_matches_scalar_reference_at_wraps_and_endpoints() {
   let mut seed = 17u32;
   let mut next = || {

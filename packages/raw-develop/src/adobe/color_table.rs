@@ -5,6 +5,9 @@
 
 use super::dcp::HueSatMap;
 
+#[cfg(target_arch = "aarch64")]
+mod batched;
+
 /// The 16-bit black-removal boundary before profile colour conversion.
 pub(crate) fn remove_black_table(black: f64) -> Vec<u16> {
   super::bayer::tables::expand(|x| ((x - black) / (1.0 - black)).clamp(0.0, 1.0))
@@ -22,6 +25,17 @@ pub(crate) struct ColorTable {
 }
 
 impl ColorTable {
+  /// Independent pixel lanes share HSV/encoding arithmetic; table gathers keep
+  /// the scalar coefficient interpolation and its hue/value/saturation order.
+  pub(crate) fn pixels4(&self, pixels: [[f32; 3]; 4]) -> [[f32; 3]; 4] {
+    #[cfg(target_arch = "aarch64")]
+    {
+      batched::apply(self, pixels)
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    pixels.map(|p| self.pixel(p))
+  }
+
   pub(crate) fn new(
     map: &HueSatMap,
     encoded: bool,

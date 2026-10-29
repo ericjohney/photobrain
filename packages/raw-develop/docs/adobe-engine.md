@@ -628,6 +628,65 @@ output is unchanged, and `PIPELINE_VERSION` remains 5. The reference and
 differential checks cover the tested inputs rather than proving all settings
 or architectures.
 
+### Fourth performance pass: cached profile colour
+
+This pass starts at `00cc672`. OS sampling of repeated full-size global Fuji
+edits, after preparation, identified profile-colour evaluation as the largest
+named CPU hotspot, followed by primary tone and exposure. The sampling run is
+separate from the paired timing runs and is not used as a timing baseline.
+
+Profile colour now processes four independent pixels with AArch64 NEON. HSV
+conversion, rational/polynomial encoded-value arithmetic and HSV reconstruction
+share pixel lanes, including exact hardware division and the original explicit
+FMA boundaries. Profile coefficient gathers retain checked scalar indexing and
+the existing hue, then value, then saturation interpolation. Black removal and
+every intervening u16 normalization remain unchanged. The path covers both the
+input profile map and the later LookTable, including fused spatial input colour.
+Scalar code handles row tails and other architectures; global primary tone
+remains scalar. No full-image buffer or cached image was added.
+
+The differential test compares 384,000 RGB pixels (1,152,000 channels) against
+the scalar path across four table geometries, linear/encoded value axes,
+ordinary/overrange tables and three amounts. Inputs cover signed zero,
+subnormals, endpoints, channel ties, canonical NaNs and values outside [0,1].
+Both the colour batching step and its fused spatial integration pass all 11
+composed native-capture cases (4,569,327 final channels, exact float bits).
+The complete release suite passes with real DCP profiles: 206 library tests,
+six prepared integration tests and the compile doctest. Ten additional
+before/after digest comparisons cover five RAWs from X100VI, A1 II and A7C R
+(full global images and 2048-edge spatial proxies), including the Sony APS-C
+crop and high-ISO/lossy-compressed samples. All retain their pre-change output.
+These extend the two benchmark cameras' coverage without establishing all-camera
+parity. Apple remains the default and `PIPELINE_VERSION` remains 5.
+
+The paired comparison uses the same machine, RAWs, profiles and global/spatial
+settings as the previous passes. Each of ten camera/settings/size cases runs
+twice before and twice after (40 fresh processes), reversing order in round two.
+Values are medians of two run medians, with seven full-image or 30 proxy edits
+after three warmup renders. Every run preserves its original final-output float
+digest. The two samples per version are local measurements, not confidence bounds.
+
+| Cached edit | X-E5 before → after | Time saved | A7R V before → after | Time saved |
+| --- | ---: | ---: | ---: | ---: |
+| Full image, global tone | 475 → 360 ms | 24% | 755 → 564 ms | 25% |
+| Full image, spatial tone | 900 → 660 ms | 27% | 1,345 → 1,032 ms | 23% |
+| Full image, luminance NR 25 | 495 → 339 ms | 32% | 758 → 557 ms | 26% |
+| 2048-edge proxy, global tone | 33.6 → 24.5 ms | 27% | 37.7 → 27.7 ms | 27% |
+| 2048-edge proxy, spatial tone | 61.8 → 50.8 ms | 18% | 65.5 → 44.8 ms | 32% |
+
+Peak RSS is effectively flat: median process peaks differ by at most 12 MiB
+per case, with default full-image peaks around 2.06/2.65 GiB (Fuji/Sony) and
+spatial full-image peaks around 2.27/2.98 GiB. This pass targets cached edits;
+preparation still dominates first-image latency. First usable full images
+improve modestly in these samples, while first proxy images are 25–164 ms
+slower as preparation varies. The cached gains do not imply uniformly faster
+first-image delivery.
+
+A separate six-second sample of the final cached global render now places
+scalar primary tone first among named CPU functions, followed by exposure and
+batched profile colour. Tone/exposure are the next measured targets; the earlier
+rejected global-tone SIMD trial remains excluded from this implementation.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match
