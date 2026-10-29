@@ -245,6 +245,115 @@ fn cross_box(lp: &[[u16; 3]], width: usize, height: usize, params: &Parameters) 
   output
 }
 
+/// One row of the original sparse expansion followed by its horizontal blur.
+/// The caller's halo keeps all contributing low-pass samples inside the
+/// cross-box output. Odd expansion rows are zero; even rows have samples only
+/// at even columns, anchored at (2, 2). Keep the horizontal u16 rounding before
+/// the separately rounded vertical blur.
+fn reconstruction_row(
+  filtered: &[[u16; 2]],
+  width: usize,
+  y: usize,
+  left: usize,
+  row: &mut [[u16; 2]],
+) {
+  if y & 1 != 0 {
+    row.fill([0; 2]);
+    return;
+  }
+  let source = &filtered[((y - 2) / 2) * width..((y - 2) / 2 + 1) * width];
+  for (i, out) in row.iter_mut().enumerate() {
+    let x = left + i;
+    let center = (x - 2) / 2;
+    *out = std::array::from_fn(|c| {
+      if x & 1 == 0 {
+        blur5([
+          source[center - 1][c],
+          0,
+          source[center][c],
+          0,
+          source[center + 1][c],
+        ])
+      } else {
+        blur5([0, source[center][c], 0, source[center + 1][c], 0])
+      }
+    });
+  }
+}
+
+#[cfg(test)]
+mod reconstruction_tests {
+  use super::*;
+
+  #[test]
+  fn rolling_rows_match_sparse_expansion_and_both_integer_roundings() {
+    for radius in [0, 1, 2, 7, 63] {
+      for (ow, oh) in [(1, 1), (2, 3), (13, 17), (192, 191), (384, 384)] {
+        for parity in 0..4 {
+          let required = 2 * radius + 6;
+          let (top, left) = (required + (parity & 1), required + (parity >> 1));
+          let (bottom, right) = (top + oh, left + ow);
+          let (width, height) = (right + required, bottom + required);
+          let (lw, lh) = ((width - 3) / 2, (height - 3) / 2);
+          for pattern in 0..3 {
+            let filtered: Vec<[u16; 2]> = (0..lw * lh)
+              .map(|i| {
+                std::array::from_fn(|c| match pattern {
+                  0 => ((i * 1297 + c * 7919) % 65536) as u16,
+                  1 => [0, 65535][c],
+                  _ => {
+                    if (i + c) % 2 == 0 {
+                      0
+                    } else {
+                      65535
+                    }
+                  }
+                })
+              })
+              .collect();
+            // Original materialized expansion and horizontal intermediate.
+            let mut expanded = vec![[0; 2]; width * height];
+            for y in radius..lh - radius {
+              for x in radius..lw - radius {
+                expanded[(2 * y + 2) * width + 2 * x + 2] = filtered[y * lw + x];
+              }
+            }
+            let mut across = vec![[0; 2]; width * height];
+            for y in top - 2..bottom + 2 {
+              for x in left..right {
+                across[y * width + x] = std::array::from_fn(|c| {
+                  blur5(std::array::from_fn(|i| expanded[y * width + x + i - 2][c]))
+                });
+              }
+            }
+            let mut ring = vec![[0; 2]; 5 * ow];
+            for y in top - 2..bottom + 2 {
+              let row = &mut ring[y % 5 * ow..(y % 5 + 1) * ow];
+              reconstruction_row(&filtered, lw, y, left, row);
+              assert_eq!(row, &across[y * width + left..y * width + right]);
+              if y < top + 2 {
+                continue;
+              }
+              let cy = y - 2;
+              for x in left..right {
+                for c in 0..2 {
+                  assert_eq!(
+                    blur5(std::array::from_fn(
+                      |i| ring[(cy + i - 2) % 5 * ow + x - left][c]
+                    )),
+                    blur5(std::array::from_fn(|i| across[(cy + i - 2) * width + x][c])),
+                    "radius {radius}, {ow}x{oh}, parity {parity}, pattern {pattern}, ({cy},{x},{c})"
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 /// Filter one padded tile of unsigned, normalized 16-bit Y/Cb/Cr codes.
 ///
 /// `output` is [top,left,bottom,right], relative to the source tile. The LP
@@ -269,19 +378,20 @@ pub(crate) fn filter_tile(
   );
   let (lp, lp_width, lp_height) = low_pass(src, width, height);
   let filtered = cross_box(&lp, lp_width, lp_height, params);
-  let mut expanded = vec![[0; 2]; width * height];
-  for y in params.radius..lp_height - params.radius {
-    for x in params.radius..lp_width - params.radius {
-      expanded[(2 * y + 2) * width + 2 * x + 2] = filtered[y * lp_width + x];
-    }
-  }
-  // Horizontal reconstruction blur, followed by the vertical blur below.
-  let mut across = vec![[0; 2]; width * height];
-  for y in top - 2..bottom + 2 {
-    for x in left..right {
-      across[y * width + x] =
-        std::array::from_fn(|c| blur5(std::array::from_fn(|i| expanded[y * width + x + i - 2][c])));
-    }
+  // Stream the horizontal blur through five output-width rows, replacing the
+  // full padded sparse expansion and horizontal intermediate. Row y+2 is the
+  // newest input needed by output y; modulo-five slots are never overwritten
+  // until their last vertical use.
+  let output_width = right - left;
+  let mut across = vec![[0; 2]; 5 * output_width];
+  for y in top - 2..top + 2 {
+    reconstruction_row(
+      &filtered,
+      lp_width,
+      y,
+      left,
+      &mut across[(y % 5) * output_width..(y % 5 + 1) * output_width],
+    );
   }
   // The detail rank filter needs a one-pixel border around the output rectangle.
   let hp_width = right - left + 2;
@@ -299,6 +409,17 @@ pub(crate) fn filter_tile(
   }
   let mut result = Vec::with_capacity((bottom - top) * (right - left));
   for y in top..bottom {
+    reconstruction_row(
+      &filtered,
+      lp_width,
+      y + 2,
+      left,
+      &mut across[((y + 2) % 5) * output_width..((y + 2) % 5 + 1) * output_width],
+    );
+    let rows: [&[[u16; 2]]; 5] = std::array::from_fn(|i| {
+      let slot = (y + i - 2) % 5;
+      &across[slot * output_width..(slot + 1) * output_width]
+    });
     for x in left..right {
       let mut value = src[y * width + x];
       for c in 0..2 {
@@ -310,7 +431,7 @@ pub(crate) fn filter_tile(
         }
         let high = rank_clamp(neighbours, params.rank);
         let high = params.shrink[c][(high as i32 + 32768) as usize] as i32;
-        let low = blur5(std::array::from_fn(|i| across[(y + i - 2) * width + x][c]));
+        let low = blur5(std::array::from_fn(|i| rows[i][x - left][c]));
         value[c + 1] = (2 * high + 4 * low as i32).clamp(0, 65535) as u16;
       }
       result.push(value);

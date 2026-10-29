@@ -1186,6 +1186,95 @@ and A7C R RAWs retain whole-output digests for full global images and spatial
 2048 proxies. Apple remains the default and `PIPELINE_VERSION` remains 5.
 A fresh physical-device inventory again finds no connected iPhone.
 
+### Tenth performance pass: streaming chroma reconstruction
+
+This pass starts at `ee9c7e5` and reduces NR memory traffic. Chroma reconstruction
+previously materialized two padded, full-tile two-channel u16 images: the sparse
+expansion of the filtered low-pass image, then its horizontal blur. The expansion
+has samples only at even coordinates, anchored at (2,2). Reconstruction now reads
+that lattice directly and streams the horizontal result through five
+output-width rows. Each row remains live until its final vertical use; reused
+odd rows are explicitly cleared. The caller's existing halo keeps every sampled
+low-pass position inside the valid cross-box rectangle, including at odd image
+edges and the smallest accepted trailing halo.
+
+The same five-tap integer weights, horizontal u16 rounding and subsequent
+vertical u16 rounding remain separate. High-pass prediction, rank interpolation,
+shrink tables and the final chroma combination are unchanged. No float operations
+are reassociated. The implementation is portable Rust with checked indexing,
+no new unsafe code, dependencies or changes to scheduling or cancellation.
+
+For a 192-pixel output with a 12-pixel halo, these two scratch images shrink from
+364.5 KiB to 3.75 KiB. For a 384-pixel output inside a 704-by-704 luma-NR tile,
+they shrink from 3.78125 MiB to 7.5 KiB (99.8%). These are exact allocation sizes
+for the reconstruction intermediates, not whole-process RSS reductions. Other
+NR buffers and the full-image source remain allocated as before.
+
+An independent differential test retains the original sparse expansion and both
+separable blur calculations. It checks 22,122,720 reconstructed output channels,
+plus the horizontal rows, over radii 0/1/2/7/63, all four output-origin parities,
+one-pixel and odd output sizes, both production tile widths, full-range patterns,
+constant extrema and alternating extrema. Every result is identical.
+
+The isolated chroma-filter benchmark uses separate optimized binaries, three
+alternating process pairs and 25 measured calls after three warmups. Each call
+filters a deterministic full-range tile, including low-pass, cross-box,
+reconstruction and rank filtering. All output digests agree.
+
+| Output / halo / radius / rank | Filter median (ms), before → after | Time saved |
+| --- | ---: | ---: |
+| 192 / 12 / 2 / 1024 | 0.798 → 0.760 | 4.8% |
+| 384 / 160 / 2 / 1024 | 4.859 → 4.575 | 5.9% |
+| 192 / 22 / 7 / 635 | 1.316 → 1.255 | 4.6% |
+| 384 / 160 / 7 / 635 | 8.762 → 8.461 | 3.4% |
+
+A separate 36-process whole-image sweep uses three alternating fresh-process
+pairs per case on the M4 Pro with 12 threads. Each process decodes and prepares
+once, then performs the benchmark's first render, two warmups and one measured
+edit. All 36 output digests agree within their cases. Preparation happens before
+proxy resizing, so the full and 2048 rows sample the same preparation workload
+in separate processes. Values below are medians of three samples, not confidence
+bounds. Encoding, network and UI time are excluded.
+
+| Case | Preparation (ms), before → after | Time saved | Peak RSS (GiB), before → after |
+| --- | ---: | ---: | ---: |
+| X-E5 global full | 2562.15 → 2456.17 | 4.1% | 1.880 → 1.883 |
+| X-E5 NR25 full | 3497.88 → 3509.39 | -0.3% | 1.927 → 1.924 |
+| X-E5 global 2048 | 2451.86 → 2446.22 | 0.2% | 1.218 → 1.216 |
+| A7R V global full | 2256.05 → 2285.15 | -1.3% | 2.637 → 2.633 |
+| A7R V NR25 full | 3632.77 → 3926.73 | -8.1% | 2.690 → 2.682 |
+| A7R V global 2048 | 2115.16 → 2206.71 | -4.3% | 1.633 → 1.637 |
+
+Whole-preparation timing reverses between pairs in every case. In particular,
+the Sony NR25 and proxy aggregates are slower and are retained explicitly;
+the isolated filter gain does not establish a whole-pipeline latency gain.
+Median process RSS changes range from approximately -9 to +5 MiB. A single Sony
+global full sample has much lower residency than the others, while system
+compression and unrelated simulator activity remain substantial. These samples
+establish no whole-process memory improvement. This change affects preparation;
+no cached-edit speed claim is made.
+
+A temporary real-path probe checks the apparent Sony NR25 regression separately.
+Three alternating process pairs each prepare the same RAW three times per
+process, timing the complete NR call. The three process medians improve
+2562.12 → 2475.08 ms, 2551.46 → 2401.88 ms and 2504.60 → 2476.05 ms. Across all
+nine preparations per version, median NR time is 2507.82 → 2473.63 ms (1.4%),
+while total preparation is 3720.13 → 3703.68 ms (0.4%). All 18 digests match.
+These instrumented results do not reproduce an NR-stage slowdown, but do not
+establish a reliable whole-preparation gain either. The probes are removed
+from the final source and binary.
+
+The release suite passes 217 library tests, six prepared integration tests with
+real DCPs, and the compile doctest. All 17 NR capture invocations pass, including
+luma-stage boundaries, composed preparation, fractional chroma ranks and both
+Fuji/Sony camera paths. All 11 composed Adobe captures remain exact (4,569,327
+channels). Five additional whole-output comparisons exercise full-image NR25
+on X100VI, A1 II and A7C R RAWs, including high ISO, with ten baseline/final
+processes and identical digests. Scoped formatting and `git diff --check` pass.
+Apple remains the default, `PIPELINE_VERSION` remains 5, and no physical iPhone
+validation is added in this pass. Luma NR's temporary reconstruction and marker
+planes remain a separate memory-traffic opportunity.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match
