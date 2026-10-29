@@ -118,11 +118,7 @@ impl WarpRectilinear {
           if let Some(plane) = &identity[c] {
             pixel[c] = plane[y * width + x];
           } else {
-            let value = prepared.sample(y, x, c, |sy, sx| {
-              let sy = sy.clamp(0, height as i32 - 1) as usize;
-              let sx = sx.clamp(0, width as i32 - 1) as usize;
-              source[sy * width + sx][c]
-            });
+            let value = prepared.sample_packed(y, x, c, source, [width, height]);
             pixel[c] = f32::from(value) * (1.0 / 65535.0);
           }
         }
@@ -178,7 +174,7 @@ fn code(value: f32) -> u16 {
 
 impl Prepared {
   #[inline]
-  fn sample(&self, y: usize, x: usize, c: usize, source: impl Fn(i32, i32) -> u16) -> u16 {
+  fn coordinates(&self, y: usize, x: usize, c: usize) -> (i32, i32, &[i16; 16]) {
     let dx = (x as i32 - self.center[0]) as f32;
     let dy = (y as i32 - self.center[1]) as f32;
     // Converter dispatches SIMDRadialWarp16: multiply, then ties-to-even.
@@ -191,7 +187,12 @@ impl Prepared {
     let iy = vertical.floor() as i32;
     let fx = ((horizontal - ix as f32) * 32.0) as usize;
     let fy = ((vertical - iy as f32) * 32.0) as usize;
-    let weights = &self.weights.integer[fy * 32 + fx];
+    (iy, ix, &self.weights.integer[fy * 32 + fx])
+  }
+
+  #[inline]
+  fn sample(&self, y: usize, x: usize, c: usize, source: impl Fn(i32, i32) -> u16) -> u16 {
+    let (iy, ix, weights) = self.coordinates(y, x, c);
     let mut total = 0i32;
     for j in 0..4 {
       for i in 0..4 {
@@ -201,12 +202,79 @@ impl Prepared {
     }
     (((total + 8192) >> 14).clamp(-32768, 32767) + 32768) as u16
   }
+
+  #[inline]
+  fn sample_packed(
+    &self,
+    y: usize,
+    x: usize,
+    c: usize,
+    source: &[[u16; 3]],
+    [width, height]: [usize; 2],
+  ) -> u16 {
+    let (iy, ix, weights) = self.coordinates(y, x, c);
+    // Most footprints are wholly inside the source. Bound each four-pixel row
+    // once, retaining tap order, instead of clamping every individual tap.
+    if ix >= 0 && iy >= 0 && ix as usize + 4 <= width && iy as usize + 4 <= height {
+      let mut total = 0i32;
+      for (j, weights) in weights.as_chunks::<4>().0.iter().enumerate() {
+        let start = (iy as usize + j) * width + ix as usize;
+        let row = &source[start..start + 4];
+        for (pixel, &weight) in row.iter().zip(weights) {
+          total += (i32::from(pixel[c]) - 32768) * i32::from(weight);
+        }
+      }
+      (((total + 8192) >> 14).clamp(-32768, 32767) + 32768) as u16
+    } else {
+      self.sample(y, x, c, |sy, sx| {
+        let sy = sy.clamp(0, height as i32 - 1) as usize;
+        let sx = sx.clamp(0, width as i32 - 1) as usize;
+        source[sy * width + sx][c]
+      })
+    }
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use std::path::Path;
+
+  #[test]
+  fn packed_interior_and_clamped_edges_match_generic_sampler() {
+    for (width, height) in [(1, 1), (3, 7), (4, 4), (17, 19), (64, 65), (129, 67)] {
+      let source: Vec<[u16; 3]> = (0..width * height)
+        .map(|i| std::array::from_fn(|c| ((i * 1297 + c * 7919) % 65536) as u16))
+        .collect();
+      for center in [[0.499, 0.503], [-0.1, 1.1]] {
+        let prepared = WarpRectilinear {
+          radial: [
+            [0.999, 0.002, -0.001, 0.0001],
+            [1.0, 0.0, 0.0, 0.0],
+            [1.1, -0.1, 0.03, 0.01],
+          ],
+          center,
+        }
+        .prepare(width, height);
+        for y in 0..height {
+          for x in 0..width {
+            for c in 0..3 {
+              let expected = prepared.sample(y, x, c, |sy, sx| {
+                let sy = sy.clamp(0, height as i32 - 1) as usize;
+                let sx = sx.clamp(0, width as i32 - 1) as usize;
+                source[sy * width + sx][c]
+              });
+              assert_eq!(
+                prepared.sample_packed(y, x, c, &source, [width, height]),
+                expected,
+                "{width}x{height}, {center:?}, {x},{y},{c}"
+              );
+            }
+          }
+        }
+      }
+    }
+  }
 
   #[test]
   fn owned_active_warp_matches_float_source_and_identity_bits() {

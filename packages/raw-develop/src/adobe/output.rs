@@ -78,6 +78,46 @@ impl Output {
       .apply(pixel.map(tables::code))
       .map(|v| tables::normalized(self.gamma[v as usize]))
   }
+
+  /// Batch the u16 commit and signed fixed-point matrix across independent
+  /// pixels. Gamma gathers retain checked indexing and exact normalization.
+  pub(crate) fn pixels4(&self, pixels: [[f32; 3]; 4]) -> [[f32; 3]; 4] {
+    #[cfg(target_arch = "aarch64")]
+    {
+      use std::arch::aarch64::*;
+      // SAFETY: Every load/store addresses a complete four-pixel RGB batch or
+      // a four-element array. NEON is mandatory on AArch64. FixedMatrix::new
+      // bounds the sum of absolute products plus the affine offset to i32,
+      // so each product and partial accumulation also fits.
+      unsafe {
+        let float32x4x3_t(r, g, b) = vld3q_f32(pixels.as_ptr().cast());
+        let encode = |x| {
+          // FCVTNU rounds ties to even and saturates negatives/NaNs to zero.
+          // Clipping to u16 after that is equivalent to tables::code, including
+          // infinities, overrange floats and the separately rounded product.
+          let codes = vminq_u32(vcvtnq_u32_f32(vmulq_n_f32(x, 65535.0)), vdupq_n_u32(65535));
+          vreinterpretq_s32_u32(vsubq_u32(codes, vdupq_n_u32(32768)))
+        };
+        let [r, g, b] = [encode(r), encode(g), encode(b)];
+        let codes: [[i32; 4]; 3] = self.matrix.rows.map(|row| {
+          let mut sum = vmulq_n_s32(r, row[0] as i32);
+          sum = vmlaq_n_s32(sum, g, row[1] as i32);
+          sum = vmlaq_n_s32(sum, b, row[2] as i32);
+          sum = vaddq_s32(sum, vdupq_n_s32(row[3] as i32));
+          let shifted = vshlq_s32(sum, vdupq_n_s32(-(self.matrix.shift as i32)));
+          let clipped = vminq_s32(vmaxq_s32(shifted, vdupq_n_s32(-32768)), vdupq_n_s32(32767));
+          let mut values = [0; 4];
+          vst1q_s32(values.as_mut_ptr(), vaddq_s32(clipped, vdupq_n_s32(32768)));
+          values
+        });
+        std::array::from_fn(|i| {
+          std::array::from_fn(|c| tables::normalized(self.gamma[codes[c][i] as usize]))
+        })
+      }
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    pixels.map(|pixel| self.pixel(pixel))
+  }
 }
 
 fn gamma_encode(value: f64) -> f64 {
@@ -135,6 +175,41 @@ impl FixedMatrix {
 mod tests {
   use super::*;
   use std::path::Path;
+
+  #[test]
+  fn batched_output_matches_scalar_bits() {
+    for space in [OutputSpace::DisplayP3, OutputSpace::Srgb] {
+      let output = Output::new(space);
+      let mut seed = 7_u32;
+      for batch in 0..131072 {
+        let pixels = std::array::from_fn(|i| {
+          std::array::from_fn(|c| {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            match (batch + i * 3 + c) % 5 {
+              0 => f32::from_bits(seed),
+              1 => (seed & 65535) as f32 / 65535.0,
+              2 => ((seed & 65535) as f32 + 0.5) / 65535.0,
+              3 => (seed as i32) as f32 / 65535.0,
+              _ => [
+                -0.0,
+                f32::from_bits(1),
+                f32::NAN,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+              ][(batch + i + c) % 5],
+            }
+          })
+        });
+        let actual = output.pixels4(pixels);
+        let expected = pixels.map(|pixel| output.pixel(pixel));
+        assert_eq!(
+          actual.map(|p| p.map(f32::to_bits)),
+          expected.map(|p| p.map(f32::to_bits)),
+          "{space:?}, {pixels:?}"
+        );
+      }
+    }
+  }
 
   #[test]
   fn captured_srgb_fixed_matrix() {

@@ -67,6 +67,11 @@ CA/NR scratch uses anonymous mappings whose pages are released at stage return.
 Sony's final DefaultCrop compacts rows in the owned allocation after NR. Failed
 or cancelled preparation returns no image. Camera-pyramid reductions parallelize
 independent rows above a size threshold without changing per-pixel integer sums.
+Chroma NR's low-pass intermediate retains only the horizontal columns sampled
+by its vertical reduction. Active CA uses bounded four-pixel row slices for
+interior footprints and retains the generic clamped sampler at image edges.
+Output conversion batches four pixels on AArch64, preserving ties-to-even u16
+quantization, the signed fixed matrix and checked scalar gamma gathers.
 
 ## Code Layout
 

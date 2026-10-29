@@ -590,9 +590,11 @@ impl AdobeRender {
       };
       let render_pixel = |pixel| after_primary(primary.pixel(before_primary(pixel)));
       let render_four = |pixels: [[f32; 3]; 4]| {
-        primary
-          .pixels4(before_primary_four(pixels))
-          .map(after_primary)
+        output.pixels4(
+          primary
+            .pixels4(before_primary_four(pixels))
+            .map(|pixel| contrast.as_ref().map_or(pixel, |stage| stage.pixel(pixel))),
+        )
       };
       if let Some((cache, mask, stage, _)) = spatial {
         let size = [img.width, img.height];

@@ -850,6 +850,126 @@ No physical iPhone was available: the device inventory contained simulators only
 and `xcrun devicectl list devices --timeout 5` returned no devices. Desktop
 measurements do not establish phone latency, memory limits or thermal behaviour.
 
+### Seventh performance pass: neighbourhood work and batched output
+
+This pass starts at `7afda3c`. Its first measurement repeats the sixth pass's
+suspected cached-edit regressions against `15eaa46` with four fresh-process
+rounds, alternating and reversing execution order. Fuji proxies use 90 edits
+per process; Sony full-size spatial renders use nine. All paired digests match.
+
+| Cached render, predecessor → sixth pass | Median of four run medians |
+| --- | ---: |
+| X-E5 2048 global | 22.46 → 22.01 ms |
+| X-E5 2048 spatial | 46.69 → 46.88 ms |
+| A7R V full spatial | 940 → 954 ms |
+
+The earlier 16.5% Fuji global proxy regression does not repeat in this sample.
+Sony's aggregate spatial difference is 1.4%, with overlapping run ranges.
+These local observations do not identify a particular buffer change as the
+cause of a stable slowdown, so the sixth pass's preparation/memory improvements
+are retained. They also do not prove that cached timing regressions cannot occur.
+
+Separate OS samples of the current implementation identify chroma NR and active
+CA as substantial preparation work. Cached rendering still spends most named
+CPU work in pointwise output, profile colour, tone and exposure. This pass
+retains two preparation changes and a batched output path:
+
+- The chroma low-pass horizontal stage computes only source positions `2*x+2`,
+  which are the only columns its vertical stage reads. Its intermediate uses
+  `(width-3)/2 * height` RGB u16 pixels instead of `width * height`. Both five-tap
+  integer sums, their separate rounding boundaries, output dimensions and phase
+  are unchanged. This removes approximately half the horizontal work and scratch.
+- Active CA determines whether its 4×4 footprint is wholly inside the source.
+  Interior footprints use four bounded row slices instead of clamping each tap;
+  edge footprints use the original generic clamped sampler. Radial coordinates,
+  table phase, all 16 signed integer contributions, rounding and float
+  normalization remain the same. Identity float planes retain their prior path.
+- AArch64 output conversion batches four independent pixels: separate float
+  multiplication and ties-to-even saturating conversion commit working RIMM to
+  u16, followed by the signed fixed matrix and its original shift/clip. Checked
+  scalar gamma gathers and normalization follow. The matrix constructor bounds
+  absolute products plus the affine offset to i32, so NEON's narrower integer
+  accumulations match the scalar i64 result. Other targets and scalar tails
+  retain the original pixel path. No image buffers are added.
+
+Standalone kernel measurements support these changes independently of noisy
+full preparation. With six alternating-order pairs, omitting the first pair,
+the compact chroma low pass is approximately 3% faster at 224×224 and 12% faster
+at 704×704 (60 calls per timed block). A synthetic 1024×768 two-channel CA
+sampler is approximately 31% faster (19.4 → 13.3 ms). These are isolated kernel
+measurements using copied source, not whole-engine speedups or phone estimates.
+Early full preparation and cached-render trials varied substantially, so their
+individual gains or regressions are not used as improvement bounds.
+
+The final paired comparison uses `7afda3c` as its baseline and the same M4 Pro,
+12 threads, RAWs, DCPs and settings as the sixth pass. Ten cases run twice per
+version in fresh processes, reversing execution order in round two. Each
+process performs three initial/warmup renders and seven full-size or 30 proxy
+edits. Values below are medians of two process samples, not confidence bounds.
+Filesystem caches are not cleared; encoding, network and UI time are excluded.
+All 40 process output digests retain the original baseline values.
+
+| Cached edit | X-E5 before → after | Time saved | A7R V before → after | Time saved |
+| --- | ---: | ---: | ---: | ---: |
+| Global full | 276.7 → 264.4 ms | 4.4% | 430.8 → 411.3 ms | 4.5% |
+| Spatial full | 633.4 → 597.4 ms | 5.7% | 937.1 → 892.1 ms | 4.8% |
+| Luminance NR 25 full | 289.6 → 265.4 ms | 8.4% | 421.7 → 397.7 ms | 5.7% |
+| Global 2048 proxy | 22.49 → 22.17 ms | 1.4% | 23.85 → 19.95 ms | 16.4% |
+| Spatial 2048 proxy | 44.24 → 44.83 ms | -1.3% | 45.29 → 42.45 ms | 6.3% |
+
+All six full-size cached aggregates improve. Proxy spatial results reverse
+direction between rounds for both cameras, so their aggregate differences do
+not establish a stable gain or regression. Fuji global proxy also reverses
+direction. The output-only step trial against compact-NR/interior-CA code
+improves Fuji spatial proxy medians in both rounds (46.04 → 42.71 ms aggregate),
+while global proxy results are approximately flat (20.44 → 20.24 ms). This
+supports retaining the newly batched output path despite an earlier, separate
+fixed-matrix SIMD trial being slower before the later batching work.
+
+| Full-resolution preparation | X-E5 before → after | Time saved | A7R V before → after | Time saved |
+| --- | ---: | ---: | ---: | ---: |
+| Global | 2.46 → 2.56 s | -4.4% | 2.08 → 2.13 s | -2.1% |
+| Spatial | 2.51 → 2.48 s | 1.2% | 2.11 → 1.90 s | 9.6% |
+| Luminance NR 25 | 3.56 → 3.68 s | -3.2% | 3.70 → 3.23 s | 12.8% |
+
+Preparation is not uniformly faster. Fuji global/NR25 are slower in both rounds;
+Sony NR25 improves in both. Other full-size preparation comparisons reverse
+direction between rounds. First usable full images are 2.88 → 2.98 s for Fuji
+global and 3.97 → 4.22 s for Fuji NR25; Sony spatial improves 3.61 → 3.24 s and
+Sony NR25 improves 4.23 → 3.74 s. The retained changes therefore trade some
+Fuji first-image latency for faster full-size cached editing and less low-pass
+work; the isolated kernel gains must not be presented as uniform engine gains.
+
+Peak process RSS stays within 22 MiB of baseline in every case. Full global
+peaks are approximately 2.06/2.64 GiB (Fuji/Sony), spatial 2.27/2.97 GiB, and
+NR25 2.15/2.69 GiB. Proxy peaks remain approximately 1.39–1.41 GiB for Fuji
+and 1.63–1.71 GiB for Sony. This pass retains the sixth pass's proxy memory
+improvement but does not establish another substantial process-memory gain.
+
+The compact low pass is compared with its original full-width intermediate
+across 210 size/pattern combinations, including odd/even and minimum five-tap
+dimensions, full-range codes, constants and alternating extrema. The CA sampler
+is compared against its generic form on tiny/odd images, every pixel/channel,
+two warp centres including an off-image centre, and several radial strengths.
+Existing one/four-thread identity-plane tests retain signed-zero/nonfinite checks.
+The batched output is compared bit-for-bit with scalar output on 1,048,576 RGB
+pixels across Display P3 and sRGB, including arbitrary float bits, quantized
+values, half-step boundaries, signed overrange, signed zero, subnormals, NaNs
+and infinities. Its unsafe NEON loads/stores address complete four-pixel or
+four-element arrays. No dependencies are added. Apple remains the default and
+`PIPELINE_VERSION` remains 5.
+
+The release suite passes 214 library tests, six prepared integration tests and
+the compile doctest with real DCPs. The NR change passes all 17 capture
+invocations from the sixth pass. The combined implementation retains all 11
+composed native-output captures (4,569,327 channels) and all six complete Fuji
+linear-CA references/five Sony DefaultCrop references exactly.
+Ten additional full-output comparisons on five X100VI, A1 II and A7C R RAWs
+also retain baseline digests for full global images and spatial 2048 proxies.
+
+A fresh physical-device check again reports no connected iPhone. Desktop
+timings and memory results do not establish on-device performance.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match

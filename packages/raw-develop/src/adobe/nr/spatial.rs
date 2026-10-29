@@ -75,26 +75,77 @@ fn blur5(values: [u16; 5]) -> u16 {
 }
 
 fn low_pass(src: &[[u16; 3]], width: usize, height: usize) -> (Vec<[u16; 3]>, usize, usize) {
-  let mut across = vec![[0; 3]; width * height];
-  for y in 0..height {
-    for x in 2..width - 2 {
-      across[y * width + x] =
-        std::array::from_fn(|c| blur5(std::array::from_fn(|i| src[y * width + x + i - 2][c])));
-    }
-  }
   let w = (width - 3) / 2;
   let h = (height - 3) / 2;
+  // The vertical pass samples only horizontal positions 2*x+2. Compute and
+  // retain those columns directly, keeping both five-tap integer roundings.
+  let mut across = vec![[0; 3]; w * height];
+  for y in 0..height {
+    for x in 0..w {
+      across[y * w + x] =
+        std::array::from_fn(|c| blur5(std::array::from_fn(|i| src[y * width + 2 * x + i][c])));
+    }
+  }
   let mut output = vec![[0; 3]; w * h];
   for y in 0..h {
     for x in 0..w {
-      output[y * w + x] = std::array::from_fn(|c| {
-        blur5(std::array::from_fn(|i| {
-          across[(2 * y + i) * width + 2 * x + 2][c]
-        }))
-      });
+      output[y * w + x] =
+        std::array::from_fn(|c| blur5(std::array::from_fn(|i| across[(2 * y + i) * w + x][c])));
     }
   }
   (output, w, h)
+}
+
+#[cfg(test)]
+mod low_pass_tests {
+  use super::*;
+
+  #[test]
+  fn compact_horizontal_columns_match_full_width_reference() {
+    // Cross both odd/even dimensions and the smallest five-tap support. Use
+    // full-range, constant and alternating extrema to exercise both roundings.
+    for width in [5, 6, 7, 16, 17, 63, 64, 65, 225, 226] {
+      for height in [5, 6, 7, 16, 17, 65, 66] {
+        for pattern in 0..3 {
+          let source: Vec<[u16; 3]> = (0..width * height)
+            .map(|i| {
+              std::array::from_fn(|c| match pattern {
+                0 => ((i * 1297 + c * 7919) % 65536) as u16,
+                1 => [0, 32768, 65535][c],
+                _ => {
+                  if (i + c) % 2 == 0 {
+                    0
+                  } else {
+                    65535
+                  }
+                }
+              })
+            })
+            .collect();
+          let mut across = vec![[0; 3]; width * height];
+          for y in 0..height {
+            for x in 2..width - 2 {
+              across[y * width + x] = std::array::from_fn(|c| {
+                blur5(std::array::from_fn(|i| source[y * width + x + i - 2][c]))
+              });
+            }
+          }
+          let (actual, w, h) = low_pass(&source, width, height);
+          let mut expected = vec![[0; 3]; w * h];
+          for y in 0..h {
+            for x in 0..w {
+              expected[y * w + x] = std::array::from_fn(|c| {
+                blur5(std::array::from_fn(|i| {
+                  across[(2 * y + i) * width + 2 * x + 2][c]
+                }))
+              });
+            }
+          }
+          assert_eq!(actual, expected, "{width}x{height}, pattern {pattern}");
+        }
+      }
+    }
+  }
 }
 
 /// The highpass predictor rounds one parity-specific 3x3 interpolation, whereas
