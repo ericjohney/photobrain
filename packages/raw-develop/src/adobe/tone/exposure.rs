@@ -6,6 +6,12 @@
 
 use super::curves::{Brightness, Table, Whites};
 
+#[cfg(target_arch = "aarch64")]
+mod batched;
+
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Statistics {
   /// `cr_exposure_info + 0x658`, used to split linear and curved black removal.
@@ -155,6 +161,16 @@ pub struct Stage {
 }
 
 impl Stage {
+  /// Four independent pixels with the same endpoint, ratio and table boundaries.
+  pub(crate) fn pixels4(&self, pixels: [[f32; 3]; 4]) -> [[f32; 3]; 4] {
+    #[cfg(target_arch = "aarch64")]
+    {
+      batched::apply(self, pixels)
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    pixels.map(|p| self.pixel(p))
+  }
+
   pub fn from_info(info: &Info, epsilon: f32) -> Self {
     assert!(!info.hdr, "HDR exposure uses a different CPU kernel");
     let rolloff_ev = info.rolloff_exposure.min(8.0);

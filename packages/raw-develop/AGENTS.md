@@ -44,8 +44,8 @@ encode::write(&out.image, path, encode::Format::Png16)?;  // PNG/JPEG with embed
 
 Performance paths retain exact arithmetic: Gaussian spatial-mask rows share the
 Rayon pool above a size threshold; luma NR uses 384-pixel lattice-aligned tiles
-(chroma-only: 192); spatial primary tone batches four independent pixels with
-AArch64 NEON while global tone remains scalar. The output gamma table is shared,
+(chroma-only: 192); primary tone and exposure batch four independent pixels with
+AArch64 NEON for both global and spatial edits. The output gamma table is shared,
 and identity orientation skips a copy. See the paired measurements and rejected
 trials in [Adobe engine performance](docs/adobe-engine.md#performance-and-exact-output-optimization).
 Mandatory X-Trans cleanup and default chroma NR use an exact median-selection
@@ -56,6 +56,8 @@ Profile colour also batches four independent pixels on AArch64: HSV conversion
 and encoded-value arithmetic use exact division/FMA, while coefficient gathers
 retain checked indexing and the original hue/value/saturation interpolation.
 The black-removal and u16 boundaries remain intact, including fused spatial edits.
+Tone/exposure table lookups also batch four positions, retaining checked scalar
+coefficient gathers and the original separate multiply/add interpolation.
 
 ## Code Layout
 

@@ -574,11 +574,9 @@ impl AdobeRender {
         pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v)))
       };
       let before_primary_four = |pixels: [[f32; 3]; 4]| {
-        let pixels = pixels.map(|pixel| {
-          exposure_stage
-            .pixel(pixel)
-            .map(|v| bayer::tables::normalized(bayer::tables::code(v)))
-        });
+        let pixels = exposure_stage
+          .pixels4(pixels)
+          .map(|pixel| pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v))));
         let pixels = color
           .look
           .as_ref()
@@ -630,7 +628,7 @@ impl AdobeRender {
             cancel.check()?;
             let (batches, tail) = row.as_chunks_mut::<3>().0.as_chunks_mut::<4>();
             for batch in batches {
-              *batch = before_primary_four(*batch).map(|p| after_primary(primary.pixel(p)));
+              *batch = render_four(*batch);
             }
             for p in tail {
               *p = render_pixel(*p);

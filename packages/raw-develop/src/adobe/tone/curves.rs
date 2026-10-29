@@ -222,6 +222,82 @@ impl Table {
     let i = (x as usize).min(n);
     self.samples[i] + (x - i as f32) * (self.samples[i + 1] - self.samples[i])
   }
+
+  /// Four independent lookups with the same rounded multiply/add interpolation.
+  /// Coefficient gathers retain checked scalar indexing, including the padded
+  /// final sample; no floating-point contraction or index approximation is used.
+  #[cfg(target_arch = "aarch64")]
+  #[inline]
+  pub(crate) fn eval4(
+    &self,
+    x: std::arch::aarch64::float32x4_t,
+  ) -> std::arch::aarch64::float32x4_t {
+    use std::arch::aarch64::*;
+    let n = self.samples.len() - 2;
+    // Every load/store addresses a complete four-float array. NEON is baseline
+    // on AArch64; the only profile/table accesses below use checked indexing.
+    unsafe {
+      let zero = vdupq_n_f32(0.0);
+      let one = vdupq_n_f32(1.0);
+      let x = vbslq_f32(
+        vcltq_f32(x, zero),
+        zero,
+        vbslq_f32(vcgtq_f32(x, one), one, x),
+      );
+      let x = vmulq_n_f32(x, n as f32);
+      let mut positions = [0.0; 4];
+      vst1q_f32(positions.as_mut_ptr(), x);
+      let indices = positions.map(|v| (v as usize).min(n));
+      let low = indices.map(|i| self.samples[i]);
+      let high = indices.map(|i| self.samples[i + 1]);
+      let offsets = indices.map(|i| i as f32);
+      let low = vld1q_f32(low.as_ptr());
+      let high = vld1q_f32(high.as_ptr());
+      let t = vsubq_f32(x, vld1q_f32(offsets.as_ptr()));
+      vaddq_f32(low, vmulq_f32(t, vsubq_f32(high, low)))
+    }
+  }
+}
+
+#[cfg(all(test, target_arch = "aarch64"))]
+mod tests {
+  use super::Table;
+  use std::arch::aarch64::*;
+
+  #[test]
+  fn batched_table_matches_scalar_bits() {
+    let mut seed = 17u32;
+    for n in [1, 16, 4096] {
+      let table = Table::new(n, |x| (x - 0.25) * (x - 0.75));
+      for sample in 0..20000 {
+        let values: [f32; 4] = std::array::from_fn(|i| {
+          seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+          match sample % 11 {
+            0 => {
+              if i % 2 == 0 {
+                -0.0
+              } else {
+                0.0
+              }
+            }
+            1 => 1.0,
+            2 => f32::from_bits(seed),
+            3 => f32::from_bits(seed & 0x807f_ffff),
+            4 => [0.0, 0.25, 0.75, 1.0][i],
+            _ => (seed >> 16) as f32 * (2.0 / 65535.0) - 0.5,
+          }
+        });
+        let expected = values.map(|x| table.eval_simd(x));
+        let mut actual = [0.0f32; 4];
+        unsafe { vst1q_f32(actual.as_mut_ptr(), table.eval4(vld1q_f32(values.as_ptr()))) };
+        assert_eq!(
+          actual.map(f32::to_bits),
+          expected.map(f32::to_bits),
+          "{n}, {sample}, {values:?}"
+        );
+      }
+    }
+  }
 }
 
 /// Modern DNG sRGB transfer functions, including reciprocal constants and FMA.

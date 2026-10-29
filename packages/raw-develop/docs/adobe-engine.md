@@ -687,6 +687,65 @@ scalar primary tone first among named CPU functions, followed by exposure and
 batched profile colour. Tone/exposure are the next measured targets; the earlier
 rejected global-tone SIMD trial remains excluded from this implementation.
 
+### Fifth performance pass: tone, exposure and table evaluation
+
+The profile-colour pass was committed as `1ea3698`. This pass addresses the
+primary-tone and exposure hotspots identified in its final cached-render sample.
+The existing four-pixel primary-tone path now also handles global edits: the
+four-pixel colour layout introduced by the previous pass makes this worthwhile,
+where the earlier standalone global-tone trial had regressed.
+
+Exposure now batches four independent pixels with AArch64 NEON, retaining its
+endpoint transforms, exact division/square root, explicit FMA boundaries,
+separate middle-channel multiply/add, and the original green-twice luma sum.
+Rolloff, Whites and both Blacks branches use the same clipping/table boundaries.
+Tone and exposure also share a four-position table evaluator: it preserves
+checked scalar coefficient gathers, the padded endpoint and the original
+separate multiply/add interpolation, with no FMA contraction or approximate
+indices. Row tails and other architectures retain the scalar stages.
+
+Isolated exposure batching with scalar table evaluation was flat or slower.
+With batched table evaluation, the combined path was 4–19% faster than scalar
+exposure in the four full-image cases of an isolated paired trial. This coupling
+is why both changes are retained. The final measurements below compare the
+complete pass with `1ea3698`, rather than adding isolated percentages together.
+
+| Cached edit | X-E5 before → after | Time saved | A7R V before → after | Time saved |
+| --- | ---: | ---: | ---: | ---: |
+| Full image, global tone | 339 → 315 ms | 7% | 547 → 445 ms | 19% |
+| Full image, spatial tone | 677 → 639 ms | 6% | 1,021 → 953 ms | 7% |
+| Full image, luminance NR 25 | 351 → 293 ms | 16% | 528 → 474 ms | 10% |
+| 2048-edge proxy, global tone | 26.1 → 23.3 ms | 11% | 26.4 → 21.2 ms | 20% |
+| 2048-edge proxy, spatial tone | 50.4 → 44.5 ms | 12% | 53.5 → 47.2 ms | 12% |
+
+The same ten camera/settings/size cases ran twice before and twice after,
+reversing order in round two: 40 fresh processes, seven full-image or 30 proxy
+edits after three warmups per run. Every run preserves its original final-output
+float digest. Values are medians of the two run medians, not confidence bounds.
+Fuji global timing varied substantially: after medians were 282 and 347 ms,
+versus 346 and 331 ms before. One paired round regressed, so its 7% aggregate
+should not be treated as a reliable improvement bound. Sony global and both
+cameras' spatial runs improved in both rounds.
+
+Peak RSS remains effectively flat: median process peaks differ by at most
+10 MiB per case. Default full-image peaks are approximately 2.06/2.65 GiB
+(Fuji/Sony); spatial peaks remain approximately 2.27/2.97 GiB. No full-image
+scratch buffer or additional prepared-image cache is introduced. Preparation
+still dominates first-image delivery, which does not improve uniformly.
+
+Each arithmetic step passed all 11 composed native-capture cases (4,569,327
+final channels, exact float bits). The new exposure differential test checks
+1,048,576 RGB pixels across 128 combinations of optional stages and gains,
+including channel ties, signed zero, subnormals, canonical NaNs, infinities,
+headroom and a zero epsilon. Table evaluation compares 240,000 values across
+three table sizes, including arbitrary float bit patterns and endpoints.
+The existing primary-tone differential test also passes. Final validation
+includes 208 library tests, six prepared integration tests and the compile
+doctest with real DCP profiles, plus unchanged before/after digests in ten
+additional full-global/spatial-proxy cases on five X100VI, A1 II and A7C R RAWs.
+Apple remains the default and `PIPELINE_VERSION` remains 5. The checks cover
+these inputs and captured boundaries rather than proving every setting or CPU.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match

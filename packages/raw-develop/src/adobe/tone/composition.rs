@@ -182,7 +182,7 @@ impl Stage {
 }
 
 impl Stage {
-  /// Four independent pixels. Lookups retain the scalar table evaluator;
+  /// Four independent pixels. Lookups retain checked scalar coefficient gathers;
   /// arithmetic lanes retain each pixel's original rounded/FMA boundaries.
   pub(crate) fn pixels4(&self, pixels: [[f32; 3]; 4]) -> [[f32; 3]; 4] {
     #[cfg(target_arch = "aarch64")]
@@ -219,14 +219,8 @@ impl Stage {
             vmulq_f32(vsubq_f32(mid, lo), vmulq_f32(vmulq_f32(u, u), half)),
           );
         }
-        let evaluate = |value| {
-          let mut values = [0.0; 4];
-          vst1q_f32(values.as_mut_ptr(), value);
-          let values = values.map(|v| self.table.eval_simd(v));
-          vld1q_f32(values.as_ptr())
-        };
-        upper = evaluate(upper);
-        lower = evaluate(lower);
+        upper = self.table.eval4(upper);
+        lower = self.table.eval4(lower);
         if self.smooth {
           let t3 = vmulq_f32(t, t2);
           let p = vsubq_f32(t, one);
