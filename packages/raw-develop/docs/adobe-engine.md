@@ -539,6 +539,95 @@ tested cases and captured boundaries; they do not prove all cameras, profiles,
 settings or architectures. External inputs and measurement artifacts remain
 outside the repository.
 
+### Third performance pass: preparation
+
+The validated second pass was committed as `d1ce916`. A fresh two-round engine
+comparison then ran both Rust engines on the same RAWs with the same global
+settings, alternating engine order and reversing it in round two. Before the
+preparation changes below, cached full-image Adobe edits took 485 ms versus
+295 ms for Apple on Fuji, and 809 ms versus 426 ms on Sony. First usable full
+images took 5.28 versus 2.86 s (Fuji), and 4.03 versus 3.91 s (Sony). These fresh
+samples supersede the earlier historical engine comparison; the Apple numbers
+describe this Rust implementation, not a native RawCamera benchmark.
+
+Temporary stage timers measured approximately 2.50 s for Fuji demosaic/mandatory
+cleanup and CA, 1.22 s for default chroma NR, 0.22 s for optional distortion,
+0.15 s for the camera pyramid and 0.10 s for guide preparation. Within mandatory
+cleanup, median selection and directional filtering each accounted for roughly
+42–43% of summed tile time. OS sampling confirmed the cleanup/NR hotspots.
+Instrumentation and sampled stacks remain external; production has no timers.
+
+The focused preparation comparison uses `d1ce916` and the final executable,
+with four cases (two cameras × default/luminance-NR25), two rounds reversing
+before/after order, and seven timed full-image edits after three warmups in each
+fresh process. All 16 runs retain their original complete output digest.
+
+| Preparation / first image | X-E5 before → after | Time saved | A7R V before → after | Time saved |
+| --- | ---: | ---: | ---: | ---: |
+| Default preparation | 4.38 → 2.78 s | 37% | 2.91 → 2.36 s | 19% |
+| Luminance NR 25 preparation | 5.63 → 3.75 s | 33% | 4.41 → 4.11 s | 7% |
+| Default first usable full image | 4.97 → 3.40 s | 32% | 3.73 → 3.21 s | 14% |
+| Luminance NR 25 first usable full image | 6.23 → 4.40 s | 29% | 5.16 → 4.86 s | 6% |
+
+These are the medians of the two process samples, not confidence bounds. Cached
+edit times varied by 1–6% in this comparison; this pass targets preparation,
+without changing the repeated render algorithm. Peak RSS was effectively flat:
+2.06/2.65 GiB (Fuji/Sony) for default settings and approximately 2.15/2.72 GiB
+with luminance NR 25. No additional full-image scratch allocation is required.
+
+The final Apple/Adobe comparison repeats all eight camera/engine/size cases in
+two fresh-process rounds, again alternating engine order and reversing it in
+round two. Both engines use full quality and the same global settings; the
+2048-edge proxy is resized after preparation. Cached times are medians of the
+two run medians (seven full-image or 30 proxy edits per run).
+
+| Camera / output | Apple cached edit | Adobe cached edit | Apple first usable | Adobe first usable |
+| --- | ---: | ---: | ---: | ---: |
+| X-E5 full image | 310 ms | 450 ms | 2.50 s | 3.22 s |
+| X-E5 2048-edge proxy | 20.4 ms | 35.1 ms | 2.13 s | 2.92 s |
+| A7R V full image | 414 ms | 725 ms | 3.36 s | 3.17 s |
+| A7R V 2048-edge proxy | 20.9 ms | 33.4 ms | 3.01 s | 2.56 s |
+
+Adobe's first full Sony image is approximately 6% faster in this sample;
+Fuji's remains approximately 29% slower. Apple retains faster cached editing
+on both cameras. These are independent paired samples, so the focused
+before/after table above is the measure of this pass's gains. All 16 final
+engine runs preserve their respective baseline digests, including both Apple
+proxy sizes. This establishes unchanged output within each engine, not equal
+output between engines, and does not measure native RawCamera.
+
+Two changes were retained:
+
+- Replace full nine-value sorts with a 19-comparator median-selection network.
+  Cleanup maps finite float bit patterns to the same signed order as
+  `f32::total_cmp`, preserving signed zero, and retains canonical NaN for any
+  nonfinite neighbourhood. Default chroma NR uses the same network on signed
+  integer residuals when its rank is exactly 1024. Fractional ranks retain the
+  original full sort and interpolation.
+- Run mandatory X-Trans directional cleanup on four independent pixels using
+  AArch64 NEON. Each lane retains all 68 neighbour contributions in the original
+  direction/tap order, the original rounded distance products, FMA boundaries,
+  epsilon and exact division. Comparison/select clamps preserve NaNs and signed
+  zero. A checked source extent and the eight-pixel stencil bound every SIMD
+  load; the final one to three pixels and other architectures use the scalar
+  form. No whole-image scratch buffer was added.
+
+The median network is checked against all 362,880 permutations of distinct
+ranks, all 512 binary neighbourhoods, and 20,000 additional float/integer
+neighbourhoods. Float comparisons include signed zero, subnormals, arbitrary
+bit patterns and nonfinite rejection. Directional cleanup compares every float
+bit against its scalar form across six widths covering all batch remainders,
+with random quantized values, signed zero, subnormals and canonical NaNs.
+
+Each arithmetic step passed all 11 composed captures (4,569,327 final channels).
+The final implementation additionally matches all six complete no-CA Fuji
+linear DNGs (X-E5 and X100VI) and the complete captured demosaic/cleanup chain.
+The release suite passes with real DCP profiles: 205 library tests, six prepared
+integration tests and the compile doctest. Apple remains the default, its
+output is unchanged, and `PIPELINE_VERSION` remains 5. The reference and
+differential checks cover the tested inputs rather than proving all settings
+or architectures.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match

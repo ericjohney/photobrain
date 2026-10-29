@@ -27,6 +27,7 @@ pub(crate) mod lens;
 mod linearize;
 pub(crate) mod nr;
 pub(crate) mod output;
+mod rank;
 pub mod render;
 mod temperature;
 pub(crate) mod tone;

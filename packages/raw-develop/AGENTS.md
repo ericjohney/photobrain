@@ -48,6 +48,10 @@ Rayon pool above a size threshold; luma NR uses 384-pixel lattice-aligned tiles
 AArch64 NEON while global tone remains scalar. The output gamma table is shared,
 and identity orientation skips a copy. See the paired measurements and rejected
 trials in [Adobe engine performance](docs/adobe-engine.md#performance-and-exact-output-optimization).
+Mandatory X-Trans cleanup and default chroma NR use an exact median-selection
+network (fractional NR ranks keep their full sort). X-Trans directional cleanup
+also batches four independent pixels with AArch64 NEON, preserving all 68 tap
+contributions and scalar rounding/FMA order; other targets retain scalar code.
 
 ## Code Layout
 

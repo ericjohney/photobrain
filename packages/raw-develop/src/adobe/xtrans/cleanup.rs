@@ -262,41 +262,12 @@ pub(super) fn apply(img: &mut RgbImage, params: &Parameters) {
             i += 1;
           }
         }
-        q.sort_unstable_by(f32::total_cmp);
-        img.data[(y * w + x) * 3 + c] = if q.into_iter().all(f32::is_finite) {
-          q[4]
-        } else {
-          f32::NAN
-        };
+        img.data[(y * w + x) * 3 + c] = crate::adobe::rank::finite_median9(q);
       }
     }
   }
   let before = img.data.clone();
-  for y in 8..h - 8 {
-    for x in 8..w - 8 {
-      let center = &before[(y * w + x) * 3..(y * w + x) * 3 + 3];
-      let (mut s1, mut s2, mut sw) = (0.0, 0.0, 0.0);
-      for (dy, dx) in [(0, 1), (1, 0), (1, 1), (1, -1)] {
-        for i in -8..=8 {
-          let sy = (y as isize + dy * i) as usize;
-          let sx = (x as isize + dx * i) as usize;
-          let p = &before[(sy * w + sx) * 3..(sy * w + sx) * 3 + 3];
-          let a = (p[0] - center[0]) * (p[0] - center[0]) * (-256.0);
-          let b = (p[1] - center[1]) * (p[1] - center[1]) * (-256.0);
-          let c = (p[2] - center[2]) * (p[2] - center[2]) * (-256.0);
-          let v = fm(0.2, a + (b + c), 1.0);
-          let weight = (v * (v * v)).clamp(0.0, 1.0);
-          s1 = fm(weight, p[1], s1);
-          s2 = fm(weight, p[2], s2);
-          sw += weight;
-        }
-      }
-      let eps = 2f32.powi(-15);
-      let rec = 1.0 / (sw + eps);
-      img.data[(y * w + x) * 3 + 1] = (s1 + eps) * rec;
-      img.data[(y * w + x) * 3 + 2] = (s2 + eps) * rec;
-    }
-  }
+  super::bilateral::apply(&before, img);
   let weights = [
     0.885_462_6_f32,
     0.109_030_835,

@@ -6,6 +6,7 @@
 //! This is separate from Adobe's user-adjustable noise reduction and sharpening.
 
 mod activities;
+mod bilateral;
 mod cleanup;
 mod reconstruct;
 #[cfg(test)]

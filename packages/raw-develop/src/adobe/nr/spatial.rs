@@ -272,11 +272,11 @@ pub(crate) fn filter_tile(
 /// between symmetric interpolated order statistics. Fractional ranks use signed
 /// integer rounding before clamping, including for negative detail residuals.
 fn rank_clamp(mut neighbours: [i16; 9], rank: usize) -> i16 {
+  if rank == 1024 {
+    return crate::adobe::rank::median9(neighbours);
+  }
   let center = neighbours[4];
   neighbours.sort_unstable();
-  if rank == 1024 {
-    return neighbours[4];
-  }
   let index = rank >> 8;
   let fraction = (rank & 255) as i32;
   let interpolate =
