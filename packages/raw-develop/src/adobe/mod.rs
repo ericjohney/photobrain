@@ -552,17 +552,24 @@ impl AdobeRender {
           pixel
         }
       };
-      let render_pixel = |pixel| {
+      let before_primary = |pixel| {
         let pixel = exposure_stage.pixel(pixel);
         let pixel = pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v)));
         let pixel = color
           .look
           .as_ref()
           .map_or(pixel, |table| table.pixel(pixel));
-        let pixel = pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v)));
-        let pixel = primary.pixel(pixel);
+        pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v)))
+      };
+      let after_primary = |pixel| {
         let pixel = contrast.as_ref().map_or(pixel, |stage| stage.pixel(pixel));
         output.pixel(pixel)
+      };
+      let render_pixel = |pixel| after_primary(primary.pixel(before_primary(pixel)));
+      let render_four = |pixels: [[f32; 3]; 4]| {
+        primary
+          .pixels4(pixels.map(before_primary))
+          .map(after_primary)
       };
       if let Some((cache, mask, stage, _)) = spatial {
         let size = [img.width, img.height];
@@ -572,12 +579,15 @@ impl AdobeRender {
           .enumerate()
           .try_for_each(|(y, row)| {
             cancel.check()?;
-            for (x, pixel) in row.chunks_exact_mut(3).enumerate() {
-              let rgb = stage.pixel(
-                input_pixel([pixel[0], pixel[1], pixel[2]]),
-                cache.sample(mask, size, x, y),
-              );
-              pixel.copy_from_slice(&render_pixel(rgb));
+            let (batches, tail) = row.as_chunks_mut::<3>().0.as_chunks_mut::<4>();
+            let tail_start = batches.len() * 4;
+            let spatial_pixel =
+              |x, pixel| stage.pixel(input_pixel(pixel), cache.sample(mask, size, x, y));
+            for (i, batch) in batches.iter_mut().enumerate() {
+              *batch = render_four(std::array::from_fn(|j| spatial_pixel(i * 4 + j, batch[j])));
+            }
+            for (i, pixel) in tail.iter_mut().enumerate() {
+              *pixel = render_pixel(spatial_pixel(tail_start + i, *pixel));
             }
             Ok::<_, Error>(())
           })?;

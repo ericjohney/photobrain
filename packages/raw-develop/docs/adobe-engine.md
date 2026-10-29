@@ -458,6 +458,87 @@ first-render and warmed-render times plus the final exact-float digest.
 `/usr/bin/time -l` supplies process peak RSS on macOS. Encoding and UI latency
 need separate measurements.
 
+### Second performance pass: concurrency, tiling and tone SIMD
+
+The follow-up pass compares against `d27f129`, the optimized executable from
+the first pass above. It uses the same machine, RAWs, profiles, settings and
+benchmark procedure. Luminance-NR cases additionally set luminance NR to 25.
+These measurements describe incremental gains over the first pass.
+
+| Cached edit | X-E5 before → after | Time saved | A7R V before → after | Time saved |
+| --- | ---: | ---: | ---: | ---: |
+| Full image, global tone | 603 → 474 ms | 21% | 875 → 760 ms | 13% |
+| Full image, spatial tone | 1,198 → 896 ms | 25% | 1,863 → 1,389 ms | 25% |
+| 2048-edge proxy, global tone | 40.7 → 33.9 ms | 17% | 45.2 → 35.9 ms | 20% |
+| 2048-edge proxy, spatial tone | 85.0 → 65.2 ms | 23% | 89.2 → 63.7 ms | 29% |
+
+| Preparation / first render | X-E5 before → after | A7R V before → after |
+| --- | ---: | ---: |
+| Luminance NR 25 preparation | 6.25 → 5.78 s (7%) | 5.41 → 4.31 s (20%) |
+| First spatial proxy render, including lazy mask | 575 → 397 ms (31%) | 834 → 463 ms (44%) |
+| First usable full spatial image, including decode/preparation | 6.17 → 5.70 s (8%) | 5.42 → 4.68 s (14%) |
+| Peak process RSS, luminance NR 25 | 1.89 → 1.92 GiB | 2.53 → 2.58 GiB |
+
+All ten Adobe cases ran twice before and twice after, in 40 fresh-process runs;
+every run retained the original complete final-output float digest. Values use
+the median of two run medians, with seven full-image or 30 proxy timed edits
+per run. These remain local samples rather than confidence bounds. The fresh
+paired baseline differs from the first-pass timings above, so comparisons use
+this pass's baseline. First-image latency does not improve uniformly: Fuji's
+global first usable image was effectively flat (4.87 → 4.92 s), and its global
+proxy preparation varied enough to offset the cheaper render.
+
+Larger luma tiles use more scratch memory. Final NR25 process peaks increased
+by approximately 26 MiB (Fuji) and 58 MiB (Sony); an earlier isolated trial
+showed roughly 70–75 MiB increases. Peak RSS also reflects allocator/process
+variation, so these are measured costs rather than fixed memory guarantees.
+Other stages and working-image buffers still dominate total process memory.
+
+The retained changes are:
+
+- Run independent Gaussian mask reduce/expand/resize rows through the existing
+  Rayon pool. Buffers below 65,536 floats remain serial, and larger jobs keep
+  at least approximately 8,192 floats per task. Each pixel's tap order, the
+  outer remap-sample accumulation and scene-statistics reductions are unchanged.
+- Use 384-pixel tiles for four-level luma NR, retaining 192-pixel tiles for
+  chroma-only NR. Both sizes preserve the eight-pixel lattice and the existing
+  160-pixel rounded halo; larger tiles reduce repeated halo work.
+- Apply the primary tone arithmetic to four independent pixels in AArch64
+  NEON for spatial edits. Table lookups retain the scalar evaluator; exact
+  division, rounded products and explicit FMA boundaries follow the scalar
+  stage. Comparisons/selects preserve the scalar clamp's NaNs and signed zero.
+  Global edits and non-AArch64 targets retain their scalar tone path.
+- Share the immutable 65,536-entry output gamma table through `OnceLock`.
+- Skip the final full-image orientation copy when the combined EXIF orientation
+  and user rotation are identity. The shared finish path also benefits the
+  Apple engine, with no pixel arithmetic change.
+
+Trials removed after measurement: reusing demosaic/NR tile scratch buffers
+produced no material improvement; batching global tone and vectorizing the
+fixed integer output matrix regressed timing; rendering directly from borrowed
+prepared pixels slowed global edits without a useful spatial gain. The initial
+working-image clone remains. Exactness alone was insufficient to retain a trial.
+
+All retained steps passed the 11 composed native-capture cases (4,569,327 final
+channels, identical float bits). Native Gaussian pyramid/remap/resampler checks
+on both cameras additionally matched 307,677,734 captured values; incomplete
+capture pairs were excluded by the existing capture tests. A differential
+test compares one versus four threads on odd, skinny and small images. The
+four-pixel tone test compares 600,000 RGB pixels (1.8 million channels) across
+six smooth/exposure combinations, including endpoints, channel ties, signed
+zero and subnormals. A luma-NR test compares the original and larger tiles across
+horizontal/vertical joins, their intersections and odd edges. The complete
+release suite passes with real DCP profiles: 202 library tests, six prepared
+integration tests and the compile doctest, including linear output,
+rotation/crop and cancellation. Full-image Apple-engine digest checks on the
+same Fuji and Sony RAWs also remain unchanged. External Apple-reference fixture
+tests still require their documented fixture variables.
+
+Output contracts and `PIPELINE_VERSION` 5 are unchanged. These gates cover the
+tested cases and captured boundaries; they do not prove all cameras, profiles,
+settings or architectures. External inputs and measurement artifacts remain
+outside the repository.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match

@@ -42,6 +42,13 @@ encode::write(&out.image, path, encode::Format::Png16)?;  // PNG/JPEG with embed
 
 `Options::engine = Engine::Adobe` (CLI `--adobe --adobe-profiles DIR`) selects the secondary RAF/ARW engine (`src/adobe/`). Full X-E5/X100VI demosaic and mandatory cleanup follow Adobe 18.7, exact against six complete no-CA linear DNGs. Full Sony Bayer processing matches five no-CA linear DNG crops, including per-body SR2 calibration, high-ISO green balance and long-exposure paired-hot-pixel repair. Mandatory embedded lateral CA matches all 11 complete linear references and runs independently of the optional CA setting. Full rendering integrates camera→preserved-black RIMM, metadata-derived chroma/four-level luma NR, Fuji distortion/vignetting, profile colour, scene-derived statistics and modern global/spatial tone/output. `adobe_noise_reduction` exposes six 0–100 controls; `adobe_tone` exposes integer -100..100 Basic controls, including spatial Highlights/Shadows. Exposure uses the shared EV field. Tone edits reuse the prepared image, original scene summaries and a lazily computed spatial mask. Composed RAW-to-tone/sRGB checks match 4,569,327 Fuji/Sony channels exactly across 11 captured tile/settings cases: six global controls cases, four mixed Highlights/Shadows cases covering both signs, and one Fuji spatial case with distortion/vignetting. Sony DefaultCrop follows NR to preserve its eight-pixel lattice. External LCP and user sharpening are unimplemented. Preview uses generic demosaic and the SDK renderer. Adobe Standard DCP profiles are read at runtime from `Options::adobe_profile_dir` or `ADOBE_PROFILE_DIR` (never bundled). `Engine::Apple` stays the default. Accuracy, provenance and reference instructions: [docs/adobe-engine.md](docs/adobe-engine.md).
 
+Performance paths retain exact arithmetic: Gaussian spatial-mask rows share the
+Rayon pool above a size threshold; luma NR uses 384-pixel lattice-aligned tiles
+(chroma-only: 192); spatial primary tone batches four independent pixels with
+AArch64 NEON while global tone remains scalar. The output gamma table is shared,
+and identity orientation skips a copy. See the paired measurements and rejected
+trials in [Adobe engine performance](docs/adobe-engine.md#performance-and-exact-output-optimization).
+
 ## Code Layout
 
 - `src/metadata.rs`: `RawMetadata`; `src/negative.rs`: container detection and decode.

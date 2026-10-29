@@ -26,6 +26,7 @@
 use super::bayer::tables;
 use super::color::PROPHOTO_TO_XYZ_D50;
 use crate::math::Mat3;
+use std::sync::OnceLock;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum OutputSpace {
@@ -58,14 +59,15 @@ impl OutputSpace {
 #[derive(Clone, Debug)]
 pub(crate) struct Output {
   matrix: FixedMatrix,
-  gamma: Vec<u16>,
+  gamma: &'static [u16],
 }
 
 impl Output {
   pub(crate) fn new(space: OutputSpace) -> Self {
+    static GAMMA: OnceLock<Vec<u16>> = OnceLock::new();
     Self {
       matrix: FixedMatrix::new(space.matrix_to_pcs().inverse().mul(&PROPHOTO_TO_XYZ_D50)),
-      gamma: tables::expand(gamma_encode),
+      gamma: GAMMA.get_or_init(|| tables::expand(gamma_encode)),
     }
   }
 

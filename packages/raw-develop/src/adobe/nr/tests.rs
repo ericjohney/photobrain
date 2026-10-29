@@ -270,3 +270,37 @@ fn tiled_luma_and_chroma_preserve_lattice_across_joins_and_odd_edges() {
     assert_eq!(one.data, many.data, "Color {color}");
   }
 }
+
+#[test]
+fn larger_luma_tiles_match_original_tile_boundaries() {
+  let mut params = super::params::Parameters::new(
+    "X-E5",
+    10000,
+    0.5,
+    crate::math::Mat3::IDENTITY,
+    4096.0 / 65535.0,
+    0.25,
+    0.5,
+    0.5,
+  )
+  .unwrap();
+  params.luma = super::luma::Parameters::new("X-E5", 10000, 0.5, 0.7, 0.11, 0.22);
+  for (width, height) in [(401, 25), (25, 401), (401, 401)] {
+    let mut original = crate::image::RgbImage::new(width, height);
+    original.data.iter_mut().enumerate().for_each(|(i, v)| {
+      *v = (i * 137 % 65536) as f32 / 65535.0;
+    });
+    let mut larger = original.clone();
+    super::apply_tiled(&mut original, &params, &crate::Cancel::never(), 192).unwrap();
+    super::apply_tiled(&mut larger, &params, &crate::Cancel::never(), 384).unwrap();
+    assert_eq!(
+      original
+        .data
+        .iter()
+        .map(|v| v.to_bits())
+        .collect::<Vec<_>>(),
+      larger.data.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+      "{width}x{height}"
+    );
+  }
+}

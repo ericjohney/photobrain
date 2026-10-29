@@ -267,7 +267,10 @@ fn finish(
     }
   };
   cancel.check()?;
-  img = img.oriented(rotate_orientation(orientation, settings.quarter_turns));
+  let orientation = rotate_orientation(orientation, settings.quarter_turns);
+  if orientation != 1 {
+    img = img.oriented(orientation);
+  }
   cancel.check()?;
   if let Some(c) = settings.crop {
     // A valid subpixel crop near an edge can round its origin to width/height.

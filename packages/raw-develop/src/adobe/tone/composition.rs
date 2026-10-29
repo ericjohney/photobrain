@@ -181,9 +181,138 @@ impl Stage {
   }
 }
 
+impl Stage {
+  /// Four independent pixels. Lookups retain the scalar table evaluator;
+  /// arithmetic lanes retain each pixel's original rounded/FMA boundaries.
+  pub(crate) fn pixels4(&self, pixels: [[f32; 3]; 4]) -> [[f32; 3]; 4] {
+    #[cfg(target_arch = "aarch64")]
+    {
+      use std::arch::aarch64::*;
+      // NEON is baseline on AArch64. Each load/store addresses exactly twelve
+      // valid floats; deinterleaving never mixes arithmetic between pixels.
+      unsafe {
+        let float32x4x3_t(r, g, b) = vld3q_f32(pixels.as_ptr().cast());
+        let zero = vdupq_n_f32(0.0);
+        let one = vdupq_n_f32(1.0);
+        let two = vdupq_n_f32(2.0);
+        let half = vdupq_n_f32(0.5);
+        let gb_lo = vminnmq_f32(g, b);
+        let gb_hi = vmaxnmq_f32(g, b);
+        let r_or_lo = vmaxnmq_f32(r, gb_lo);
+        let lo = vminnmq_f32(r, gb_lo);
+        let mid = vminnmq_f32(r_or_lo, gb_hi);
+        let hi = vmaxnmq_f32(r_or_lo, gb_hi);
+        let range = vsubq_f32(hi, lo);
+        let t = vbslq_f32(
+          vceqq_f32(range, zero),
+          zero,
+          vmulq_f32(vsubq_f32(mid, lo), vdivq_f32(one, range)),
+        );
+        let t2 = vmulq_f32(t, t);
+        let mut lower = lo;
+        let mut upper = hi;
+        if self.smooth {
+          let u = vsubq_f32(one, t);
+          upper = vaddq_f32(hi, vmulq_f32(vsubq_f32(mid, hi), vmulq_f32(t2, half)));
+          lower = vaddq_f32(
+            lo,
+            vmulq_f32(vsubq_f32(mid, lo), vmulq_f32(vmulq_f32(u, u), half)),
+          );
+        }
+        let evaluate = |value| {
+          let mut values = [0.0; 4];
+          vst1q_f32(values.as_mut_ptr(), value);
+          let values = values.map(|v| self.table.eval_simd(v));
+          vld1q_f32(values.as_ptr())
+        };
+        upper = evaluate(upper);
+        lower = evaluate(lower);
+        if self.smooth {
+          let t3 = vmulq_f32(t, t2);
+          let p = vsubq_f32(t, one);
+          let denominator = vaddq_f32(vsubq_f32(t2, t), two);
+          let inverse = vbslq_f32(
+            vceqq_f32(denominator, zero),
+            zero,
+            vdivq_f32(one, denominator),
+          );
+          let high_coefficient = vsubq_f32(vaddq_f32(t, vsubq_f32(t3, vmulq_f32(t2, two))), two);
+          let low_coefficient = vaddq_f32(vsubq_f32(t3, t2), two);
+          let high_numerator = vsubq_f32(
+            vmulq_f32(vmulq_f32(p, t2), lower),
+            vmulq_f32(upper, high_coefficient),
+          );
+          let low_numerator = vsubq_f32(
+            vmulq_f32(low_coefficient, lower),
+            vmulq_f32(vmulq_f32(t, vmulq_f32(p, p)), upper),
+          );
+          // Comparisons/selects preserve f32::clamp's NaNs and signed zero.
+          let clamp = |value| {
+            vbslq_f32(
+              vcltq_f32(value, zero),
+              zero,
+              vbslq_f32(vcgtq_f32(value, one), one, value),
+            )
+          };
+          upper = clamp(vmulq_f32(inverse, high_numerator));
+          lower = clamp(vmulq_f32(inverse, low_numerator));
+        }
+        let middle = vfmaq_f32(lower, t, vsubq_f32(upper, lower));
+        let channel = |value| {
+          vbslq_f32(
+            vceqq_f32(value, lo),
+            lower,
+            vbslq_f32(vceqq_f32(value, hi), upper, middle),
+          )
+        };
+        let mut out = [[0.0; 3]; 4];
+        vst3q_f32(
+          out.as_mut_ptr().cast(),
+          float32x4x3_t(channel(r), channel(g), channel(b)),
+        );
+        out
+      }
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    pixels.map(|pixel| self.pixel(pixel))
+  }
+}
+
 #[cfg(test)]
 mod tests {
-  use super::{Curve, ExtraExposure};
+  use super::{Curve, ExtraExposure, Stage};
+
+  #[test]
+  fn batched_tone_matches_scalar_bits() {
+    let mut seed = 17u32;
+    for smooth in [false, true] {
+      for ev in [0.0, -0.85, -2.5] {
+        let mut stage = Stage::from_curve(&Curve::new(None, ev, 0, 0.18));
+        stage.smooth = smooth;
+        for sample in 0..25000 {
+          let pixels = std::array::from_fn(|i| {
+            std::array::from_fn(|c| {
+              seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+              match sample % 19 {
+                0 => 0.0,
+                1 => 1.0,
+                2 => (i % 3 == c) as u8 as f32,
+                3 => f32::from_bits((seed >> 16) + 1),
+                4 => 0.5,
+                5 => -0.0,
+                _ => (seed >> 8) as f32 * (1.0 / 16777216.0),
+              }
+            })
+          });
+          assert_eq!(
+            stage.pixels4(pixels).map(|p| p.map(f32::to_bits)),
+            pixels.map(|p| stage.pixel(p).map(f32::to_bits)),
+            "smooth {smooth}, EV {ev}, sample {sample}"
+          );
+        }
+      }
+    }
+  }
 
   #[test]
   fn negative_exposure_matches_native_f64_payloads() {

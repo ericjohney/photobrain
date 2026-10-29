@@ -7,6 +7,31 @@
 
 use super::statistics::Statistics;
 use crate::{Cancel, Error, Result};
+use rayon::prelude::*;
+
+/// Rows are independent; tap order and the outer remap-sample accumulation stay
+/// serial. Small pyramid levels avoid scheduling overhead.
+fn for_rows(
+  pixels: &mut [f32],
+  width: usize,
+  cancel: &Cancel,
+  f: impl Fn(usize, &mut [f32]) + Sync,
+) -> Result<()> {
+  let apply = |(y, row): (usize, &mut [f32])| {
+    cancel.check()?;
+    f(y, row);
+    Ok(())
+  };
+  if pixels.len() >= 65536 {
+    pixels
+      .par_chunks_mut(width)
+      .enumerate()
+      .with_min_len((8192 / width).max(1))
+      .try_for_each(apply)
+  } else {
+    pixels.chunks_mut(width).enumerate().try_for_each(apply)
+  }
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct Image {
@@ -26,30 +51,24 @@ impl Image {
     if height != self.height {
       let axis = Axis::new(self.height, height);
       pixels = vec![0.0; self.width * height];
-      for y in 0..height {
-        if y % 32 == 0 {
-          cancel.check()?;
-        }
-        for x in 0..self.width {
-          pixels[y * self.width + x] = axis.sample(y as i64, true, |i| {
+      for_rows(&mut pixels, self.width, cancel, |y, row| {
+        for (x, value) in row.iter_mut().enumerate() {
+          *value = axis.sample(y as i64, true, |i| {
             self.pixels[i.clamp(0, self.height as i64 - 1) as usize * self.width + x]
           });
         }
-      }
+      })?;
     }
     if width != self.width {
       let axis = Axis::new(self.width, width);
       let mut output = vec![0.0; width * height];
-      for y in 0..height {
-        if y % 32 == 0 {
-          cancel.check()?;
-        }
-        for x in 0..width {
-          output[y * width + x] = axis.sample(x as i64, false, |j| {
+      for_rows(&mut output, width, cancel, |y, row| {
+        for (x, value) in row.iter_mut().enumerate() {
+          *value = axis.sample(x as i64, false, |j| {
             pixels[y * self.width + j.clamp(0, self.width as i64 - 1) as usize]
           });
         }
-      }
+      })?;
       pixels = output;
     }
     Ok(Self {
@@ -68,12 +87,9 @@ impl Image {
     let reduce_y = Axis::new(self.height, height);
     let reduce_x = Axis::new(self.width, width);
     let mut vertical = vec![0.0; self.width * rows];
-    for y in 0..rows {
-      if y % 32 == 0 {
-        cancel.check()?;
-      }
-      for x in 0..self.width {
-        vertical[y * self.width + x] = if height == self.height {
+    for_rows(&mut vertical, self.width, cancel, |y, row| {
+      for (x, value) in row.iter_mut().enumerate() {
+        *value = if height == self.height {
           self.pixels
             [(y as i64 - halo as i64).clamp(0, self.height as i64 - 1) as usize * self.width + x]
         } else {
@@ -82,14 +98,11 @@ impl Image {
           })
         };
       }
-    }
+    })?;
     let mut extended = vec![0.0; stride * rows];
-    for y in 0..rows {
-      if y % 32 == 0 {
-        cancel.check()?;
-      }
-      for x in 0..stride {
-        extended[y * stride + x] = if width == self.width {
+    for_rows(&mut extended, stride, cancel, |y, row| {
+      for (x, value) in row.iter_mut().enumerate() {
+        *value = if width == self.width {
           vertical
             [y * self.width + (x as i64 - halo as i64).clamp(0, self.width as i64 - 1) as usize]
         } else {
@@ -98,7 +111,7 @@ impl Image {
           })
         };
       }
-    }
+    })?;
     let next = Self {
       pixels: (0..height)
         .flat_map(|y| {
@@ -116,12 +129,9 @@ impl Image {
     let expand_y = Axis::new(height, self.height);
     let expand_x = Axis::new(width, self.width);
     let mut vertical = vec![0.0; stride * self.height];
-    for y in 0..self.height {
-      if y % 32 == 0 {
-        cancel.check()?;
-      }
-      for x in 0..stride {
-        vertical[y * stride + x] = if height == self.height {
+    for_rows(&mut vertical, stride, cancel, |y, row| {
+      for (x, value) in row.iter_mut().enumerate() {
+        *value = if height == self.height {
           extended[(y + halo) * stride + x]
         } else {
           expand_y.sample(y as i64, true, |j| {
@@ -129,14 +139,11 @@ impl Image {
           })
         };
       }
-    }
+    })?;
     let mut expanded = self.clone();
-    for y in 0..self.height {
-      if y % 32 == 0 {
-        cancel.check()?;
-      }
-      for x in 0..self.width {
-        expanded.pixels[y * self.width + x] = if width == self.width {
+    for_rows(&mut expanded.pixels, self.width, cancel, |y, row| {
+      for (x, value) in row.iter_mut().enumerate() {
+        *value = if width == self.width {
           vertical[y * stride + x + halo]
         } else {
           expand_x.sample(x as i64, false, |j| {
@@ -144,7 +151,7 @@ impl Image {
           })
         };
       }
-    }
+    })?;
     Ok((next, expanded))
   }
 }
@@ -380,6 +387,45 @@ pub(super) fn filter(
 mod tests {
   use super::*;
   use std::path::{Path, PathBuf};
+
+  #[test]
+  fn resampling_is_bit_identical_across_thread_counts() {
+    let serial = rayon::ThreadPoolBuilder::new()
+      .num_threads(1)
+      .build()
+      .unwrap();
+    let parallel = rayon::ThreadPoolBuilder::new()
+      .num_threads(4)
+      .build()
+      .unwrap();
+    for (width, height) in [(513, 517), (1, 65537), (65537, 1), (17, 19)] {
+      let source = Image {
+        pixels: (0..width * height)
+          .map(|i| ((i * 137 % 65536) as f32 - 32768.0) * (1.0 / 4096.0))
+          .collect(),
+        width,
+        height,
+      };
+      let run = || {
+        let (low, expanded) = source.reduce_and_expand(&Cancel::never()).unwrap();
+        let resized = source
+          .resize(width.div_ceil(2), height.div_ceil(2), &Cancel::never())
+          .unwrap();
+        [low, expanded, resized].map(|image| {
+          image
+            .pixels
+            .into_iter()
+            .map(f32::to_bits)
+            .collect::<Vec<_>>()
+        })
+      };
+      assert_eq!(
+        serial.install(run),
+        parallel.install(run),
+        "{width}x{height}"
+      );
+    }
+  }
 
   #[test]
   fn constant_skinny_images_and_cancellation() {

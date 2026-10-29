@@ -23,7 +23,14 @@ pub(crate) fn apply(
   params: &params::Parameters,
   cancel: &Cancel,
 ) -> Result<()> {
-  apply_tiled(image, params, cancel, 192)
+  // Four-level luma needs a 160-pixel halo. Larger lattice-aligned tiles
+  // amortize that repeated work while retaining enough strips for the pool.
+  apply_tiled(
+    image,
+    params,
+    cancel,
+    if params.luma.is_some() { 384 } else { 192 },
+  )
 }
 
 fn apply_tiled(
