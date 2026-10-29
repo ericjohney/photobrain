@@ -91,6 +91,24 @@ impl RgbImage {
     out
   }
 
+  /// Crop an owned image by compacting rows in its existing allocation. Rows
+  /// move toward the start, so an earlier write cannot touch a later source row.
+  pub(crate) fn into_cropped(mut self, x0: usize, y0: usize, w: usize, h: usize) -> Self {
+    assert!(w > 0 && h > 0 && x0 <= self.width && y0 <= self.height);
+    assert!(w <= self.width - x0 && h <= self.height - y0);
+    if (x0, y0, w, h) == (0, 0, self.width, self.height) {
+      return self;
+    }
+    for y in 0..h {
+      let src = ((y0 + y) * self.width + x0) * 3;
+      self.data.copy_within(src..src + w * 3, y * w * 3);
+    }
+    self.data.truncate(w * h * 3);
+    self.width = w;
+    self.height = h;
+    self
+  }
+
   /// Area-resample a nonempty image to fit a positive maximum edge. Linear values
   /// are neither gamma-encoded nor clamped: negative values and highlight headroom
   /// survive. Unlike integer binning, all source rows and columns contribute.
@@ -165,6 +183,36 @@ mod tests {
       p[0] = i as f32;
     }
     im
+  }
+
+  #[test]
+  fn owned_crop_preserves_every_float_bit_without_reallocating() {
+    let mut image = RgbImage::new(7, 5);
+    image.data.iter_mut().enumerate().for_each(|(i, value)| {
+      *value = f32::from_bits((i as u32).wrapping_mul(0x9e3779b9));
+    });
+    for y in 0..image.height {
+      for x in 0..image.width {
+        for h in 1..=image.height - y {
+          for w in 1..=image.width - x {
+            let expected = image.crop(x, y, w, h);
+            let owned = image.clone();
+            let allocation = owned.data.as_ptr();
+            let actual = owned.into_cropped(x, y, w, h);
+            assert_eq!(actual.data.as_ptr(), allocation);
+            assert_eq!((actual.width, actual.height), (w, h));
+            assert_eq!(
+              actual.data.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+              expected
+                .data
+                .iter()
+                .map(|v| v.to_bits())
+                .collect::<Vec<_>>()
+            );
+          }
+        }
+      }
+    }
   }
 
   #[test]

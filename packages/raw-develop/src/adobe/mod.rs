@@ -298,14 +298,14 @@ impl AdobeRender {
   /// including the modern highlight shoulder and optional CR6 chroma NR.
   pub(crate) fn prepare_camera(
     &mut self,
-    img: &mut RgbImage,
+    mut img: RgbImage,
     dcp: &Dcp,
     meta: &RawMetadata,
     settings: &crate::DevelopSettings,
     cancel: &crate::Cancel,
-  ) -> Result<()> {
+  ) -> Result<RgbImage> {
     let Some(input) = &self.input else {
-      return Ok(());
+      return Ok(img);
     };
     cancel.check()?;
     // Statistics retain the unwarped default crop, after mandatory embedded CA
@@ -322,7 +322,7 @@ impl AdobeRender {
       ]
     };
     let mask_camera = tone::stats_image::camera_pyramid_f32_region_at_level(
-      img, left, top, width, height, self.black, true, 2,
+      &img, left, top, width, height, self.black, true, 2,
     );
     let small = tone::stats_image::deepen(&mask_camera, self.black, true);
     let flare = tone::stats_image::flare_for_log(&small, self.black);
@@ -337,7 +337,7 @@ impl AdobeRender {
     )?);
     let source =
       tone::mask::MaskSource::new(mask_camera, dcp, meta, self.neutral, self.black, flare);
-    let guide = tone::mask_upsample::Guide::prepare(img, &source, [left, top], cancel)?;
+    let guide = tone::mask_upsample::Guide::prepare(&img, &source, [left, top], cancel)?;
     self.mask = Some(Arc::new(CachedMask {
       source,
       result: OnceLock::new(),
@@ -359,7 +359,7 @@ impl AdobeRender {
     // GetWarpedSourcePipe precedes AppendRawConversionStages: the nonlinear
     // u16 lens warp runs before the camera transform and both CR6 NR branches.
     if let Some(distortion) = &self.distortion {
-      *img = distortion.apply(img, cancel)?;
+      img = distortion.apply(img, cancel)?;
     }
     img.map_pixels(|p| input.pixel(p));
     let controls = settings.adobe_noise_reduction.clone().unwrap_or_else(|| {
@@ -402,9 +402,10 @@ impl AdobeRender {
           )));
         }
       }
-      nr::apply(img, &params, cancel)?;
+      img = nr::apply(img, &params, cancel)?;
     }
-    cancel.check()
+    cancel.check()?;
+    Ok(img)
   }
 
   /// Render balanced camera RGB to display-encoded Display P3. Returns the

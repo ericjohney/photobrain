@@ -54,6 +54,85 @@ impl WarpRectilinear {
     }
   }
 
+  /// Warp an owned active image from a compact immutable source. Every tap
+  /// keeps the code() boundary, and identity planes retain their float bits.
+  /// The demosaic RGB allocation is released before the output is allocated.
+  pub(crate) fn apply_active(&self, image: RgbImage, cancel: &Cancel) -> Result<RgbImage> {
+    cancel.check()?;
+    let (width, height) = (image.width, image.height);
+    let prepared = self.prepare(width, height);
+    let identity_count = prepared
+      .identity
+      .iter()
+      .filter(|&&identity| identity)
+      .count();
+    if identity_count == 3 {
+      return Ok(image);
+    }
+    // Two exact float identity planes plus the packed source would exceed a
+    // float source. Keep the direct path for that less compact case.
+    if identity_count == 2 {
+      return self.apply_crop(&image, [0, 0, height, width], cancel);
+    }
+    // Page-aligned anonymous scratch can be viewed as u16/f32 slices safely;
+    // dropping its mappings releases the pages before cached rendering.
+    let mut encoded_source = memmap2::MmapMut::map_anon(image.data.len() * size_of::<u16>())?;
+    let source: &mut [[u16; 3]] = bytemuck::cast_slice_mut(&mut encoded_source);
+    source
+      .par_chunks_mut(width)
+      .zip(image.data.par_chunks(width * 3))
+      .try_for_each(|(out, row)| -> Result<()> {
+        cancel.check()?;
+        for (out, pixel) in out.iter_mut().zip(row.as_chunks::<3>().0) {
+          *out = pixel.map(code);
+        }
+        Ok(())
+      })?;
+    // Preserve identity planes verbatim, then release the demosaic allocation
+    // before allocating the result. It can otherwise keep allocator pages live
+    // throughout later cached renders even though fewer pixels are in use.
+    let mut identity_maps = [None, None, None];
+    for c in 0..3 {
+      if prepared.identity[c] {
+        let mut plane = memmap2::MmapMut::map_anon(width * height * size_of::<f32>())?;
+        let values: &mut [f32] = bytemuck::cast_slice_mut(&mut plane);
+        values
+          .par_iter_mut()
+          .zip(image.data.par_chunks(3))
+          .for_each(|(out, p)| *out = p[c]);
+        identity_maps[c] = Some(plane);
+      }
+    }
+    let identity: [Option<&[f32]>; 3] = std::array::from_fn(|c| {
+      identity_maps[c]
+        .as_ref()
+        .map(|plane| bytemuck::cast_slice(&plane[..]))
+    });
+    drop(image);
+    cancel.check()?;
+    let mut image = RgbImage::new(width, height);
+    image.rows_mut().try_for_each(|(y, row)| -> Result<()> {
+      cancel.check()?;
+      for (x, pixel) in row.as_chunks_mut::<3>().0.iter_mut().enumerate() {
+        for c in 0..3 {
+          if let Some(plane) = &identity[c] {
+            pixel[c] = plane[y * width + x];
+          } else {
+            let value = prepared.sample(y, x, c, |sy, sx| {
+              let sy = sy.clamp(0, height as i32 - 1) as usize;
+              let sx = sx.clamp(0, width as i32 - 1) as usize;
+              source[sy * width + sx][c]
+            });
+            pixel[c] = f32::from(value) * (1.0 / 65535.0);
+          }
+        }
+      }
+      Ok(())
+    })?;
+    cancel.check()?;
+    Ok(image)
+  }
+
   /// Warp a full active image and return [top, left, height, width] DefaultCrop.
   /// Input samples must be the demosaic's preserved-black, normalised u16 values.
   pub(crate) fn apply_crop(
@@ -128,6 +207,75 @@ impl Prepared {
 mod tests {
   use super::*;
   use std::path::Path;
+
+  #[test]
+  fn owned_active_warp_matches_float_source_and_identity_bits() {
+    for (width, height) in [(1, 1), (3, 7), (17, 19), (65, 32)] {
+      let mut image = RgbImage::new(width, height);
+      image.data.iter_mut().enumerate().for_each(|(i, value)| {
+        *value = match i % 17 {
+          0 => -0.0,
+          1 => -0.1,
+          2 => 1.2,
+          3 => f32::from_bits(1),
+          4 => f32::from_bits(0x7fc12345),
+          5 => f32::INFINITY,
+          6 => f32::NEG_INFINITY,
+          _ => (i * 1297 % 65536) as f32 / 65535.0 + 0.00001,
+        };
+      });
+      for radial in [
+        [[1.0, 0.0, 0.0, 0.0]; 3],
+        [[0.999, 0.002, -0.001, 0.0001]; 3],
+        [
+          [0.999, 0.002, -0.001, 0.0001],
+          [1.0, 0.0, 0.0, 0.0],
+          [1.0, 0.0, 0.0, 0.0],
+        ],
+        [
+          [0.999, 0.002, -0.001, 0.0001],
+          [1.0, 0.0, 0.0, 0.0],
+          [1.001, -0.001, 0.002, 0.0],
+        ],
+      ] {
+        let warp = WarpRectilinear {
+          radial,
+          center: [0.499, 0.503],
+        };
+        let expected = warp
+          .apply_crop(&image, [0, 0, height, width], &Cancel::never())
+          .unwrap();
+        for threads in [1, 4] {
+          let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+          let actual = pool
+            .install(|| warp.apply_active(image.clone(), &Cancel::never()))
+            .unwrap();
+          assert_eq!(
+            actual.data.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            expected
+              .data
+              .iter()
+              .map(|v| v.to_bits())
+              .collect::<Vec<_>>(),
+            "{width}x{height}, {threads} threads"
+          );
+        }
+      }
+    }
+    let cancel = Cancel::new();
+    cancel.cancel();
+    let warp = WarpRectilinear {
+      radial: [[1.0, 0.0, 0.0, 0.0]; 3],
+      center: [0.5; 2],
+    };
+    assert!(matches!(
+      warp.apply_active(RgbImage::new(3, 7), &cancel),
+      Err(crate::Error::Cancelled)
+    ));
+  }
 
   #[test]
   fn captured_u16_warp_matches_exactly() {

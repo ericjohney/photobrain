@@ -17,12 +17,13 @@ use rayon::prelude::*;
 
 /// Preserved-black RIMM -> preserved-black RIMM. Tile origins stay on the even
 /// low-pass lattice, including at odd image dimensions. Only tile-sized scratch
-/// planes are allocated by each worker; the source is published after success.
+/// planes are allocated by each worker. Ownership lets the float buffer become
+/// the output; errors drop it, and only a complete image is returned.
 pub(crate) fn apply(
-  image: &mut RgbImage,
+  image: RgbImage,
   params: &params::Parameters,
   cancel: &Cancel,
-) -> Result<()> {
+) -> Result<RgbImage> {
   // Four-level luma needs a 160-pixel halo. Larger lattice-aligned tiles
   // amortize that repeated work while retaining enough strips for the pool.
   apply_tiled(
@@ -34,14 +35,14 @@ pub(crate) fn apply(
 }
 
 fn apply_tiled(
-  image: &mut RgbImage,
+  mut image: RgbImage,
   params: &params::Parameters,
   cancel: &Cancel,
   tile: usize,
-) -> Result<()> {
+) -> Result<RgbImage> {
   cancel.check()?;
   if image.width == 0 || image.height == 0 {
-    return Ok(());
+    return Ok(image);
   }
   let lattice = if params.luma.is_some() { 8 } else { 2 };
   assert!(tile > 0 && tile % lattice == 0);
@@ -52,8 +53,23 @@ fn apply_tiled(
   } else {
     params.spatial.halo()
   };
-  let mut output = RgbImage::new(width, height);
-  output
+  // Encode each source pixel once, before any output overwrites the owned RGB
+  // image. The immutable packed source also serves every tile's repeated halo.
+  // An anonymous mapping releases these large scratch pages at return instead
+  // of leaving them in the allocator's cache during full-resolution edits.
+  let mut encoded_source = memmap2::MmapMut::map_anon(image.data.len() * size_of::<u16>())?;
+  let source: &mut [[u16; 3]] = bytemuck::cast_slice_mut(&mut encoded_source);
+  source
+    .par_chunks_mut(width)
+    .zip(image.data.par_chunks(width * 3))
+    .try_for_each(|(out, row)| -> Result<()> {
+      cancel.check()?;
+      for (out, pixel) in out.iter_mut().zip(row.as_chunks::<3>().0) {
+        *out = space.encode(*pixel);
+      }
+      Ok(())
+    })?;
+  image
     .data
     .par_chunks_mut(width * 3 * tile)
     .enumerate()
@@ -68,10 +84,11 @@ fn apply_tiled(
         for y in 0..th {
           let sy =
             (top as isize + y as isize - halo as isize).clamp(0, height as isize - 1) as usize;
+          let row = &source[sy * width..(sy + 1) * width];
           for x in 0..tw {
             let sx =
               (left as isize + x as isize - halo as isize).clamp(0, width as isize - 1) as usize;
-            encoded.push(space.encode(image.px(sx, sy)));
+            encoded.push(row[sx]);
           }
         }
         let area = [halo, halo, halo + oh, halo + ow];
@@ -98,8 +115,7 @@ fn apply_tiled(
       Ok(())
     })?;
   cancel.check()?;
-  *image = output;
-  Ok(())
+  Ok(image)
 }
 
 #[cfg(test)]

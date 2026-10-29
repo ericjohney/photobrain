@@ -223,7 +223,7 @@ pub(crate) fn develop_unbalanced_active(
   let (width, height) = active_size(neg)?;
   let active = develop_area(neg, &parameters, [0, 0, height, width], cancel)?;
   if correct_ca && let Some(warp) = super::lens::embedded_ca(&neg.meta, None)? {
-    return warp.apply_crop(&active, [0, 0, height, width], cancel);
+    return warp.apply_active(active, cancel);
   }
   Ok(active)
 }

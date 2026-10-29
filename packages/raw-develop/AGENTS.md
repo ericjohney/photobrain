@@ -58,6 +58,15 @@ retain checked indexing and the original hue/value/saturation interpolation.
 The black-removal and u16 boundaries remain intact, including fused spatial edits.
 Tone/exposure table lookups also batch four positions, retaining checked scalar
 coefficient gathers and the original separate multiply/add interpolation.
+Preparation owns its RGB buffer. Mandatory active-image CA retains packed
+u16 samples and exact float identity planes, releasing demosaic RGB before
+allocating its output; two identity planes retain the direct path. Optional
+Fuji distortion and NR reuse the RGB buffer after retaining their immutable
+u16 source. NR encodes each source pixel once, including neighbouring halos;
+CA/NR scratch uses anonymous mappings whose pages are released at stage return.
+Sony's final DefaultCrop compacts rows in the owned allocation after NR. Failed
+or cancelled preparation returns no image. Camera-pyramid reductions parallelize
+independent rows above a size threshold without changing per-pixel integer sums.
 
 ## Code Layout
 

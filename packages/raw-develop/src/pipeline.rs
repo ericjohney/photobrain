@@ -325,9 +325,9 @@ pub fn prepare(neg: &Negative, settings: &DevelopSettings, opts: &Options) -> Re
       &settings.white_balance,
       opts.quality == Quality::Full,
     )?;
-    render.prepare_camera(&mut img, dcp, meta, settings, cancel)?;
+    img = render.prepare_camera(img, dcp, meta, settings, cancel)?;
     if opts.quality == Quality::Full && !meta.cfa.is_xtrans() {
-      img = img.crop(
+      img = img.into_cropped(
         meta.crop_left,
         meta.crop_top,
         meta.crop_width,

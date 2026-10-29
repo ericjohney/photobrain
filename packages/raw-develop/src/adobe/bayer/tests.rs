@@ -152,7 +152,17 @@ fn full_file_linear_dng() {
   }
   let parameters = Parameters::new(&neg).unwrap();
   let correct_ca = std::env::var_os("RAW_DEVELOP_ADOBE_LINEAR_CA").is_some();
-  let ours = develop_preserved_with_lens(&neg, &parameters, correct_ca, &Cancel::never()).unwrap();
+  let ours = if correct_ca {
+    let active = develop_unbalanced_active(&neg, true, &Cancel::never()).unwrap();
+    active.crop(
+      neg.meta.crop_left,
+      neg.meta.crop_top,
+      neg.meta.crop_width,
+      neg.meta.crop_height,
+    )
+  } else {
+    develop_preserved_with_lens(&neg, &parameters, false, &Cancel::never()).unwrap()
+  };
   let bytes = std::fs::read(reference).unwrap();
   let t = crate::tiff::TiffReader::new(&bytes).unwrap();
   let i0 = t.ifd(t.first_ifd_offset().unwrap()).unwrap();

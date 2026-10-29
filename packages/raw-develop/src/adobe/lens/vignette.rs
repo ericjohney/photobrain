@@ -257,8 +257,8 @@ mod tests {
     let mut render =
       crate::adobe::AdobeRender::new(&dcp, &neg.meta, neutral, 0.0, &settings.white_balance, true)
         .unwrap();
-    render
-      .prepare_camera(&mut image, &dcp, &neg.meta, &settings, &cancel)
+    image = render
+      .prepare_camera(image, &dcp, &neg.meta, &settings, &cancel)
       .unwrap();
     if let Some(color_trace) = std::env::var_os("RAW_DEVELOP_ADOBE_LENS_COLOR_TRACE") {
       let color_trace = std::path::Path::new(&color_trace);

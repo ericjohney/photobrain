@@ -6,6 +6,8 @@
 use crate::adobe::{bayer::tables, color::ColorSpec, dcp::Dcp, input::InputTransform};
 use crate::metadata::RawMetadata;
 
+use rayon::prelude::*;
+
 const ENCODE_SCALE: f32 = f32::from_bits(0x3f88_3ff0);
 const DECODE_SCALE: f32 = f32::from_bits(0x3f70_7fe0);
 
@@ -143,7 +145,7 @@ fn build_pyramid(
   black: f64,
   use_nonlinear: bool,
   maximum_level: usize,
-  source: impl Fn(usize) -> [u16; 3],
+  source: impl Fn(usize) -> [u16; 3] + Sync,
 ) -> SmallImage {
   let encode = use_nonlinear.then(|| tables::expand(|x| nonlinear(x, black, false)));
   let decode = use_nonlinear.then(|| tables::expand(|x| nonlinear(x, black, true)));
@@ -194,15 +196,17 @@ fn build_pyramid(
 }
 
 fn reduce_codes(
-  source: impl Fn(usize) -> [u16; 3],
+  source: impl Fn(usize) -> [u16; 3] + Sync,
   [width, height]: [usize; 2],
   [output_width, output_height]: [usize; 2],
   encode: Option<&[u16]>,
   decode: Option<&[u16]>,
 ) -> Vec<[u16; 3]> {
   let mut output = vec![[0; 3]; output_width * output_height];
-  for y in 0..output_height {
-    for x in 0..output_width {
+  // Rows are independent; retain the four integer contributions and rounding
+  // within each pixel rather than parallelizing a reduction across samples.
+  let reduce_row = |(y, row): (usize, &mut [[u16; 3]])| {
+    for (x, out) in row.iter_mut().enumerate() {
       let mut sum = [2u32; 3];
       for dy in 0..2 {
         for dx in 0..2 {
@@ -214,9 +218,20 @@ fn reduce_codes(
       }
       for c in 0..3 {
         let value = (sum[c] >> 2) as u16;
-        output[y * output_width + x][c] = decode.map_or(value, |t| t[value as usize]);
+        out[c] = decode.map_or(value, |t| t[value as usize]);
       }
     }
+  };
+  if output.len() >= 16_384 {
+    output
+      .par_chunks_mut(output_width)
+      .enumerate()
+      .for_each(reduce_row);
+  } else {
+    output
+      .chunks_mut(output_width)
+      .enumerate()
+      .for_each(reduce_row);
   }
   output
 }
@@ -348,6 +363,32 @@ impl GrayLogImage {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn pyramid_codes_are_identical_across_thread_counts_and_odd_edges() {
+    for (width, height) in [(127, 131), (1031, 773)] {
+      let source: Vec<[u16; 3]> = (0..width * height)
+        .map(|i| std::array::from_fn(|c| ((i * 1297 + c * 7919) % 65536) as u16))
+        .collect();
+      for nonlinear in [false, true] {
+        let results: Vec<_> = [1, 4]
+          .into_iter()
+          .map(|threads| {
+            let pool = rayon::ThreadPoolBuilder::new()
+              .num_threads(threads)
+              .build()
+              .unwrap();
+            pool.install(|| camera_pyramid(&source, width, height, 4092.0 / 65535.0, nonlinear))
+          })
+          .collect();
+        assert_eq!(results[0].pixels, results[1].pixels);
+        assert_eq!(
+          (results[0].width, results[0].height, results[0].level),
+          (results[1].width, results[1].height, results[1].level)
+        );
+      }
+    }
+  }
 
   #[test]
   fn pyramid_constant_and_full_image_rounding() {

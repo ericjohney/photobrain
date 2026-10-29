@@ -101,15 +101,16 @@ to 50, and Luminance Contrast to zero. Apple and binned previews ignore the
 block. Changing it requires preparation again; exposure and geometry edits
 continue to reuse the prepared image.
 
-The production tiler uses 192-pixel outputs. Chroma-only filtering preserves the
-two-pixel lattice; luminance enables a 160-pixel halo and an eight-pixel lattice.
+The production tiler uses 192-pixel chroma-only outputs and 384-pixel outputs
+with luminance NR. Chroma-only filtering preserves the two-pixel lattice;
+luminance enables a 160-pixel halo and an eight-pixel lattice.
 Chroma and luminance filter the same encoded source independently. Luminance-only
 filtering bypasses the chroma kernel, including its zero-strength singularities.
 Cancellation is checked per tile and before publishing the output.
 
 Exact photographic capture checks cover NR100 and mixed settings on X-E5 and
 A7R V: constructor arrays, every luminance level and 555,074 luminance samples.
-The actual RAW→prepared chroma+luminance chain matches 832,611 channel values
+The actual RAW→prepared chroma+luminance chain matches 1,665,222 channel values
 with zero differences. Synthetic tests cover joins, odd dimensions and
 luminance-only filtering. These are stage-boundary checks on the captured
 regions, not proof of full final-render parity.
@@ -745,6 +746,109 @@ doctest with real DCP profiles, plus unchanged before/after digests in ten
 additional full-global/spatial-proxy cases on five X100VI, A1 II and A7C R RAWs.
 Apple remains the default and `PIPELINE_VERSION` remains 5. The checks cover
 these inputs and captured boundaries rather than proving every setting or CPU.
+
+### Sixth performance pass: preparation buffers and shared NR encoding
+
+This pass starts at `15eaa46` and targets preparation and memory. Separate
+instrumented runs put the camera-statistics pyramid at approximately 0.16/0.24 s
+(Fuji/Sony), default NR at 0.91/1.17 s and luminance NR 25 at 1.77/2.54 s.
+These samples locate work; they are not the paired benchmark baseline. Temporary
+timers were removed before validation and final measurements.
+
+The paired comparison uses the same M4 Pro, 12 threads, RAWs, DCPs and settings
+as the earlier passes. Ten cases run twice before and twice after, reversing
+order in round two: 40 fresh processes, each with three initial/warmup renders
+and seven full-image or 30 proxy edits. Values below are medians of two process
+samples, not confidence bounds. All 40 output digests match their baseline.
+Filesystem caches are not cleared; encoding, network and UI latency are excluded.
+
+| Full-resolution preparation | X-E5 before → after | Time saved | A7R V before → after | Time saved |
+| --- | ---: | ---: | ---: | ---: |
+| Default global | 2.69 → 2.45 s | 9% | 2.39 → 2.07 s | 13% |
+| Spatial tone | 2.76 → 2.69 s | 3% | 2.35 → 2.11 s | 10% |
+| Luminance NR 25 | 3.81 → 3.60 s | 6% | 3.90 → 3.59 s | 8% |
+
+| Peak process RSS, 2048-edge proxy | X-E5 before → after | A7R V before → after |
+| --- | ---: | ---: |
+| Default global | 1.65 → 1.40 GiB | 2.06 → 1.63 GiB |
+| Spatial tone | 1.85 → 1.40 GiB | 2.40 → 1.72 GiB |
+
+Proxy peak RSS falls by 15–29%. Full-resolution peaks remain effectively flat,
+within 16 MiB per case: approximately 2.06/2.64 GiB (Fuji/Sony) for default
+settings and 2.27/2.97 GiB for spatial tone. Default first usable full images
+improve from 3.26 to 2.91 s (Fuji) and 2.87 to 2.64 s (Sony). First-image gains
+are not uniform: Fuji spatial full is essentially unchanged, while Sony spatial
+proxy preparation/first usable image regress by approximately 1%/26 ms.
+
+Cached editing uses the same algorithm but its timings are mixed. Fuji proxies
+regress in both rounds: global 20.5 → 23.9 ms (+16.5%) and spatial 47.7 → 50.8 ms
+(+6.5%). Fuji global full is 290 → 299 ms (+3.2%); Sony spatial full is
+972 → 1,005 ms (+3.5%). Other cached medians improve by 1–7%. These measured
+tradeoffs accompany the preparation/memory gains; this pass does not establish
+uniformly faster cached editing or isolate the cause of its timing shifts.
+
+Preparation now takes ownership of its RGB image, allowing stages to reuse
+pixels after retaining the exact input samples their filters require:
+
+- Mandatory active-image lateral CA encodes immutable taps once as u16. Identity
+  channels retain exact float planes, including signed zero and nonfinite bits.
+  The demosaic RGB allocation is released before allocating the warped output.
+  Three identity channels return the input; two retain the direct float-source
+  path, since two float planes plus packed RGB would exceed the original source.
+- Optional Fuji distortion retains its encoded u16 taps and writes into the
+  transferred RGB allocation, with unchanged transport/resampling arithmetic.
+- NR encodes the entire source once as packed u16 YCC (six bytes per pixel).
+  Every tile copies clamped halo samples from it and decodes its result into
+  the owned RGB image. Previously each tile re-encoded overlapping halos and
+  held a separate full RGB output. Chroma/luma filters, 192/384-pixel tiles and
+  two/eight-pixel lattice alignment are unchanged. Failed or cancelled work
+  drops the partial owned image; no incomplete `Prepared` is published.
+- Sony DefaultCrop compacts rows toward the beginning of the owned allocation
+  after NR, retaining capacity and the existing NR lattice. It performs no float
+  arithmetic and requires no second RGB allocation.
+- Camera-statistics pyramid reductions parallelize independent rows above
+  16,384 output pixels. Each pixel retains the original four integer samples,
+  addition order and rounding; smaller reductions stay serial.
+
+CA packed/identity scratch and NR packed scratch use page-aligned anonymous
+`memmap2` mappings, with safe typed views through `bytemuck`. They are unmapped
+at stage return, releasing the pages before cached rendering. No file is mapped
+and no unsafe code was added to the engine. The CLI, FFI and native addon's
+lockfiles include the new dependencies.
+
+Several bit-exact trials were rejected after measuring process memory. Packing
+filtered NR output alone left peak RSS flat. Reusing the demosaic RGB allocation
+through CA increased Sony full-image RSS despite fewer logically live pixels;
+restoring the old NR alone did not remove that increase. Releasing demosaic RGB
+before allocating CA output improved proxy memory, but heap-backed CA/NR scratch
+still raised Sony's default full-image peak by approximately 0.3 GiB. Mapping NR
+scratch alone also failed to remove it. Explicitly unmapping both CA and NR
+scratch removed the regression in the final paired measurements. Allocation
+lifetimes therefore matter beyond the sum of currently live pixel buffers.
+
+The final release suite passes 211 library tests, six prepared integration tests
+and the compile doctest; the external-profile prepared test also runs with real
+DCPs. The host FFI crate passes `cargo check --locked`. All 11 composed
+native-output captures remain exact (4,569,327 channels).
+Seventeen NR capture invocations cover four RAW-to-chroma+luma cases (1,665,222
+channels), four luminance stage/constructor cases (555,074 Y samples), two
+default-chroma RAW-to-prepared cases (832,611 channels), and seven chroma-stage
+captures including fractional ranks. Ten full-output digest comparisons on five
+additional X100VI, A1 II and A7C R RAWs retain their baseline output for full
+global images and 2048-edge spatial proxies. The CA algorithm also matches six
+complete Fuji linear references and five Sony DefaultCrop regions.
+
+Differential tests retain the original per-tile NR encoder and separate output,
+covering odd sizes, tile joins, chroma+luma and luma-only settings. CA compares
+against its original float source at one/four threads, across all identity-channel
+counts, signed zero, subnormals, NaNs, infinities and overrange values. Pyramid
+tests cover odd edges and linear/nonlinear encoding at one/four threads. Every
+nonempty rectangle of a 7×5 image verifies crop float bits and allocation reuse.
+Apple remains the default and `PIPELINE_VERSION` remains 5.
+
+No physical iPhone was available: the device inventory contained simulators only,
+and `xcrun devicectl list devices --timeout 5` returned no devices. Desktop
+measurements do not establish phone latency, memory limits or thermal behaviour.
 
 ## Remaining work
 

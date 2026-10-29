@@ -146,7 +146,7 @@ impl EmbeddedDistortion {
     ]
   }
 
-  pub(crate) fn apply(&self, src: &RgbImage, cancel: &Cancel) -> Result<RgbImage> {
+  pub(crate) fn apply(&self, mut src: RgbImage, cancel: &Cancel) -> Result<RgbImage> {
     assert_eq!([src.width, src.height], self.active);
     let maps = transport_maps();
     let mut encoded = vec![0u16; src.data.len()];
@@ -161,10 +161,12 @@ impl EmbeddedDistortion {
         }
         Ok(())
       })?;
-    let mut out = RgbImage::new(src.width, src.height);
-    out
+    // The immutable encoded snapshot now owns every input tap. Reuse the
+    // transferred float image; cancellation drops it without publishing pixels.
+    let [width, height] = [src.width, src.height];
+    src
       .data
-      .par_chunks_mut(src.width * 3)
+      .par_chunks_mut(width * 3)
       .enumerate()
       .try_for_each(|(y, row)| -> Result<()> {
         cancel.check()?;
@@ -172,16 +174,16 @@ impl EmbeddedDistortion {
           let position = self.source_position([x as f32, y as f32]);
           for (c, v) in pixel.iter_mut().enumerate() {
             let code = resample(position, |sy, sx| {
-              let sx = sx.clamp(0, src.width as i32 - 1) as usize;
-              let sy = sy.clamp(0, src.height as i32 - 1) as usize;
-              encoded[(sy * src.width + sx) * 3 + c]
+              let sx = sx.clamp(0, width as i32 - 1) as usize;
+              let sy = sy.clamp(0, height as i32 - 1) as usize;
+              encoded[(sy * width + sx) * 3 + c]
             });
             *v = f32::from(maps[1][usize::from(code)]) * (1.0 / 65535.0);
           }
         }
         Ok(())
       })?;
-    Ok(out)
+    Ok(src)
   }
 
   /// Transport the logarithmic tone-map mask through the same lens geometry.

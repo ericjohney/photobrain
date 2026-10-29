@@ -393,7 +393,7 @@ pub(crate) fn develop_preserved_with_lens(
   // regular rendering. Identity CA planes must cross this boundary too.
   img.map_pixels(|p| p.map(|v| super::bayer::tables::normalized(super::bayer::tables::code(v))));
   if correct_ca && let Some(warp) = super::lens::embedded_ca(&neg.meta, neg.meta.fuji_ibis_shift)? {
-    return warp.apply_crop(&img, [0, 0, img.height, img.width], cancel);
+    return warp.apply_active(img, cancel);
   }
   Ok(img)
 }

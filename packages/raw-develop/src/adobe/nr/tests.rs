@@ -1,4 +1,6 @@
 use super::spatial::{Parameters, filter_tile};
+use crate::{Cancel, Result, image::RgbImage};
+use rayon::prelude::*;
 use std::path::Path;
 
 struct Capture {
@@ -231,17 +233,15 @@ fn tiled_chroma_preserves_lattice_across_joins_and_odd_edges() {
     .enumerate()
     .for_each(|(i, v)| *v = (i * 137 % 65536) as f32 / 65535.0);
   let mut many = one.clone();
-  super::apply_tiled(&mut one, &params, &crate::Cancel::never(), 64).unwrap();
-  super::apply_tiled(&mut many, &params, &crate::Cancel::never(), 16).unwrap();
+  apply_tiled_reference(&mut one, &params, &crate::Cancel::never(), 64).unwrap();
+  many = super::apply_tiled(many, &params, &crate::Cancel::never(), 16).unwrap();
   assert_eq!(one.data, many.data);
-  let before = many.data.clone();
   let cancel = crate::Cancel::new();
   cancel.cancel();
   assert!(matches!(
-    super::apply(&mut many, &params, &cancel),
+    super::apply(many, &params, &cancel),
     Err(crate::Error::Cancelled)
   ));
-  assert_eq!(many.data, before);
 }
 
 #[test]
@@ -264,8 +264,8 @@ fn tiled_luma_and_chroma_preserve_lattice_across_joins_and_odd_edges() {
       *v = (i * 137 % 65536) as f32 / 65535.0;
     });
     let mut many = one.clone();
-    super::apply_tiled(&mut one, &params, &crate::Cancel::never(), 64).unwrap();
-    super::apply_tiled(&mut many, &params, &crate::Cancel::never(), 24).unwrap();
+    apply_tiled_reference(&mut one, &params, &crate::Cancel::never(), 64).unwrap();
+    many = super::apply_tiled(many, &params, &crate::Cancel::never(), 24).unwrap();
     assert!(one.data.iter().all(|v| v.is_finite()));
     assert_eq!(one.data, many.data, "Color {color}");
   }
@@ -291,8 +291,8 @@ fn larger_luma_tiles_match_original_tile_boundaries() {
       *v = (i * 137 % 65536) as f32 / 65535.0;
     });
     let mut larger = original.clone();
-    super::apply_tiled(&mut original, &params, &crate::Cancel::never(), 192).unwrap();
-    super::apply_tiled(&mut larger, &params, &crate::Cancel::never(), 384).unwrap();
+    apply_tiled_reference(&mut original, &params, &crate::Cancel::never(), 192).unwrap();
+    larger = super::apply_tiled(larger, &params, &crate::Cancel::never(), 384).unwrap();
     assert_eq!(
       original
         .data
@@ -303,4 +303,75 @@ fn larger_luma_tiles_match_original_tile_boundaries() {
       "{width}x{height}"
     );
   }
+}
+
+// Original per-tile encoding and separate float output, retained only as an
+// independent scheduling/buffer reference for the owned-source implementation.
+fn apply_tiled_reference(
+  image: &mut RgbImage,
+  params: &super::params::Parameters,
+  cancel: &Cancel,
+  tile: usize,
+) -> Result<()> {
+  cancel.check()?;
+  if image.width == 0 || image.height == 0 {
+    return Ok(());
+  }
+  let lattice = if params.luma.is_some() { 8 } else { 2 };
+  assert!(tile > 0 && tile % lattice == 0);
+  let space = super::space::Space::new(&params.curve, params.ycc, params.inverse_ycc, 0.25);
+  let (width, height) = (image.width, image.height);
+  let halo = if params.luma.is_some() {
+    params.spatial.halo().max(super::luma::HALO).div_ceil(8) * 8
+  } else {
+    params.spatial.halo()
+  };
+  let mut output = RgbImage::new(width, height);
+  output
+    .data
+    .par_chunks_mut(width * 3 * tile)
+    .enumerate()
+    .try_for_each(|(ty, strip)| -> Result<()> {
+      let top = ty * tile;
+      let oh = (height - top).min(tile);
+      for left in (0..width).step_by(tile) {
+        cancel.check()?;
+        let ow = (width - left).min(tile);
+        let (tw, th) = (ow + 2 * halo, oh + 2 * halo);
+        let mut encoded = Vec::with_capacity(tw * th);
+        for y in 0..th {
+          let sy =
+            (top as isize + y as isize - halo as isize).clamp(0, height as isize - 1) as usize;
+          for x in 0..tw {
+            let sx =
+              (left as isize + x as isize - halo as isize).clamp(0, width as isize - 1) as usize;
+            encoded.push(space.encode(image.px(sx, sy)));
+          }
+        }
+        let area = [halo, halo, halo + oh, halo + ow];
+        let mut filtered = if params.color_enabled {
+          super::spatial::filter_tile(&encoded, tw, th, area, &params.spatial)
+        } else {
+          (halo..halo + oh)
+            .flat_map(|y| encoded[y * tw + halo..y * tw + halo + ow].iter().copied())
+            .collect()
+        };
+        if let Some(luma) = &params.luma {
+          let luminance = super::luma::filter_tile(&encoded, tw, th, area, luma);
+          for (pixel, y) in filtered.iter_mut().zip(luminance) {
+            pixel[0] = y;
+          }
+        }
+        for y in 0..oh {
+          for x in 0..ow {
+            let dst = (y * width + left + x) * 3;
+            strip[dst..dst + 3].copy_from_slice(&space.decode(filtered[y * ow + x]));
+          }
+        }
+      }
+      Ok(())
+    })?;
+  cancel.check()?;
+  *image = output;
+  Ok(())
 }

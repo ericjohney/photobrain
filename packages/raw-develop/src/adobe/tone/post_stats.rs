@@ -365,7 +365,7 @@ mod tests {
         .unwrap();
     let neutral = crate::adobe::xtrans::rounded_neutral(meta.as_shot_wb.map(|v| 1.0 / v));
     let cancel = crate::Cancel::never();
-    let mut camera = if meta.cfa.is_xtrans() {
+    let camera = if meta.cfa.is_xtrans() {
       crate::adobe::xtrans::develop_preserved_with_lens(&negative, neutral, true, &cancel).unwrap()
     } else {
       crate::adobe::bayer::develop_unbalanced_active(&negative, true, &cancel).unwrap()
@@ -373,8 +373,8 @@ mod tests {
     let mut render =
       crate::adobe::AdobeRender::new(&dcp, meta, neutral, 0.0, &settings.white_balance, true)
         .unwrap();
-    render
-      .prepare_camera(&mut camera, &dcp, meta, &settings, &cancel)
+    let _camera = render
+      .prepare_camera(camera, &dcp, meta, &settings, &cancel)
       .unwrap();
     let scene = render.scene.as_ref().unwrap();
     let mask = render.mask.as_ref().unwrap().get(&cancel).unwrap();

@@ -60,8 +60,8 @@ fn captured_raw_to_output() {
   };
   let mut render =
     AdobeRender::new(&dcp, meta, neutral, 0.0, &settings.white_balance, true).unwrap();
-  render
-    .prepare_camera(&mut image, &dcp, meta, &settings, &cancel)
+  image = render
+    .prepare_camera(image, &dcp, meta, &settings, &cancel)
     .unwrap();
   if !meta.cfa.is_xtrans() {
     image = image.crop(
