@@ -1275,6 +1275,60 @@ Apple remains the default, `PIPELINE_VERSION` remains 5, and no physical iPhone
 validation is added in this pass. Luma NR's temporary reconstruction and marker
 planes remain a separate memory-traffic opportunity.
 
+### Eleventh performance experiment: luma scratch reuse (rejected)
+
+This experiment starts at `121be01` and tests one small memory change before
+investing in larger luma-NR refactors. After direction refinement, the `b`
+marker plane is no longer read. A trial reuses it as the adaptive-smoothing
+output instead of allocating a fourth scratch plane. Its previously written
+border is cleared, preserving the original zero padding; smoothing overwrites
+every output pixel. Source-plane dimensions, all arithmetic, reconstruction,
+parameter selection and scheduling stay unchanged. No unsafe code is added.
+For a 704-by-704 padded tile, one 0.945-MiB allocation is removed at the largest
+level; that allocation size is not a guaranteed resident-memory saving.
+
+All 18 NR unit tests pass, including a trial-only test for zero padding and
+zero-gain identity. All eight affected luma capture invocations pass: four
+Fuji/Sony camera/control cases, checking composed preparation and all four
+adaptive-smoothing levels. A standalone benchmark compiles the original and
+trial kernels together, using the captured tile pixels and exact captured
+coefficient bits. Each process alternates the two implementations through three
+warmup pairs and 12 measured pairs. Three fresh processes compare 24,978,330
+luma output samples, including warmups; every u16 result agrees.
+
+| Captured tile | Filter median (ms), before → trial | Time saved |
+| --- | ---: | ---: |
+| X-E5 luminance 100 | 10.774 → 10.668 | 1.0% |
+| X-E5 luminance 70 | 9.166 → 9.062 | 1.1% |
+| A7R V luminance 100 | 10.069 → 10.058 | 0.1% |
+| A7R V luminance 17 | 16.082 → 16.013 | 0.4% |
+
+A separate 24-process sweep compares three alternating fresh-process pairs per
+case, on the M4 Pro with 12 threads and luminance NR 25. It measures preparation
+once per process, followed by the first render, two warmups and one measured
+edit. All output digests agree. Preparation precedes proxy resizing; full and
+2048 rows therefore sample the same preparation work in separate processes.
+Values are medians of three samples, not confidence bounds. Encoding, network
+and UI time are excluded.
+
+| Case | Preparation (ms), before → trial | Time saved | Peak RSS (GiB), before → trial |
+| --- | ---: | ---: | ---: |
+| X-E5 NR25 full | 3598.31 → 3573.34 | 0.7% | 1.921 → 1.924 |
+| X-E5 NR25 2048 | 3491.67 → 3662.15 | -4.9% | 1.253 → 1.257 |
+| A7R V NR25 full | 3534.43 → 3717.86 | -5.2% | 2.687 → 2.692 |
+| A7R V NR25 2048 | 4079.61 → 3827.01 | 6.2% | 1.686 → 1.679 |
+
+The isolated improvement is small. Fuji proxy and Sony full preparation are
+slower in all three pairs, while Sony proxy improves in all three. Median RSS
+rises by approximately 3.7/4.0/4.7 MiB in the first three cases and falls by
+7.6 MiB in the last. The differences between full/proxy preparations also show
+that process conditions materially affect timing. These measurements establish
+no general preparation or process-memory benefit sufficient to retain the extra
+border-lifetime logic. The trial and its test are removed, restoring the exact
+`121be01` source. Reconstruction/blending fusion and streaming luma low-pass
+remain untested opportunities; no performance or memory gain is claimed for
+them. Apple remains the default and `PIPELINE_VERSION` remains 5.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match
