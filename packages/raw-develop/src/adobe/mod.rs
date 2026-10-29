@@ -175,7 +175,7 @@ impl ModernColor {
       .hue_sat
       .as_ref()
       .map_or(pixels, |table| table.pixels4(pixels));
-    pixels.map(|p| p.map(|v| bayer::tables::normalized(bayer::tables::code(v))))
+    bayer::tables::quantize4(pixels)
   }
 
   fn input_pixel(&self, p: [f32; 3]) -> [f32; 3] {
@@ -575,14 +575,12 @@ impl AdobeRender {
         pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v)))
       };
       let before_primary_four = |pixels: [[f32; 3]; 4]| {
-        let pixels = exposure_stage
-          .pixels4(pixels)
-          .map(|pixel| pixel.map(|v| bayer::tables::normalized(bayer::tables::code(v))));
+        let pixels = bayer::tables::quantize4(exposure_stage.pixels4(pixels));
         let pixels = color
           .look
           .as_ref()
           .map_or(pixels, |table| table.pixels4(pixels));
-        pixels.map(|p| p.map(|v| bayer::tables::normalized(bayer::tables::code(v))))
+        bayer::tables::quantize4(pixels)
       };
       let after_primary = |pixel| {
         let pixel = contrast.as_ref().map_or(pixel, |stage| stage.pixel(pixel));

@@ -1091,6 +1091,101 @@ default and `PIPELINE_VERSION` remains 5. No dependencies or unsafe code are add
 A fresh `devicectl` check reports no connected physical iPhone. Desktop timing
 and memory measurements do not establish phone latency or thermal behaviour.
 
+### Ninth performance pass: exact transport boundaries and Sony render costs
+
+This pass starts at `5c134a4` and investigates the previous pass's Sony global
+cached-render regression. Temporary probes split the full-size A7R V render
+into cloning, profile colour, setup, and tone/output work. Three alternating
+`8d5823a`/`5c134a4` process pairs, each with 20 warmed edits, put cloning at
+approximately 14–21 ms, colour at 97–108 ms, setup at 0.25–0.28 ms, and the
+remaining pixel pass at 250–274 ms. The timing difference spans several stages;
+copying alone does not explain it. Instrumented timings locate work and are
+not final improvement bounds. All probes are removed from the retained source.
+
+One trial combines copying and the first profile-colour pass, writing directly
+from the immutable prepared image. It retains exact output but does not
+establish a Sony full-size gain. A temporary same-process harness alternates
+the old and new paths against identical prepared pixels and scene state.
+Two 30-pair runs give 442.11 → 448.06 ms and 459.63 → 451.16 ms, reversing
+direction. Sony proxy results improve in this harness but regress in two of
+three separate fresh-process pairs. The copy/colour refactor and its temporary
+harness are removed; `Prepared` and the public API remain unchanged.
+
+The retained change batches the existing float → u16 → float boundaries after
+profile colour, after exposure, and after LookTable. AArch64 processes twelve
+independent channels as three four-lane NEON groups. Each channel still
+multiplies by 65535, rounds ties to even, clips to the u16 range, converts back
+to float, and multiplies by the same rounded reciprocal. Saturating unsigned
+conversion followed by clipping at 65535 retains NaN/infinity, overrange,
+subnormal and signed-zero behaviour. No boundary is removed or moved, and no float sums or FMAs are
+reassociated. Other targets retain the original scalar operations.
+
+Every unsafe load/store addresses a complete four-float block inside a
+twelve-float array. There are no new heap buffers, dependencies, cache states,
+or preparation requirements. The scalar differential check compares 2,162,700
+channel results, covering every u16 code, half-step values and neighbouring
+float bits, arbitrary float bit patterns and explicit nonfinite/extreme values.
+All results match bit-for-bit.
+
+Three initial fresh-process pairs use 15 full-size or 90 proxy edits per
+process after three initial/warmup renders. Sony global full medians improve
+438.02 → 430.91 ms (1.6%) and global proxy 22.11 → 18.42 ms (16.7%), with all
+three pairs improving in each case. Fuji global full medians improve
+278.10 → 261.74 ms (5.9%), but reverse direction in one pair. These results
+select the retained change; the broader sweep below measures it separately.
+
+The broader final sweep uses two fresh-process rounds per version across ten
+Fuji/Sony full-size and proxy cases, alternating execution order. Each process
+runs three initial/warmup renders, then seven full-size or 30 proxy edits.
+Values are medians of two process samples, not confidence bounds. The same
+M4 Pro, 12 threads, RAWs, DCPs and settings are used for both versions;
+encoding, network and UI time are excluded. Background simulator activity and
+variable system memory residency limit timing and RSS comparisons. Builds and
+reference checks run separately from timed measurements.
+
+| Case | Cached edit (ms), before → after | Time saved | Peak RSS (GiB), before → after |
+| --- | ---: | ---: | ---: |
+| X-E5 global full | 290.58 → 263.32 | 9.4% | 1.885 → 1.844 |
+| X-E5 spatial full | 624.68 → 572.78 | 8.3% | 2.231 → 2.229 |
+| X-E5 NR25 full | 276.48 → 282.74 | -2.3% | 1.926 → 1.924 |
+| X-E5 global 2048 | 22.96 → 20.22 | 12.0% | 1.221 → 1.214 |
+| X-E5 spatial 2048 | 49.51 → 48.32 | 2.4% | 1.320 → 1.335 |
+| A7R V global full | 478.58 → 427.55 | 10.7% | 2.537 → 2.648 |
+| A7R V spatial full | 942.59 → 924.89 | 1.9% | 2.899 → 2.910 |
+| A7R V NR25 full | 438.28 → 399.94 | 8.7% | 2.634 → 2.696 |
+| A7R V global 2048 | 20.41 → 21.63 | -6.0% | 1.638 → 1.630 |
+| A7R V spatial 2048 | 43.94 → 45.68 | -4.0% | 1.715 → 1.719 |
+
+All 40 sweep output digests retain the original values. Fuji global and spatial
+full-size edits improve in both rounds, as do Sony global/spatial/NR25 full-size
+edits. Fuji NR25 and both Sony proxies reverse direction. The focused Sony
+proxy gain therefore does not establish a stable proxy improvement: its broad
+aggregate is 6.0% slower. Sony spatial proxy is 4.0% slower and Fuji NR25 is
+2.3% slower in the sweep aggregates. These mixed results are retained explicitly.
+
+The helper allocates only stack arrays, but observed process RSS does not stay
+uniformly flat: Sony global full rises approximately 114 MiB and Sony NR25
+approximately 64 MiB in the broad aggregates. Other cases move by at most
+approximately 42 MiB. Memory residency varies between samples, and these
+results establish no memory reduction. Preparation kernels and full-image
+allocations are unchanged; preparation timing varies in both directions, so
+this pass makes no preparation-latency claim.
+
+A final four-round comparison against `8d5823a`, before the previously reported
+regression, uses 15 full-size Sony global edits per process. Cached process
+medians improve 458.65 → 422.65 ms (7.9%), with all four pairs faster; peak RSS
+is within 4 MiB in aggregate. All eight digests match. The latest check does
+not reproduce the earlier full-size cached regression. Its original cause
+remains unresolved; the retained change reduces transport work rather than
+identifying a preparation defect.
+
+The release suite passes 216 library tests, six prepared integration tests with
+real DCPs and the compile doctest. All 11 composed Adobe output captures remain
+exact (4,569,327 channels). Ten additional comparisons on five X100VI, A1 II
+and A7C R RAWs retain whole-output digests for full global images and spatial
+2048 proxies. Apple remains the default and `PIPELINE_VERSION` remains 5.
+A fresh physical-device inventory again finds no connected iPhone.
+
 ## Remaining work
 
 Full Fuji distortion/vignetting are integrated and composed RAW-to-vignette checks match

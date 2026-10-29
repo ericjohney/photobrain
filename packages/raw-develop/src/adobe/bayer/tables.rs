@@ -62,6 +62,34 @@ pub(crate) fn normalized(value: u16) -> f32 {
   value as f32 * (1.0 / 65535.0)
 }
 
+/// Preserve each u16 stage boundary across four independent RGB pixels.
+#[inline]
+pub(crate) fn quantize4(pixels: [[f32; 3]; 4]) -> [[f32; 3]; 4] {
+  #[cfg(target_arch = "aarch64")]
+  {
+    use std::arch::aarch64::*;
+    let mut out = [[0.0; 3]; 4];
+    // SAFETY: Both arrays contain twelve contiguous floats. Each four-lane
+    // load/store stays inside one of their three disjoint four-float blocks.
+    // NEON is baseline on AArch64; FCVTNU matches code's ties-to-even rounding
+    // and saturation, including NaN, before clipping to the u16 maximum.
+    unsafe {
+      for offset in [0, 4, 8] {
+        let values = vld1q_f32(pixels.as_ptr().cast::<f32>().add(offset));
+        let codes = vminq_u32(
+          vcvtnq_u32_f32(vmulq_n_f32(values, 65535.0)),
+          vdupq_n_u32(65535),
+        );
+        let values = vmulq_n_f32(vcvtq_f32_u32(codes), 1.0 / 65535.0);
+        vst1q_f32(out.as_mut_ptr().cast::<f32>().add(offset), values);
+      }
+    }
+    out
+  }
+  #[cfg(not(target_arch = "aarch64"))]
+  pixels.map(|p| p.map(|v| normalized(code(v))))
+}
+
 pub(super) fn apply(src: &mut [f32], table: &[u16]) {
   for value in src {
     *value = normalized(table[code(*value) as usize]);
@@ -71,6 +99,57 @@ pub(super) fn apply(src: &mut [f32], table: &[u16]) {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn batched_u16_boundaries_preserve_every_float_bit() {
+    let check = |pixels: [[f32; 3]; 4]| {
+      assert_eq!(
+        quantize4(pixels).map(|p| p.map(f32::to_bits)),
+        pixels.map(|p| p.map(|v| normalized(code(v)).to_bits()))
+      );
+    };
+    for base in (0..65536).step_by(4) {
+      for delta in [-0.5, 0.0, 0.5] {
+        let pixels = std::array::from_fn(|i| {
+          let midpoint = (base as f32 + i as f32 + delta) / 65535.0;
+          [
+            f32::from_bits(midpoint.to_bits().wrapping_sub(1)),
+            midpoint,
+            f32::from_bits(midpoint.to_bits().wrapping_add(1)),
+          ]
+        });
+        check(pixels);
+      }
+    }
+    let special = [
+      0.0,
+      -0.0,
+      f32::MIN_POSITIVE,
+      -f32::MIN_POSITIVE,
+      f32::from_bits(1),
+      f32::from_bits(0x8000_0001),
+      1.0,
+      -1.0,
+      f32::MAX,
+      f32::NEG_INFINITY,
+      f32::INFINITY,
+      f32::NAN,
+    ];
+    check(std::array::from_fn(|i| {
+      std::array::from_fn(|c| special[i * 3 + c])
+    }));
+    let mut seed = 0xa5c3_7e19_u32;
+    for _ in 0..131072 {
+      check(std::array::from_fn(|_| {
+        std::array::from_fn(|_| {
+          seed ^= seed << 13;
+          seed ^= seed >> 17;
+          seed ^= seed << 5;
+          f32::from_bits(seed)
+        })
+      }));
+    }
+  }
 
   #[test]
   fn log_preserves_black_and_inverse() {

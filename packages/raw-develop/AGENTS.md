@@ -72,6 +72,8 @@ by its vertical reduction. Active CA uses bounded four-pixel row slices for
 interior footprints and retains the generic clamped sampler at image edges.
 Output conversion batches four pixels on AArch64, preserving ties-to-even u16
 quantization, the signed fixed matrix and checked scalar gamma gathers.
+Profile-colour output and exposure/LookTable u16 commits also batch twelve
+channels in three NEON groups, preserving clipping and float normalization.
 X-Trans preparation uses independently scheduled 288-pixel tiles with the same
 32-pixel halo. Cleanup reuses one RGB snapshot and releases it before luma
 reconstruction. Fuji distortion's encoded scratch also unmaps at stage return.
