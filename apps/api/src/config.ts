@@ -1,35 +1,47 @@
 import { z } from "zod";
 
-const configSchema = z.object({
-	HOST: z.string().default("0.0.0.0"),
-	PORT: z.coerce.number().default(3000),
-	DATABASE_URL: z.string().default("./photobrain.db"),
-	PHOTO_DIRECTORY: z.string().default("../../temp-photos"),
-	THUMBNAILS_DIRECTORY: z.string().default("./thumbnails"),
-	INNGEST_REALTIME_BASE_URL: z.string().url().optional(),
-	INNGEST_SERVE_ORIGIN: z.string().url().optional(),
-	NODE_ENV: z
-		.enum(["development", "production", "test"])
-		.default("development"),
-	RUN_DB_INIT: z
-		.string()
-		.default("false")
-		.transform((val) => val === "true" || val === "1"),
-	V1_NATIVE_SCAN_MUTATIONS_ENABLED: z
-		.enum(["true", "false", "1", "0"])
-		.default("false")
-		.transform((value) => value === "true" || value === "1"),
-	UPLOADS_ENABLED: z
-		.enum(["true", "false", "1", "0"])
-		.default("false")
-		.transform((value) => value === "true" || value === "1"),
-	UPLOAD_MAX_BYTES: z.coerce
-		.number()
-		.int()
-		.positive()
-		.max(Number.MAX_SAFE_INTEGER)
-		.default(10 * 1024 ** 3),
-});
+const configSchema = z
+	.object({
+		HOST: z.string().default("0.0.0.0"),
+		PORT: z.coerce.number().default(3000),
+		DATABASE_URL: z.string().default("./photobrain.db"),
+		PHOTO_DIRECTORY: z.string().default("../../temp-photos"),
+		THUMBNAILS_DIRECTORY: z.string().default("./thumbnails"),
+		RAW_DEVELOP_ENGINE: z.enum(["apple", "adobe"]).default("apple"),
+		ADOBE_PROFILE_DIR: z.string().trim().min(1).optional(),
+		INNGEST_REALTIME_BASE_URL: z.string().url().optional(),
+		INNGEST_SERVE_ORIGIN: z.string().url().optional(),
+		NODE_ENV: z
+			.enum(["development", "production", "test"])
+			.default("development"),
+		RUN_DB_INIT: z
+			.string()
+			.default("false")
+			.transform((val) => val === "true" || val === "1"),
+		V1_NATIVE_SCAN_MUTATIONS_ENABLED: z
+			.enum(["true", "false", "1", "0"])
+			.default("false")
+			.transform((value) => value === "true" || value === "1"),
+		UPLOADS_ENABLED: z
+			.enum(["true", "false", "1", "0"])
+			.default("false")
+			.transform((value) => value === "true" || value === "1"),
+		UPLOAD_MAX_BYTES: z.coerce
+			.number()
+			.int()
+			.positive()
+			.max(Number.MAX_SAFE_INTEGER)
+			.default(10 * 1024 ** 3),
+	})
+	.superRefine((value, context) => {
+		if (value.RAW_DEVELOP_ENGINE === "adobe" && !value.ADOBE_PROFILE_DIR) {
+			context.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["ADOBE_PROFILE_DIR"],
+				message: "ADOBE_PROFILE_DIR is required when RAW_DEVELOP_ENGINE=adobe",
+			});
+		}
+	});
 
 export function parseConfig(environment: NodeJS.ProcessEnv) {
 	const result = configSchema.safeParse(environment);

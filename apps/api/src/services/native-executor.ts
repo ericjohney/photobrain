@@ -16,8 +16,11 @@ type NativeOperations = Pick<
 	| "renderFaceCrop"
 >;
 type Operation = keyof NativeOperations;
+type CancellableArgs<K extends Operation> = K extends "renderDevelopedRaw"
+	? [path: string, quality: number, options?: NativeAddon.DevelopedRawOptions]
+	: Parameters<NativeOperations[K]>;
 /**
- * Operations whose native call takes a trailing cancel flag (an `Int32Array` over a
+ * Operations whose native call accepts a cancel flag (an `Int32Array` over a
  * `SharedArrayBuffer`): `runCancellable` sets it when its signal aborts mid-run.
  */
 const CANCELLABLE_OPERATIONS: ReadonlySet<Operation> = new Set([
@@ -32,7 +35,7 @@ type OperationResult<K extends Operation> = K extends
 	| "renderFaceCrop"
 	? Uint8Array<ArrayBuffer>
 	: K extends "renderDevelopedRaw"
-		? { jpeg: Uint8Array<ArrayBuffer>; width: number; height: number }
+		? Omit<NativeAddon.DevelopedRaw, "jpeg"> & { jpeg: Uint8Array<ArrayBuffer> }
 		: ReturnType<NativeOperations[K]>;
 
 type OperationRequest = {
@@ -157,15 +160,23 @@ export class NativeExecutor {
 	runCancellable<K extends Operation>(
 		signal: AbortSignal,
 		operation: K,
-		...args: Parameters<NativeOperations[K]>
+		...args: CancellableArgs<K>
 	): Promise<OperationResult<K>> {
 		if (signal.aborted) return Promise.reject(asError(signal.reason));
 		if (!CANCELLABLE_OPERATIONS.has(operation))
-			return this.submit(signal, operation, args);
+			return this.submit(
+				signal,
+				operation,
+				args as Parameters<NativeOperations[K]>,
+			);
 		const cancelFlag = new Int32Array(new SharedArrayBuffer(4));
-		const native = [...args, cancelFlag] as unknown as Parameters<
-			NativeOperations[K]
-		>;
+		// Preserve the addon's existing third-argument cancel ABI; options follow it.
+		const native = [
+			args[0],
+			args[1],
+			cancelFlag,
+			args[2],
+		] as unknown as Parameters<NativeOperations[K]>;
 		return this.submit(signal, operation, native, cancelFlag);
 	}
 

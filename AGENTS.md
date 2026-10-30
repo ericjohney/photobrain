@@ -207,6 +207,8 @@ The schema and defaults are in `apps/api/src/config.ts`:
 | `DATABASE_URL` | `./photobrain.db` | Relative to the API process working directory |
 | `PHOTO_DIRECTORY` | `../../temp-photos` | Directory scanned by Inngest |
 | `THUMBNAILS_DIRECTORY` | `./thumbnails` | Generated WebP root |
+| `RAW_DEVELOP_ENGINE` | `apple` | Server Developed view: `apple` or experimental `adobe` for supported RAF/ARW; ProRAW remains Apple |
+| `ADOBE_PROFILE_DIR` | unset | Runtime Adobe Standard DCP directory; required with `RAW_DEVELOP_ENGINE=adobe`, never bundled |
 | `NODE_ENV` | `development` | `development`, `production`, or `test` |
 | `RUN_DB_INIT` | `false` | `true` or `1` runs shared migrations on API startup |
 | `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false` | Enables `POST /api/v1/scans`; catalog/search/status compatibility routes remain readable while disabled |

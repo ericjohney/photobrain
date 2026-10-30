@@ -40,6 +40,11 @@ encode::write(&out.image, path, encode::Format::Png16)?;  // PNG/JPEG with embed
 
 ## Adobe engine (experimental)
 
+The API's server-rendered Developed view can opt into the full Adobe engine with
+`RAW_DEVELOP_ENGINE=adobe` and `ADOBE_PROFILE_DIR`; its N-API bridge preserves Apple
+for LinearRaw ProRAW DNG. `X-Developed-Engine` reports the actual renderer. The local
+iOS Edit RAW bridge still uses Apple Preview. See [app integration](docs/adobe-engine.md#app-integration).
+
 `Options::engine = Engine::Adobe` (CLI `--adobe --adobe-profiles DIR`) selects the secondary RAF/ARW engine (`src/adobe/`). Full X-E5/X100VI demosaic and mandatory cleanup follow Adobe 18.7, exact against six complete no-CA linear DNGs. Full Sony Bayer processing matches five no-CA linear DNG crops, including per-body SR2 calibration, high-ISO green balance and long-exposure paired-hot-pixel repair. Mandatory embedded lateral CA matches all 11 complete linear references and runs independently of the optional CA setting. Full rendering integrates camera→preserved-black RIMM, metadata-derived chroma/four-level luma NR, Fuji distortion/vignetting, profile colour, scene-derived statistics and modern global/spatial tone/output. `adobe_noise_reduction` exposes six 0–100 controls; `adobe_tone` exposes integer -100..100 Basic controls, including spatial Highlights/Shadows. Exposure uses the shared EV field. Tone edits reuse the prepared image, original scene summaries and a lazily computed spatial mask. Composed RAW-to-tone/sRGB checks match 4,569,327 Fuji/Sony channels exactly across 11 captured tile/settings cases: six global controls cases, four mixed Highlights/Shadows cases covering both signs, and one Fuji spatial case with distortion/vignetting. Sony DefaultCrop follows NR to preserve its eight-pixel lattice. External LCP and user sharpening are unimplemented. Preview uses generic demosaic and the SDK renderer. Adobe Standard DCP profiles are read at runtime from `Options::adobe_profile_dir` or `ADOBE_PROFILE_DIR` (never bundled). `Engine::Apple` stays the default. Accuracy, provenance and reference instructions: [docs/adobe-engine.md](docs/adobe-engine.md).
 
 Performance paths retain exact arithmetic: Gaussian spatial-mask rows share the

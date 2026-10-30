@@ -463,6 +463,8 @@ Active API variables are parsed in `src/config.ts`:
 - `DATABASE_URL=./photobrain.db`
 - `PHOTO_DIRECTORY=../../temp-photos`
 - `THUMBNAILS_DIRECTORY=./thumbnails`
+- `RAW_DEVELOP_ENGINE=apple` (`adobe` opts the server Developed view into full Adobe RAF/ARW; ProRAW remains Apple)
+- `ADOBE_PROFILE_DIR` (nonempty runtime DCP directory, required with the Adobe engine; profiles are never bundled)
 - `NODE_ENV=development`
 - `RUN_DB_INIT=false`
 - `V1_NATIVE_SCAN_MUTATIONS_ENABLED=false` (`true` or `1` enables `POST /api/v1/scans`; reads remain available)
@@ -487,6 +489,12 @@ The Inngest SDK reads `INNGEST_DEV`, `INNGEST_BASE_URL`, `INNGEST_EVENT_KEY`, an
 - Streaming scan transactions include photo/EXIF/pHash/status saves, item receipts, manifest counters, and scan progress. Embedding transactions include vectors and embedding statuses. Native work/network publication remain outside transactions; never put async callbacks inside Bun SQLite transactions. `clearScanWork` explicitly deletes items and manifests in one transaction because foreign-key enforcement is not guaranteed on every connection.
 
 ## Exports
+
+The Developed view uses server-owned `rawDevelop` options from configuration, passed
+through the cancellable executor to the N-API bridge. `X-Developed-Engine` reports
+the actual renderer and is CORS-exposed with the size headers. Adobe errors propagate;
+the bridge explicitly selects Apple for LinearRaw ProRAW DNG. The local iOS Edit RAW
+preview is independent of this server setting.
 
 Binary routes outside tRPC, `/api/v1`, and `openapi-v1.json`; every response sends `Cache-Control: private, no-store` and an RFC 6266 `Content-Disposition` (`filename` ASCII fallback with non-printable-ASCII, `"`, `\` → `_`, plus RFC 5987 `filename*`). Errors are `{ error: { code, message } }`.
 

@@ -136,12 +136,26 @@ export interface DevelopedRaw {
 	jpeg: Buffer;
 	width: number;
 	height: number;
+	/** Actual renderer; LinearRaw ProRAW DNG always uses Apple. */
+	engine: "apple" | "adobe";
+}
+export interface DevelopedRawOptions {
+	engine?: "apple" | "adobe";
+	/** Runtime Adobe Standard DCP directory (or ADOBE_PROFILE_DIR). */
+	adobeProfileDir?: string;
 }
 /**
  * Develop a RAW file at full resolution through raw-develop (orientation applied) and
  * encode it as a Display P3 JPEG. Throws for unsupported formats or cameras.
+ * Defaults to Apple; opt-in Adobe requires runtime DCP profiles. ProRAW stays Apple.
+ * `cancel` may be an Int32Array over a SharedArrayBuffer; set element 0 to stop work.
  */
-export function renderDevelopedRaw(path: string, quality: number): DevelopedRaw;
+export function renderDevelopedRaw(
+	path: string,
+	quality: number,
+	cancel?: Int32Array,
+	options?: DevelopedRawOptions,
+): DevelopedRaw;
 /** Normalized (0..1) box in the oriented input image. */
 export interface FaceBox {
 	x: number;

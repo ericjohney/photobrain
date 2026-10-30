@@ -160,6 +160,8 @@ IOS_DESTINATION='platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5' \
 | `DATABASE_URL` | `./photobrain.db` | SQLite path, relative to the API process |
 | `PHOTO_DIRECTORY` | `../../temp-photos` | Directory scanned by Inngest |
 | `THUMBNAILS_DIRECTORY` | `./thumbnails` | Generated thumbnail root |
+| `RAW_DEVELOP_ENGINE` | `apple` | Server loupe Developed renderer: `apple` or experimental `adobe` for supported RAF/ARW; ProRAW always uses Apple |
+| `ADOBE_PROFILE_DIR` | unset | Runtime Adobe Standard DCP directory, required when `RAW_DEVELOP_ENGINE=adobe`; profiles are not bundled |
 | `NODE_ENV` | `development` | Runtime environment |
 | `RUN_DB_INIT` | `false` | Set to `true` or `1` to run shared migrations on startup |
 | `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false` | Enables native `POST /api/v1/scans`; compatibility reads remain available while disabled |
@@ -176,6 +178,23 @@ IOS_DESTINATION='platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5' \
 | `INNGEST_REALTIME_BASE_URL` | unset | Client-reachable HTTP(S) Inngest origin for WebSocket subscriptions |
 
 More photo workers use more decoded-image memory. Reduce `PHOTO_PROCESSING_THREADS` on memory-constrained hosts; storage, ExifTool, startup, and the final few photos can still leave CPUs idle. See [historical measured CPU, memory, and throughput](docs/import-performance.md#continuous-pool--2026-09-19).
+
+To try the experimental Adobe renderer in the iOS loupe's **Show Developed RAW** view,
+start the API from the repository root with locally installed camera profiles:
+
+```bash
+RAW_DEVELOP_ENGINE=adobe \
+ADOBE_PROFILE_DIR='/Library/Application Support/Adobe/CameraRaw/CameraProfiles' \
+bun run dev:api
+```
+
+This selects full Adobe development for supported Fujifilm/Sony RAWs. ProRAW continues
+through Apple, and the response's `X-Developed-Engine` header reports the actual engine.
+The local **Edit RAW** exposure editor still uses Apple. Scans, thumbnails and exports
+keep their existing behavior. On another host, configure a directory containing the
+required DCPs (mount it at runtime for Docker); the application never downloads or
+bundles them. Missing camera profiles return a development error. See
+[Adobe engine setup and limitations](packages/raw-develop/docs/adobe-engine.md#app-integration).
 
 For the incremental-scan cutover, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006_incremental_scan.sql` (and any earlier unapplied migrations) before starting `scan-photos-v5` and `generate-embeddings-v3`. Their function/checkpoint graphs are replay-sensitive. `RUN_DB_INIT=true` performs migrations on startup; the API Docker image enables it.
 

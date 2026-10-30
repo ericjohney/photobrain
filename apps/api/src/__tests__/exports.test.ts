@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import type { DevelopedRawOptions } from "@photobrain/image-processing";
 import { Hono } from "hono";
 import { z } from "zod";
 import { photoExif, photos } from "../db/schema";
@@ -404,6 +405,7 @@ describe("export routes", () => {
 			result: "ok" | "busy" | "fail",
 			calls: string[] = [],
 			signals: AbortSignal[] = [],
+			rawDevelop?: DevelopedRawOptions,
 		) {
 			const hono = new Hono();
 			hono.route(
@@ -411,9 +413,16 @@ describe("export routes", () => {
 				createExportsRouter({
 					database,
 					photoDirectory,
+					rawDevelop,
 					renderer: fakeRenderer().renderer,
 					developer: {
-						runCancellable: async (signal, _operation, path, quality) => {
+						runCancellable: async (
+							signal,
+							_operation,
+							path,
+							quality,
+							options,
+						) => {
 							signals.push(signal);
 							calls.push(`${basename(path)} q${quality}`);
 							if (result === "busy") throw new NativeExecutorBusyError();
@@ -422,6 +431,9 @@ describe("export routes", () => {
 								jpeg: encoder.encode("jpeg"),
 								width: 7728,
 								height: 5152,
+								engine: path.endsWith(".DNG")
+									? "apple"
+									: (options?.engine ?? "apple"),
 							};
 						},
 					},
@@ -442,9 +454,27 @@ describe("export routes", () => {
 				"cache-control": "private, no-store",
 				"x-developed-width": "7728",
 				"x-developed-height": "5152",
+				"x-developed-engine": "apple",
 			});
 			expect(await response.text()).toBe("jpeg");
 			expect(calls).toEqual(["DSCF1.RAF q95"]);
+		});
+
+		test("server Adobe selection reaches the renderer; ProRAW reports Apple", async () => {
+			const adobe = developerApp("ok", [], [], {
+				engine: "adobe",
+				adobeProfileDir: "/profiles",
+			});
+			for (const [name, engine] of [
+				["fuji.RAF", "adobe"],
+				["phone.DNG", "apple"],
+			]) {
+				const id = addPhoto({ name, isRaw: true });
+				const response = await adobe.request(`/api/photos/${id}/developed`);
+				expect(response.status).toBe(200);
+				expect(response.headers.get("X-Developed-Engine")).toBe(engine);
+				expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+			}
 		});
 
 		test("passes the request's abort signal so a stale render can be withdrawn", async () => {

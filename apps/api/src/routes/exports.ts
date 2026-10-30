@@ -1,3 +1,4 @@
+import type { DevelopedRawOptions } from "@photobrain/image-processing";
 import { Hono } from "hono";
 import {
 	CollectionError,
@@ -24,6 +25,8 @@ export type ExportDependencies = {
 	renderer: ExportRenderer;
 	/** Optional: enables `GET /photos/:id/developed`. */
 	developer?: RawDeveloper;
+	/** Server-owned settings for the Developed view (Apple by default). */
+	rawDevelop?: DevelopedRawOptions;
 };
 
 /** JPEG quality of developed RAW renders (near-lossless for loupe inspection). */
@@ -73,6 +76,7 @@ function parseSize(value: string | undefined, fallback: ExportSize) {
  */
 export function createExportsRouter(dependencies: ExportDependencies) {
 	const { database, photoDirectory, renderer, developer } = dependencies;
+	const rawDevelop = dependencies.rawDevelop ?? { engine: "apple" };
 	const router = new Hono();
 
 	router.get("/photos/:id/export", async (context) => {
@@ -181,6 +185,7 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 			jpeg: Uint8Array<ArrayBuffer>;
 			width: number;
 			height: number;
+			engine: "apple" | "adobe";
 		};
 		// A client that navigates away aborts its request; withdraw the render if it
 		// has not started, so queued renders for photos no longer on screen do not
@@ -192,6 +197,7 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 				"renderDevelopedRaw",
 				path,
 				DEVELOPED_JPEG_QUALITY,
+				rawDevelop,
 			);
 		} catch (error) {
 			if (signal.aborted) {
@@ -222,6 +228,7 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 				"Cache-Control": "private, no-store",
 				"X-Developed-Width": String(developed.width),
 				"X-Developed-Height": String(developed.height),
+				"X-Developed-Engine": developed.engine,
 			},
 		});
 	});

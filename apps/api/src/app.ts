@@ -25,8 +25,12 @@ app.use(
 	"*",
 	cors({
 		origin: "*",
-		// Developed RAW renders report their pixel size so clients can label them.
-		exposeHeaders: ["X-Developed-Width", "X-Developed-Height"],
+		// Developed RAW renders report their pixel size and actual engine.
+		exposeHeaders: [
+			"X-Developed-Width",
+			"X-Developed-Height",
+			"X-Developed-Engine",
+		],
 	}),
 );
 // JSON responses only (binary routes and SSE are left as is).
@@ -82,6 +86,10 @@ app.route(
 		photoDirectory: config.PHOTO_DIRECTORY,
 		renderer: nativeExecutor,
 		developer: nativeExecutor,
+		rawDevelop: {
+			engine: config.RAW_DEVELOP_ENGINE,
+			adobeProfileDir: config.ADOBE_PROFILE_DIR,
+		},
 	}),
 );
 

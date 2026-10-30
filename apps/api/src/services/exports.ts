@@ -1,3 +1,4 @@
+import type { DevelopedRawOptions } from "@photobrain/image-processing";
 import type { CollectionMember } from "./collections";
 import { originalFilePath } from "./photo-files";
 import { ZipWriter } from "./zip-writer";
@@ -34,7 +35,8 @@ export type ExportRenderer = {
 
 /**
  * Full RAW development on the native executor (loupe "Developed" view). Aborting
- * `signal` withdraws a request that has not started yet.
+ * `signal` withdraws queued requests and cancels a running develop. Options are
+ * server-owned; the result reports the actual engine (ProRAW always uses Apple).
  */
 export type RawDeveloper = {
 	runCancellable(
@@ -42,7 +44,13 @@ export type RawDeveloper = {
 		operation: "renderDevelopedRaw",
 		path: string,
 		quality: number,
-	): Promise<{ jpeg: Uint8Array<ArrayBuffer>; width: number; height: number }>;
+		options?: DevelopedRawOptions,
+	): Promise<{
+		jpeg: Uint8Array<ArrayBuffer>;
+		width: number;
+		height: number;
+		engine: "apple" | "adobe";
+	}>;
 };
 
 /** `name` split at its last `.`; a leading dot alone (".profile") is no extension. */

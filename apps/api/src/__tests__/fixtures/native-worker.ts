@@ -1,6 +1,9 @@
 import { mock } from "bun:test";
 import { parentPort } from "node:worker_threads";
-import type { PhotoProcessingResult } from "@photobrain/image-processing";
+import type {
+	DevelopedRawOptions,
+	PhotoProcessingResult,
+} from "@photobrain/image-processing";
 
 let sequence = 0;
 let streamsStarted = 0;
@@ -90,7 +93,12 @@ mock.module("@photobrain/image-processing", () => ({
 			JSON.stringify({ path, maxEdge, quality, streamsActive }),
 		);
 	},
-	renderDevelopedRaw(path: string, quality: number, cancel?: Int32Array) {
+	renderDevelopedRaw(
+		path: string,
+		quality: number,
+		cancel?: Int32Array,
+		options?: DevelopedRawOptions,
+	) {
 		if (path === "throw") throw new Error("develop failed");
 		if (path === "slow") {
 			// Block like a long native develop, polling the cancel flag as raw-develop does.
@@ -102,9 +110,10 @@ mock.module("@photobrain/image-processing", () => ({
 		}
 		developedPaths.push(path);
 		return {
-			jpeg: Buffer.from(JSON.stringify({ path, quality })),
+			jpeg: Buffer.from(JSON.stringify({ path, quality, options })),
 			width: 6000,
 			height: 4000,
+			engine: path.endsWith(".DNG") ? "apple" : (options?.engine ?? "apple"),
 		};
 	},
 	renderFaceCrop(

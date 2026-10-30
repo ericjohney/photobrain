@@ -13,6 +13,43 @@ The goal is parity with Adobe Camera Raw (ACR), including its adjustment control
 It is not there yet;
 see [Current accuracy](#current-accuracy).
 
+## App integration
+
+The server loupe's **Show Developed RAW** view can opt into the full Adobe RAF/ARW
+pipeline with `RAW_DEVELOP_ENGINE=adobe` and `ADOBE_PROFILE_DIR` pointing to the
+runtime Adobe Standard DCP directory. Apple is the default. The API validates the
+engine name and requires a nonempty profile-directory setting before startup in
+Adobe mode; the native renderer reports missing or invalid camera profiles when
+opening the photo. No Adobe profiles are bundled or downloaded.
+
+`GET /api/photos/:id/developed` uses full quality and returns an oriented Display P3
+JPEG with the embedded ICC profile. `X-Developed-Engine` reports `adobe` or `apple`,
+alongside the existing pixel-size headers; all three headers are CORS-exposed.
+The N-API bridge selects Apple for decoded LinearRaw DNGs, so ProRAW retains its
+existing rendering even when the server selects Adobe. Other Adobe errors are
+reported rather than silently falling back. Direct Rust callers selecting Adobe
+for LinearRaw DNG still receive `Error::Unsupported`.
+
+Development remains on demand, cancellable, and unpersisted. The existing iOS app
+can use it without a new client build. This setting does not change scans,
+thumbnails, exports, or the local **Edit RAW** editor. The latter still uses Apple's
+binned preview path; switching it to Adobe Preview would skip the modern full
+pipeline validated here. Local Adobe editing needs separate profile delivery,
+full preparation, and physical-device memory/latency validation. User sharpening
+and external LCP correction remain unimplemented.
+
+Integration verification (2026-10-29): the release addon and real native worker
+rendered X-E5 RAF, A7R V ARW and iPhone 16 Pro Max ProRAW through the Hono Developed
+route over a throwaway SQLite catalog. All three default Apple JPEGs were
+byte-identical to output captured from the pre-change addon. Fuji and Sony Adobe
+JPEGs were byte-identical to the standalone Rust CLI at the same quality (92);
+the app route separately exercised its usual quality 95, ICC, engine headers and
+uncached responses. Adobe-selected ProRAW was byte-identical to its Apple
+baseline. Real Adobe cancellation and missing-profile failure were also checked.
+Artifacts remain outside the repository at
+`/Users/eric/acr-re/app-integration-2026-10-29/`. This verifies the server route and
+native boundary, not physical-phone presentation or local Adobe editing.
+
 ## What runs
 
 Shared with the Apple engine: decode (bit-exact) and output geometry.

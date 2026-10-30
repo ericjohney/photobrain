@@ -1,4 +1,4 @@
-//! Full RAW development through `raw-develop` (Apple RawCamera-equivalent pipeline), for
+//! Full RAW development through `raw-develop` (Apple or opt-in Adobe pipeline), for
 //! the loupe's "Developed" view. Scans and thumbnails keep using the embedded preview.
 
 use napi::bindgen_prelude::{Buffer, Int32Array};
@@ -11,6 +11,30 @@ pub struct DevelopedRaw {
   pub jpeg: Buffer,
   pub width: u32,
   pub height: u32,
+  /// Actual engine used (LinearRaw DNG always uses Apple).
+  pub engine: String,
+}
+
+#[napi(object)]
+#[derive(Default)]
+pub struct DevelopedRawOptions {
+  /// "apple" (default) or "adobe" for supported RAF/ARW cameras.
+  pub engine: Option<String>,
+  /// Runtime Adobe Standard DCP directory; profiles are never bundled.
+  pub adobe_profile_dir: Option<String>,
+}
+
+impl DevelopedRawOptions {
+  fn engine(&self, linear_dng: bool) -> Result<raw_develop::Engine, String> {
+    use raw_develop::Engine;
+    let engine = match self.engine.as_deref().unwrap_or("apple") {
+      "apple" => Engine::Apple,
+      "adobe" => Engine::Adobe,
+      _ => return Err("RAW engine must be apple or adobe".into()),
+    };
+    // Adobe does not support LinearRaw DNG. Preserve the existing ProRAW renderer.
+    Ok(if linear_dng { Engine::Apple } else { engine })
+  }
 }
 
 /// Error message of a develop stopped through its cancel flag.
@@ -18,6 +42,8 @@ pub const DEVELOP_CANCELLED: &str = "DEVELOP_CANCELLED";
 
 /// Develop a RAW file at full resolution (orientation applied) and encode it as a JPEG
 /// tagged Display P3. Fails for formats or cameras `raw-develop` does not support.
+/// `options` selects Apple (default) or Adobe with runtime DCP profiles. LinearRaw
+/// ProRAW DNG keeps Apple; the result reports the actual engine used.
 ///
 /// `cancel` is an optional `Int32Array` over a `SharedArrayBuffer`: setting element 0 to
 /// a non-zero value (from any thread) stops the develop at its next check, failing with
@@ -27,6 +53,7 @@ pub fn render_developed_raw(
   path: String,
   quality: u32,
   cancel: Option<Int32Array>,
+  options: Option<DevelopedRawOptions>,
 ) -> napi::Result<DevelopedRaw> {
   if !(1..=100).contains(&quality) {
     return Err(napi::Error::from_reason(
@@ -42,15 +69,19 @@ pub fn render_developed_raw(
     Some(a) => Some(a.as_ptr() as *const AtomicI32),
     None => None,
   };
-  develop_internal(&path, quality as u8, flag).map_err(napi::Error::from_reason)
+  develop_internal(&path, quality as u8, flag, options.unwrap_or_default())
+    .map_err(napi::Error::from_reason)
 }
 
 fn develop_internal(
   path: &str,
   quality: u8,
   flag: Option<*const AtomicI32>,
+  options: DevelopedRawOptions,
 ) -> Result<DevelopedRaw, String> {
   use raw_develop::{DevelopSettings, Error, Negative, Options, develop, encode};
+  // Reject invalid engine names before decoding a potentially large source.
+  options.engine(false)?;
   let token = raw_develop::Cancel::new();
   // Mirror the shared JS flag into the token from a watcher thread, so the pipeline's
   // checks stay a plain atomic load on Rust-owned memory.
@@ -82,21 +113,58 @@ fn develop_internal(
     token.check().map_err(msg)?;
     let opts = Options {
       cancel: token.clone(),
+      engine: options.engine(neg.dng.is_some())?,
+      adobe_profile_dir: options.adobe_profile_dir.as_deref().map(Into::into),
       ..Options::default()
     };
     let out = develop(&neg, &DevelopSettings::default(), &opts).map_err(msg)?;
     token.check().map_err(msg)?;
     let jpeg = encode::encode(&out.image, encode::Format::Jpeg(quality)).map_err(msg)?;
-    Ok((out, jpeg))
+    Ok((out, jpeg, opts.engine))
   })();
   done.store(true, Ordering::Relaxed);
   if let Some(w) = watcher {
     let _ = w.join();
   }
-  let (out, jpeg) = result?;
+  let (out, jpeg, engine) = result?;
   Ok(DevelopedRaw {
     jpeg: jpeg.into(),
     width: out.image.width as u32,
     height: out.image.height as u32,
+    engine: match engine {
+      raw_develop::Engine::Apple => "apple",
+      raw_develop::Engine::Adobe => "adobe",
+    }
+    .into(),
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use raw_develop::Engine;
+
+  #[test]
+  fn adobe_is_opt_in_and_proraw_retains_apple() {
+    assert_eq!(
+      DevelopedRawOptions::default().engine(false).unwrap(),
+      Engine::Apple
+    );
+    let options = DevelopedRawOptions {
+      engine: Some("adobe".into()),
+      ..Default::default()
+    };
+    assert_eq!(options.engine(false).unwrap(), Engine::Adobe);
+    assert_eq!(options.engine(true).unwrap(), Engine::Apple);
+  }
+
+  #[test]
+  fn invalid_engine_never_silently_falls_back() {
+    let options = DevelopedRawOptions {
+      engine: Some("typo".into()),
+      ..Default::default()
+    };
+    assert!(options.engine(false).is_err());
+    assert!(options.engine(true).is_err());
+  }
 }

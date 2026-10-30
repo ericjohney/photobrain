@@ -191,6 +191,7 @@ describe("off-thread native execution", () => {
 			"renderDevelopedRaw",
 			"slow",
 			95,
+			{ engine: "adobe", adobeProfileDir: "/profiles" },
 		);
 		const next = executor.runCancellable(
 			new AbortController().signal,
@@ -204,6 +205,23 @@ describe("off-thread native execution", () => {
 		// The next request did not wait for the 2 s develop to finish.
 		expect((await next).width).toBe(6000);
 		expect(Date.now() - started).toBeLessThan(1500);
+	});
+
+	test("develop options survive worker transport beside the cancellation flag", async () => {
+		const options = { engine: "adobe", adobeProfileDir: "/profiles" } as const;
+		const result = await executor.runCancellable(
+			new AbortController().signal,
+			"renderDevelopedRaw",
+			"/camera.RAF",
+			95,
+			options,
+		);
+		expect(result.engine).toBe("adobe");
+		expect(JSON.parse(new TextDecoder().decode(result.jpeg))).toEqual({
+			path: "/camera.RAF",
+			quality: 95,
+			options,
+		});
 	});
 
 	test("runCancellable still rejects when admission is full", async () => {
