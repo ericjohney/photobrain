@@ -196,6 +196,10 @@ required DCPs (mount it at runtime for Docker); the application never downloads 
 bundles them. Missing camera profiles return a development error. See
 [Adobe engine setup and limitations](packages/raw-develop/docs/adobe-engine.md#app-integration).
 
+The homelab production API selects Adobe by default and reads its five camera
+profiles from `/app/data/adobe-profiles` on the existing persistent data volume.
+Its engine setting and image pin are managed in the external ArgoCD repository.
+
 For the incremental-scan cutover, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006_incremental_scan.sql` (and any earlier unapplied migrations) before starting `scan-photos-v5` and `generate-embeddings-v3`. Their function/checkpoint graphs are replay-sensitive. `RUN_DB_INIT=true` performs migrations on startup; the API Docker image enables it.
 
 ### Self-hosted Inngest
