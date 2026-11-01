@@ -31,6 +31,7 @@ function photoResult(path: string, name = path): PhotoProcessingResult {
 // Replace only the addon. Requests, dispatch, responses, and exception handling use
 // the production worker entrypoint, in a separate module registry from API tests.
 mock.module("@photobrain/image-processing", () => ({
+	clearDevelopedRawCache() {},
 	discoverPhotos(directory: string) {
 		if (streamsActive)
 			throw new Error("Native operation overlapped active stream writers");

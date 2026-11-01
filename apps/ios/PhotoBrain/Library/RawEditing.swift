@@ -92,153 +92,276 @@ protocol RawEditRendering: Sendable {
     func release(id: UUID) async
 }
 
-/// One transient loupe edit. Source files are downloaded through the original export route
-/// (the /file route can return an embedded JPEG for a RAW). Nothing is written to the source
-/// or catalog. Paging, dismissal, backgrounding and memory warnings release the session.
-@MainActor
-final class LoupeRawEditStore: ObservableObject {
-    enum Phase: Equatable {
-        case inactive, downloading, preparing, ready, failed(String)
-    }
+/// Versioned, nondestructive Basic adjustments shared by previews, persistence and export.
+struct RawEditSettings: Codable, Equatable, Sendable {
+    var version = 1
+    var exposure = 0.0
+    var contrast = 0
+    var highlights = 0
+    var shadows = 0
+    var whites = 0
+    var blacks = 0
+}
 
-    @Published private(set) var phase: Phase = .inactive
-    @Published private(set) var images: [Int: UIImage] = [:]
-    @Published private(set) var exposure = 0.0
-    @Published private(set) var progress: Double?
-    @Published private(set) var appliedExposure = 0.0
-    @Published private(set) var lastRenderMilliseconds: Double?
-    var isActive: Bool { phase != .inactive }
-    var isReady: Bool { phase == .ready }
+struct RawEditRecipe: Codable, Equatable, Sendable {
+    let settings: RawEditSettings
+    let revision: Int
+    let engine: String
+    let supportsTone: Bool
+}
 
-    var label: String {
-        switch phase {
-        case .inactive: "Embedded preview"
-        case .downloading: progress.map { "Downloading RAW · \(Int($0 * 100))%" } ?? "Downloading RAW…"
-        case .preparing: "Preparing RAW…"
-        case .ready: "On-device RAW preview"
-        case .failed: "RAW edit unavailable"
+enum RawEditControl: String, CaseIterable, Identifiable {
+    case exposure, contrast, highlights, shadows, whites, blacks
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var symbol: String {
+        switch self {
+        case .exposure: "plusminus.circle"
+        case .contrast: "circle.lefthalf.filled"
+        case .highlights: "sun.max"
+        case .shadows: "moon"
+        case .whites: "circle"
+        case .blacks: "circle.fill"
         }
     }
+    var range: ClosedRange<Double> { self == .exposure ? -5...5 : -100...100 }
+    var step: Double { self == .exposure ? 0.05 : 1 }
+    func value(in settings: RawEditSettings) -> Double {
+        switch self {
+        case .exposure: settings.exposure
+        case .contrast: Double(settings.contrast)
+        case .highlights: Double(settings.highlights)
+        case .shadows: Double(settings.shadows)
+        case .whites: Double(settings.whites)
+        case .blacks: Double(settings.blacks)
+        }
+    }
+    func label(in settings: RawEditSettings) -> String {
+        self == .exposure ? String(format: "%+.2f EV", value(in: settings)) : String(format: "%+.0f", value(in: settings))
+    }
+    func set(_ value: Double, in settings: inout RawEditSettings) {
+        guard value.isFinite else { return }
+        let value = min(range.upperBound, max(range.lowerBound, value))
+        switch self {
+        case .exposure: settings.exposure = (value * 100).rounded() / 100
+        case .contrast: settings.contrast = Int(value.rounded())
+        case .highlights: settings.highlights = Int(value.rounded())
+        case .shadows: settings.shadows = Int(value.rounded())
+        case .whites: settings.whites = Int(value.rounded())
+        case .blacks: settings.blacks = Int(value.rounded())
+        }
+    }
+}
+
+/// A server-rendered edit session. Only Save writes the recipe. Intermediate slider positions
+/// are coalesced; late frames from a closed/replaced session are always discarded.
+@MainActor
+final class LoupeRawEditStore: ObservableObject {
+    enum Phase: Equatable { case inactive, loading, ready, failed(String) }
+    @Published private(set) var phase: Phase = .inactive
+    @Published private(set) var images: [Int: UIImage] = [:]
+    @Published private(set) var settings = RawEditSettings()
+    @Published private(set) var supportsTone = false
+    @Published private(set) var engine = ""
+    @Published private(set) var isRendering = false
+    @Published private(set) var isSaving = false
+    @Published private(set) var showingBefore = false
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var appliedSettings = RawEditSettings()
+    var isActive: Bool { phase != .inactive }
+    var isReady: Bool { phase == .ready }
+    var hasChanges: Bool { settings != savedSettings }
+    var label: String {
+        if showingBefore { return "Before adjustments" }
+        switch phase {
+        case .inactive: return "Embedded preview"
+        case .loading: return "Preparing RAW…"
+        case .ready: return isRendering ? "Updating preview…" : "RAW adjustments"
+        case .failed: return "RAW edit unavailable"
+        }
+    }
+    var controls: [RawEditControl] { supportsTone ? RawEditControl.allCases : [.exposure] }
 
     private let api: any PhotoBrainAPI
-    private let renderer: any RawEditRendering
     private var id: UUID?
     private var photoID: Int?
-    private var cancellation: RawEditCancellation?
+    private var rawID: Int?
+    private var savedSettings = RawEditSettings()
+    private var savedRevision = 0
+    private var beforeImage: UIImage?
+    private var currentImage: UIImage?
     private var openTask: Task<Void, Never>?
     private var renderTask: Task<Void, Never>?
     private var revision = 0
     private var dragging = false
 
-    init(api: any PhotoBrainAPI, renderer: any RawEditRendering = NativeRawEditRenderer()) {
-        self.api = api
-        self.renderer = renderer
-    }
+    init(api: any PhotoBrainAPI) { self.api = api }
 
     func start(_ photo: PhotoRecord) {
         end()
         guard let rawID = LoupeRendition.developableRawID(for: photo) else { return }
         let id = UUID()
-        let token = RawEditCancellation()
         self.id = id
-        photoID = photo.id
-        cancellation = token
-        phase = .downloading
-        openTask = Task { [weak self, api, renderer] in
+        self.photoID = photo.id
+        self.rawID = rawID
+        phase = .loading
+        openTask = Task { [weak self, api] in
             do {
-                let file = try await api.download(.photo(id: rawID, size: .original)) { [weak self] update in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.id == id, self.phase == .downloading else { return }
-                        self.progress = update.fraction
-                    }
-                }
-                defer { file.remove() }
-                try Task.checkCancellation()
-                guard let self, self.id == id else { return }
-                self.phase = .preparing
-                try await renderer.open(file: file.url, id: id, cancellation: token)
-                guard !Task.isCancelled, self.id == id else {
-                    await renderer.release(id: id)
-                    return
-                }
+                let recipe = try await api.rawEdit(photoId: rawID)
+                let baseline = try await Self.preview(api: api, rawID: rawID, settings: RawEditSettings(), refined: true)
+                let image = try await Self.decode(baseline)
+                guard !Task.isCancelled, let self, self.id == id else { return }
+                self.savedSettings = recipe.settings
+                self.savedRevision = recipe.revision
+                self.settings = recipe.settings
+                self.supportsTone = recipe.supportsTone
+                self.engine = recipe.engine
+                self.beforeImage = image
+                self.currentImage = image
+                self.images = [photo.id: image]
                 self.phase = .ready
-                self.requestRender()
+                if recipe.settings != RawEditSettings() { self.requestRender() }
             } catch {
-                await renderer.release(id: id)
                 guard !Task.isCancelled, let self, self.id == id else { return }
                 self.phase = .failed(error.localizedDescription)
             }
         }
     }
 
-    func setExposure(_ value: Double) {
-        guard isReady, value.isFinite else { return }
-        exposure = min(3, max(-3, value))
+    func set(_ control: RawEditControl, value: Double) {
+        guard isReady, !isSaving, controls.contains(control) else { return }
+        control.set(value, in: &settings)
+        showingBefore = false
+        showImage()
         requestRender()
     }
 
-    func setDragging(_ dragging: Bool) {
-        guard isReady else { return }
-        self.dragging = dragging
+    func reset() {
+        guard isReady, !isSaving else { return }
+        settings = RawEditSettings()
+        showingBefore = false
+        showImage()
         requestRender()
+    }
+
+    func setDragging(_ value: Bool) {
+        guard isReady, !isSaving else { return }
+        dragging = value
+        requestRender()
+    }
+
+    func toggleBefore() {
+        guard isReady else { return }
+        showingBefore.toggle()
+        showImage()
+    }
+
+    func save() async -> Bool {
+        guard isReady, !isSaving, let id, let rawID else { return false }
+        isSaving = true
+        errorMessage = nil
+        defer { if self.id == id { isSaving = false } }
+        do {
+            let saved = try await api.saveRawEdit(photoId: rawID, settings: settings, revision: savedRevision)
+            guard self.id == id else { return false }
+            savedSettings = saved.settings
+            savedRevision = saved.revision
+            return true
+        } catch {
+            guard self.id == id else { return false }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func showImage() {
+        guard let photoID, let image = showingBefore ? beforeImage : currentImage else { return }
+        images = [photoID: image]
+    }
+
+    private static func decode(_ result: DevelopedRawImage) async throws -> UIImage {
+        let image = await Task.detached(priority: .userInitiated) {
+            UIImage(data: result.data)?.preparingForDisplay()
+        }.value
+        guard let image else { throw RawEditError(message: "Couldn’t display the RAW preview") }
+        return image
+    }
+
+    private static func preview(api: any PhotoBrainAPI, rawID: Int, settings: RawEditSettings, refined: Bool) async throws -> DevelopedRawImage {
+        var attempts = 0
+        while true {
+            do { return try await api.rawEditPreview(photoId: rawID, settings: settings, refined: refined) }
+            catch {
+                guard (error as? PhotoBrainAPIError)?.code == "DEVELOP_BUSY", attempts < 5 else { throw error }
+                attempts += 1
+                try await Task.sleep(for: .seconds(1))
+            }
+        }
     }
 
     private func requestRender() {
         revision &+= 1
-        guard renderTask == nil, let id, let photoID, let cancellation, isReady else { return }
-        renderTask = Task { [weak self, renderer] in
-            defer { if self?.id == id { self?.renderTask = nil } }
+        guard renderTask == nil, let id, let rawID, isReady else { return }
+        isRendering = true
+        errorMessage = nil
+        renderTask = Task { [weak self, api] in
+            defer {
+                if self?.id == id {
+                    self?.renderTask = nil
+                    self?.isRendering = false
+                }
+            }
             while let self, self.id == id, !Task.isCancelled {
                 let requested = self.revision
-                let exposure = self.exposure
+                let settings = self.settings
                 let refined = !self.dragging
                 do {
-                    let frame = try await renderer.render(
-                        id: id, exposure: exposure, refined: refined, cancellation: cancellation
-                    )
+                    let result = try await Self.preview(api: api, rawID: rawID, settings: settings, refined: refined)
+                    let image = try await Self.decode(result)
                     guard self.id == id, !Task.isCancelled else { return }
-                    // Completed frames advance in order during a drag. Intermediate settings
-                    // are coalesced; an obsolete frame is suppressed once the finger lifts.
                     if requested == self.revision || self.dragging {
-                        self.images = [photoID: UIImage(cgImage: frame.image)]
-                        self.appliedExposure = exposure
-                        self.lastRenderMilliseconds = frame.milliseconds
+                        self.currentImage = image
+                        self.appliedSettings = settings
+                        self.showImage()
                     }
                     if requested == self.revision { return }
                 } catch {
                     guard self.id == id, !Task.isCancelled else { return }
-                    self.phase = .failed(error.localizedDescription)
-                    await renderer.release(id: id)
+                    // Keep the draft and last usable frame so a transient network error is recoverable.
+                    self.errorMessage = error.localizedDescription
                     return
                 }
             }
         }
     }
 
+    func retryPreview() { if isReady { requestRender() } }
+
     func end() {
-        cancellation?.cancel()
         openTask?.cancel()
         renderTask?.cancel()
-        if let id { Task { [renderer] in await renderer.release(id: id) } }
         id = nil
         photoID = nil
-        cancellation = nil
+        rawID = nil
         openTask = nil
         renderTask = nil
         revision &+= 1
         dragging = false
-        exposure = 0
-        appliedExposure = 0
-        lastRenderMilliseconds = nil
+        settings = RawEditSettings()
+        savedSettings = RawEditSettings()
+        savedRevision = 0
+        appliedSettings = RawEditSettings()
+        beforeImage = nil
+        currentImage = nil
         images = [:]
-        progress = nil
+        errorMessage = nil
+        isRendering = false
+        isSaving = false
+        showingBefore = false
+        supportsTone = false
+        engine = ""
         phase = .inactive
     }
 
-    deinit {
-        cancellation?.cancel()
-        openTask?.cancel()
-        renderTask?.cancel()
-        if let id { Task { [renderer] in await renderer.release(id: id) } }
-    }
+    deinit { openTask?.cancel(); renderTask?.cancel() }
 }

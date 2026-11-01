@@ -15,10 +15,11 @@ enum ExportSize: String, CaseIterable, Sendable {
 enum ExportTarget: Hashable, Sendable {
     case photo(id: Int, size: ExportSize)
     case collection(id: Int, size: ExportSize)
+    case developed(id: Int)
 
     var id: Int {
         switch self {
-        case let .photo(id, _), let .collection(id, _): id
+        case let .photo(id, _), let .collection(id, _), let .developed(id): id
         }
     }
 
@@ -26,9 +27,15 @@ enum ExportTarget: Hashable, Sendable {
     /// binary routes outside `/api/v1`; `size` is always sent explicitly because the two routes
     /// default differently.
     func url(baseURL: URL) -> URL {
+        if case .developed = self {
+            var url = baseURL.appendingPathComponent("api/photos/\(id)/developed")
+            url.append(queryItems: [URLQueryItem(name: "download", value: "1")])
+            return url
+        }
         let (resource, size): (String, ExportSize) = switch self {
         case let .photo(_, size): ("photos", size)
         case let .collection(_, size): ("collections", size)
+        case .developed: ("photos", .original)
         }
         var url = baseURL
             .appendingPathComponent("api")
@@ -43,6 +50,7 @@ enum ExportTarget: Hashable, Sendable {
     /// server's naming (`{stem}_{size}.jpg`, `{name}.zip`) with the id standing in for the name.
     func fallbackFilename(mimeType: String?) -> String {
         switch self {
+        case let .developed(id): return "photo-\(id)_developed.jpg"
         case let .photo(id, .original):
             let fileExtension = mimeType.flatMap { UTType(mimeType: $0)?.preferredFilenameExtension }
             return fileExtension.map { "photo-\(id).\($0)" } ?? "photo-\(id)"

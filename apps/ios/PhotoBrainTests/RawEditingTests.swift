@@ -1,4 +1,5 @@
 import CoreGraphics
+import UIKit
 import XCTest
 @testable import PhotoBrain
 
@@ -71,97 +72,135 @@ final class RawEditingTests: XCTestCase {
         }
     }
 
-    func testSliderCoalescesPendingValuesAndRefinesFinalValue() async throws {
+    private func editingAPI(delay: Duration = .zero, recipe: RawEditRecipe? = nil) async -> TestAPI {
         let api = TestAPI()
-        let renderer = ControlledRawRenderer()
-        let store = LoupeRawEditStore(api: api, renderer: renderer)
+        let data = UIGraphicsImageRenderer(size: CGSize(width: 3, height: 2)).jpegData(withCompressionQuality: 0.9) { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+        }
+        await api.configureRawEditing(data: data, recipe: recipe, delay: delay)
+        return api
+    }
+
+    func testSliderCoalescesPendingValuesAndRefinesFinalValue() async {
+        let api = await editingAPI(delay: .milliseconds(60))
+        let store = LoupeRawEditStore(api: api)
         store.start(raw)
-        await waitUntil { await renderer.requests.count == 1 }
+        await waitUntil { store.isReady }
         store.setDragging(true)
-        for i in 0..<50 { store.setExposure(Double(i) / 25 - 1) }
-        store.setExposure(2)
+        await waitUntil { await api.rawPreviewRequests.count == 2 }
+        for i in 0..<50 { store.set(.exposure, value: Double(i) / 25 - 1) }
+        store.set(.exposure, value: 2)
+        store.set(.shadows, value: 40)
         store.setDragging(false)
-        await renderer.resume()
-        await waitUntil { store.appliedExposure == 2 && store.images[2] != nil }
-        let requests = await renderer.requests
-        XCTAssertEqual(requests.count, 2)
-        XCTAssertEqual(requests.last?.exposure, 2)
+        await waitUntil { store.appliedSettings.exposure == 2 && !store.isRendering }
+        let requests = await api.rawPreviewRequests
+        XCTAssertEqual(requests.count, 3) // baseline, first in-flight edit, final refined edit
+        XCTAssertEqual(requests.last?.settings.shadows, 40)
         XCTAssertEqual(requests.last?.refined, true)
-        let downloads = await api.exportRequests
-        let files = api.exportFilesOnDisk()
-        XCTAssertEqual(downloads, [.photo(id: 2, size: .original)])
-        XCTAssertTrue(files.isEmpty)
+        let saves = await api.rawSaveRequests
+        XCTAssertTrue(saves.isEmpty)
         store.end()
-        XCTAssertFalse(store.isActive)
-        XCTAssertTrue(store.images.isEmpty)
+    }
+
+    func testSaveReopensRecipeAndCancelLeavesSavedSettingsIntact() async {
+        let api = await editingAPI()
+        let store = LoupeRawEditStore(api: api)
+        store.start(raw)
+        await waitUntil { store.isReady }
+        store.set(.exposure, value: 0.7)
+        store.set(.highlights, value: -50)
+        let saved = await store.save()
+        XCTAssertTrue(saved)
+        XCTAssertFalse(store.hasChanges)
+        store.end()
+        store.start(raw)
+        await waitUntil { store.isReady && store.settings.exposure == 0.7 }
+        XCTAssertEqual(store.settings.highlights, -50)
+        store.reset()
+        XCTAssertTrue(store.hasChanges)
+        store.end()
+        let recipe = try? await api.rawEdit(photoId: 2)
+        XCTAssertEqual(recipe?.settings.exposure, 0.7)
+    }
+
+    func testConflictKeepsDraftAndShowsError() async {
+        let api = await editingAPI()
+        let store = LoupeRawEditStore(api: api)
+        store.start(raw)
+        await waitUntil { store.isReady }
+        store.set(.exposure, value: 1)
+        await api.setRawSaveFailure(.server(status: 409, code: "RAW_EDIT_CONFLICT", message: "Edited elsewhere"))
+        let saved = await store.save()
+        XCTAssertFalse(saved)
+        XCTAssertEqual(store.settings.exposure, 1)
+        XCTAssertTrue(store.hasChanges)
+        XCTAssertNotNil(store.errorMessage)
+        store.end()
+    }
+
+    func testBeforeAfterDoesNotChangeDraftAndAppleOffersOnlyExposure() async {
+        let recipe = RawEditRecipe(settings: RawEditSettings(), revision: 0, engine: "apple", supportsTone: false)
+        let api = await editingAPI(recipe: recipe)
+        let store = LoupeRawEditStore(api: api)
+        store.start(raw)
+        await waitUntil { store.isReady }
+        XCTAssertEqual(store.controls, [.exposure])
+        store.set(.contrast, value: 50)
+        XCTAssertEqual(store.settings.contrast, 0)
+        store.set(.exposure, value: 1)
+        store.toggleBefore()
+        XCTAssertTrue(store.showingBefore)
+        XCTAssertEqual(store.settings.exposure, 1)
+        store.toggleBefore()
+        XCTAssertFalse(store.showingBefore)
+        store.end()
     }
 
     func testEndDiscardsAnUncooperativeLateFrame() async {
-        let api = TestAPI()
-        let renderer = ControlledRawRenderer()
-        let store = LoupeRawEditStore(api: api, renderer: renderer)
+        let api = await editingAPI(delay: .milliseconds(100))
+        let store = LoupeRawEditStore(api: api)
         store.start(raw)
-        await waitUntil { await renderer.requests.count == 1 }
+        await waitUntil { await api.rawPreviewRequests.count == 1 }
         store.end()
-        await renderer.resume()
-        await waitUntil { await renderer.releaseCount > 0 }
+        try? await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(store.phase, .inactive)
         XCTAssertTrue(store.images.isEmpty)
-        XCTAssertEqual(store.exposure, 0)
+        XCTAssertEqual(store.settings.exposure, 0)
     }
 
-    func testFailedOpenDeletesDownloadedOriginalAndShowsReason() async {
+    func testClientSendsRecipeRevisionAndStructuredPreviewBody() async throws {
+        StubURLProtocol.reset()
+        defer { StubURLProtocol.reset() }
+        let client = StubURLProtocol.makeClient()
+        let recipe = RawEditRecipe(settings: RawEditSettings(exposure: 0.7, highlights: -50), revision: 2, engine: "adobe", supportsTone: true)
+        let body = String(data: try JSONEncoder().encode(recipe), encoding: .utf8)!
+        StubURLProtocol.respond(status: 200, body: body)
+        let loaded = try await client.rawEdit(photoId: 2)
+        XCTAssertEqual(loaded, recipe)
+        XCTAssertEqual(StubURLProtocol.requests.last?.url?.path, "/api/v1/photos/2/raw-edit")
+        _ = try await client.saveRawEdit(photoId: 2, settings: recipe.settings, revision: 2)
+        let saved = try XCTUnwrap(StubURLProtocol.requests.last)
+        XCTAssertEqual(saved.httpMethod, "PUT")
+        let requestBody = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(saved.httpBody)) as? [String: Any])
+        XCTAssertEqual(requestBody["revision"] as? Int, 2)
+        _ = try await client.rawEditPreview(photoId: 2, settings: recipe.settings, refined: false)
+        let preview = try XCTUnwrap(StubURLProtocol.requests.last)
+        XCTAssertEqual(preview.httpMethod, "POST")
+        XCTAssertEqual(preview.url?.path, "/api/photos/2/developed")
+        let previewBody = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(preview.httpBody)) as? [String: Any])
+        XCTAssertEqual(previewBody["refined"] as? Bool, false)
+        XCTAssertEqual((previewBody["settings"] as? [String: Any])?["highlights"] as? Int, -50)
+    }
+
+    func testFailedOpenShowsReasonWithoutDownloadingOriginal() async {
         let api = TestAPI()
-        let store = LoupeRawEditStore(api: api) // the fake download contains JPEG placeholder bytes
+        await api.setRawEditFailure(.server(status: 404, code: "PHOTO_NOT_FOUND", message: "Photo missing"))
+        let store = LoupeRawEditStore(api: api)
         store.start(raw)
         await waitUntil { if case .failed = store.phase { return true }; return false }
-        XCTAssertTrue(store.images.isEmpty)
-        let files = api.exportFilesOnDisk()
-        XCTAssertTrue(files.isEmpty)
+        let downloads = await api.exportRequests
+        XCTAssertTrue(downloads.isEmpty)
         store.end()
-    }
-
-    func testCancellingDownloadNeverOpensRenderer() async {
-        let api = TestAPI()
-        await api.setExport(.file(name: "synthetic.ARW", bytes: Data()), delay: .seconds(5))
-        let renderer = ControlledRawRenderer()
-        let store = LoupeRawEditStore(api: api, renderer: renderer)
-        store.start(raw)
-        await waitUntil { await api.exportRequests.count == 1 }
-        store.end()
-        await waitUntil { api.exportFilesOnDisk().isEmpty }
-        let opens = await renderer.openCount
-        XCTAssertEqual(opens, 0)
-        XCTAssertEqual(store.phase, .inactive)
-    }
-}
-
-private actor ControlledRawRenderer: RawEditRendering {
-    struct Request: Sendable {
-        let exposure: Double
-        let refined: Bool
-    }
-    var requests: [Request] = []
-    var releaseCount = 0
-    var openCount = 0
-    private var held = true
-    private var continuation: CheckedContinuation<Void, Never>?
-
-    func open(file: URL, id: UUID, cancellation: RawEditCancellation) { openCount += 1 }
-    func render(id: UUID, exposure: Double, refined: Bool, cancellation: RawEditCancellation) async throws -> RawEditFrame {
-        requests.append(Request(exposure: exposure, refined: refined))
-        if held { await withCheckedContinuation { continuation = $0 } }
-        let provider = CGDataProvider(data: Data([100, 100, 100, 255]) as CFData)!
-        let image = CGImage(width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 32,
-                            bytesPerRow: 4, space: CGColorSpace(name: CGColorSpace.displayP3)!,
-                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-                            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
-        return RawEditFrame(image: image, milliseconds: 1)
-    }
-    func release(id: UUID) { releaseCount += 1 }
-    func resume() {
-        held = false
-        continuation?.resume()
-        continuation = nil
     }
 }

@@ -1,5 +1,6 @@
 import type { DevelopedRawOptions } from "@photobrain/image-processing";
 import { Hono } from "hono";
+import { z } from "zod";
 import {
 	CollectionError,
 	type CollectionMembers,
@@ -17,6 +18,15 @@ import {
 import { NativeExecutorBusyError } from "../services/native-executor";
 import type { ApiDatabase } from "../services/photo-catalog";
 import { originalFilePath } from "../services/photo-files";
+import {
+	RawEditError,
+	type RawEditSettings,
+	rawDevelopSettingsJson,
+	rawEditSettingsSchema,
+	readRawEdit,
+	validateRawTone,
+} from "../services/raw-edits";
+import { rawEditBodyLimit, rawEditErrorResponse } from "./raw-edits";
 import { collectionIdSchema, photoIdSchema } from "./v1-schemas";
 
 export type ExportDependencies = {
@@ -156,7 +166,8 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 
 	// Full RAW development (raw-develop) for the loupe's "Developed" view: a
 	// full-resolution Display P3 JPEG, rendered on demand and not cached.
-	router.get("/photos/:id/developed", async (context) => {
+	router.use("/photos/:id/developed", rawEditBodyLimit);
+	router.on(["GET", "POST"], "/photos/:id/developed", async (context) => {
 		const id = photoIdSchema.safeParse(context.req.param("id"));
 		if (!id.success)
 			return errorResponse("INVALID_REQUEST", "Request validation failed", 400);
@@ -167,12 +178,53 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 				503,
 			);
 		const photo = await database.query.photos.findFirst({
-			columns: { path: true, sourceRoot: true, isRaw: true },
+			columns: { name: true, path: true, sourceRoot: true, isRaw: true },
 			where: (photos, { eq }) => eq(photos.id, id.data),
 		});
 		if (!photo) return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
 		if (!photo.isRaw)
 			return errorResponse("NOT_RAW", "Only RAW photos can be developed", 422);
+		let edit: ReturnType<typeof readRawEdit>;
+		let preview:
+			| {
+					settings: RawEditSettings;
+					refined: boolean;
+			  }
+			| undefined;
+		try {
+			edit = readRawEdit(database, id.data, rawDevelop.engine ?? "apple");
+			if (context.req.method === "POST") {
+				const input = z
+					.object({ settings: rawEditSettingsSchema, refined: z.boolean() })
+					.strict()
+					.safeParse(
+						await context.req.json().catch((error: unknown) => {
+							if (error instanceof SyntaxError) return null;
+							throw error;
+						}),
+					);
+				if (!input.success)
+					return errorResponse(
+						"INVALID_REQUEST",
+						"Invalid RAW adjustments",
+						400,
+					);
+				preview = input.data;
+				validateRawTone(preview.settings, edit.engine);
+			}
+		} catch (error) {
+			if (error instanceof RawEditError) return rawEditErrorResponse(error);
+			throw error;
+		}
+		const renderOptions: DevelopedRawOptions = {
+			...rawDevelop,
+			engine: edit.engine,
+			settingsJson: rawDevelopSettingsJson(
+				preview?.settings ?? edit.settings,
+				edit.engine,
+			),
+			...(preview ? { maxEdge: preview.refined ? 2048 : 1024 } : {}),
+		};
 		const path = originalFilePath(photo, photoDirectory);
 		if (!(await Bun.file(path).exists())) {
 			return errorResponse(
@@ -197,7 +249,7 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 				"renderDevelopedRaw",
 				path,
 				DEVELOPED_JPEG_QUALITY,
-				rawDevelop,
+				renderOptions,
 			);
 		} catch (error) {
 			if (signal.aborted) {
@@ -229,6 +281,14 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 				"X-Developed-Width": String(developed.width),
 				"X-Developed-Height": String(developed.height),
 				"X-Developed-Engine": developed.engine,
+				...(context.req.method === "GET" &&
+				context.req.query("download") === "1"
+					? {
+							"Content-Disposition": contentDisposition(
+								`${photo.name.replace(/\.[^.]+$/, "")}_developed.jpg`,
+							),
+						}
+					: {}),
 			},
 		});
 	});

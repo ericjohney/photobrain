@@ -2537,6 +2537,181 @@
 					}
 				}
 			}
+		},
+		"/api/v1/photos/{id}/raw-edit": {
+			"get": {
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Saved RAW recipe (defaults and revision 0 until first save)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RawEditRecipe"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Request error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Request error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Request error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Request error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"operationId": "getRawEdit"
+			},
+			"put": {
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Saved RAW recipe (defaults and revision 0 until first save)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RawEditRecipe"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Request error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Request error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Request error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Request error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Revision conflict; reopen the editor before saving again",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Recipe exceeds 4 KiB",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"operationId": "saveRawEdit",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["settings", "revision"],
+								"properties": {
+									"settings": {
+										"$ref": "#/components/schemas/RawEditSettings"
+									},
+									"revision": {
+										"type": "integer",
+										"minimum": 0
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -4723,6 +4898,77 @@
 								}
 							}
 						}
+					}
+				}
+			},
+			"RawEditSettings": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"version",
+					"exposure",
+					"contrast",
+					"highlights",
+					"shadows",
+					"whites",
+					"blacks"
+				],
+				"properties": {
+					"version": {
+						"type": "integer",
+						"const": 1
+					},
+					"exposure": {
+						"type": "number",
+						"minimum": -5,
+						"maximum": 5,
+						"multipleOf": 0.01
+					},
+					"contrast": {
+						"type": "integer",
+						"minimum": -100,
+						"maximum": 100
+					},
+					"highlights": {
+						"type": "integer",
+						"minimum": -100,
+						"maximum": 100
+					},
+					"shadows": {
+						"type": "integer",
+						"minimum": -100,
+						"maximum": 100
+					},
+					"whites": {
+						"type": "integer",
+						"minimum": -100,
+						"maximum": 100
+					},
+					"blacks": {
+						"type": "integer",
+						"minimum": -100,
+						"maximum": 100
+					}
+				}
+			},
+			"RawEditRecipe": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["settings", "revision", "engine", "supportsTone"],
+				"properties": {
+					"settings": {
+						"$ref": "#/components/schemas/RawEditSettings"
+					},
+					"revision": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"engine": {
+						"type": "string",
+						"enum": ["apple", "adobe"]
+					},
+					"supportsTone": {
+						"type": "boolean"
 					}
 				}
 			}

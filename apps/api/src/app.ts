@@ -9,6 +9,7 @@ import { compressJson } from "./middleware/compress-json";
 import { createExportsRouter } from "./routes/exports";
 import { createFacesRouter } from "./routes/faces";
 import photosRouter from "./routes/photos";
+import { createRawEditsRouter } from "./routes/raw-edits";
 import { createUploadsRouter } from "./routes/uploads";
 import { createV1Router } from "./routes/v1";
 import { nativeExecutor } from "./services/native-executor";
@@ -55,6 +56,7 @@ app.route(
 		notifyUploaded: () => inngest.send({ name: "photos/uploaded", data: {} }),
 	}),
 );
+app.route("/api/v1", createRawEditsRouter(db, config.RAW_DEVELOP_ENGINE));
 app.route(
 	"/api/v1",
 	createV1Router({

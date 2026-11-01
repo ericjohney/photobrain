@@ -148,6 +148,13 @@
       "when": 1791781831125,
       "tag": "0020_scan_job_force",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1793490493404,
+      "tag": "0021_photo_raw_edits",
+      "breakpoints": true
     }
   ]
 }

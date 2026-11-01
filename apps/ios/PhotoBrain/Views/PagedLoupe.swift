@@ -16,6 +16,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
     var faceBoxes: [Int: [FaceBoxDTO]] = [:]
     /// Developed RAW renders by photo id, shown in place of the embedded preview.
     var developedImages: [Int: UIImage] = [:]
+    var rawEditingActive = false
     /// A vertical drag-to-dismiss started (`true`) or sprang back (`false`).
     var onDismissDragActive: ((Bool) -> Void)?
     /// Drag released past the dismiss threshold: the image's on-screen frame (window
@@ -66,6 +67,7 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.onDismissRequest = onDismissRequest
         controller.onSwipeUp = onSwipeUp
         controller.placeholderProvider = placeholder
+        controller.rawEditingActive = rawEditingActive
         controller.infoVisible = infoVisible
         controller.onSwipeDownToCloseInfo = onSwipeDownToCloseInfo
         bridge?.controller = controller
@@ -112,6 +114,12 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
     var onZoomChanged: ((Bool) -> Void)?
     private(set) var isZoomed = false
     var placeholderProvider: ((LibraryEntryID) -> UIImage?)?
+    var rawEditingActive = false {
+        didSet {
+            guard isViewLoaded else { return }
+            collectionView.isScrollEnabled = !rawEditingActive && !isZoomed
+        }
+    }
     var infoVisible = false
     var onSwipeDownToCloseInfo: (() -> Void)?
     private lazy var verticalPan = UIPanGestureRecognizer(target: self, action: #selector(handleVerticalPan(_:)))
@@ -208,7 +216,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         layout.invalidateLayout()
         if changedOrientation {
             knownCells.allObjects.forEach { $0.zoomView.resetZoom() }
-            collectionView.isScrollEnabled = true
+            collectionView.isScrollEnabled = !rawEditingActive
         }
         scrollToActiveID(animated: false, force: true)
     }
@@ -357,7 +365,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
         let zoomed = collectionView.visibleCells
             .compactMap { $0 as? ZoomPageCell }
             .contains { $0.zoomView.zoomScale > 1.001 }
-        collectionView.isScrollEnabled = !zoomed
+        collectionView.isScrollEnabled = !zoomed && !rawEditingActive
         guard zoomed != isZoomed else { return }
         isZoomed = zoomed
         onZoomChanged?(zoomed)
@@ -374,6 +382,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer === verticalPan else { return true }
+        guard !rawEditingActive else { return false }
         let velocity = verticalPan.velocity(in: view)
         guard abs(velocity.y) > abs(velocity.x) * 1.2 else { return false }
         guard !collectionView.isDragging, !collectionView.isDecelerating else { return false }
@@ -419,7 +428,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
                         guard let self else { return }
                         collectionView.transform = .identity
                         view.backgroundColor = .clear
-                        collectionView.isScrollEnabled = true
+                        collectionView.isScrollEnabled = !rawEditingActive
                     }
                 } else {
                     UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0) {
@@ -428,7 +437,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
                     } completion: { _ in
                         self.updatePagingAvailability()
                     }
-                    collectionView.isScrollEnabled = true
+                    collectionView.isScrollEnabled = !rawEditingActive
                     onDismissDragActive?(false)
                 }
             } else if pan.state == .ended, infoVisible,

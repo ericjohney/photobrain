@@ -544,6 +544,24 @@ export const uploadAssets = sqliteTable(
 	],
 );
 
+// Nondestructive RAW recipe. Optimistic revisions prevent overwriting another editor.
+export const photoRawEdits = sqliteTable(
+	"photo_raw_edits",
+	{
+		photoId: integer("photo_id")
+			.primaryKey()
+			.references(() => photos.id, { onDelete: "cascade" }),
+		engine: text("engine", { enum: ["apple", "adobe"] }).notNull(),
+		settings: text("settings").notNull(),
+		revision: integer("revision").notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		check("photo_raw_edits_engine", sql`${table.engine} IN ('apple', 'adobe')`),
+		check("photo_raw_edits_revision", sql`${table.revision} > 0`),
+	],
+);
+
 // Relations for photo_embedding
 export const photoEmbeddingRelations = relations(photoEmbedding, ({ one }) => ({
 	photo: one(photos, {

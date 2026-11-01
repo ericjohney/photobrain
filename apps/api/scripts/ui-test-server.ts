@@ -199,6 +199,8 @@ Object.assign(process.env, {
 	RUN_DB_INIT: "false",
 	INNGEST_DEV: "1",
 	V1_NATIVE_SCAN_MUTATIONS_ENABLED: "false",
+	RAW_DEVELOP_ENGINE: "adobe",
+	ADOBE_PROFILE_DIR: "/fixture-profiles",
 	UPLOADS_ENABLED: "false",
 });
 
@@ -206,6 +208,7 @@ const { sql } = await import("drizzle-orm");
 const { migrate } = await import("drizzle-orm/bun-sqlite/migrator");
 const { db } = await import("../src/db");
 const { app } = await import("../src/app");
+const { nativeExecutor } = await import("../src/services/native-executor");
 const { inngest } = await import("../src/inngest/client");
 const { detectEvents } = await import("../src/services/events");
 const { placePhotoBatch } = await import("../src/services/photo-places");
@@ -234,6 +237,21 @@ const WEBP = Buffer.from(
 	"UklGRjgAAABXRUJQVlA4ICwAAACQAwCdASpAAEAAPm02mUkkIyKhIggAgA2JaQAAEDdTUAV4hbkAAP6igAAAAA==",
 	"base64",
 );
+
+// The real routes/settings store run against deterministic JPEGs; no native worker or
+// proprietary camera profiles are needed for XCUITest.
+const PREVIEW_JPEG = Buffer.from(
+	"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCABAAGADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDo6KKK908IKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD/2Q==",
+	"base64",
+);
+nativeExecutor.runCancellable = (async (
+	_signal: AbortSignal,
+	operation: string,
+) => {
+	if (operation !== "renderDevelopedRaw")
+		throw new Error("Unexpected fixture render");
+	return { jpeg: PREVIEW_JPEG, width: 3, height: 2, engine: "adobe" };
+}) as typeof nativeExecutor.runCancellable;
 
 function writeThumbnails(key: string) {
 	for (const size of Object.keys(THUMBNAIL_CONFIG.sizes)) {

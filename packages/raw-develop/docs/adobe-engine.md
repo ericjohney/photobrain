@@ -30,13 +30,9 @@ existing rendering even when the server selects Adobe. Other Adobe errors are
 reported rather than silently falling back. Direct Rust callers selecting Adobe
 for LinearRaw DNG still receive `Error::Unsupported`.
 
-Development remains on demand, cancellable, and unpersisted. The existing iOS app
-can use it without a new client build. This setting does not change scans,
-thumbnails, exports, or the local **Edit RAW** editor. The latter still uses Apple's
-binned preview path; switching it to Adobe Preview would skip the modern full
-pipeline validated here. Local Adobe editing needs separate profile delivery,
-full preparation, and physical-device memory/latency validation. User sharpening
-and external LCP correction remain unimplemented.
+Development remains on demand and cancellable. **Show Developed RAW** applies the saved recipe; `?download=1` exports that recipe as a full-resolution Display P3 JPEG. Existing clients can still view the endpoint, while the new iOS **Edit RAW** UI requires a client build. The editor uses the server engine, exposes all six Basic controls, Before/After, Reset, explicit Save/Cancel, and Share Developed Photo. Recipes are stored per RAW with optimistic revisions; originals, scans, thumbnails, and existing embedded-preview exports are unchanged.
+
+`POST /api/photos/:id/developed` renders a draft on full-quality prepared proxies (1024 during dragging, 2048 on release). One proxy pair is retained per worker and expires after 60 s idle; source/profile metadata changes invalidate it. Proxies are approximate screen previews. Full-resolution output retains the exact engine arithmetic and is rendered afresh. Local Adobe iOS editing, NR UI, sharpening and external LCP correction remain separate work. See [interactive editing](interactive-editing.md#saved-server-editor).
 
 Integration verification (2026-10-29): the release addon and real native worker
 rendered X-E5 RAF, A7R V ARW and iPhone 16 Pro Max ProRAW through the Hono Developed

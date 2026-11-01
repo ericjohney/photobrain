@@ -79,6 +79,8 @@ The compound `(job_id, ordinal)` key makes completion ACKs idempotent; a `(job_i
 
 Status strings (other than the face `assignment`/`status` CHECKs above), hash format, embedding dimensions, and RAW status values are conventions rather than database check constraints.
 
+`photo_raw_edits` stores one nondestructive RAW recipe per photo: `photo_id` (primary key, cascading foreign key), `engine` (`apple`/`adobe`, CHECK), validated versioned `settings` JSON, positive `revision` (CHECK), and `updated_at`. Only explicit user saves change it; rescan upserts preserve it. API saves compare the expected revision within the same transaction and return a conflict for stale clients. `deletePhotos` explicitly clears it even when foreign keys are disabled. Migration `0021_photo_raw_edits.sql` creates only this table; it does not rebuild existing tables.
+
 ## Migrations
 
 Current migrations:
@@ -104,6 +106,7 @@ Current migrations:
 19. `0018_faces.sql`: pure `CREATE TABLE people`, `CREATE TABLE photo_faces`, `CREATE TABLE photo_face_scan`, and the two `photo_faces` indexes; no table is rebuilt or altered, so existing rows are untouched and every stack-representative still with a completed thumbnail becomes eligible for `detect-faces-v1`. `bun run db:generate` reports no drift afterward.
 20. `0019_uploads.sql`: pure `CREATE TABLE upload_assets`, `CREATE TABLE uploads`, and the two `uploads` unique indexes; no existing table is touched. `bun run db:generate` reports no drift afterward.
 21. `0020_scan_job_force.sql`: `ALTER TABLE scan_jobs ADD force integer DEFAULT false NOT NULL`, recording each job's requested mode so maintenance can re-send stranded queued scans unchanged; existing rows read as incremental.
+22. `0021_photo_raw_edits.sql`: pure `CREATE TABLE photo_raw_edits` for versioned nondestructive RAW recipes; no existing table is altered or rebuilt. `bun run db:generate` reports no drift afterward.
 
 Before deploying `scan-photos-v5` and `generate-embeddings-v3`, drain old **scan and embedding** runs, rebuild the native addon, and apply `0006` after preceding migrations. New function IDs do not protect against old code still publishing unfenced writes.
 

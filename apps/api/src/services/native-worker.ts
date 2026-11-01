@@ -3,6 +3,7 @@ import type { PhotoProcessingStream } from "@photobrain/image-processing";
 import {
 	analyzeImageQuality,
 	batchGenerateClipEmbeddings,
+	clearDevelopedRawCache,
 	detectFaces,
 	discoverPhotos,
 	processPhotosBatch,
@@ -32,6 +33,12 @@ type Session = {
 let session: Session | undefined;
 let active: Promise<void> | undefined;
 let shuttingDown = false;
+let rawPreviewExpiry: ReturnType<typeof setTimeout> | undefined;
+function expireRawPreview() {
+	clearTimeout(rawPreviewExpiry);
+	rawPreviewExpiry = setTimeout(clearDevelopedRawCache, 60_000);
+	rawPreviewExpiry.unref();
+}
 let acknowledgement:
 	| { id: number; resolve: () => void; reject: (error: Error) => void }
 	| undefined;
@@ -120,6 +127,7 @@ async function execute(
 				id: request.id,
 				result: renderDevelopedRaw(...request.args),
 			};
+			expireRawPreview();
 		} else if (request.operation === "renderFaceCrop") {
 			// One small thumbnail decode on this thread, like export rendering.
 			response = { id: request.id, result: renderFaceCrop(...request.args) };
@@ -168,6 +176,9 @@ async function execute(
 			}
 		}
 	} catch (error) {
+		if (request.operation === "renderDevelopedRaw") {
+			expireRawPreview();
+		}
 		await closeSession();
 		response = {
 			id: request.id,

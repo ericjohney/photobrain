@@ -703,6 +703,41 @@ actor TestAPI: PhotoBrainAPI {
         return target
     }
 
+    var rawRecipe = RawEditRecipe(settings: RawEditSettings(), revision: 0, engine: "adobe", supportsTone: true)
+    struct RawPreviewRequest: Sendable { let photoId: Int; let settings: RawEditSettings; let refined: Bool }
+    var rawPreviewRequests: [RawPreviewRequest] = []
+    var rawSaveRequests: [RawEditSettings] = []
+    var rawPreviewData = Data()
+    var rawPreviewDelay: Duration = .zero
+    var rawEditFailure: PhotoBrainAPIError?
+    var rawSaveFailure: PhotoBrainAPIError?
+    func configureRawEditing(data: Data, recipe: RawEditRecipe? = nil, delay: Duration = .zero) {
+        rawPreviewData = data
+        if let recipe { rawRecipe = recipe }
+        rawPreviewDelay = delay
+    }
+    func setRawEditFailure(_ error: PhotoBrainAPIError?) { rawEditFailure = error }
+    func setRawSaveFailure(_ error: PhotoBrainAPIError?) { rawSaveFailure = error }
+    func rawEdit(photoId: Int) async throws -> RawEditRecipe {
+        if let rawEditFailure { throw rawEditFailure }
+        return rawRecipe
+    }
+    func saveRawEdit(photoId: Int, settings: RawEditSettings, revision: Int) async throws -> RawEditRecipe {
+        if let rawSaveFailure { throw rawSaveFailure }
+        guard revision == rawRecipe.revision else {
+            throw PhotoBrainAPIError.server(status: 409, code: "RAW_EDIT_CONFLICT", message: "Edited elsewhere")
+        }
+        rawSaveRequests.append(settings)
+        rawRecipe = RawEditRecipe(settings: settings, revision: revision + 1, engine: rawRecipe.engine, supportsTone: rawRecipe.supportsTone)
+        return rawRecipe
+    }
+    func rawEditPreview(photoId: Int, settings: RawEditSettings, refined: Bool) async throws -> DevelopedRawImage {
+        rawPreviewRequests.append(RawPreviewRequest(photoId: photoId, settings: settings, refined: refined))
+        let data = rawPreviewData
+        if rawPreviewDelay > .zero { try? await Task.sleep(for: rawPreviewDelay) } // Exercise late, uncooperative completions.
+        return DevelopedRawImage(data: data, width: 3, height: 2)
+    }
+
     /// Queued `developedRaw` results, consumed in order; empty fails with `DEVELOP_UNAVAILABLE`.
     var developedResults: [Result<DevelopedRawImage, PhotoBrainAPIError>] = []
     var developedRequests: [Int] = []

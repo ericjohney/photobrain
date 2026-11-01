@@ -4,28 +4,52 @@ import XCTest
 /// Library, loupe, review, and browse flows against the seeded fixture library.
 final class LibraryFlowTests: PhotoBrainUITestCase {
     @MainActor
-    func testLocalRawExposureEditorResetsAndCloses() {
+    func testRawEditorSavesReopensComparesAndDiscards() {
         openLibrary()
         gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
         tap("More")
         tap("Edit RAW")
         let slider = app.sliders["raw-edit-exposure"]
         waitFor(slider, timeout: 30)
-        waitFor(element("Preview only · Changes aren’t saved"))
-        slider.adjust(toNormalizedSliderPosition: 0.75)
+        slider.adjust(toNormalizedSliderPosition: 0.65)
         let value = app.staticTexts["raw-edit-value"]
         XCTAssertFalse(value.label.contains("+0.00"))
-        tap("Reset")
-        XCTAssertEqual(value.label, "+0.00 EV")
+        let savedValue = value.label
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "On-device RAW exposure editor"
+        screenshot.name = "Saved RAW adjustments editor"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        tap("Close editor")
+        tap("Before / After")
+        waitFor(element("Before"))
+        tap("Before")
+        tap("Save")
         waitForAbsence(slider)
+        tap("More")
+        tap("Edit RAW")
+        waitFor(slider, timeout: 30)
+        XCTAssertEqual(value.label, savedValue)
+        tap("Reset")
+        XCTAssertEqual(value.label, "+0.00 EV")
+        tap("Cancel")
+        tap("Discard Changes")
+        waitForAbsence(slider)
+        tap("More")
+        tap("Edit RAW")
+        waitFor(slider, timeout: 30)
+        XCTAssertEqual(value.label, savedValue)
+        tap("Cancel")
         waitFor(element("Share"))
         tap("Close photo")
         waitFor(gridCell("beach-sunset.jpg, ARW plus JPG pair"))
+    }
+
+    @MainActor
+    func testSharesFullResolutionDevelopedPhoto() {
+        openLibrary()
+        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        tap("Share")
+        tap("Share Developed Photo")
+        waitFor(app.otherElements["ActivityListView"], timeout: 30)
     }
 
     @MainActor

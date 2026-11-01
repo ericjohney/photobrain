@@ -39,6 +39,7 @@ private struct ExportProgressCard: View {
         case .photo(_, .original): "Downloading Original…"
         case .photo: "Preparing Photo…"
         case .collection: "Preparing ZIP…"
+        case .developed: "Developing Photo…"
         }
     }
 

@@ -28,6 +28,9 @@ struct LoupeScreen: View {
     /// Show Developed RAW: the open RAW fully developed instead of its embedded preview.
     @StateObject private var developed: LoupeDevelopedStore
     @StateObject private var rawEditor: LoupeRawEditStore
+    @State private var rawControl: RawEditControl = .exposure
+    @State private var confirmDiscardRawEdit = false
+    @State private var rawControlsHeight: CGFloat = 240
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.showInLibrary) private var showInLibrary
     @State private var bridge = LoupePagerBridge()
@@ -129,10 +132,11 @@ struct LoupeScreen: View {
                 activeID: $activeID,
                 playback: playback,
                 chromeVisible: chromeVisible,
-                onTap: toggleChrome,
+                onTap: { if !rawEditor.isActive { toggleChrome() } },
                 onEmpty: dismiss,
                 faceBoxes: faceBoxes.visibleBoxes,
                 developedImages: rawEditor.isActive ? rawEditor.images : developed.images,
+                rawEditingActive: rawEditor.isActive,
                 onDismissDragActive: { active in
                     withAnimation(.easeOut(duration: 0.15)) { dismissDragging = active }
                 },
@@ -156,6 +160,8 @@ struct LoupeScreen: View {
                     }
                 }
             )
+            .padding(.bottom, rawEditor.isActive ? rawControlsHeight + PBSpacing.m : 0)
+            .padding(.top, rawEditor.isActive ? PBSize.control + PBSpacing.m : 0)
             .ignoresSafeArea()
             .opacity(transitioning ? 0 : 1)
 
@@ -190,7 +196,7 @@ struct LoupeScreen: View {
                     } else if let message = curation.errorMessage {
                         PBBanner(message: "Couldn’t save rating. \(message)", dismiss: { curation.dismissError() })
                     }
-                    overlayControls
+                    if !rawEditor.isActive { overlayControls }
                     Spacer()
                     if rawEditor.isActive {
                         rawEditControls
@@ -233,15 +239,19 @@ struct LoupeScreen: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background {
-                rawEditor.end()
                 developed.release()
             } else if phase == .active, !rawEditor.isActive {
                 developed.show(activeRecord)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-            rawEditor.end()
             developed.release()
+        }
+        .confirmationDialog("Discard RAW adjustments?", isPresented: $confirmDiscardRawEdit, titleVisibility: .visible) {
+            Button("Discard Changes", role: .destructive, action: endRawEdit)
+            Button("Keep Editing", role: .cancel) { }
+        } message: {
+            Text("Your saved adjustments and original RAW will be kept.")
         }
         .statusBarHidden(!showsChrome)
         .exportPresentation(exports)
@@ -288,27 +298,55 @@ struct LoupeScreen: View {
     }
 
     /// Photos-style top bar: back, a centered place/date title, and More.
+    @ViewBuilder
     private var topChrome: some View {
-        HStack(spacing: PBSpacing.m) {
-            GlassIconButton(systemImage: "chevron.backward", accessibilityLabel: "Close photo", dark: true) {
-                close(from: nil, image: nil, backdrop: 1)
+        if rawEditor.isActive {
+            HStack {
+                Button("Cancel", action: requestEndRawEdit)
+                    .accessibilityIdentifier("raw-edit-close")
+                Spacer()
+                Text("Edit RAW").font(.headline).foregroundStyle(.white)
+                Spacer()
+                Button {
+                    Task {
+                        if await rawEditor.save() {
+                            rawEditor.end()
+                            developed.setOn(true, photo: activeRecord)
+                        }
+                    }
+                } label: {
+                    if rawEditor.isSaving { ProgressView().tint(.white) }
+                    else { Text("Save").fontWeight(.semibold) }
+                }
+                .disabled(!rawEditor.isReady || rawEditor.isSaving)
+                .accessibilityIdentifier("raw-edit-save")
             }
-            Spacer(minLength: 0)
-            if let activeRecord {
-                LoupeTitle(photo: activeRecord, api: api, position: position)
-                    .id(activeItem?.id)
-            } else if let activeItem {
-                DeviceLoupeTitle(item: activeItem, position: position)
+            .tint(.white)
+            .padding(.horizontal, PBSpacing.l)
+            .frame(minHeight: PBSize.control)
+            .disabled(rawEditor.isSaving)
+        } else {
+            HStack(spacing: PBSpacing.m) {
+                GlassIconButton(systemImage: "chevron.backward", accessibilityLabel: "Close photo", dark: true) {
+                    close(from: nil, image: nil, backdrop: 1)
+                }
+                Spacer(minLength: 0)
+                if let activeRecord {
+                    LoupeTitle(photo: activeRecord, api: api, position: position)
+                        .id(activeItem?.id)
+                } else if let activeItem {
+                    DeviceLoupeTitle(item: activeItem, position: position)
+                }
+                Spacer(minLength: 0)
+                if review == nil, activeRecord != nil {
+                    moreMenu
+                } else {
+                    infoButton
+                }
             }
-            Spacer(minLength: 0)
-            if review == nil, activeRecord != nil {
-                moreMenu
-            } else {
-                infoButton
-            }
+            .padding(.horizontal, PBSpacing.m)
+            .padding(.top, PBSpacing.xs)
         }
-        .padding(.horizontal, PBSpacing.m)
-        .padding(.top, PBSpacing.xs)
     }
 
     private var infoButton: some View {
@@ -346,6 +384,7 @@ struct LoupeScreen: View {
     /// Flies the open photo back into its grid cell (or off the bottom without a grid), then
     /// dismisses without the cover animation.
     private func close(from frame: CGRect?, image: UIImage?, backdrop: Double) {
+        if rawEditor.isActive { requestEndRawEdit(); return }
         deviceShare = nil
         let current = bridge.controller?.activeImageFrame()
         guard !reduceMotion,
@@ -421,6 +460,7 @@ struct LoupeScreen: View {
                                 endRawEdit()
                             } else {
                                 developed.release()
+                                rawControl = .exposure
                                 rawEditor.start(activeRecord)
                                 chromeVisible = true
                                 zoomControlsVisible = true
@@ -465,6 +505,13 @@ struct LoupeScreen: View {
     private var shareMenu: some View {
         Menu {
             if let activeRecord {
+                if let rawID = LoupeRendition.developableRawID(for: activeRecord) {
+                    Button {
+                        exports.start(.developed(id: rawID))
+                    } label: {
+                        Label("Share Developed Photo", systemImage: "camera.aperture")
+                    }
+                }
                 ForEach(PhotoShareOption.options(for: activeRecord)) { option in
                     Button {
                         exports.start(.photo(id: activeRecord.id, size: option.size))
@@ -656,58 +703,97 @@ struct LoupeScreen: View {
         developed.show(activeRecord)
     }
 
+    private func requestEndRawEdit() {
+        guard !rawEditor.isSaving else { return }
+        if rawEditor.hasChanges { confirmDiscardRawEdit = true }
+        else { endRawEdit() }
+    }
+
     private var rawEditControls: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("RAW exposure").font(.headline)
-                Spacer()
-                Button("Close editor", action: endRawEdit)
-                    .accessibilityIdentifier("raw-edit-close")
-            }
-            Text("Preview only · Changes aren’t saved")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.7))
             switch rawEditor.phase {
-            case .downloading, .preparing:
+            case .loading:
                 HStack {
                     ProgressView().tint(.white)
-                    Text(rawEditor.label).font(.subheadline).monospacedDigit()
+                    Text(rawEditor.label).font(.subheadline)
                 }
                 .accessibilityIdentifier("raw-edit-loading")
             case .ready:
                 HStack {
-                    Text("Exposure")
+                    Button {
+                        rawEditor.toggleBefore()
+                    } label: {
+                        Label(rawEditor.showingBefore ? "Before" : "Before / After", systemImage: "square.lefthalf.filled")
+                    }
+                    .accessibilityIdentifier("raw-edit-compare")
+                    .accessibilityValue(rawEditor.showingBefore ? "Before adjustments" : "After adjustments")
                     Spacer()
-                    Text(String(format: "%+.2f EV", rawEditor.exposure)).monospacedDigit()
+                    if rawEditor.isRendering { ProgressView().controlSize(.small).tint(.white) }
+                    Button("Reset") { rawEditor.reset() }
+                        .disabled(rawEditor.settings == RawEditSettings())
+                        .accessibilityIdentifier("raw-edit-reset")
+                }
+                .font(.subheadline.weight(.medium))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(rawEditor.controls) { control in
+                            Button {
+                                rawControl = control
+                            } label: {
+                                Label(control.title, systemImage: control.symbol)
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 12)
+                                    .frame(minHeight: PBSize.control)
+                                    .background(Capsule().fill(rawControl == control ? Color.white.opacity(0.22) : Color.clear))
+                            }
+                            .accessibilityAddTraits(rawControl == control ? .isSelected : [])
+                        }
+                    }
+                }
+                HStack {
+                    Text(rawControl.title).font(.subheadline)
+                    Spacer()
+                    Text(rawControl.label(in: rawEditor.settings)).monospacedDigit()
                         .accessibilityIdentifier("raw-edit-value")
-                    Button("Reset") { rawEditor.setExposure(0) }
-                        .disabled(rawEditor.exposure == 0)
                 }
                 Slider(
-                    value: Binding(get: { rawEditor.exposure }, set: { rawEditor.setExposure($0) }),
-                    in: -3...3, step: 0.05,
+                    value: Binding(get: { rawControl.value(in: rawEditor.settings) }, set: { rawEditor.set(rawControl, value: $0) }),
+                    in: rawControl.range, step: rawControl.step,
                     onEditingChanged: { rawEditor.setDragging($0) }
                 )
-                .tint(.white)
-                .accessibilityLabel("RAW exposure")
-                .accessibilityValue(String(format: "%+.2f EV", rawEditor.exposure))
-                .accessibilityIdentifier("raw-edit-exposure")
+                .accessibilityLabel("RAW \(rawControl.rawValue)")
+                .accessibilityValue(rawControl.label(in: rawEditor.settings))
+                .accessibilityIdentifier("raw-edit-\(rawControl.rawValue)")
+                Text(rawEditor.supportsTone ? "Save adjustments · Original RAW is preserved" : "Exposure adjustments · Original RAW is preserved")
+                    .font(.caption).foregroundStyle(.white.opacity(0.7))
+                if let error = rawEditor.errorMessage {
+                    Text(error).font(.caption).foregroundStyle(.yellow)
+                        .accessibilityIdentifier("raw-edit-error")
+                    Button("Retry Preview") { rawEditor.retryPreview() }
+                }
             case let .failed(message):
                 Text(message).font(.subheadline).foregroundStyle(.white.opacity(0.7))
                     .accessibilityIdentifier("raw-edit-error")
-                Button("Try again") {
+                Button("Try Again") {
                     if let activeRecord { rawEditor.start(activeRecord) }
                 }
-            case .inactive:
-                EmptyView()
+            case .inactive: EmptyView()
             }
         }
+        .background {
+            GeometryReader { geometry in
+                Color.clear.preference(key: RawEditControlsHeight.self, value: geometry.size.height)
+            }
+        }
+        .onPreferenceChange(RawEditControlsHeight.self) { rawControlsHeight = $0 }
+        .disabled(rawEditor.isSaving)
         .foregroundStyle(.white)
         .tint(.white)
         .padding(PBSpacing.m)
         .frame(maxWidth: 600)
         .pbGlass(in: RoundedRectangle(cornerRadius: 20), dark: true)
         .padding(.horizontal, PBSpacing.m)
+        .environment(\.colorScheme, .dark)
     }
 
     /// Outlines detected faces on the photo; they follow pinch-zoom and pan.
@@ -1313,4 +1399,9 @@ private struct ActivityView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+private struct RawEditControlsHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 240
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

@@ -20,7 +20,7 @@ Read the guide for the area being changed:
 - [Web application](apps/web/AGENTS.md)
 - [Native iOS application source and XCTest](apps/ios); [TestFlight distribution, signing, and secrets](docs/ios-distribution.md)
 - [Rust image processing](packages/image-processing/AGENTS.md)
-- [Rust RAW development: Fujifilm RAF, Sony ARW, Apple ProRAW DNG (loupe Developed view and local iOS exposure editing)](packages/raw-develop/AGENTS.md)
+- [Rust RAW development: Fujifilm RAF, Sony ARW, Apple ProRAW DNG (loupe Developed view and saved iOS RAW adjustments)](packages/raw-develop/AGENTS.md)
 - [Database and migrations](packages/db/AGENTS.md)
 - [Shared utilities](packages/utils/AGENTS.md)
 - [Shared TypeScript configuration](packages/config/AGENTS.md)
@@ -39,7 +39,7 @@ packages/
   config/                 Shared TypeScript configuration package
   db/                     Drizzle schema and migration files
   image-processing/       Rust N-API addon and browser stub
-  raw-develop/            Rust RAW (X-Trans RAF, Sony ARW, ProRAW DNG) -> Display P3 pipeline (loupe Developed view and local iOS exposure editing)
+  raw-develop/            Rust RAW (X-Trans RAF, Sony ARW, ProRAW DNG) -> Display P3 pipeline (loupe Developed view and saved iOS RAW adjustments)
   utils/                  Shared TypeScript helpers and thumbnail configuration
 docs/
   superpowers/            Historical design specifications and implementation plans
@@ -104,7 +104,7 @@ The 7,961-file corpus needs at most 399 media completion windows and 498 embeddi
 8. Generate a double-gradient perceptual hash from the oriented source, then resize once to a `large` preview bounded at 1,600 pixels and derive smaller thumbnails from that preview using original-derived target dimensions. Bundled libwebp now applies lossy color quality 80/85/85/90 for tiny/small/medium/large, with lossless alpha encoding. Derived pixels are not lossless; originals, orientation handling, pHash input, and EXIF extraction are unchanged. Thumbnail errors fail the photo result rather than marking it ready.
 9. Defer CLIP image embeddings to the Inngest embedding function.
 
-Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a RAW developer, used by the on-demand loupe **Developed** view (`GET /api/photos/:id/developed`) and the iOS loupe’s local **Edit RAW** exposure preview, not by scans, thumbnails, or export, for Fujifilm X-Trans RAF, Sony ARW (uncompressed, lossless and lossy cRAW) and Apple ProRAW DNG (bit-exact decoders, rendering that follows and is validated against Apple's RawCamera). There is no current histogram-matching implementation.
+Scans do not demosaic RAW files; they use the embedded preview. `packages/raw-develop` is a RAW developer, used by the on-demand loupe **Developed** view (`GET /api/photos/:id/developed`) and the iOS loupe’s server-rendered **Edit RAW** adjustments and **Share Developed Photo** export, not by scans or thumbnails, for Fujifilm X-Trans RAF, Sony ARW (uncompressed, lossless and lossy cRAW) and Apple ProRAW DNG (bit-exact decoders, rendering that follows and is validated against Apple's RawCamera). There is no current histogram-matching implementation.
 
 ### Database and vectors
 
@@ -113,6 +113,7 @@ SQLite is opened with Bun and `sqlite-vec` in `apps/api/src/db/setup.ts`. Drizzl
 The tables are:
 
 - `photos`: file identity, dimensions, timestamps, RAW metadata, processing statuses, user curation (`rating` 0-5, `flag` `pick`/`reject`/null, `junk_dismissed`; scans never write these), and private committed source/artifact roots, fingerprints, version, and thumbnail key.
+- `photo_raw_edits`: one versioned, revision-checked user recipe per RAW (engine, settings JSON, revision, timestamp), preserved by scans and explicitly cleared by photo deletion.
 - `photo_exif`: one-to-one camera, lens, exposure, date, and GPS metadata.
 - `photo_embedding`: one CLIP embedding blob per photo, with model version, thumbnail generation, and `tags_version` (vocabulary version used to tag that vector; null = untagged).
 - `photo_phash`: one perceptual hash per photo.
@@ -277,6 +278,7 @@ The native compatibility surface under `/api/v1` uses the same catalog, search, 
 - `GET /api/v1/filter-options`
 - `GET /api/v1/photos`
 - `GET /api/v1/photos/:id`
+- `GET|PUT /api/v1/photos/:id/raw-edit` (versioned Basic settings and optimistic revision; 409 on a stale save)
 - `GET /api/v1/locations` (same filters as `/photos`; `{ points: [{ id, latitude, longitude }], total }` for photos with a valid location)
 - `PATCH /api/v1/photos/:id` (`{ rating?, flag? }`; returns the Photo DTO; not gated by the scan flag)
 - `GET /api/v1/photos/:id/similar`
@@ -310,7 +312,8 @@ Export routes (`apps/api/src/routes/exports.ts`, mounted at `/api`; binary, not 
 - `GET /api/photos/:id/export?size=original|2048|1024` (default `2048`): `original` streams the source bytes unchanged; `2048`/`1024` render a metadata-free (no EXIF/GPS) sRGB JPEG at quality 90 through native `renderExportJpeg` (shared HEIF/RAW-preview decode, orientation applied, long edge fit, never upscaled) on the native executor. Filename `{stem}_{size}.jpg`; RFC 6266 `Content-Disposition` with an ASCII fallback; `Cache-Control: private, no-store`. Errors: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `EXPORT_FAILED`, 503 `EXPORT_BUSY` with `Retry-After` when executor admission is full.
 - `GET /api/collections/:id/export?size=original|2048|1024` (default `original`): streaming STORE ZIP (UTF-8 names, CRC-32, ZIP64 when needed) of every member, unstacked, in captured order (`listCollectionMembers`); duplicate names become `stem (2).ext` case-insensitively; missing/failed members are skipped and listed in a final `export-errors.txt`. Pull-based with at most two renders in flight; ZIP renders wait for executor capacity, and client abort stops further reads/renders. 404 `COLLECTION_NOT_FOUND` before any bytes.
 - Videos export as their unchanged original file for every `size`, including inside collection ZIPs.
-- `GET /api/photos/:id/developed`: the loupe's **Developed** rendition. Develops the RAW with `packages/raw-develop` (native `renderDevelopedRaw`, default settings, full resolution) and returns a Display P3 JPEG (quality 95, embedded ICC) with `X-Developed-Width`/`X-Developed-Height` (CORS-exposed) and `Cache-Control: private, no-store`; rendered on demand on the native executor, never cached or persisted. Supports Fujifilm X-E5/X100VI RAF, Sony A1 II/A7C R/A7R V ARW and Apple ProRAW DNG. Codes: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `NOT_RAW`, 422 `DEVELOP_UNSUPPORTED` (other cameras; message from raw-develop), 503 `DEVELOP_BUSY` with `Retry-After: 1`, 503 `DEVELOP_UNAVAILABLE` when no developer is configured. A client that disconnects cancels its render: a queued render is withdrawn, and a running one stops at raw-develop's next cancellation check (`Options::cancel`, a shared `Int32Array` flag passed to `renderDevelopedRaw`), so the worker moves straight on to the photo the user is now viewing.
+- `POST /api/photos/:id/developed`: draft `{ settings, refined }` to a 1024/2048-edge full-quality prepared proxy, without saving; one source cached per worker, 60 s idle expiry.
+- `GET /api/photos/:id/developed`: the loupe's **Developed** rendition. Develops the RAW with `packages/raw-develop` (native `renderDevelopedRaw`, saved recipe or default settings, full resolution) and returns a Display P3 JPEG (quality 95, embedded ICC) with `X-Developed-Width`/`X-Developed-Height` (CORS-exposed) and `Cache-Control: private, no-store`; rendered on demand on the native executor; full renders are not cached or persisted. `?download=1` shares the saved recipe as a full-resolution P3 JPEG. Supports Fujifilm X-E5/X100VI RAF, Sony A1 II/A7C R/A7R V ARW and Apple ProRAW DNG. Codes: 400 `INVALID_REQUEST`, 404 `PHOTO_NOT_FOUND`/`SOURCE_MISSING`, 422 `NOT_RAW`, 422 `DEVELOP_UNSUPPORTED` (other cameras; message from raw-develop), 503 `DEVELOP_BUSY` with `Retry-After: 1`, 503 `DEVELOP_UNAVAILABLE` when no developer is configured. A client that disconnects cancels its render: a queued render is withdrawn, and a running one stops at raw-develop's next cancellation check (`Options::cancel`, a shared `Int32Array` flag passed to `renderDevelopedRaw`), so the worker moves straight on to the photo the user is now viewing.
 
 Videos and Live Photos: photos carry `mediaType` (`photo`|`video`), `durationMs`, `videoCodec`, and `motionVideoId`. `filterRaw` accepts `all|raw|standard|video` (`standard` = non-RAW stills; `video` excludes motion clips). A video ≤4,000 ms that is the only video on a pair stem holding one still or a RAW pair is a motion clip (`livePhotoSql`): it is hidden from listings, counts, search, similar, map, events, gear stats, on-this-day, and smart albums, and exposed as the still's `motionVideoId`, but remains fetchable by ID. Videos are excluded from junk, quality backfill, and duplicate/burst candidates.
 
@@ -370,7 +373,7 @@ Modifier-click range selection and `Ctrl/Cmd+A` are not implemented. Panel width
 
 ### Native iOS
 
-Local RAW editing: the loupe ⋯ **Edit RAW** action downloads the untouched RAW through the original export route, then uses `packages/raw-develop/ffi` through `Library/RawEditing.swift`. `NativeRawEditRenderer` serialises the owned C session on a Swift actor; `LoupeRawEditStore` coalesces exposure changes, uses 1024-edge previews while dragging and 2048 on release, and displays RGBA8 in Display P3 without JPEG encoding. Edits are preview-only and discarded on close, paging, backgrounding or memory warnings. Downloaded originals and render/session handles are released on success, error and cancellation. Xcode builds a destination-specific Rust static library before Swift compilation; the same script can package a device + universal simulator XCFramework. CI and releases pin Rust 1.98.0. See [interactive editing](packages/raw-develop/docs/interactive-editing.md).
+RAW editing: the loupe ⋯ **Edit RAW** action uses server-rendered Basic adjustments through `Library/RawEditing.swift`. `LoupeRawEditStore` loads a versioned recipe (`GET /api/v1/photos/:id/raw-edit`), coalesces `POST /api/photos/:id/developed` previews (1024 edge while dragging, 2048 on release), offers Before/After and Reset, and saves explicitly through revision-checked `PUT /api/v1/photos/:id/raw-edit`. Adobe supports Exposure/Contrast/Highlights/Shadows/Whites/Blacks; ProRAW remains Apple with exposure only. Cancel confirms discarding dirty drafts; paging/dismiss gestures are disabled while editing, and backgrounding preserves the draft. Saved settings live in `photo_raw_edits`, survive scans, and are applied by Show Developed RAW and Share Developed Photo (full-resolution P3 JPEG). Originals and other export modes remain untouched. The server retains one prepared proxy pair with a 60 s idle expiry and source/profile metadata invalidation. The independent `NativeRawEditRenderer`/Rust FFI remains linked and tested as an Apple Preview developer harness; it is not the shipping editor path. Xcode builds the static library with Rust 1.98.0. See [interactive editing](packages/raw-develop/docs/interactive-editing.md).
 
 `apps/ios/PhotoBrain/App/PhotoBrainApp.swift` is the current iOS entrypoint. The iOS 17+ SwiftUI/UIKit application has Library and Collections tabs plus a separate search tab (`Tab(role: .search)` on iOS 18+), like Photos; People lives in Collections; a grid and loupe; a simple Library Filter menu plus full filtering in Search (media type, EXIF, tags, places, minimum rating, flag; with or without a query), loupe **Find Similar** results, loupe star/Pick/Reject curation (`PhotoCurationCenter` coalesces in-flight PATCHes per photo and rolls back on failure across Library, Search, and Similar), collections (cover-card grid with create/rename/delete, collection-scoped grid/loupe detail, loupe **Add to Collection** sheet), theme state, and durable scan recovery through `/api/v1`. Debug, Preview, and Production have separate schemes/configurations and API-origin validation. `PreferencesStore` (`apps/ios/PhotoBrain/App/AppEnvironment.swift`) persists theme and the active scan ID in `UserDefaults.standard` under `com.photobrain.theme` and `com.photobrain.activeScanId`.
 

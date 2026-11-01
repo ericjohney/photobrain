@@ -114,6 +114,9 @@ protocol PhotoBrainAPI: Sendable {
     /// `GET /api/photos/{id}/developed`: the RAW fully developed (raw-develop) as a
     /// full-resolution Display P3 JPEG, rendered on demand. A busy renderer throws
     /// `PhotoBrainAPIError.server(status: 503, code: "DEVELOP_BUSY", ...)`.
+    func rawEdit(photoId: Int) async throws -> RawEditRecipe
+    func saveRawEdit(photoId: Int, settings: RawEditSettings, revision: Int) async throws -> RawEditRecipe
+    func rawEditPreview(photoId: Int, settings: RawEditSettings, refined: Bool) async throws -> DevelopedRawImage
     func developedRaw(photoId: Int) async throws -> DevelopedRawImage
     /// `PUT /faces/{id}/person`; returns the updated face.
     func assignFace(faceId: Int, to target: FaceAssignmentTarget) async throws -> PhotoFaceDTO
@@ -468,6 +471,7 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         }
         var request = URLRequest(url: url)
         request.setValue("*/*", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 120
 
         let directory = exportsDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         do {
@@ -556,7 +560,27 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         return data.count > maximumErrorBytes ? Data() : data
     }
 
+    func rawEdit(photoId: Int) async throws -> RawEditRecipe {
+        guard photoId > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await get(path: ["photos", String(photoId), "raw-edit"])
+    }
+
+    func saveRawEdit(photoId: Int, settings: RawEditSettings, revision: Int) async throws -> RawEditRecipe {
+        struct Save: Encodable { let settings: RawEditSettings; let revision: Int }
+        guard photoId > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        return try await send(method: "PUT", path: ["photos", String(photoId), "raw-edit"], body: Save(settings: settings, revision: revision))
+    }
+
+    func rawEditPreview(photoId: Int, settings: RawEditSettings, refined: Bool) async throws -> DevelopedRawImage {
+        struct Preview: Encodable { let settings: RawEditSettings; let refined: Bool }
+        return try await developedRequest(photoId: photoId, body: encoder.encode(Preview(settings: settings, refined: refined)))
+    }
+
     func developedRaw(photoId: Int) async throws -> DevelopedRawImage {
+        try await developedRequest(photoId: photoId)
+    }
+
+    private func developedRequest(photoId: Int, body: Data? = nil) async throws -> DevelopedRawImage {
         guard photoId > 0 else { throw PhotoBrainAPIError.invalidRequest }
         let url = baseURL
             .appendingPathComponent("api")
@@ -568,6 +592,11 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         }
         var request = URLRequest(url: url)
         request.setValue("image/jpeg", forHTTPHeaderField: "Accept")
+        if let body {
+            request.httpMethod = "POST"
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         // A large RAW takes seconds to develop and arrives as tens of MB.
         request.timeoutInterval = 120
         request.cachePolicy = .reloadIgnoringLocalCacheData

@@ -190,7 +190,7 @@ bun run dev:api
 
 This selects full Adobe development for supported Fujifilm/Sony RAWs. ProRAW continues
 through Apple, and the response's `X-Developed-Engine` header reports the actual engine.
-The local **Edit RAW** exposure editor still uses Apple. Scans, thumbnails and exports
+The **Edit RAW** editor uses the server engine with saved Basic adjustments; ProRAW offers exposure only. Scans, thumbnails and existing preview exports
 keep their existing behavior. On another host, configure a directory containing the
 required DCPs (mount it at runtime for Docker); the application never downloads or
 bundles them. Missing camera profiles return a development error. See
@@ -222,7 +222,7 @@ The production Bun server reads `API_URL`, `HOST`, and `PORT`. It injects the AP
 
 ### Native iOS
 
-Building the app requires Xcode 26.6 and rustup Rust 1.98.0 with iOS device and simulator targets. The Xcode build phase compiles the local RAW engine automatically. See [RAW editing setup](packages/raw-develop/docs/interactive-editing.md#build-and-package). In the loupe, **Edit RAW** provides an on-device exposure preview; adjustments are temporary and are not saved or exported.
+Building the app requires Xcode 26.6 and rustup Rust 1.98.0 with iOS device and simulator targets. The Xcode build phase compiles the local RAW engine automatically. See [RAW editing setup](packages/raw-develop/docs/interactive-editing.md#build-and-package). In the loupe, **Edit RAW** offers server-rendered Exposure, Contrast, Highlights, Shadows, Whites and Blacks for Adobe RAWs (exposure only for ProRAW), Before/After, Reset and explicit Save/Cancel. Saved adjustments reopen with the photo and apply to **Show Developed RAW** and **Share Developed Photo**, which exports a full-resolution Display P3 JPEG. Original RAWs remain intact. Apply migration `0021_photo_raw_edits.sql` and rebuild the native addon before using the new editor.
 
 The native app's `PhotoBrainAPIURL` comes from the selected file under `apps/ios/Config`. Debug uses `http://localhost:3000`; Preview and Production use the configured non-local HTTPS origin and reject local/insecure origins.
 

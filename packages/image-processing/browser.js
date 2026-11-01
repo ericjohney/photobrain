@@ -30,3 +30,7 @@ module.exports.renderDevelopedRaw = notAvailable("renderDevelopedRaw");
 module.exports.renderExportJpeg = notAvailable("renderExportJpeg");
 module.exports.startPhotoProcessing = notAvailable("startPhotoProcessing");
 module.exports.validateThumbnails = notAvailable("validateThumbnails");
+
+export function clearDevelopedRawCache() {
+	throw new Error("Native RAW editing is unavailable in the browser");
+}

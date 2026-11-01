@@ -139,7 +139,13 @@ export interface DevelopedRaw {
 	/** Actual renderer; LinearRaw ProRAW DNG always uses Apple. */
 	engine: "apple" | "adobe";
 }
+export function clearDevelopedRawCache(): void;
+
 export interface DevelopedRawOptions {
+	/** Core settings; the app exposes only its validated Basic recipe. */
+	settingsJson?: string;
+	/** 1024/2048 for a cached interactive proxy; omit for full-resolution output. */
+	maxEdge?: number;
 	engine?: "apple" | "adobe";
 	/** Runtime Adobe Standard DCP directory (or ADOBE_PROFILE_DIR). */
 	adobeProfileDir?: string;

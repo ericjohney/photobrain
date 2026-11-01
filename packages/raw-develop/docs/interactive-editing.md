@@ -5,10 +5,17 @@ immutable `Prepared` image; exposure, tone amount, crop and rotation can change 
 decoding or preparing again. The existing one-shot `develop` uses the same implementation.
 See [usage](usage.md#repeated-editing) for the API and cache invalidation rules.
 
-The iOS loupe now offers **Edit RAW** for converted RAWs and RAW+JPEG pairs. It downloads
-the untouched source once, prepares it locally and renders an exposure slider entirely on
-the device. The existing server-rendered Developed view remains available separately.
-The editor is a transient preview: closing it or leaving the photo discards the adjustment.
+## Saved server editor
+
+The iOS loupe offers **Edit RAW** for converted RAWs and RAW+JPEG pairs. It uses the server's configured engine and runtime profiles. Adobe exposes Exposure, Contrast, Highlights, Shadows, Whites and Blacks; ProRAW uses Apple and exposes Exposure only. Select a control, adjust its slider, toggle **Before / After**, or **Reset** all controls. **Save** stores the recipe; **Cancel** confirms discarding a changed draft. Backgrounding preserves the draft. Paging and swipe-to-dismiss are disabled until the editor closes.
+
+The server prepares the full-quality pipeline once and retains one source's 1024/2048-edge proxy pair, keyed by source/profile metadata, with a 60 s idle expiry. Requests are coalesced on iOS; dragging uses 1024, release 2048. These are approximate screen previews, not bit-exact downsampled full renders. Decode, full preparation and encoding stay on the native worker. Cancellation stops queued/running work, and closed-session frames cannot replace the current photo.
+
+`GET /api/v1/photos/:id/raw-edit` returns `{ settings, revision, engine, supportsTone }`; `PUT` takes `{ settings, revision }`. Settings have `version: 1`, exposure -5..5 EV in hundredths, and integer tone controls -100..100. A stale revision returns 409 `RAW_EDIT_CONFLICT`; reopen the editor to load the latest saved recipe. Preview POSTs never save. Migration `0021_photo_raw_edits.sql` adds the independent user-recipe table, preserved by scans.
+
+**Show Developed RAW** replays saved settings. **Share Developed Photo** downloads `/api/photos/:id/developed?download=1`: full-resolution JPEG with embedded Display P3 ICC, rendered afresh with the saved recipe. **Share Photo** continues to share the existing preview/standard-image export, and **Share Original** preserves source bytes. The app does not overwrite RAWs or regenerate library thumbnails after a save.
+
+The older local Apple Preview FFI remains built and tested as a developer harness; the measurements and bridge details below describe that independent path. It is not used by the current saved editor. Local Adobe editing and physical-device memory/latency work remain future work.
 
 ## Repeat-render measurements
 
@@ -76,7 +83,7 @@ Unresized prepared output is bit-identical to one-shot output. The original Prep
 refactor preserved pipeline version 2. The current version is 5 following the secondary
 Adobe engine's modern tone/output integration; the Apple render contract is unchanged.
 
-## Native iOS implementation
+## Native iOS Apple Preview harness
 
 - `ffi/` packages the engine as a Rust static library with an opaque C session API. Its
   header specifies buffer ownership and concurrency. Errors own their message, Rust
@@ -86,10 +93,7 @@ Adobe engine's modern tone/output integration; the Apple render contract is unch
   preparation, rendering and destruction on a Swift actor. It copies the returned RGBA8
   buffer into an owned `CGImage` with an explicit Display P3 colour space, then frees the
   Rust output. The UIKit image is created on the main actor and preserves the loupe zoom.
-- `LoupeRawEditStore` downloads through the original export route, not `/file` (which may
-  serve an embedded RAW preview). Downloaded originals are removed after preparation,
-  including failure/cancellation. The session owns both a 1024-edge drag proxy and a
-  2048-edge release proxy; it does not retain the decoded negative.
+- The historical local editor downloaded originals through the export route. The retained native harness owns 1024/2048-edge prepared proxies and does not retain the decoded negative; the shipping `LoupeRawEditStore` now uses the server endpoints above.
 - There is at most one render in flight and one latest requested setting. During a drag,
   completed frames advance in order while intermediate settings are coalesced. Once the
   finger lifts, obsolete frames are suppressed and the final value is rendered at the
@@ -98,9 +102,7 @@ Adobe engine's modern tone/output integration; the Apple render contract is unch
   and release the session. Cancellation checks run between stages and RGBA output rows;
   decode and individual inner kernels cannot be interrupted mid-operation.
 
-The UI offers exposure ±3 EV, Reset, Close editor, download/preparation progress and a
-failure/retry state. It explicitly says changes are not saved. Share uses the existing
-unmodified server export, so sharing is hidden while the editor is open.
+The old preview-only UI exposed exposure ±3 EV. The current saved server editor exposes the controls described above.
 
 ### Build and package
 
@@ -180,6 +182,5 @@ larger memory peak, especially for 48 MP ProRAW; simulator success does not esta
 physical phone's memory or thermal limits. CPU optimisation, Metal late stages or a cheaper
 detail path during dragging can follow those measurements.
 
-Saving edits, syncing settings and full-resolution export are separate app integration
-work. White balance and other early-stage controls currently require a new preparation;
+Saving Basic edits and full-resolution developed export are integrated through the server. White balance and other early-stage controls still require a new preparation;
 custom white balance for ProRAW is still unsupported.

@@ -15,6 +15,15 @@ final class ExportURLTests: XCTestCase {
         }
     }
 
+    func testDevelopedExportUsesSavedFullResolutionRecipe() throws {
+        let target = ExportTarget.developed(id: 42)
+        let url = target.url(baseURL: base)
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(components.path, "/api/photos/42/developed")
+        XCTAssertEqual(components.queryItems, [URLQueryItem(name: "download", value: "1")])
+        XCTAssertEqual(target.fallbackFilename(mimeType: "image/jpeg"), "photo-42_developed.jpg")
+    }
+
     func testCollectionExportURLSendsEachSizeExplicitly() throws {
         // The collection route defaults to `original` and the photo route to `2048`, so the
         // client never relies on either default.
@@ -580,6 +589,9 @@ private final class SlowCompletingAPI: PhotoBrainAPI, @unchecked Sendable {
     func updatePerson(id: Int, name: String??, hidden: Bool?) async throws -> PersonDTO { throw PhotoBrainAPIError.invalidRequest }
     func mergePeople(targetId: Int, sourceIds: [Int]) async throws -> PersonDTO { throw PhotoBrainAPIError.invalidRequest }
     func photoFaces(photoId: Int) async throws -> PhotoFacesResponseDTO { throw PhotoBrainAPIError.invalidRequest }
+    func rawEdit(photoId: Int) async throws -> RawEditRecipe { throw PhotoBrainAPIError.invalidRequest }
+    func saveRawEdit(photoId: Int, settings: RawEditSettings, revision: Int) async throws -> RawEditRecipe { throw PhotoBrainAPIError.invalidRequest }
+    func rawEditPreview(photoId: Int, settings: RawEditSettings, refined: Bool) async throws -> DevelopedRawImage { throw PhotoBrainAPIError.invalidRequest }
     func developedRaw(photoId: Int) async throws -> DevelopedRawImage { throw PhotoBrainAPIError.invalidRequest }
     func assignFace(faceId: Int, to target: FaceAssignmentTarget) async throws -> PhotoFaceDTO { throw PhotoBrainAPIError.invalidRequest }
     func junkReview(reason: JunkReason?, limit: Int, cursor: Int?) async throws -> JunkReviewResponseDTO { throw PhotoBrainAPIError.invalidRequest }
