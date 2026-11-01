@@ -44,6 +44,58 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
     }
 
     @MainActor
+    func testSmartPreviewWorksOfflineAfterRestartAndSyncsOnReconnect() async throws {
+        guard ProcessInfo.processInfo.environment["PHOTOBRAIN_SMART_PREVIEW_UI_TEST"] == "1" else {
+            throw XCTSkip("Run with UI_TEST_SMART_PREVIEWS=1 TEST_RUNNER_PHOTOBRAIN_SMART_PREVIEW_UI_TEST=1")
+        }
+        func offline(_ enabled: Bool) async throws {
+            var request = URLRequest(url: URL(string: fixtureURL.absoluteString + "/__fixture/offline?enabled=\(enabled ? 1 : 0)")!)
+            request.httpMethod = "POST"
+            let (_, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        }
+        openLibrary()
+        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        tap("More"); tap("Edit RAW")
+        let slider = app.sliders["raw-edit-exposure"]
+        waitFor(slider, timeout: 30)
+        let status = app.staticTexts["raw-edit-storage-status"]
+        waitFor(status)
+        XCTAssertEqual(status.label, "Available offline")
+        try await offline(true)
+        slider.adjust(toNormalizedSliderPosition: 0.68)
+        let value = app.staticTexts["raw-edit-value"].label
+        XCTAssertFalse(value.contains("+0.00"))
+        // Wait for the real Rust render and atomic draft journal, then kill the app.
+        let updating = element("Updating preview…")
+        waitForAbsence(updating)
+        try await Task.sleep(for: .milliseconds(250))
+        app.terminate()
+        app.launchEnvironment.removeValue(forKey: "PHOTOBRAIN_CLEAR_SMART_PREVIEWS")
+        app.launch()
+        openLibrary()
+        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        tap("More"); tap("Edit RAW")
+        waitFor(slider, timeout: 30)
+        XCTAssertEqual(app.staticTexts["raw-edit-value"].label, value)
+        slider.adjust(toNormalizedSliderPosition: 0.72)
+        let savedValue = app.staticTexts["raw-edit-value"].label
+        tap("Save")
+        let queued = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Saved on device"), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [queued], timeout: 10), .completed)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Smart preview edited offline after restart"
+        attachment.lifetime = .keepAlways; add(attachment)
+        try await offline(false)
+        tap("Save")
+        waitForAbsence(slider, timeout: 30)
+        tap("More"); tap("Edit RAW")
+        waitFor(slider, timeout: 30)
+        XCTAssertEqual(app.staticTexts["raw-edit-value"].label, savedValue)
+        tap("Cancel")
+    }
+
+    @MainActor
     func testSharesFullResolutionDevelopedPhoto() {
         openLibrary()
         gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()

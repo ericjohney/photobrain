@@ -1,6 +1,6 @@
 import Foundation
 
-struct PhotoRecord: Identifiable, Hashable, Sendable {
+struct PhotoRecord: Identifiable, Hashable, Codable, Sendable {
     let id: Int
     let path: String?
     let filename: String

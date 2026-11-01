@@ -30,6 +30,7 @@ struct LoupeScreen: View {
     @StateObject private var rawEditor: LoupeRawEditStore
     @State private var rawControl: RawEditControl = .exposure
     @State private var confirmDiscardRawEdit = false
+    @State private var confirmReloadRawEdit = false
     @State private var rawControlsHeight: CGFloat = 240
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.showInLibrary) private var showInLibrary
@@ -252,6 +253,12 @@ struct LoupeScreen: View {
             Button("Keep Editing", role: .cancel) { }
         } message: {
             Text("Your saved adjustments and original RAW will be kept.")
+        }
+        .confirmationDialog("Replace local RAW adjustments?", isPresented: $confirmReloadRawEdit, titleVisibility: .visible) {
+            Button("Use Server Adjustments", role: .destructive) { Task { await rawEditor.reloadSavedAdjustments() } }
+            Button("Keep Local Adjustments", role: .cancel) { }
+        } message: {
+            Text("This discards this device’s draft and queued save, then loads the saved server version.")
         }
         .statusBarHidden(!showsChrome)
         .exportPresentation(exports)
@@ -699,7 +706,7 @@ struct LoupeScreen: View {
 
     private func endRawEdit() {
         guard rawEditor.isActive else { return }
-        rawEditor.end()
+        rawEditor.discard()
         developed.show(activeRecord)
     }
 
@@ -766,10 +773,17 @@ struct LoupeScreen: View {
                 .accessibilityIdentifier("raw-edit-\(rawControl.rawValue)")
                 Text(rawEditor.supportsTone ? "Save adjustments · Original RAW is preserved" : "Exposure adjustments · Original RAW is preserved")
                     .font(.caption).foregroundStyle(.white.opacity(0.7))
+                if let status = rawEditor.storageMessage {
+                    Text(status).font(.caption).foregroundStyle(.white.opacity(0.7))
+                        .accessibilityIdentifier("raw-edit-storage-status")
+                }
                 if let error = rawEditor.errorMessage {
                     Text(error).font(.caption).foregroundStyle(.yellow)
                         .accessibilityIdentifier("raw-edit-error")
                     Button("Retry Preview") { rawEditor.retryPreview() }
+                    if rawEditor.isLocal {
+                        Button("Reload Saved Adjustments") { confirmReloadRawEdit = true }
+                    }
                 }
             case let .failed(message):
                 Text(message).font(.subheadline).foregroundStyle(.white.opacity(0.7))
@@ -777,6 +791,7 @@ struct LoupeScreen: View {
                 Button("Try Again") {
                     if let activeRecord { rawEditor.start(activeRecord) }
                 }
+                Button("Reload Saved Adjustments") { confirmReloadRawEdit = true }
             case .inactive: EmptyView()
             }
         }

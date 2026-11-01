@@ -23,7 +23,7 @@ pub(crate) struct MaskSource {
   pub(crate) flare: f64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Mask {
   pub(crate) samples: Vec<f32>,
   pub(crate) width: usize,

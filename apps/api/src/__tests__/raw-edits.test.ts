@@ -49,6 +49,22 @@ function fixture() {
 			photoDirectory: dir,
 			rawDevelop: { engine: "adobe", adobeProfileDir: "/profiles" },
 			renderer: {} as ExportRenderer,
+			smartPreviews: {
+				runCancellable: async (
+					_signal,
+					_operation,
+					_path,
+					_quality,
+					options,
+				) => {
+					calls.push(options);
+					return {
+						data: new Uint8Array([80, 66, 83, 80]),
+						engine: options?.engine ?? "adobe",
+						token: "opaque-token",
+					};
+				},
+			},
 			developer: {
 				runCancellable: async (
 					_signal,
@@ -243,4 +259,52 @@ describe("nondestructive RAW edits", () => {
 		expect((await f.app.request(f.path)).status).toBe(422);
 		f.sqlite.close();
 	});
+});
+
+test("smart previews deliver opaque versioned bytes without paths or recipe mutation", async () => {
+	const f = fixture();
+	const path = `/api/photos/${f.photo.id}/smart-preview`;
+	const response = await f.app.request(path);
+	expect(response.status).toBe(200);
+	expect(response.headers.get("Content-Type")).toBe(
+		"application/vnd.photobrain.smart-preview",
+	);
+	expect(response.headers.get("X-Developed-Engine")).toBe("adobe");
+	expect(response.headers.get("ETag")).toBe('"opaque-token"');
+	expect(response.headers.get("Cache-Control")).toContain("no-store");
+	expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+		new Uint8Array([80, 66, 83, 80]),
+	);
+	expect(f.calls[0]).toEqual({ engine: "adobe", adobeProfileDir: "/profiles" });
+	expect(f.db.select().from(photoRawEdits).all()).toHaveLength(0);
+	const cached = await f.app.request(path, {
+		headers: { "If-None-Match": '"opaque-token"' },
+	});
+	expect(cached.status).toBe(304);
+	expect((await cached.arrayBuffer()).byteLength).toBe(0);
+	expect((await f.app.request("/api/photos/no/smart-preview")).status).toBe(
+		400,
+	);
+	expect((await f.app.request("/api/photos/99999/smart-preview")).status).toBe(
+		404,
+	);
+	f.db
+		.update(photos)
+		.set({ isRaw: false })
+		.where(eq(photos.id, f.photo.id))
+		.run();
+	expect((await f.app.request(path)).status).toBe(422);
+	f.sqlite.close();
+});
+
+test("smart previews honor a saved Apple recipe on an Adobe-default server", async () => {
+	const f = fixture();
+	saveRawEdit(f.db, f.photo.id, 0, defaultRawEditSettings, "apple");
+	const response = await f.app.request(
+		`/api/photos/${f.photo.id}/smart-preview`,
+	);
+	expect(response.status).toBe(200);
+	expect(f.calls[0]?.engine).toBe("apple");
+	expect(response.headers.get("X-Developed-Engine")).toBe("apple");
+	f.sqlite.close();
 });

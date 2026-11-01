@@ -10,7 +10,7 @@ use crate::{Cancel, image::RgbImage};
 use rayon::prelude::*;
 use std::sync::OnceLock;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct EmbeddedDistortion {
   center: [f32; 2],
   inverse_radius: f32,
@@ -20,6 +20,14 @@ pub(crate) struct EmbeddedDistortion {
 }
 
 impl EmbeddedDistortion {
+  pub(crate) fn valid_portable(&self) -> bool {
+    self.table.len() == 4098
+      && self.table.iter().chain(&self.center).all(|v| v.is_finite())
+      && self.inverse_radius.is_finite()
+      && self.pixel_radius.is_finite()
+      && self.active.iter().all(|&n| n > 0 && n <= 65536)
+  }
+
   pub(crate) fn from_metadata(meta: &RawMetadata, active: [usize; 2]) -> Result<Option<Self>> {
     let LensSource::Fuji(params) = &meta.lens else {
       // Normal Sony rendering selects an external LCP, not this embedded route.

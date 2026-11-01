@@ -1,4 +1,5 @@
 import CoreGraphics
+import CryptoKit
 import Foundation
 import RawDevelop
 import UIKit
@@ -153,7 +154,7 @@ enum RawEditControl: String, CaseIterable, Identifiable {
     }
 }
 
-/// A server-rendered edit session. Only Save writes the recipe. Intermediate slider positions
+/// A local smart-preview session with a server fallback. Only Save queues the recipe. Intermediate slider positions
 /// are coalesced; late frames from a closed/replaced session are always discarded.
 @MainActor
 final class LoupeRawEditStore: ObservableObject {
@@ -168,6 +169,9 @@ final class LoupeRawEditStore: ObservableObject {
     @Published private(set) var showingBefore = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var appliedSettings = RawEditSettings()
+    @Published private(set) var isLocal = false
+    @Published private(set) var storageMessage: String?
+
     var isActive: Bool { phase != .inactive }
     var isReady: Bool { phase == .ready }
     var hasChanges: Bool { settings != savedSettings }
@@ -176,7 +180,7 @@ final class LoupeRawEditStore: ObservableObject {
         switch phase {
         case .inactive: return "Embedded preview"
         case .loading: return "Preparing RAW…"
-        case .ready: return isRendering ? "Updating preview…" : "RAW adjustments"
+        case .ready: return isRendering ? "Updating preview…" : (isLocal ? "Smart preview · On device" : "RAW adjustments")
         case .failed: return "RAW edit unavailable"
         }
     }
@@ -194,8 +198,14 @@ final class LoupeRawEditStore: ObservableObject {
     private var renderTask: Task<Void, Never>?
     private var revision = 0
     private var dragging = false
+    private let cache: SmartPreviewCache
+    private var local: SmartRawEditRenderer?
+    private var localToken = RawEditCancellation()
+    private var journalTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Never>?
 
-    init(api: any PhotoBrainAPI) { self.api = api }
+
+    init(api: any PhotoBrainAPI, cache: SmartPreviewCache = .shared) { self.api = api; self.cache = cache }
 
     func start(_ photo: PhotoRecord) {
         end()
@@ -205,17 +215,45 @@ final class LoupeRawEditStore: ObservableObject {
         self.photoID = photo.id
         self.rawID = rawID
         phase = .loading
-        openTask = Task { [weak self, api] in
+        let previousJournal = journalTask
+        openTask = Task { [weak self, api, cache] in
+            await previousJournal?.value
             do {
+                if let cached = await cache.entry(api.baseURL, rawID), cached.generation == photo.thumbnailUpdatedAt {
+                    do {
+                        let file = await cache.file(api.baseURL, rawID)
+                        let data = try await Task.detached { try Data(contentsOf: file, options: .mappedIfSafe) }.value
+                        guard let self, self.id == id else { return }
+                        try await self.openLocal(data: data, entry: cached, id: id)
+                        self.refreshCached(photo: photo, entry: cached, id: id)
+                        return
+                    } catch is CancellationError { throw CancellationError() }
+                    catch { /* Re-download incompatible or evicted state online. Draft metadata remains. */ }
+                }
                 let recipe = try await api.rawEdit(photoId: rawID)
+                guard let self, self.id == id else { return }
+                let previous = await cache.entry(api.baseURL, rawID)
+                if let previous, (previous.pending != nil || previous.draft != nil), previous.generation != photo.thumbnailUpdatedAt {
+                    throw RawEditError(message: "The source photo changed. Your offline adjustments are kept for review.")
+                }
+                do {
+                    let download = try await api.smartPreview(photoId: rawID, token: nil)
+                    guard let data = download.data, download.engine == recipe.engine else { throw PhotoBrainAPIError.invalidResponse }
+                    let entry = SmartPreviewCache.Entry(photo: photo, rawID: rawID, recipe: previous?.pending != nil || previous?.draft != nil ? previous!.recipe : recipe,
+                                                        token: download.token, draft: previous?.draft, pending: previous?.pending, accessed: Date())
+                    try await self.openLocal(data: data, entry: entry, id: id)
+                    try await cache.store(data, entry: entry, origin: api.baseURL)
+                    return
+                } catch is CancellationError { throw CancellationError() }
+                catch {
+                    self.local = nil; self.isLocal = false
+                    self.storageMessage = nil
+                    // Older servers retain the existing server-preview editor.
+                }
                 let baseline = try await Self.preview(api: api, rawID: rawID, settings: RawEditSettings(), refined: true)
                 let image = try await Self.decode(baseline)
-                guard !Task.isCancelled, let self, self.id == id else { return }
-                self.savedSettings = recipe.settings
-                self.savedRevision = recipe.revision
-                self.settings = recipe.settings
-                self.supportsTone = recipe.supportsTone
-                self.engine = recipe.engine
+                guard !Task.isCancelled, self.id == id else { return }
+                self.applyRecipe(recipe)
                 self.beforeImage = image
                 self.currentImage = image
                 self.images = [photo.id: image]
@@ -228,17 +266,95 @@ final class LoupeRawEditStore: ObservableObject {
         }
     }
 
+    private func applyRecipe(_ recipe: RawEditRecipe) {
+        savedSettings = recipe.settings; savedRevision = recipe.revision
+        settings = recipe.settings; supportsTone = recipe.supportsTone; engine = recipe.engine
+    }
+
+    private func openLocal(data: Data, entry: SmartPreviewCache.Entry, id: UUID) async throws {
+        let renderer = SmartRawEditRenderer()
+        try await renderer.open(data: data, cancellation: localToken)
+        let baseline = try await renderer.render(RawEditSettings(), refined: true, cancellation: localToken)
+        guard self.id == id, !Task.isCancelled else { throw CancellationError() }
+        local = renderer; isLocal = true
+        applyRecipe(entry.recipe)
+        savedSettings = entry.pending ?? entry.recipe.settings
+        settings = entry.draft ?? savedSettings
+        beforeImage = baseline; currentImage = baseline
+        storageMessage = entry.pending != nil ? "Saved on device · Waiting to sync" : (entry.draft != nil ? "Recovered unsaved adjustments" : "Available offline")
+        showImage(); phase = .ready
+        if settings != RawEditSettings() { requestRender() }
+    }
+
+    private func refreshCached(photo: PhotoRecord, entry: SmartPreviewCache.Entry, id: UUID) {
+        refreshTask = Task { [weak self, api, cache] in
+            do {
+                _ = try await cache.sync(api: api, rawID: entry.rawID)
+                let fetched = try await api.rawEdit(photoId: entry.rawID)
+                let download = try await api.smartPreview(photoId: entry.rawID, token: entry.token)
+                guard let self, self.id == id, !Task.isCancelled else { return }
+                let latest = await cache.entry(api.baseURL, entry.rawID) ?? entry
+                // A Save can finish while the preview is downloading. Never replace its
+                // newer recipe with the response captured before that download.
+                let remote = fetched.revision < latest.recipe.revision ? latest.recipe : fetched
+                guard remote.engine == self.engine else { throw RawEditError(message: "The RAW engine changed. Reload saved adjustments to review your edits.") }
+                if latest.pending == nil && latest.draft == nil && !self.hasChanges {
+                    self.applyRecipe(remote)
+                    var refreshed = latest; refreshed.recipe = remote; refreshed.accessed = Date()
+                    try await cache.persist(refreshed, origin: api.baseURL)
+                } else if remote.revision != latest.recipe.revision {
+                    throw RawEditError(message: "This photo was edited elsewhere. Your adjustments are kept; resolve the conflict before sharing.")
+                }
+                self.savedRevision = latest.pending == nil ? remote.revision : latest.recipe.revision
+                if let data = download.data {
+                    guard download.engine == self.engine else { throw PhotoBrainAPIError.invalidResponse }
+                    let renderer = SmartRawEditRenderer()
+                    try await renderer.open(data: data, cancellation: self.localToken)
+                    guard self.id == id else { return }
+                    self.local = renderer
+                    var updated = await cache.entry(api.baseURL, entry.rawID) ?? latest
+                    updated.token = download.token; updated.photo = photo
+                    try await cache.store(data, entry: updated, origin: api.baseURL)
+                }
+                self.storageMessage = latest.pending == nil ? "Available offline" : "Saved on device · Waiting to sync"
+                self.requestRender()
+            } catch {
+                guard let self, self.id == id, !Task.isCancelled else { return }
+                if Self.canQueue(error) { self.storageMessage = "Offline · Edits stay on this device" }
+                else { self.errorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    private func persistDraft() {
+        guard isLocal, let rawID else { return }
+        let settings = settings, previous = journalTask
+        journalTask = Task { [weak self, api, cache] in
+            await previous?.value
+            do { try await cache.updateDraft(origin: api.baseURL, rawID: rawID, settings: settings) }
+            catch { self?.errorMessage = "Couldn’t store adjustments on this device: \(error.localizedDescription)" }
+        }
+    }
+
+    private static func canQueue(_ error: Error) -> Bool {
+        if case .transport = error as? PhotoBrainAPIError { return true }
+        if case let .server(status, _, _) = error as? PhotoBrainAPIError, status >= 500 { return true }
+        return (error as? PhotoBrainAPIError)?.isRetryable == true || error is URLError
+    }
+
     func set(_ control: RawEditControl, value: Double) {
         guard isReady, !isSaving, controls.contains(control) else { return }
         control.set(value, in: &settings)
         showingBefore = false
         showImage()
+        persistDraft()
         requestRender()
     }
 
     func reset() {
         guard isReady, !isSaving else { return }
         settings = RawEditSettings()
+        persistDraft()
         showingBefore = false
         showImage()
         requestRender()
@@ -262,16 +378,56 @@ final class LoupeRawEditStore: ObservableObject {
         errorMessage = nil
         defer { if self.id == id { isSaving = false } }
         do {
-            let saved = try await api.saveRawEdit(photoId: rawID, settings: settings, revision: savedRevision)
+            await journalTask?.value
+            let saved: RawEditRecipe
+            if isLocal {
+                try await cache.queue(origin: api.baseURL, rawID: rawID, settings: settings)
+                savedSettings = settings
+                storageMessage = "Saved on device · Waiting to sync"
+                guard var synced = try await cache.sync(api: api, rawID: rawID) else { return false }
+                if await cache.entry(api.baseURL, rawID)?.pending != nil,
+                   let newest = try await cache.sync(api: api, rawID: rawID) { synced = newest }
+                guard await cache.entry(api.baseURL, rawID)?.pending == nil else { return false }
+                saved = synced
+            } else {
+                saved = try await api.saveRawEdit(photoId: rawID, settings: settings, revision: savedRevision)
+            }
             guard self.id == id else { return false }
             savedSettings = saved.settings
             savedRevision = saved.revision
             return true
         } catch {
             guard self.id == id else { return false }
-            errorMessage = error.localizedDescription
+            if isLocal && Self.canQueue(error) {
+                storageMessage = "Saved on device · Will sync when online"
+                errorMessage = nil
+            } else { errorMessage = error.localizedDescription }
             return false
         }
+    }
+
+    func reloadSavedAdjustments() async {
+        guard let rawID, let id, !isSaving else { return }
+        isSaving = true
+        defer { if self.id == id { isSaving = false } }
+        do {
+            _ = try await api.rawEdit(photoId: rawID) // Keep the local journal if unreachable.
+            await journalTask?.value
+            guard let entry = await cache.entry(api.baseURL, rawID), self.id == id else { return }
+            try await cache.remove(origin: api.baseURL, rawID: rawID)
+            start(entry.photo)
+        } catch { if self.id == id { errorMessage = error.localizedDescription } }
+    }
+
+    func discard() {
+        let previous = journalTask
+        if isLocal, let rawID {
+            journalTask = Task { [api, cache] in
+                await previous?.value
+                try? await cache.updateDraft(origin: api.baseURL, rawID: rawID, settings: nil)
+            }
+        }
+        end()
     }
 
     private func showImage() {
@@ -316,8 +472,13 @@ final class LoupeRawEditStore: ObservableObject {
                 let settings = self.settings
                 let refined = !self.dragging
                 do {
-                    let result = try await Self.preview(api: api, rawID: rawID, settings: settings, refined: refined)
-                    let image = try await Self.decode(result)
+                    let image: UIImage
+                    if let local = self.local {
+                        image = try await local.render(settings, refined: refined, cancellation: self.localToken)
+                    } else {
+                        let result = try await Self.preview(api: api, rawID: rawID, settings: settings, refined: refined)
+                        image = try await Self.decode(result)
+                    }
                     guard self.id == id, !Task.isCancelled else { return }
                     if requested == self.revision || self.dragging {
                         self.currentImage = image
@@ -338,6 +499,13 @@ final class LoupeRawEditStore: ObservableObject {
     func retryPreview() { if isReady { requestRender() } }
 
     func end() {
+        localToken.cancel()
+        localToken = RawEditCancellation()
+        local = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        isLocal = false
+        storageMessage = nil
         openTask?.cancel()
         renderTask?.cancel()
         id = nil
@@ -364,4 +532,168 @@ final class LoupeRawEditStore: ObservableObject {
     }
 
     deinit { openTask?.cancel(); renderTask?.cancel() }
+}
+
+struct SmartPreviewDownload: Sendable {
+    let data: Data?
+    let token: String
+    let engine: String
+}
+
+/// Application Support keeps previews and tiny draft journals together across restarts.
+/// Every origin has its own namespace. Eviction never removes a draft or queued save.
+actor SmartPreviewCache {
+    static let shared = SmartPreviewCache()
+    struct Entry: Codable, Sendable {
+        var photo: PhotoRecord
+        var rawID: Int
+        var recipe: RawEditRecipe
+        var token: String
+        var draft: RawEditSettings?
+        var pending: RawEditSettings?
+        var accessed: Date
+        var generation: Date? { photo.thumbnailUpdatedAt }
+    }
+    private let root: URL
+    private let limit: Int
+    private var syncs: [String: Task<RawEditRecipe, Error>] = [:]
+
+    init(root: URL? = nil, limit: Int = 512 * 1024 * 1024) {
+        self.root = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("SmartPreviews-v1")
+        self.limit = limit
+    }
+    private func directory(_ origin: URL) -> URL {
+        let key = SHA256.hash(data: Data(origin.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+        return root.appendingPathComponent(key)
+    }
+    private func metadata(_ origin: URL, _ rawID: Int) -> URL { directory(origin).appendingPathComponent("\(rawID).json") }
+    func file(_ origin: URL, _ rawID: Int) -> URL { directory(origin).appendingPathComponent("\(rawID).pbsp") }
+    func entry(_ origin: URL, _ rawID: Int) -> Entry? {
+        guard let data = try? Data(contentsOf: metadata(origin, rawID)) else { return nil }
+        return try? JSONDecoder().decode(Entry.self, from: data)
+    }
+    func entries(_ origin: URL) -> [Entry] {
+        let paths = (try? FileManager.default.contentsOfDirectory(at: directory(origin), includingPropertiesForKeys: nil)) ?? []
+        return paths.filter { $0.pathExtension == "json" }.compactMap { path in
+            guard let data = try? Data(contentsOf: path) else { return nil }
+            return try? JSONDecoder().decode(Entry.self, from: data)
+        }
+    }
+    func persist(_ entry: Entry, origin: URL) throws {
+        try FileManager.default.createDirectory(at: directory(origin), withIntermediateDirectories: true)
+        try JSONEncoder().encode(entry).write(to: metadata(origin, entry.rawID), options: .atomic)
+    }
+    func store(_ data: Data, entry: Entry, origin: URL) throws {
+        guard data.count <= 96 * 1024 * 1024 + 20 else { throw RawEditError(message: "Smart preview is too large") }
+        let fm = FileManager.default
+        let others = entries(origin).filter { $0.rawID != entry.rawID }.sorted { $0.accessed < $1.accessed }
+        func bytes(_ other: Entry) -> Int { ((try? fm.attributesOfItem(atPath: file(origin, other.rawID).path)[.size]) as? NSNumber)?.intValue ?? 0 }
+        var required = data.count + others.reduce(0) { $0 + bytes($1) }
+        let removable = others.filter { $0.draft == nil && $0.pending == nil }
+        guard required - removable.reduce(0, { $0 + bytes($1) }) <= limit else {
+            throw RawEditError(message: "Smart preview storage is full. Sync your saved edits before downloading more previews.")
+        }
+        for other in removable where required > limit {
+            required -= bytes(other)
+            try? fm.removeItem(at: file(origin, other.rawID))
+            try? fm.removeItem(at: metadata(origin, other.rawID))
+        }
+        try FileManager.default.createDirectory(at: directory(origin), withIntermediateDirectories: true)
+        try data.write(to: file(origin, entry.rawID), options: .atomic)
+        try persist(entry, origin: origin)
+        try evict(origin: origin, keeping: entry.rawID)
+    }
+    func remove(origin: URL, rawID: Int) async throws {
+        if let sync = syncs[origin.absoluteString + ":\(rawID)"] { _ = try? await sync.value }
+        let fm = FileManager.default
+        for path in [file(origin, rawID), metadata(origin, rawID)] where fm.fileExists(atPath: path.path) {
+            try fm.removeItem(at: path)
+        }
+    }
+    func updateDraft(origin: URL, rawID: Int, settings: RawEditSettings?) throws {
+        guard var entry = entry(origin, rawID) else { return }
+        entry.draft = settings
+        entry.accessed = Date()
+        try persist(entry, origin: origin)
+    }
+    func queue(origin: URL, rawID: Int, settings: RawEditSettings) throws {
+        guard var entry = entry(origin, rawID) else { throw RawEditError(message: "Download a smart preview before saving offline") }
+        entry.pending = settings
+        entry.draft = nil
+        try persist(entry, origin: origin)
+    }
+    func evict(origin: URL, keeping: Int? = nil) throws {
+        let fm = FileManager.default
+        let all = entries(origin).sorted { $0.accessed < $1.accessed }
+        func bytes(_ entry: Entry) -> Int { ((try? fm.attributesOfItem(atPath: file(origin, entry.rawID).path)[.size]) as? NSNumber)?.intValue ?? 0 }
+        var total = all.reduce(0) { $0 + bytes($1) }
+        for entry in all where total > limit && entry.rawID != keeping && entry.draft == nil && entry.pending == nil {
+            total -= bytes(entry)
+            try? fm.removeItem(at: file(origin, entry.rawID))
+            try? fm.removeItem(at: metadata(origin, entry.rawID))
+        }
+    }
+    func cachedPhotos(origin: URL) -> [PhotoRecord] {
+        entries(origin).filter { FileManager.default.fileExists(atPath: file(origin, $0.rawID).path) }.map(\.photo).sorted { $0.id > $1.id }
+    }
+    /// A shared in-flight task prevents editor/foreground/export from racing one save.
+    func sync(api: any PhotoBrainAPI, rawID: Int) async throws -> RawEditRecipe? {
+        let origin = api.baseURL
+        let key = origin.absoluteString + ":\(rawID)"
+        if let task = syncs[key] { return try await task.value }
+        guard let entry = entry(origin, rawID), let pending = entry.pending else { return nil }
+        let task = Task {
+            let remote = try await api.rawEdit(photoId: rawID)
+            guard remote.engine == entry.recipe.engine else { throw RawEditError(message: "The RAW engine changed. Your offline adjustments are kept; reload saved adjustments to review them.") }
+            let saved: RawEditRecipe
+            if remote.settings == pending {
+                saved = remote // Includes a lost save response.
+            } else {
+                guard remote.revision == entry.recipe.revision else { throw RawEditError(message: "This photo was edited elsewhere. Your offline adjustments are kept; reload saved adjustments to resolve the conflict.") }
+                saved = try await api.saveRawEdit(photoId: rawID, settings: pending, revision: remote.revision)
+            }
+            // Every waiter sees the committed journal, including export's sync barrier.
+            if var current = self.entry(origin, rawID) {
+                current.recipe = saved
+                if current.pending == pending { current.pending = nil }
+                try self.persist(current, origin: origin)
+            }
+            return saved
+        }
+        syncs[key] = task
+        defer { syncs[key] = nil }
+        return try await task.value
+    }
+
+    func syncAll(api: any PhotoBrainAPI) async {
+        for entry in entries(api.baseURL) where entry.pending != nil { _ = try? await sync(api: api, rawID: entry.rawID) }
+    }
+}
+
+/// Uses the same Rust full-quality colour/tone renderer, with already prepared pixels.
+actor SmartRawEditRenderer {
+    private var session: OpaquePointer?
+    func open(data: Data, cancellation: RawEditCancellation) throws {
+        var error = PBRAWError()
+        let opened = data.withUnsafeBytes { bytes in
+            pbraw_open_smart_preview(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, cancellation.handle, &error)
+        }
+        guard let opened else { throw RawEditError.take(&error) }
+        if let session { pbraw_session_free(session) }
+        session = opened
+    }
+    func render(_ settings: RawEditSettings, refined: Bool, cancellation: RawEditCancellation) throws -> UIImage {
+        guard let session else { throw CancellationError() }
+        var error = PBRAWError()
+        guard let output = pbraw_render_basic(session, settings.exposure, Int32(settings.contrast), Int32(settings.highlights), Int32(settings.shadows), Int32(settings.whites), Int32(settings.blacks), refined ? 1 : 0, cancellation.handle, &error) else { throw RawEditError.take(&error) }
+        defer { pbraw_image_free(output) }
+        let w = pbraw_image_width(output), h = pbraw_image_height(output)
+        guard let pixels = pbraw_image_pixels(output), w > 0, h > 0,
+              let space = CGColorSpace(name: CGColorSpace.displayP3),
+              let provider = CGDataProvider(data: Data(bytes: pixels, count: pbraw_image_len(output)) as CFData),
+              let image = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4, space: space,
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { throw RawEditError(message: "Couldn’t display the smart preview") }
+        return UIImage(cgImage: image)
+    }
+    deinit { if let session { pbraw_session_free(session) } }
 }

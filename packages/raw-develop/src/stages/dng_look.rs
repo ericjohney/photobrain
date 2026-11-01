@@ -62,14 +62,19 @@ pub fn gain_table_map(img: &mut RgbImage, m: &GainTableMap, strength: f32) {
 /// boost_lut with RawCamera's DNG parameters: a 256-entry LUT sampled from
 /// `ProfileToneCurve`, linear extension above 1 with the curve's end slope, a shadow
 /// gain easing from `shadow` (0.9) to 1 over 0-0.1, and `amount` mixing with the input.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ToneLut {
+  #[serde(with = "crate::smart_preview::float_array")]
   lut: [f32; 256],
   slope: f32,
   shadow: f32,
 }
 
 impl ToneLut {
+  pub(crate) fn valid_portable(&self) -> bool {
+    self.lut.iter().all(|v| v.is_finite()) && self.slope.is_finite() && self.shadow.is_finite()
+  }
+
   pub fn from_curve(curve: &[(f32, f32)]) -> Self {
     let eval = |x: f32| -> f32 {
       if curve.len() < 2 {
@@ -87,7 +92,11 @@ impl ToneLut {
       [.., a, b] if b.0 > a.0 => (b.1 - a.1) / (b.0 - a.0),
       _ => 1.0,
     };
-    Self { lut, slope, shadow: 0.9 }
+    Self {
+      lut,
+      slope,
+      shadow: 0.9,
+    }
   }
 
   #[inline]

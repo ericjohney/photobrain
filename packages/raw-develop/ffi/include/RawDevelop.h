@@ -7,6 +7,9 @@ extern "C" {
 #endif
 
 typedef struct PBRAWSession PBRAWSession;
+/* Smart-preview bytes are borrowed for this call only. The returned session owns
+ * decoded state. Same cancellation/error/image ownership as pbraw_open/render. */
+
 typedef struct PBRAWCancel PBRAWCancel;
 typedef struct PBRAWImage PBRAWImage;
 /* Initialise to zero. Each failed call owns message until pbraw_error_clear.
@@ -35,6 +38,9 @@ size_t pbraw_image_len(const PBRAWImage *image);
 const uint8_t *pbraw_image_pixels(const PBRAWImage *image);
 void pbraw_image_free(PBRAWImage *image);
 
+
+PBRAWSession *pbraw_open_smart_preview(const uint8_t *bytes, size_t len, const PBRAWCancel *cancel, PBRAWError *error);
+PBRAWImage *pbraw_render_basic(const PBRAWSession *session, double exposure, int32_t contrast, int32_t highlights, int32_t shadows, int32_t whites, int32_t blacks, int32_t refined, const PBRAWCancel *cancel, PBRAWError *error);
 #ifdef __cplusplus
 }
 #endif

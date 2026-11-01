@@ -35,6 +35,19 @@ export type ExportDependencies = {
 	renderer: ExportRenderer;
 	/** Optional: enables `GET /photos/:id/developed`. */
 	developer?: RawDeveloper;
+	smartPreviews?: {
+		runCancellable(
+			signal: AbortSignal,
+			operation: "prepareSmartPreview",
+			path: string,
+			quality: number,
+			options?: DevelopedRawOptions,
+		): Promise<{
+			data: Uint8Array<ArrayBuffer>;
+			engine: "apple" | "adobe";
+			token: string;
+		}>;
+	};
 	/** Server-owned settings for the Developed view (Apple by default). */
 	rawDevelop?: DevelopedRawOptions;
 };
@@ -291,6 +304,83 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 					: {}),
 			},
 		});
+	});
+
+	router.get("/photos/:id/smart-preview", async (context) => {
+		const id = photoIdSchema.safeParse(context.req.param("id"));
+		if (!id.success)
+			return errorResponse("INVALID_REQUEST", "Request validation failed", 400);
+		if (!dependencies.smartPreviews)
+			return errorResponse(
+				"DEVELOP_UNAVAILABLE",
+				"Smart previews are unavailable",
+				503,
+			);
+		const photo = await database.query.photos.findFirst({
+			columns: { path: true, sourceRoot: true, isRaw: true },
+			where: (photos, { eq }) => eq(photos.id, id.data),
+		});
+		if (!photo) return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
+		if (!photo.isRaw)
+			return errorResponse(
+				"NOT_RAW",
+				"Only RAW photos support smart previews",
+				422,
+			);
+		const path = originalFilePath(photo, photoDirectory);
+		if (!(await Bun.file(path).exists()))
+			return errorResponse(
+				"SOURCE_MISSING",
+				"The original file is missing",
+				404,
+			);
+		try {
+			const recipe = readRawEdit(
+				database,
+				id.data,
+				rawDevelop.engine ?? "apple",
+			);
+			const preview = await dependencies.smartPreviews.runCancellable(
+				context.req.raw.signal,
+				"prepareSmartPreview",
+				path,
+				0,
+				{ ...rawDevelop, engine: recipe.engine },
+			);
+			if (context.req.header("If-None-Match") === `"${preview.token}"`)
+				return new Response(null, {
+					status: 304,
+					headers: {
+						ETag: `"${preview.token}"`,
+						"Cache-Control": "private, no-store",
+					},
+				});
+			return new Response(preview.data, {
+				headers: {
+					"Content-Type": "application/vnd.photobrain.smart-preview",
+					"Content-Length": String(preview.data.byteLength),
+					"Cache-Control": "private, no-store",
+					"X-Developed-Engine": preview.engine,
+					ETag: `"${preview.token}"`,
+				},
+			});
+		} catch (error) {
+			if (context.req.raw.signal.aborted)
+				return new Response(null, { status: 499 });
+			if (error instanceof NativeExecutorBusyError)
+				return errorResponse(
+					"DEVELOP_BUSY",
+					"The renderer is busy; retry shortly",
+					503,
+					{ "Retry-After": "1" },
+				);
+			console.error(`Smart preview failed for photo ${id.data}:`, error);
+			return errorResponse(
+				"DEVELOP_UNSUPPORTED",
+				"Could not prepare this RAW",
+				422,
+			);
+		}
 	});
 
 	router.get("/collections/:id/export", (context) => {

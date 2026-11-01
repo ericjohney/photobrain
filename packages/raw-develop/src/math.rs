@@ -1,6 +1,6 @@
 //! Small linear-algebra helpers and colour-space constants.
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Mat3(pub [[f64; 3]; 3]);
 
 impl Mat3 {

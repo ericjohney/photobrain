@@ -199,7 +199,8 @@ Object.assign(process.env, {
 	RUN_DB_INIT: "false",
 	INNGEST_DEV: "1",
 	V1_NATIVE_SCAN_MUTATIONS_ENABLED: "false",
-	RAW_DEVELOP_ENGINE: "adobe",
+	RAW_DEVELOP_ENGINE:
+		process.env.UI_TEST_SMART_PREVIEWS === "1" ? "apple" : "adobe",
 	ADOBE_PROFILE_DIR: "/fixture-profiles",
 	UPLOADS_ENABLED: "false",
 });
@@ -248,6 +249,21 @@ nativeExecutor.runCancellable = (async (
 	_signal: AbortSignal,
 	operation: string,
 ) => {
+	if (
+		operation === "prepareSmartPreview" &&
+		process.env.UI_TEST_SMART_PREVIEWS === "1"
+	) {
+		return {
+			data: readFileSync(
+				join(
+					import.meta.dir,
+					"../../../packages/raw-develop/tests/fixtures/synthetic.pbsp",
+				),
+			),
+			engine: "apple",
+			token: "synthetic-smart-v1",
+		};
+	}
 	if (operation !== "renderDevelopedRaw")
 		throw new Error("Unexpected fixture render");
 	return { jpeg: PREVIEW_JPEG, width: 3, height: 2, engine: "adobe" };
@@ -658,16 +674,27 @@ seed();
 // Server.
 // ---------------------------------------------------------------------------
 
+let offline = false;
 const server = Bun.serve({
 	hostname: "127.0.0.1",
 	port: Number(process.env.UI_TEST_PORT ?? 0),
 	idleTimeout: 30,
 	fetch(request) {
 		const url = new URL(request.url);
+		if (url.pathname === "/__fixture/offline" && request.method === "POST") {
+			offline = url.searchParams.get("enabled") === "1";
+			return Response.json({ offline });
+		}
 		if (url.pathname === "/__fixture/reset" && request.method === "POST") {
+			offline = false;
 			seed();
 			return Response.json({ ok: true });
 		}
+		if (offline && !url.pathname.startsWith("/__fixture/"))
+			return Response.json(
+				{ error: { code: "FIXTURE_OFFLINE", message: "Offline fixture" } },
+				{ status: 503 },
+			);
 		return app.fetch(request);
 	},
 });

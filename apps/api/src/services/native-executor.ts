@@ -12,11 +12,14 @@ type NativeOperations = Pick<
 	| "analyzeImageQuality"
 	| "renderExportJpeg"
 	| "renderDevelopedRaw"
+	| "prepareSmartPreview"
 	| "detectFaces"
 	| "renderFaceCrop"
 >;
 type Operation = keyof NativeOperations;
-type CancellableArgs<K extends Operation> = K extends "renderDevelopedRaw"
+type CancellableArgs<K extends Operation> = K extends
+	| "renderDevelopedRaw"
+	| "prepareSmartPreview"
 	? [path: string, quality: number, options?: NativeAddon.DevelopedRawOptions]
 	: Parameters<NativeOperations[K]>;
 /**
@@ -25,6 +28,7 @@ type CancellableArgs<K extends Operation> = K extends "renderDevelopedRaw"
  */
 const CANCELLABLE_OPERATIONS: ReadonlySet<Operation> = new Set([
 	"renderDevelopedRaw",
+	"prepareSmartPreview",
 ]);
 /** Message of a native error raised because the cancel flag was set. */
 export const NATIVE_CANCELLED = "DEVELOP_CANCELLED";
@@ -34,9 +38,13 @@ type OperationResult<K extends Operation> = K extends
 	| "renderExportJpeg"
 	| "renderFaceCrop"
 	? Uint8Array<ArrayBuffer>
-	: K extends "renderDevelopedRaw"
-		? Omit<NativeAddon.DevelopedRaw, "jpeg"> & { jpeg: Uint8Array<ArrayBuffer> }
-		: ReturnType<NativeOperations[K]>;
+	: K extends "prepareSmartPreview"
+		? Omit<NativeAddon.SmartPreview, "data"> & { data: Uint8Array<ArrayBuffer> }
+		: K extends "renderDevelopedRaw"
+			? Omit<NativeAddon.DevelopedRaw, "jpeg"> & {
+					jpeg: Uint8Array<ArrayBuffer>;
+				}
+			: ReturnType<NativeOperations[K]>;
 
 type OperationRequest = {
 	[K in Operation]: {
@@ -76,6 +84,7 @@ export type NativeResponse =
 				| OperationResult<Operation>
 				| Uint8Array
 				| { jpeg: Uint8Array; width: number; height: number }
+				| { data: Uint8Array; engine: string; token: string }
 				| WindowResult
 				| null;
 	  }
@@ -371,6 +380,7 @@ export class NativeExecutor {
 					? request.jobId === this.sessionJobId
 					: request?.operation !== "renderExportJpeg" &&
 						request?.operation !== "renderDevelopedRaw" &&
+						request?.operation !== "prepareSmartPreview" &&
 						request?.operation !== "renderFaceCrop"
 			) {
 				this.sessionJobId = undefined;

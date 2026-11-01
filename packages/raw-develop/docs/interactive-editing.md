@@ -5,17 +5,46 @@ immutable `Prepared` image; exposure, tone amount, crop and rotation can change 
 decoding or preparing again. The existing one-shot `develop` uses the same implementation.
 See [usage](usage.md#repeated-editing) for the API and cache invalidation rules.
 
-## Saved server editor
+## Smart previews and saved edits
 
-The iOS loupe offers **Edit RAW** for converted RAWs and RAW+JPEG pairs. It uses the server's configured engine and runtime profiles. Adobe exposes Exposure, Contrast, Highlights, Shadows, Whites and Blacks; ProRAW uses Apple and exposes Exposure only. Select a control, adjust its slider, toggle **Before / After**, or **Reset** all controls. **Save** stores the recipe; **Cancel** confirms discarding a changed draft. Backgrounding preserves the draft. Paging and swipe-to-dismiss are disabled until the editor closes.
+The iOS loupe’s **Edit RAW** downloads a full-quality, prepared 2048-pixel smart preview once, then runs the linked Rust renderer locally. Adobe RAF/ARW previews expose Exposure, Contrast, Highlights, Shadows, Whites and Blacks; ProRAW keeps Apple and Exposure only. Dragging renders at 1024 pixels and release at 2048. **Before / After**, **Reset**, and saved recipes share the same working state. No RAW decode or runtime Adobe profile is needed on the phone.
 
-The server prepares the full-quality pipeline once and retains one source's 1024/2048-edge proxy pair, keyed by source/profile metadata, with a 60 s idle expiry. Requests are coalesced on iOS; dragging uses 1024, release 2048. These are approximate screen previews, not bit-exact downsampled full renders. Decode, full preparation and encoding stay on the native worker. Cancellation stops queued/running work, and closed-session frames cannot replace the current photo.
+`GET /api/photos/:id/smart-preview` returns `application/vnd.photobrain.smart-preview`, an opaque ETag and `X-Developed-Engine`. Conditional requests return 304. The token hashes source/profile stat identity and format/pipeline versions; private paths and fingerprints never appear in response headers. Full preparation, spatial-mask compaction and compression run through the cancellable native executor. The server selects the recipe’s engine, including saved Apple recipes on an Adobe-default server.
 
-`GET /api/v1/photos/:id/raw-edit` returns `{ settings, revision, engine, supportsTone }`; `PUT` takes `{ settings, revision }`. Settings have `version: 1`, exposure -5..5 EV in hundredths, and integer tone controls -100..100. A stale revision returns 409 `RAW_EDIT_CONFLICT`; reopen the editor to load the latest saved recipe. Preview POSTs never save. Migration `0021_photo_raw_edits.sql` adds the independent user-recipe table, preserved by scans.
+Portable format v1 (`PBSP`) contains lossless f32 working pixels, original scene statistics and small profile/render state. Adobe’s full spatial guide is replaced with its 2048-pixel sampled mask plus the exact reduced post-statistics mask. A versioned little-endian bincode payload is zlib-compressed; readers reject incompatible format/pipeline versions, trailing bytes, invalid dimensions/tables and bodies expanding beyond 96 MiB. Keep `PIPELINE_VERSION` unchanged when only the portable format changes; bump the portable format whenever its schema changes. Full exports never compact their preparation. A portable 2048 render is bit-exact with the existing server 2048 proxy, which remains an approximate screen preview rather than a downsampled full render. The 1024 drag mask is sampled from the portable 2048 mask.
 
-**Show Developed RAW** replays saved settings. **Share Developed Photo** downloads `/api/photos/:id/developed?download=1`: full-resolution JPEG with embedded Display P3 ICC, rendered afresh with the saved recipe. **Share Photo** continues to share the existing preview/standard-image export, and **Share Original** preserves source bytes. The app does not overwrite RAWs or regenerate library thumbnails after a save.
+The phone caches previews and photo metadata in origin-scoped Application Support. The default limit is 512 MiB per origin with LRU eviction of clean entries. Drafts and queued saves are protected; new downloads are refused when those protected entries fill storage. Each slider change journals the draft atomically. App restart recovers it, including when offline; the unfiltered Library falls back to cached RAW photos when the API is unreachable. Filtered views do not pretend to contain the complete offline catalog. **Cancel** discards the current draft while keeping an earlier explicitly saved offline recipe.
 
-The older local Apple Preview FFI remains built and tested as a developer harness; the measurements and bridge details below describe that independent path. It is not used by the current saved editor. Local Adobe editing and physical-device memory/latency work remain future work.
+**Save** queues a revision-checked recipe locally before attempting sync. Offline saves remain in the editor with “Saved on device”; startup, foreground, reopening the editor and developed sharing retry sync. Conflicts preserve local edits and never overwrite newer server settings. **Reload Saved Adjustments** explicitly confirms replacing the local draft/queue with the server version. Full-resolution **Share Developed Photo** must finish syncing first; it fails when offline or conflicted rather than exporting an older recipe. Ordinary photo/original sharing keeps its existing behavior.
+
+`GET /api/v1/photos/:id/raw-edit` returns `{ settings, revision, engine, supportsTone }`; `PUT` takes `{ settings, revision }`. Version 1 settings support exposure -5..5 EV in hundredths and integer tone controls -100..100. A stale revision returns 409 `RAW_EDIT_CONFLICT`. Migration `0021_photo_raw_edits.sql` stores independent user recipes and scans preserve them. The original RAW and library thumbnails are never overwritten by an edit.
+
+Older servers retain the server-preview fallback: POST `/api/photos/:id/developed` coalesces slider renders using the existing 1024/2048 proxy cache with 60 s idle expiry. GET `/api/photos/:id/developed?download=1` always renders the saved recipe afresh at full resolution with Display P3 ICC. Server preview POSTs never save.
+
+### Smart-preview verification (2026-10-31)
+
+- Real Sony A7C R, Fuji X-E5 and iPhone ProRAW previews round-tripped exactly for default/exposure/mixed supported controls. Lossless files measured approximately 38.2, 40.0 and 31.6 MB respectively; these are intentionally larger than lossy Lightroom proxies.
+- A real Sony portable preview on the iPhone 17 Pro simulator opened in 138 ms after download; mixed six-control 1024 renders measured 22.4 ms p50 / 23.2 ms p95 and a 2048 render 85.2 ms. These are simulator measurements, excluding network transfer, not physical iPhone performance.
+- Original Apple and Adobe baseline JPEGs retained their captured hashes; full-resolution saved exports still matched direct native rendering byte for byte.
+- Synthetic native/C-bridge tests cover corruption, versions, bounds, cancellation, repeated edits and ownership after releasing download bytes. iOS tests cover durable draft restart, protected LRU entries, origin isolation, save conflicts/lost responses, concurrent sync waiters and the developed-export sync barrier.
+- The XCUITest flow downloads a preview, blocks API access, edits locally, terminates/relaunches the app, recovers the draft from the offline Library, saves offline, reconnects and syncs. This proves application-level offline behavior; physical-device memory/thermal measurements remain separate work.
+
+Generate and compare a local portable fixture without changing full-resolution output:
+
+```bash
+ADOBE_PROFILE_DIR='/path/to/CameraProfiles' cargo run --release --example smart-preview -- input.ARW /tmp/preview.pbsp --adobe
+# Omit --adobe for ProRAW/Apple. Output is a private working artifact; do not commit camera profiles.
+```
+
+Run the dedicated simulator flow from the repository root:
+
+```bash
+UI_TEST_SMART_PREVIEWS=1 TEST_RUNNER_PHOTOBRAIN_SMART_PREVIEW_UI_TEST=1 \
+  apps/ios/scripts/run-ui-tests.sh \
+  -only-testing:PhotoBrainUITests/LibraryFlowTests/testSmartPreviewWorksOfflineAfterRestartAndSyncsOnReconnect
+```
+
+`TEST_RUNNER_PHOTOBRAIN_SMART_PREVIEW=/tmp/preview.pbsp` enables the real Adobe portable-render simulator measurement in `RawEditingTests`. The older Apple Preview FFI below remains an independent harness.
 
 ## Repeat-render measurements
 

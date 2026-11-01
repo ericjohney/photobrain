@@ -217,3 +217,97 @@ pub unsafe extern "C" fn pbraw_image_free(image: *mut PBRAWImage) {
     drop(unsafe { Box::from_raw(image) });
   }
 }
+
+/// Open server-prepared pixels, with no original decode or camera profile on device.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pbraw_open_smart_preview(
+  bytes: *const u8,
+  len: usize,
+  cancel: *const PBRAWCancel,
+  error: *mut PBRAWError,
+) -> *mut PBRAWSession {
+  unsafe {
+    guarded(error, || {
+      if bytes.is_null() || len > raw_develop::smart_preview::MAX_BYTES + 20 {
+        return Err(Error::Settings("invalid smart preview bytes".into()));
+      }
+      let cancel = token(cancel);
+      cancel.check()?;
+      let bytes = std::slice::from_raw_parts(bytes, len);
+      pool().install(|| {
+        let refined = Prepared::decode_smart_preview(bytes)?;
+        cancel.check()?;
+        let drag = refined.clone().with_max_edge(1024)?;
+        Ok(PBRAWSession { drag, refined })
+      })
+    })
+  }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pbraw_render_basic(
+  session: *const PBRAWSession,
+  exposure: f64,
+  contrast: i32,
+  highlights: i32,
+  shadows: i32,
+  whites: i32,
+  blacks: i32,
+  refined: i32,
+  cancel: *const PBRAWCancel,
+  error: *mut PBRAWError,
+) -> *mut PBRAWImage {
+  unsafe {
+    guarded(error, || {
+      let session = session
+        .as_ref()
+        .ok_or_else(|| Error::Settings("missing RAW session".into()))?;
+      if !(0..=1).contains(&refined) {
+        return Err(Error::Settings("invalid refined flag".into()));
+      }
+      let prepared = if refined == 1 {
+        &session.refined
+      } else {
+        &session.drag
+      };
+      let opts = prepared.render_options(token(cancel));
+      let controls = raw_develop::settings::AdobeTone {
+        contrast,
+        highlights,
+        shadows,
+        whites,
+        blacks,
+      };
+      if opts.engine != raw_develop::Engine::Adobe
+        && [contrast, highlights, shadows, whites, blacks] != [0; 5]
+      {
+        return Err(Error::Settings("tone controls require Adobe".into()));
+      }
+      let settings = DevelopSettings {
+        exposure,
+        adobe_tone: (opts.engine == raw_develop::Engine::Adobe).then_some(controls),
+        ..DevelopSettings::default()
+      };
+      pool().install(|| {
+        let out = prepared.render(&settings, &opts)?.image;
+        let mut pixels = Vec::with_capacity(out.width * out.height * 4);
+        for row in out.data.chunks(out.width * 3) {
+          opts.cancel.check()?;
+          for rgb in row.as_chunks::<3>().0 {
+            pixels.extend(
+              rgb
+                .iter()
+                .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8),
+            );
+            pixels.push(255);
+          }
+        }
+        Ok(PBRAWImage {
+          width: out.width,
+          height: out.height,
+          pixels,
+        })
+      })
+    })
+  }
+}

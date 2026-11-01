@@ -13,7 +13,7 @@ pub(crate) fn remove_black_table(black: f64) -> Vec<u16> {
   super::bayer::tables::expand(|x| ((x - black) / (1.0 - black)).clamp(0.0, 1.0))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ColorTable {
   dims: [usize; 3],
   // Pad each entry so SIMD never reads past the final profile coefficient.
@@ -25,6 +25,13 @@ pub(crate) struct ColorTable {
 }
 
 impl ColorTable {
+  pub(crate) fn valid_portable(&self) -> bool {
+    super::dcp::valid_dims(self.dims, self.data.len())
+      && self.data.iter().flatten().all(|v| v.is_finite())
+      && self.gain.is_finite()
+      && self.amount.is_finite()
+  }
+
   /// Independent pixel lanes share HSV/encoding arithmetic; table gathers keep
   /// the scalar coefficient interpolation and its hue/value/saturation order.
   pub(crate) fn pixels4(&self, pixels: [[f32; 3]; 4]) -> [[f32; 3]; 4] {

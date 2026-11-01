@@ -7,7 +7,7 @@ use crate::metadata::{LensSource, RawMetadata};
 use crate::{Cancel, image::RgbImage};
 use rayon::prelude::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct EmbeddedVignette {
   /// Optical center in active-image pixels, [horizontal, vertical].
   center: [f32; 2],
@@ -16,6 +16,12 @@ pub(crate) struct EmbeddedVignette {
 }
 
 impl EmbeddedVignette {
+  pub(crate) fn valid_portable(&self) -> bool {
+    self.table.len() == 4098
+      && self.table.iter().chain(&self.center).all(|v| v.is_finite())
+      && self.inverse_radius.is_finite()
+  }
+
   pub(crate) fn from_metadata(meta: &RawMetadata, active: [usize; 2]) -> Result<Option<Self>> {
     let LensSource::Fuji(params) = &meta.lens else {
       // Sony's embedded profile builder creates only its distortion model.

@@ -10,15 +10,27 @@ use crate::error::{Error, Result};
 use crate::tiff::{Endian, TiffReader};
 use std::path::{Path, PathBuf};
 
+pub(crate) fn valid_dims(dims: [usize; 3], count: usize) -> bool {
+  dims[0] > 0
+    && dims[1] >= 2
+    && dims[2] > 0
+    && dims.iter().all(|&d| d <= 256)
+    && dims.iter().try_fold(1usize, |n, &d| n.checked_mul(d)) == Some(count)
+}
+
 /// One HueSatMap / LookTable: `dims = [hue, sat, val]`, entries in val-major,
 /// then hue, then sat order, each `[hue shift degrees, sat scale, val scale]`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HueSatMap {
   pub dims: [usize; 3],
   pub data: Vec<[f32; 3]>,
 }
 
 impl HueSatMap {
+  pub(crate) fn valid_portable(&self) -> bool {
+    valid_dims(self.dims, self.data.len()) && self.data.iter().flatten().all(|v| v.is_finite())
+  }
+
   fn new(dims: [usize; 3], flat: &[f64]) -> Result<Self> {
     let n = dims[0] * dims[1] * dims[2];
     if dims[0] == 0 || dims[1] < 2 || dims[2] == 0 || flat.len() != n * 3 {

@@ -6,7 +6,7 @@
 //! separate upstream operation; this module never estimates it from a final
 //! render or substitutes fixture-specific constants.
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Statistics {
   pub(crate) mean: f64,
   /// Trimmed, range-normalized sRGB mean, returned to log-linear space.
@@ -24,6 +24,23 @@ pub(crate) struct Statistics {
 }
 
 impl Statistics {
+  pub(crate) fn valid_portable(&self) -> bool {
+    [
+      self.mean,
+      self.tone_mean,
+      self.negative_mean,
+      self.selected_mean,
+      self.selected_median,
+      self.variance,
+      self.skewness,
+      self.kurtosis,
+    ]
+    .iter()
+    .chain(&self.raw)
+    .chain(&self.selected)
+    .all(|v| v.is_finite())
+  }
+
   /// Input is the small upstream image after black removal and LinearToLog2.
   /// Negative linear values have already been mapped to the supplied flare.
   pub(crate) fn new(log_image: &[f32], flare: f64) -> Option<Self> {

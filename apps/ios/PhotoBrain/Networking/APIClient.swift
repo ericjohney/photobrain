@@ -114,6 +114,7 @@ protocol PhotoBrainAPI: Sendable {
     /// `GET /api/photos/{id}/developed`: the RAW fully developed (raw-develop) as a
     /// full-resolution Display P3 JPEG, rendered on demand. A busy renderer throws
     /// `PhotoBrainAPIError.server(status: 503, code: "DEVELOP_BUSY", ...)`.
+    func smartPreview(photoId: Int, token: String?) async throws -> SmartPreviewDownload
     func rawEdit(photoId: Int) async throws -> RawEditRecipe
     func saveRawEdit(photoId: Int, settings: RawEditSettings, revision: Int) async throws -> RawEditRecipe
     func rawEditPreview(photoId: Int, settings: RawEditSettings, refined: Bool) async throws -> DevelopedRawImage
@@ -560,6 +561,25 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         return data.count > maximumErrorBytes ? Data() : data
     }
 
+    func smartPreview(photoId: Int, token: String?) async throws -> SmartPreviewDownload {
+        guard photoId > 0 else { throw PhotoBrainAPIError.invalidRequest }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/photos/\(photoId)/smart-preview"))
+        request.timeoutInterval = 120
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue(token, forHTTPHeaderField: "If-None-Match")
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await downloadSession.data(for: request) }
+        catch is CancellationError { throw CancellationError() }
+        catch { throw PhotoBrainAPIError.transport(error.localizedDescription) }
+        guard let http = response as? HTTPURLResponse else { throw PhotoBrainAPIError.invalidResponse }
+        if http.statusCode == 304 { return SmartPreviewDownload(data: nil, token: token ?? "", engine: "") }
+        guard http.statusCode == 200 else { throw serverError(status: http.statusCode, body: data.count > maximumErrorBytes ? Data() : data) }
+        guard data.count <= 96 * 1024 * 1024 + 20,
+              let engine = http.value(forHTTPHeaderField: "X-Developed-Engine"), ["apple", "adobe"].contains(engine),
+              let token = http.value(forHTTPHeaderField: "ETag") else { throw PhotoBrainAPIError.invalidResponse }
+        return SmartPreviewDownload(data: data, token: token, engine: engine)
+    }
+
     func rawEdit(photoId: Int) async throws -> RawEditRecipe {
         guard photoId > 0 else { throw PhotoBrainAPIError.invalidRequest }
         return try await get(path: ["photos", String(photoId), "raw-edit"])
@@ -852,5 +872,12 @@ private final class APITransferMetricsDelegate: NSObject, URLSessionTaskDelegate
             endpoint: endpoint,
             measurement: URLSessionTransferMeasurement(metrics: metrics)
         )
+    }
+}
+
+
+extension PhotoBrainAPI {
+    func smartPreview(photoId: Int, token: String?) async throws -> SmartPreviewDownload {
+        throw RawEditError(message: "Smart previews are unavailable")
     }
 }

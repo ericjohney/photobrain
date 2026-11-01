@@ -40,7 +40,7 @@ pub struct DngInfo {
 }
 
 /// DNG 1.7 `ProfileGainTableMap` (big-endian binary tag).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GainTableMap {
   pub points_v: usize,
   pub points_h: usize,
@@ -57,6 +57,24 @@ pub struct GainTableMap {
 }
 
 impl GainTableMap {
+  pub(crate) fn valid_portable(&self) -> bool {
+    let dims = [self.points_v, self.points_h, self.points_n];
+    dims.iter().all(|&d| d > 0 && d <= 4096)
+      && dims.iter().try_fold(1usize, |n, &d| n.checked_mul(d)) == Some(self.table.len())
+      && self
+        .table
+        .iter()
+        .chain(&self.weights)
+        .all(|v| v.is_finite())
+      && [self.spacing_v, self.spacing_h]
+        .iter()
+        .all(|v| v.is_finite() && *v > 0.0)
+      && self.origin_v.is_finite()
+      && self.origin_h.is_finite()
+      && self.gamma.is_finite()
+  }
+
+
   pub fn parse(b: &[u8]) -> Result<Self> {
     let u32_at = |o: usize| -> Result<u32> {
       b.get(o..o + 4)

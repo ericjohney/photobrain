@@ -33,7 +33,7 @@ use rayon::prelude::*;
 /// Bumped whenever developed output changes for the same input and settings.
 pub const PIPELINE_VERSION: u32 = 5;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Quality {
   /// Full-resolution demosaic.
   Full,

@@ -203,4 +203,205 @@ final class RawEditingTests: XCTestCase {
         XCTAssertTrue(downloads.isEmpty)
         store.end()
     }
+
+    func testSmartPreviewEditsOfflineAndRestoresDraftAfterRestartThenSyncs() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root)
+        let api = await editingAPI(recipe: RawEditRecipe(settings: RawEditSettings(), revision: 0, engine: "apple", supportsTone: false))
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "synthetic", withExtension: "pbsp"))
+        await api.configureSmartPreview(try Data(contentsOf: file))
+        let store = LoupeRawEditStore(api: api, cache: cache)
+        store.start(raw)
+        await waitUntil { store.isReady && store.isLocal }
+        let before = try XCTUnwrap(store.images[raw.id]?.cgImage?.dataProvider?.data) as Data
+        await api.setRawEditFailure(.transport("Offline"))
+        store.set(.exposure, value: 1.25)
+        await waitUntil { store.appliedSettings.exposure == 1.25 && !store.isRendering }
+        let edited = try XCTUnwrap(store.images[raw.id]?.cgImage?.dataProvider?.data) as Data
+        XCTAssertNotEqual(before, edited)
+        await waitUntil { await cache.entry(api.baseURL, 2)?.draft?.exposure == 1.25 }
+        store.end()
+        // A new cache instance reads disk, not the first store's memory.
+        let reopenedCache = SmartPreviewCache(root: root)
+        let recovered = LoupeRawEditStore(api: api, cache: reopenedCache)
+        recovered.start(raw)
+        await waitUntil { recovered.isReady && recovered.appliedSettings.exposure == 1.25 }
+        XCTAssertEqual(recovered.settings.exposure, 1.25)
+        XCTAssertTrue(["Recovered unsaved adjustments", "Offline · Edits stay on this device"].contains(recovered.storageMessage ?? ""))
+        let offlineSaved = await recovered.save()
+        XCTAssertFalse(offlineSaved)
+        XCTAssertEqual(recovered.storageMessage, "Saved on device · Will sync when online")
+        let pending = await reopenedCache.entry(api.baseURL, 2)
+        XCTAssertEqual(pending?.pending?.exposure, 1.25)
+        XCTAssertNil(pending?.draft)
+        await api.setRawEditFailure(nil)
+        _ = try await reopenedCache.sync(api: api, rawID: 2)
+        let saved = try await api.rawEdit(photoId: 2)
+        XCTAssertEqual(saved.settings.exposure, 1.25)
+        XCTAssertEqual(saved.revision, 1)
+        let synced = await reopenedCache.entry(api.baseURL, 2)
+        XCTAssertNil(synced?.pending)
+        XCTAssertEqual(synced?.recipe, saved)
+        recovered.end()
+    }
+
+    func testSmartCacheEvictsOldCleanPreviewsAndKeepsDraftsAndOriginBoundaries() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root, limit: 8)
+        let origin = URL(string: "https://one.example")!
+        let other = URL(string: "https://two.example")!
+        let recipe = RawEditRecipe(settings: RawEditSettings(), revision: 0, engine: "apple", supportsTone: false)
+        for id in 1...3 {
+            let entry = SmartPreviewCache.Entry(photo: raw, rawID: id, recipe: recipe, token: "t", draft: id == 1 ? RawEditSettings(exposure: 1) : nil, pending: nil, accessed: Date(timeIntervalSince1970: Double(id)))
+            try await cache.store(Data(repeating: UInt8(id), count: 4), entry: entry, origin: origin)
+        }
+        let oldest = await cache.entry(origin, 1)
+        let evicted = await cache.entry(origin, 2)
+        let newest = await cache.entry(origin, 3)
+        let crossOrigin = await cache.entry(other, 1)
+        XCTAssertNotNil(oldest?.draft)
+        XCTAssertNil(evicted)
+        XCTAssertNotNil(newest)
+        XCTAssertNil(crossOrigin)
+    }
+
+    func testSmartSyncConflictKeepsPendingAndLostResponseDoesNotDoubleSave() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root)
+        let api = await editingAPI()
+        let recipe = try await api.rawEdit(photoId: 2)
+        let pending = RawEditSettings(exposure: 1)
+        let entry = SmartPreviewCache.Entry(photo: raw, rawID: 2, recipe: recipe, token: "t", draft: nil, pending: pending, accessed: Date())
+        try await cache.store(Data([1]), entry: entry, origin: api.baseURL)
+        _ = try await api.saveRawEdit(photoId: 2, settings: RawEditSettings(exposure: 2), revision: 0)
+        do { _ = try await cache.sync(api: api, rawID: 2); XCTFail("Expected conflict") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("edited elsewhere")) }
+        let kept = await cache.entry(api.baseURL, 2)
+        XCTAssertEqual(kept?.pending, pending)
+        _ = try await api.saveRawEdit(photoId: 2, settings: pending, revision: 1)
+        _ = try await cache.sync(api: api, rawID: 2)
+        let requests = await api.rawSaveRequests
+        XCTAssertEqual(requests.count, 2) // The already successful save was acknowledged.
+        let synced = await cache.entry(api.baseURL, 2)
+        XCTAssertNil(synced?.pending)
+    }
+
+
+    func testConcurrentSyncWaitersSeeCommittedJournalAndStorageRefusesToEvictDrafts() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root, limit: 4)
+        let api = await editingAPI()
+        let recipe = try await api.rawEdit(photoId: 2)
+        let settings = RawEditSettings(exposure: 0.5)
+        let entry = SmartPreviewCache.Entry(photo: raw, rawID: 2, recipe: recipe, token: "t", draft: nil, pending: settings, accessed: Date())
+        try await cache.store(Data(repeating: 0, count: 4), entry: entry, origin: api.baseURL)
+        let another = SmartPreviewCache.Entry(photo: raw, rawID: 3, recipe: recipe, token: "t", draft: nil, pending: nil, accessed: Date())
+        do { try await cache.store(Data([1]), entry: another, origin: api.baseURL); XCTFail("Expected full cache") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("storage is full")) }
+        let retained = await cache.entry(api.baseURL, 2)
+        XCTAssertEqual(retained?.pending, settings)
+        async let first = cache.sync(api: api, rawID: 2)
+        async let second = cache.sync(api: api, rawID: 2)
+        let results = try await [first, second]
+        XCTAssertEqual(results[0]?.revision, 1)
+        let finished = await cache.entry(api.baseURL, 2)
+        XCTAssertNil(finished?.pending)
+        let saves = await api.rawSaveRequests
+        XCTAssertEqual(saves.count, 1)
+    }
+
+
+    func testFullDevelopedSharingWaitsForSyncAndRefusesOfflineStaleRecipe() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root)
+        let api = await editingAPI()
+        let recipe = try await api.rawEdit(photoId: 2)
+        let entry = SmartPreviewCache.Entry(photo: raw, rawID: 2, recipe: recipe, token: "t", draft: nil, pending: RawEditSettings(exposure: 1), accessed: Date())
+        try await cache.store(Data([1]), entry: entry, origin: api.baseURL)
+        await api.setRawEditFailure(.transport("Offline"))
+        let exports = ExportStore(api: api, rawCache: cache)
+        exports.start(.developed(id: 2))
+        await waitUntil { if case .failed = exports.state { return true }; return false }
+        let blocked = await api.exportRequests
+        XCTAssertTrue(blocked.isEmpty)
+        await api.setRawEditFailure(nil)
+        exports.dismissError()
+        exports.start(.developed(id: 2))
+        await waitUntil { exports.readyFile != nil }
+        let remote = try await api.rawEdit(photoId: 2)
+        XCTAssertEqual(remote.settings.exposure, 1)
+        XCTAssertEqual(remote.revision, 1)
+        let journal = await cache.entry(api.baseURL, 2)
+        XCTAssertNil(journal?.pending)
+        exports.finishSharing()
+    }
+
+
+    func testRealSmartPreviewOnSimulatorWhenConfigured() async throws {
+        guard let path = ProcessInfo.processInfo.environment["PHOTOBRAIN_SMART_PREVIEW"] else {
+            throw XCTSkip("Set TEST_RUNNER_PHOTOBRAIN_SMART_PREVIEW to a generated Adobe .pbsp file")
+        }
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let renderer = SmartRawEditRenderer()
+        let token = RawEditCancellation()
+        let started = CFAbsoluteTimeGetCurrent()
+        try await renderer.open(data: data, cancellation: token)
+        let openMS = (CFAbsoluteTimeGetCurrent() - started) * 1000
+        let zero = try await renderer.render(RawEditSettings(), refined: true, cancellation: token)
+        let settings = RawEditSettings(exposure: 0.7, contrast: 30, highlights: -50, shadows: 40, whites: 20, blacks: -25)
+        var timings: [Double] = []
+        for _ in 0..<12 {
+            let start = CFAbsoluteTimeGetCurrent()
+            let image = try await renderer.render(settings, refined: false, cancellation: token)
+            XCTAssertLessThanOrEqual(max(image.size.width, image.size.height), 1024)
+            timings.append((CFAbsoluteTimeGetCurrent() - start) * 1000)
+        }
+        let start = CFAbsoluteTimeGetCurrent()
+        let changed = try await renderer.render(settings, refined: true, cancellation: token)
+        let refinedMS = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        let reset = try await renderer.render(RawEditSettings(), refined: true, cancellation: token)
+        let baselineBytes = try XCTUnwrap(zero.cgImage?.dataProvider?.data) as Data
+        let resetBytes = try XCTUnwrap(reset.cgImage?.dataProvider?.data) as Data
+        let changedBytes = try XCTUnwrap(changed.cgImage?.dataProvider?.data) as Data
+        XCTAssertEqual(baselineBytes, resetBytes)
+        XCTAssertNotEqual(baselineBytes, changedBytes)
+        XCTAssertEqual(changed.cgImage?.colorSpace?.name, CGColorSpace.displayP3)
+        timings.removeFirst(2); timings.sort()
+        print(String(format: "SMART_PREVIEW_SIM bytes=%d open=%.1fms mixed-six-controls-drag-p50=%.1fms drag-p95=%.1fms refined=%.1fms", data.count, openMS, timings[4], timings[9], refinedMS))
+    }
+
+
+    func testLatePreviewRefreshCannotReplaceANewerSave() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root)
+        let api = await editingAPI(recipe: RawEditRecipe(settings: RawEditSettings(), revision: 0, engine: "apple", supportsTone: false))
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "synthetic", withExtension: "pbsp"))
+        let data = try Data(contentsOf: file)
+        await api.configureSmartPreview(data, delay: .milliseconds(150))
+        let recipe = try await api.rawEdit(photoId: 2)
+        let entry = SmartPreviewCache.Entry(photo: raw, rawID: 2, recipe: recipe, token: "test-v1", draft: nil, pending: nil, accessed: Date())
+        try await cache.store(data, entry: entry, origin: api.baseURL)
+        let store = LoupeRawEditStore(api: api, cache: cache)
+        store.start(raw)
+        await waitUntil {
+            let requests = await api.smartPreviewRequests
+            return store.isReady && requests > 0
+        }
+        store.set(.exposure, value: 1)
+        let saved = await store.save()
+        XCTAssertTrue(saved)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(store.settings.exposure, 1)
+        let journal = await cache.entry(api.baseURL, 2)
+        XCTAssertEqual(journal?.recipe.revision, 1)
+        XCTAssertEqual(journal?.recipe.settings.exposure, 1)
+        store.end()
+    }
+
 }

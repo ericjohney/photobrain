@@ -34,3 +34,5 @@ module.exports.validateThumbnails = notAvailable("validateThumbnails");
 export function clearDevelopedRawCache() {
 	throw new Error("Native RAW editing is unavailable in the browser");
 }
+
+module.exports.prepareSmartPreview = notAvailable("prepareSmartPreview");

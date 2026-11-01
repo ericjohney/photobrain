@@ -25,6 +25,7 @@ class PhotoBrainUITestCase: XCTestCase {
             app.launchEnvironment["PHOTOBRAIN_API_URL"] = url.absoluteString
             // Debug-only: no animations or blur, so idle waits settle fast on CI runners.
             app.launchEnvironment["PHOTOBRAIN_UI_TESTS"] = "1"
+            app.launchEnvironment["PHOTOBRAIN_CLEAR_SMART_PREVIEWS"] = "1"
             // Labels embed formatted dates and counts; pin the locale they are asserted in.
             app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
             XCUIDevice.shared.orientation = .portrait

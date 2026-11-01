@@ -145,7 +145,7 @@ fn normalized_forward_matrix(values: &[f64; 9]) -> Mat3 {
   matrix
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ColorSpec {
   /// White chromaticity of the neutral.
   pub white_xy: (f64, f64),

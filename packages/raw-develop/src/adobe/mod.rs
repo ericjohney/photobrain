@@ -53,7 +53,7 @@ pub const PROFILE_DIR_ENV: &str = "ADOBE_PROFILE_DIR";
 /// Full rendering uses scene-dependent modern Blacks2012 instead.
 pub const DEFAULT_BLACK: f64 = 2.5;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct AdobeRender {
   pub clip: [f32; 3],
   pub balanced_to_prophoto: [[f32; 3]; 3],
@@ -69,13 +69,22 @@ pub(crate) struct AdobeRender {
   input: Option<input::InputTransform>,
   render_color: color::ColorSpec,
   scene: Option<tone::scene::Scene>,
+  #[serde(skip)]
   mask: Option<Arc<CachedMask>>,
+  smart_mask: Option<SmartMask>,
   modern_color: Option<ModernColor>,
   raw_to_prophoto: Mat3,
   black: f64,
   distortion: Option<lens::EmbeddedDistortion>,
   vignette: Option<lens::EmbeddedVignette>,
   active_size: [usize; 2],
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct SmartMask {
+  low: tone::mask::Mask,
+  samples: Vec<f32>,
+  size: [usize; 2],
 }
 
 #[derive(Debug)]
@@ -87,6 +96,16 @@ struct CachedMask {
 }
 
 impl CachedMask {
+  #[cfg(test)]
+  fn sample(&self, samples: &[f32], size: [usize; 2], x: usize, y: usize) -> f32 {
+    sample_mask(
+      samples,
+      [self.source.image.full_width, self.source.image.full_height],
+      size,
+      x,
+      y,
+    )
+  }
   fn get(&self, cancel: &crate::Cancel) -> Result<&tone::mask::Mask> {
     cancel.check()?;
     if let Some(mask) = self.result.get() {
@@ -137,29 +156,27 @@ impl CachedMask {
     *guide = None;
     Ok(self.full.get().expect("completed full Adobe tone mask"))
   }
-
-  fn sample(&self, samples: &[f32], size: [usize; 2], x: usize, y: usize) -> f32 {
-    let full = [self.source.image.full_width, self.source.image.full_height];
-    if full == size {
-      return samples[y * full[0] + x];
-    }
-    // Prepared screen proxies retain the original scene/guide coordinates.
-    let [fx, fy] = std::array::from_fn(|c| {
-      (([x, y][c] as f32 + 0.5) * (full[c] as f32 / size[c] as f32) - 0.5)
-        .clamp(0.0, (full[c] - 1) as f32)
-    });
-    let [ix, iy] = [fx as usize, fy as usize];
-    let [dx, dy] = [fx - ix as f32, fy - iy as f32];
-    let at = |x: usize, y: usize| samples[y.min(full[1] - 1) * full[0] + x.min(full[0] - 1)];
-    let a = at(ix, iy);
-    let b = at(ix, iy + 1);
-    let a = dx.mul_add(at(ix + 1, iy) - a, a);
-    let b = dx.mul_add(at(ix + 1, iy + 1) - b, b);
-    dy.mul_add(b - a, a)
-  }
 }
 
-#[derive(Clone, Debug)]
+fn sample_mask(samples: &[f32], full: [usize; 2], size: [usize; 2], x: usize, y: usize) -> f32 {
+  if full == size {
+    return samples[y * full[0] + x];
+  }
+  // Prepared screen proxies retain the original scene/guide coordinates.
+  let [fx, fy] = std::array::from_fn(|c| {
+    (([x, y][c] as f32 + 0.5) * (full[c] as f32 / size[c] as f32) - 0.5)
+      .clamp(0.0, (full[c] - 1) as f32)
+  });
+  let [ix, iy] = [fx as usize, fy as usize];
+  let [dx, dy] = [fx - ix as f32, fy - iy as f32];
+  let at = |x: usize, y: usize| samples[y.min(full[1] - 1) * full[0] + x.min(full[0] - 1)];
+  let a = at(ix, iy);
+  let b = at(ix, iy + 1);
+  let a = dx.mul_add(at(ix + 1, iy) - a, a);
+  let b = dx.mul_add(at(ix + 1, iy + 1) - b, b);
+  dy.mul_add(b - a, a)
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct ModernColor {
   remove_black: Vec<u16>,
   hue_sat: Option<color_table::ColorTable>,
@@ -234,6 +251,95 @@ pub fn baseline_exposure(meta: &RawMetadata) -> Result<f64> {
 }
 
 impl AdobeRender {
+  pub(crate) fn make_portable(&mut self, size: [usize; 2], cancel: &crate::Cancel) -> Result<()> {
+    if let Some(cache) = &self.mask {
+      let mut low = cache.get(cancel)?.clone();
+      let scene = self.scene.as_ref().expect("prepared scene");
+      // This is exactly the reduction the post-tone measurement otherwise repeats.
+      low.samples = tone::post_stats::downsample_mask(
+        &low.samples,
+        low.width,
+        low.height,
+        scene.camera.width,
+        scene.camera.height,
+      );
+      low.width = scene.camera.width;
+      low.height = scene.camera.height;
+      let full = cache.full(self.distortion.as_ref(), cancel)?;
+      let original = [
+        cache.source.image.full_width,
+        cache.source.image.full_height,
+      ];
+      let mut samples = Vec::with_capacity(size[0] * size[1]);
+      for y in 0..size[1] {
+        cancel.check()?;
+        samples.extend((0..size[0]).map(|x| sample_mask(full, original, size, x, y)));
+      }
+      self.smart_mask = Some(SmartMask { low, samples, size });
+      self.mask = None;
+      // Retain the small lens model for warp-aware vignetting; pixels/mask are already warped.
+    }
+    Ok(())
+  }
+
+  pub(crate) fn valid_portable(&self) -> bool {
+    let Some(scene) = &self.scene else {
+      return false;
+    };
+    let Some(mask) = &self.smart_mask else {
+      return false;
+    };
+    let count = |w: usize, h: usize, n: usize| {
+      w > 0 && h > 0 && w <= 2048 && h <= 2048 && w.checked_mul(h) == Some(n)
+    };
+    self.mask.is_none()
+      && self.black.is_finite()
+      && self.baseline_exposure.is_finite()
+      && scene.flare.is_finite()
+      && scene.flare > 0.0
+      && scene.gray.valid_portable()
+      && scene.post.valid_portable()
+      && scene.colors.iter().all(|s| s.valid_portable())
+      && mask.low.source.valid_portable()
+      && mask.low.filtered.valid_portable()
+      && self.tone_curve.as_ref().is_none_or(|points| {
+        points.len() >= 2
+          && points.iter().all(|p| p.0.is_finite() && p.1.is_finite())
+          && points.windows(2).all(|p| p[0].0 < p[1].0)
+      })
+      && self.modern_color.as_ref().is_some_and(|c| {
+        c.remove_black.len() == 65536
+          && c.hue_sat.as_ref().is_none_or(|t| t.valid_portable())
+          && c.look.as_ref().is_none_or(|t| t.valid_portable())
+      })
+      && count(
+        scene.camera.width,
+        scene.camera.height,
+        scene.camera.pixels.len(),
+      )
+      && scene.camera.level <= 16
+      && scene.camera.full_width <= 65536
+      && scene.camera.full_height <= 65536
+      && scene.post_image.valid_portable()
+      && count(mask.size[0], mask.size[1], mask.samples.len())
+      && count(mask.low.width, mask.low.height, mask.low.samples.len())
+      && [mask.low.width, mask.low.height] == [scene.camera.width, scene.camera.height]
+      && mask
+        .samples
+        .iter()
+        .chain(&mask.low.samples)
+        .all(|v| v.is_finite())
+      && self
+        .render_color
+        .hue_sat_map
+        .as_ref()
+        .is_none_or(|t| t.valid_portable())
+      && self.input.as_ref().is_some_and(|i| i.valid_portable())
+      && self.vignette.as_ref().is_none_or(|v| v.valid_portable())
+      && self.distortion.as_ref().is_none_or(|v| v.valid_portable())
+      && self.active_size.iter().all(|&n| n > 0 && n <= 65536)
+  }
+
   pub(crate) fn effective_user_exposure(&self, exposure: f64) -> f64 {
     if self.input.is_some() {
       (f64::from((exposure * 100.0).round() as i32) * 0.01).clamp(-5.0, 5.0)
@@ -285,6 +391,7 @@ impl AdobeRender {
       render_color: spec,
       scene: None,
       mask: None,
+      smart_mask: None,
       modern_color,
       raw_to_prophoto,
       black,
@@ -501,8 +608,11 @@ impl AdobeRender {
       let primary = tone::composition::Stage::from_curve(&curve);
       let contrast = tone::composition::UserContrast::new(controls.contrast, setup.key);
       let spatial = if controls.highlights != 0 || controls.shadows != 0 {
-        let cache = self.mask.as_ref().expect("full Adobe mask state");
-        let mask = cache.get(cancel)?;
+        let cache = self.mask.as_ref();
+        let mask = match &self.smart_mask {
+          Some(smart) => &smart.low,
+          None => cache.expect("full Adobe mask state").get(cancel)?,
+        };
         let post_setup = tone::setup::Setup::new(
           tone::setup::Parameters {
             exposure_hundredths: 0,
@@ -539,12 +649,20 @@ impl AdobeRender {
           setup.log_flare,
           setup.epsilon,
         );
-        Some((
-          cache,
-          cache.full(self.distortion.as_ref(), cancel)?,
-          stage,
-          post,
-        ))
+        let (samples, size) = match &self.smart_mask {
+          Some(smart) => (smart.samples.as_slice(), smart.size),
+          None => {
+            let cache = cache.expect("full Adobe mask state");
+            (
+              cache.full(self.distortion.as_ref(), cancel)?,
+              [
+                cache.source.image.full_width,
+                cache.source.image.full_height,
+              ],
+            )
+          }
+        };
+        Some((samples, size, stage, post))
       } else {
         None
       };
@@ -594,7 +712,7 @@ impl AdobeRender {
             .map(|pixel| contrast.as_ref().map_or(pixel, |stage| stage.pixel(pixel))),
         )
       };
-      if let Some((cache, mask, stage, _)) = spatial {
+      if let Some((mask, mask_size, stage, _)) = spatial {
         let size = [img.width, img.height];
         img
           .data
@@ -605,7 +723,7 @@ impl AdobeRender {
             let (batches, tail) = row.as_chunks_mut::<3>().0.as_chunks_mut::<4>();
             let tail_start = batches.len() * 4;
             let spatial_pixel =
-              |x, pixel| stage.pixel(input_pixel(pixel), cache.sample(mask, size, x, y));
+              |x, pixel| stage.pixel(input_pixel(pixel), sample_mask(mask, mask_size, size, x, y));
             for (i, batch) in batches.iter_mut().enumerate() {
               let pixels = if fuse_color {
                 color.input_pixels4(*batch)
@@ -613,7 +731,7 @@ impl AdobeRender {
                 *batch
               };
               *batch = render_four(std::array::from_fn(|j| {
-                stage.pixel(pixels[j], cache.sample(mask, size, i * 4 + j, y))
+                stage.pixel(pixels[j], sample_mask(mask, mask_size, size, i * 4 + j, y))
               }));
             }
             for (i, pixel) in tail.iter_mut().enumerate() {

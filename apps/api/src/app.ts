@@ -88,6 +88,7 @@ app.route(
 		photoDirectory: config.PHOTO_DIRECTORY,
 		renderer: nativeExecutor,
 		developer: nativeExecutor,
+		smartPreviews: nativeExecutor,
 		rawDevelop: {
 			engine: config.RAW_DEVELOP_ENGINE,
 			adobeProfileDir: config.ADOBE_PROFILE_DIR,

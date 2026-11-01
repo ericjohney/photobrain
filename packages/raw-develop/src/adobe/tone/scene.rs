@@ -14,7 +14,7 @@ struct ActivePost {
   statistics: Statistics,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Scene {
   pub(crate) gray: Statistics,
   pub(crate) colors: [Statistics; 3],
@@ -22,6 +22,7 @@ pub(crate) struct Scene {
   pub(crate) flare: f64,
   pub(crate) camera: SmallImage,
   pub(crate) post_image: PostToneImage,
+  #[serde(skip)]
   active_post_cache: Arc<Mutex<Option<ActivePost>>>,
 }
 

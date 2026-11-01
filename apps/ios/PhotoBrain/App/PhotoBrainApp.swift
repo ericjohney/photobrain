@@ -91,6 +91,7 @@ final class AppBootstrap: ObservableObject {
             // `isRestoring` meanwhile.
             let savedActiveID = await preferences.activeScanID
             Task { await scans.restore(savedActiveID: savedActiveID) }
+            Task { await SmartPreviewCache.shared.syncAll(api: environment.api) }
         } catch {
             configurationError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -276,6 +277,7 @@ private struct RootTabView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
+                Task { await SmartPreviewCache.shared.syncAll(api: environment.api) }
                 Task { await scans.applicationBecameActive() }
                 Task { await onThisDay.applicationBecameActive() }
                 BackupRuntime.shared.coordinator?.applicationBecameActive()

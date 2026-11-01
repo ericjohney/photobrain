@@ -21,7 +21,7 @@ use crate::adobe::{
 };
 use crate::{metadata::RawMetadata, settings::WhiteBalance};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PostToneImage {
   input: InputTransform,
   black: Vec<u16>,
@@ -29,6 +29,12 @@ pub(crate) struct PostToneImage {
 }
 
 impl PostToneImage {
+  pub(crate) fn valid_portable(&self) -> bool {
+    self.input.valid_portable()
+      && self.black.len() == 65536
+      && self.profile.as_ref().is_none_or(|p| p.valid_portable())
+  }
+
   pub(crate) fn new(
     dcp: &Dcp,
     meta: &RawMetadata,
@@ -130,7 +136,7 @@ impl PostToneImage {
 
 /// Ordinary affine resampling is used when the statistics image is smaller
 /// than the cached mask. This path has no high-resolution luminance guide.
-fn downsample_mask(
+pub(crate) fn downsample_mask(
   samples: &[f32],
   width: usize,
   height: usize,

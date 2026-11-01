@@ -209,3 +209,16 @@ export function renderFaceCrop(
 	box: FaceBox,
 	size: number,
 ): Buffer;
+
+/** Lossless, versioned local RAW editing state, at most 2048 pixels per edge. */
+export interface SmartPreview {
+	data: Buffer;
+	engine: "apple" | "adobe";
+	token: string;
+}
+export function prepareSmartPreview(
+	path: string,
+	quality: number,
+	cancel?: Int32Array,
+	options?: DevelopedRawOptions,
+): SmartPreview;

@@ -94,6 +94,20 @@ mock.module("@photobrain/image-processing", () => ({
 			JSON.stringify({ path, maxEdge, quality, streamsActive }),
 		);
 	},
+	prepareSmartPreview(
+		path: string,
+		_quality: number,
+		cancel?: Int32Array,
+		options?: DevelopedRawOptions,
+	) {
+		if (cancel && Atomics.load(cancel, 0) !== 0)
+			throw new Error("DEVELOP_CANCELLED");
+		return {
+			data: Buffer.from(JSON.stringify({ path, options })),
+			engine: options?.engine ?? "apple",
+			token: "test-token",
+		};
+	},
 	renderDevelopedRaw(
 		path: string,
 		quality: number,

@@ -32,6 +32,7 @@ pub mod prepared;
 pub mod profile;
 pub mod raf;
 pub mod settings;
+pub mod smart_preview;
 pub mod stages;
 pub mod tiff;
 pub mod unpack;

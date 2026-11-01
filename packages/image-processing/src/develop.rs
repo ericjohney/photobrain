@@ -364,3 +364,100 @@ mod tests {
     assert!(options.engine(true).is_err());
   }
 }
+
+/// Bounded lossless state for local mobile Basic adjustments. The quality slot is
+/// reserved so this operation shares the cancellable native executor ABI.
+#[napi(object)]
+pub struct SmartPreview {
+  pub data: Buffer,
+  pub engine: String,
+  pub token: String,
+}
+
+#[napi]
+pub fn prepare_smart_preview(
+  path: String,
+  _quality: u32,
+  cancel: Option<Int32Array>,
+  options: Option<DevelopedRawOptions>,
+) -> napi::Result<SmartPreview> {
+  use raw_develop::{DevelopSettings, Negative, Options, prepare};
+  use sha2::{Digest, Sha256};
+  let options = options.unwrap_or_default();
+  let flag = match &cancel {
+    Some(a) if a.is_empty() => return Err(napi::Error::from_reason("missing cancel flag")),
+    Some(a) => Some(a.as_ptr() as *const AtomicI32),
+    None => None,
+  };
+  let token = raw_develop::Cancel::new();
+  // Mirror the shared JS flag into the token from a watcher thread, so the pipeline's
+  // checks stay a plain atomic load on Rust-owned memory.
+  // SAFETY: the `Int32Array` argument keeps its backing buffer alive (a JS reference is
+  // held) for the whole synchronous call, and the watcher is joined before returning.
+  // The element is only read, with an atomic load matching JS `Atomics.store`.
+  struct Flag(*const AtomicI32);
+  unsafe impl Send for Flag {}
+  let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+  let watcher = flag.map(|p| {
+    let (flag, t, done) = (Flag(p), token.clone(), done.clone());
+    std::thread::spawn(move || {
+      let f = flag;
+      while !done.load(Ordering::Relaxed) {
+        if unsafe { (*f.0).load(Ordering::Relaxed) } != 0 {
+          t.cancel();
+          return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+      }
+    })
+  });
+
+  let result = (|| -> Result<SmartPreview, String> {
+    token.check().map_err(|_| DEVELOP_CANCELLED.to_string())?;
+    let key = source_key(&path, &options)?;
+    // Reuse a full-quality preparation when the editor just requested a preview.
+    let cached = PREVIEW_CACHE
+      .lock()
+      .map_err(|_| "preview cache unavailable")?;
+    let (prepared, engine) = if let Some(cache) = cached.as_ref().filter(|c| c.key == key) {
+      (cache.refined.clone(), cache.engine)
+    } else {
+      let neg = Negative::open(&path).map_err(|e| e.to_string())?;
+      let engine = options.engine(neg.dng.is_some())?;
+      let opts = Options {
+        engine,
+        cancel: token.clone(),
+        adobe_profile_dir: options.adobe_profile_dir.as_deref().map(Into::into),
+        ..Options::default()
+      };
+      (
+        prepare(&neg, &DevelopSettings::default(), &opts).map_err(|e| e.to_string())?,
+        engine,
+      )
+    };
+    drop(cached);
+    let data = prepared.encode_smart_preview(&token).map_err(|e| match e {
+      raw_develop::Error::Cancelled => DEVELOP_CANCELLED.to_string(),
+      e => e.to_string(),
+    })?;
+    if source_key(&path, &options)? != key {
+      return Err("RAW changed during preparation; retry".into());
+    }
+    let digest =
+      Sha256::digest(format!("smart-preview:1:{}:{key}", raw_develop::PIPELINE_VERSION).as_bytes());
+    Ok(SmartPreview {
+      data: data.into(),
+      engine: match engine {
+        raw_develop::Engine::Apple => "apple",
+        _ => "adobe",
+      }
+      .into(),
+      token: format!("{digest:x}"),
+    })
+  })();
+  done.store(true, Ordering::Relaxed);
+  if let Some(w) = watcher {
+    let _ = w.join();
+  }
+  result.map_err(napi::Error::from_reason)
+}

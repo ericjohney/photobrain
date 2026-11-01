@@ -711,6 +711,17 @@ actor TestAPI: PhotoBrainAPI {
     var rawPreviewDelay: Duration = .zero
     var rawEditFailure: PhotoBrainAPIError?
     var rawSaveFailure: PhotoBrainAPIError?
+    var smartPreviewData: Data?
+    var smartPreviewDelay: Duration = .zero
+    var smartPreviewRequests = 0
+    func configureSmartPreview(_ data: Data, delay: Duration = .zero) { smartPreviewData = data; smartPreviewDelay = delay }
+    func smartPreview(photoId: Int, token: String?) async throws -> SmartPreviewDownload {
+        smartPreviewRequests += 1
+        if smartPreviewDelay > .zero { try await Task.sleep(for: smartPreviewDelay) }
+        if let rawEditFailure { throw rawEditFailure }
+        guard let data = smartPreviewData else { throw RawEditError(message: "Smart previews unavailable") }
+        return SmartPreviewDownload(data: token == "test-v1" ? nil : data, token: "test-v1", engine: rawRecipe.engine)
+    }
     func configureRawEditing(data: Data, recipe: RawEditRecipe? = nil, delay: Duration = .zero) {
         rawPreviewData = data
         if let recipe { rawRecipe = recipe }

@@ -32,7 +32,7 @@ pub(super) fn nonlinear(x: f64, black: f64, inverse: bool) -> f64 {
     .clamp(0.0, 1.0)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SmallImage {
   pub(crate) pixels: Vec<[u16; 3]>,
   pub(crate) width: usize,

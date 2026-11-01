@@ -45,12 +45,14 @@ final class ExportStore: ObservableObject {
     @Published private(set) var state: State = .idle
 
     private let api: any PhotoBrainAPI
+    private let rawCache: SmartPreviewCache
     private let owned = Owned()
     /// Bumped by every start and cancel; results and progress of older downloads are discarded.
     private var generation = 0
 
-    init(api: any PhotoBrainAPI) {
+    init(api: any PhotoBrainAPI, rawCache: SmartPreviewCache = .shared) {
         self.api = api
+        self.rawCache = rawCache
     }
 
     deinit {
@@ -76,8 +78,14 @@ final class ExportStore: ObservableObject {
         let requestGeneration = generation
         state = .downloading(target, progress: nil)
         let progressSink = ProgressSink(store: self, generation: requestGeneration)
-        owned.task = Task { [api, weak self] in
+        owned.task = Task { [api, rawCache, weak self] in
             do {
+                if case let .developed(id) = target {
+                    _ = try await rawCache.sync(api: api, rawID: id)
+                    if await rawCache.entry(api.baseURL, id)?.pending != nil {
+                        throw RawEditError(message: "Connect and sync your RAW adjustments before sharing.")
+                    }
+                }
                 let file = try await api.download(target) { progress in
                     progressSink.send(progress)
                 }

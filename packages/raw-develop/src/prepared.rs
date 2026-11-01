@@ -11,7 +11,7 @@ use crate::pipeline::{DevelopInfo, Developed, Options, Quality};
 use crate::settings::DevelopSettings;
 use crate::stages::{detail, dng_detail, dng_look, highlights, look};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MosaicRender {
   pub matrix: [[f32; 3]; 3],
   pub black_render: f32,
@@ -22,7 +22,7 @@ pub(crate) struct MosaicRender {
   pub sharpen_scale: Option<f32>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct DngRender {
   pub matrix: [[f32; 3]; 3],
   pub baseline_exposure: f64,
@@ -32,7 +32,7 @@ pub(crate) struct DngRender {
   pub tone: dng_look::ToneLut,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum RenderPipeline {
   Mosaic(MosaicRender),
   Adobe(Box<crate::adobe::AdobeRender>),
@@ -45,9 +45,10 @@ pub(crate) enum RenderPipeline {
 /// Changes to white balance, detail, highlight recovery, lens settings or quality
 /// require a new preparation and return an error rather than silently using stale
 /// pixels. Rendering does not mutate the working image or accumulate adjustments.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Prepared {
   image: RgbImage,
+  #[serde(with = "crate::smart_preview::settings_json")]
   settings: DevelopSettings,
   quality: Quality,
   orientation: u16,
@@ -55,6 +56,63 @@ pub struct Prepared {
 }
 
 impl Prepared {
+  /// Lossless portable screen state. Full-resolution preparations are never changed.
+  pub fn encode_smart_preview(mut self, cancel: &crate::Cancel) -> Result<Vec<u8>> {
+    self = self.with_max_edge(crate::smart_preview::MAX_EDGE)?;
+    if let RenderPipeline::Adobe(a) = &mut self.pipeline {
+      a.make_portable([self.image.width, self.image.height], cancel)?;
+    }
+    self.validate_smart_preview()?;
+    crate::smart_preview::encode(&self, cancel)
+  }
+
+  pub fn decode_smart_preview(bytes: &[u8]) -> Result<Self> {
+    let prepared: Self = crate::smart_preview::decode(bytes)?;
+    prepared.validate_smart_preview()?;
+    Ok(prepared)
+  }
+
+  pub fn render_options(&self, cancel: crate::Cancel) -> Options {
+    Options {
+      quality: self.quality,
+      engine: match self.pipeline {
+        RenderPipeline::Adobe(_) => crate::Engine::Adobe,
+        _ => crate::Engine::Apple,
+      },
+      cancel,
+      ..Options::default()
+    }
+  }
+
+  pub(crate) fn validate_smart_preview(&self) -> Result<()> {
+    let (w, h) = self.dimensions();
+    let valid = w > 0
+      && h > 0
+      && w.max(h) <= crate::smart_preview::MAX_EDGE
+      && w.checked_mul(h).and_then(|n| n.checked_mul(3)) == Some(self.image.data.len())
+      && self.image.data.iter().all(|v| v.is_finite())
+      && (1..=8).contains(&self.orientation)
+      && match &self.pipeline {
+        RenderPipeline::Adobe(a) => a.valid_portable() && self.quality == Quality::Full,
+        RenderPipeline::Mosaic(m) => {
+          m.matrix.iter().flatten().all(|v| v.is_finite())
+            && m.baseline_exposure.is_finite()
+            && m.black_render.is_finite()
+        }
+        RenderPipeline::Dng(d) => {
+          d.matrix.iter().flatten().all(|v| v.is_finite())
+            && d.baseline_exposure.is_finite()
+            && d.tone.valid_portable()
+            && d.gain_table_map.as_ref().is_none_or(|g| g.valid_portable())
+        }
+      };
+    self.settings.validate()?;
+    if !valid {
+      return Err(Error::Malformed("invalid smart preview state".into()));
+    }
+    Ok(())
+  }
+
   pub(crate) fn new(
     image: RgbImage,
     settings: &DevelopSettings,

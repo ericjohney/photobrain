@@ -10,7 +10,7 @@
 use super::color::ColorSpec;
 use crate::math::Mat3;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct InputTransform {
   order: [usize; 3],
   gains: [f32; 3],
@@ -23,6 +23,23 @@ pub(crate) struct InputTransform {
 }
 
 impl InputTransform {
+  pub(crate) fn valid_portable(&self) -> bool {
+    let mut order = self.order;
+    order.sort();
+    order == [0, 1, 2]
+      && self.gains.iter().all(|v| v.is_finite() && *v > 0.0)
+      && self
+        .matrix
+        .iter()
+        .flatten()
+        .chain(&self.scale)
+        .chain(&self.bias)
+        .chain(&self.knee)
+        .chain(&self.inverse_shoulder)
+        .all(|v| v.is_finite())
+      && self.black.is_finite()
+  }
+
   pub(crate) fn new(spec: &ColorSpec, neutral: [f64; 3], black: f64) -> Self {
     let gains = spec
       .camera_white

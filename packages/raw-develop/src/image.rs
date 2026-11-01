@@ -2,7 +2,7 @@
 
 use rayon::prelude::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RgbImage {
   pub width: usize,
   pub height: usize,

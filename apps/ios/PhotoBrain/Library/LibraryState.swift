@@ -487,6 +487,12 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
                 await deviceTask?.value
                 guard requestGeneration == generation else { return }
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                if scope == .library, !filters.isActive, records.isEmpty {
+                    records = await SmartPreviewCache.shared.cachedPhotos(origin: api.baseURL)
+                    recordsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
+                    await rebuildPresentation()
+                    if !records.isEmpty { refreshError = "Offline RAW previews" }
+                }
                 // Offline: the device's photos still show.
                 if orderedItems.isEmpty, records.isEmpty, device?.assets.isEmpty == false {
                     await rebuildPresentation()
@@ -495,7 +501,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
                     loadState = .failed(message)
                 } else {
                     loadState = .content
-                    refreshError = message
+                    refreshError = refreshError ?? message
                 }
             }
 

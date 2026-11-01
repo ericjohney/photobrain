@@ -103,3 +103,61 @@ fn null_inputs_and_invalid_files_report_owned_errors() {
     pbraw_cancel_free(ptr::null_mut());
   }
 }
+
+#[test]
+fn portable_session_matches_native_pixels_and_owns_its_download() {
+  let negative = Negative::open(fixture().to_str().unwrap()).unwrap();
+  let opts = Options::default();
+  let prepared = raw_develop::prepare(&negative, &DevelopSettings::default(), &opts).unwrap();
+  let bytes = prepared
+    .clone()
+    .encode_smart_preview(&raw_develop::Cancel::never())
+    .unwrap();
+  unsafe {
+    let mut error = PBRAWError {
+      code: 0,
+      message: ptr::null_mut(),
+    };
+    let session = pbraw_open_smart_preview(bytes.as_ptr(), bytes.len(), ptr::null(), &mut error);
+    assert!(!session.is_null());
+    drop(bytes);
+    for exposure in [0.0, 1.25, -1.5, 0.0] {
+      let image = pbraw_render_basic(session, exposure, 0, 0, 0, 0, 0, 1, ptr::null(), &mut error);
+      assert!(!image.is_null());
+      let direct = prepared
+        .render(
+          &DevelopSettings {
+            exposure,
+            ..Default::default()
+          },
+          &opts,
+        )
+        .unwrap()
+        .image;
+      let expected: Vec<u8> = direct
+        .data
+        .chunks_exact(3)
+        .flat_map(|p| {
+          [
+            (p[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (p[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (p[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+            255,
+          ]
+        })
+        .collect();
+      assert_eq!(
+        std::slice::from_raw_parts(pbraw_image_pixels(image), pbraw_image_len(image)),
+        expected
+      );
+      pbraw_image_free(image);
+    }
+    assert!(
+      pbraw_render_basic(session, 0.0, 101, 0, 0, 0, 0, 1, ptr::null(), &mut error).is_null()
+    );
+    pbraw_error_clear(&mut error);
+    pbraw_session_free(session);
+    assert!(pbraw_open_smart_preview(b"bad".as_ptr(), 3, ptr::null(), &mut error).is_null());
+    pbraw_error_clear(&mut error);
+  }
+}

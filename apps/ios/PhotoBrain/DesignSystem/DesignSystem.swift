@@ -280,5 +280,9 @@ enum UITestMode {
     static func resetPersistedViewState() {
         guard isActive else { return }
         UserDefaults.standard.removeObject(forKey: "com.photobrain.gridColumns")
+        if ProcessInfo.processInfo.environment["PHOTOBRAIN_CLEAR_SMART_PREVIEWS"] == "1",
+           let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            try? FileManager.default.removeItem(at: support.appendingPathComponent("SmartPreviews-v1"))
+        }
     }
 }

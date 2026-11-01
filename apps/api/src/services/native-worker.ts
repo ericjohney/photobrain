@@ -6,6 +6,7 @@ import {
 	clearDevelopedRawCache,
 	detectFaces,
 	discoverPhotos,
+	prepareSmartPreview,
 	processPhotosBatch,
 	renderDevelopedRaw,
 	renderExportJpeg,
@@ -121,6 +122,12 @@ async function execute(
 			// Rendering decodes on this thread and never waits on the shared processing
 			// pool, so an idle scan stream keeps its session (and its next window).
 			response = { id: request.id, result: renderExportJpeg(...request.args) };
+		} else if (request.operation === "prepareSmartPreview") {
+			response = {
+				id: request.id,
+				result: prepareSmartPreview(...request.args),
+			};
+			expireRawPreview();
 		} else if (request.operation === "renderDevelopedRaw") {
 			// Full RAW development on this thread (raw-develop parallelises internally).
 			response = {
