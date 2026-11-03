@@ -711,6 +711,23 @@ actor TestAPI: PhotoBrainAPI {
     var rawPreviewDelay: Duration = .zero
     var rawEditFailure: PhotoBrainAPIError?
     var rawSaveFailure: PhotoBrainAPIError?
+    var denoiseAmount = 0
+    var denoiseCancelled = false
+    var denoisePollDelay: Duration = .zero
+    func setDenoisePollDelay(_ delay: Duration) { denoisePollDelay = delay }
+    func startDenoise(photoId: Int, amount: Int, revision: Int) async throws -> DenoiseJob {
+        denoiseAmount = amount; denoiseCancelled = false
+        return DenoiseJob(id: "test-job", status: "processing", amount: amount, completed: 0, total: 2, message: nil)
+    }
+    func denoiseJob(photoId: Int, jobID: String) async throws -> DenoiseJob {
+        if denoisePollDelay > .zero { try await Task.sleep(for: denoisePollDelay) }
+        return DenoiseJob(id: jobID, status: denoiseCancelled ? "cancelled" : "complete", amount: denoiseAmount, completed: 2, total: 2, message: nil)
+    }
+    func cancelDenoise(photoId: Int, jobID: String) async throws { denoiseCancelled = true }
+    func denoisePreview(photoId: Int, jobID: String) async throws -> SmartPreviewDownload {
+        guard let data = smartPreviewData else { throw PhotoBrainAPIError.invalidResponse }
+        return SmartPreviewDownload(data: data, token: "denoise-\(denoiseAmount)", engine: rawRecipe.engine)
+    }
     var smartPreviewData: Data?
     var smartPreviewDelay: Duration = .zero
     var smartPreviewRequests = 0

@@ -1,0 +1,1778 @@
+{
+  "format_version": 1,
+  "authority": "controlled-replay",
+  "executable_sha256": "4001cc9abfa1e5352aa88c99c84833cf73c0282ad469ace6d8d196adb7d6aacc",
+  "get_function": "0x100e5e8e4",
+  "expand_function": "0x100bf408c",
+  "levels": 2,
+  "cases": [
+    {
+      "enabled": true,
+      "amount": 0,
+      "parameter_bits": [
+        "3f847ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3f979435e50d7942",
+        "3f9e1e1e1e1e1e1e"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 1,
+      "parameter_bits": [
+        "3f847ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3f979435e50d7942",
+        "3f9e1e1e1e1e1e1e"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 2,
+      "parameter_bits": [
+        "3f947ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fa745d1745d1745",
+        "3fad89d89d89d89d"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 3,
+      "parameter_bits": [
+        "3f9eb851eb851eb8",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fb13b13b13b13b1",
+        "3fb5bc609a90e7d9"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 4,
+      "parameter_bits": [
+        "3fa47ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fb6aefcc26e2d5e",
+        "3fbc71c71c71c71c"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 5,
+      "parameter_bits": [
+        "3fa999999999999a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fbbffffffffffff",
+        "3fc1745d1745d176"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 6,
+      "parameter_bits": [
+        "3faeb851eb851eb8",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fc097b425ed097b",
+        "3fc4924924924925"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 7,
+      "parameter_bits": [
+        "3fb1eb851eb851ec",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fc31f3831f3831f",
+        "3fc79435e50d7945"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 8,
+      "parameter_bits": [
+        "3fb47ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fc59721ed7e7535",
+        "3fca7b9611a7b961"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 9,
+      "parameter_bits": [
+        "3fb70a3d70a3d70a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fc8000000000000",
+        "3fcd49c34115b1e7"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 10,
+      "parameter_bits": [
+        "3fb999999999999a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fca5a5a5a5a5a5a",
+        "3fd0000000000001"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 11,
+      "parameter_bits": [
+        "3fbc28f5c28f5c29",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fcca6b29aca6b2a",
+        "3fd14fbcda3ac10d"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 12,
+      "parameter_bits": [
+        "3fbeb851eb851eb8",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fcee58469ee5845",
+        "3fd294a5294a5295"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 13,
+      "parameter_bits": [
+        "3fc0a3d70a3d70a4",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd08ba2e8ba2e8b",
+        "3fd3cf3cf3cf3cf3"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 14,
+      "parameter_bits": [
+        "3fc1eb851eb851ec",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd19e33c678cf1a",
+        "3fd5000000000001"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 15,
+      "parameter_bits": [
+        "3fc3333333333333",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd2aaaaaaaaaaaa",
+        "3fd6276276276275"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 16,
+      "parameter_bits": [
+        "3fc47ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd3b13b13b13b13",
+        "3fd745d1745d1745"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 17,
+      "parameter_bits": [
+        "3fc5c28f5c28f5c3",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd4b21642c8590b",
+        "3fd85bb39503d226"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 18,
+      "parameter_bits": [
+        "3fc70a3d70a3d70a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd5ad6b5ad6b5ac",
+        "3fd9696969696969"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 19,
+      "parameter_bits": [
+        "3fc851eb851eb852",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd6a3677d46cefa",
+        "3fda6f4de9bd37a7"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 20,
+      "parameter_bits": [
+        "3fc999999999999a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd79435e50d7943",
+        "3fdb6db6db6db6dc"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 21,
+      "parameter_bits": [
+        "3fcae147ae147ae1",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd87fffffffffff",
+        "3fdc64f52edf8c9f"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 22,
+      "parameter_bits": [
+        "3fcc28f5c28f5c29",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fd966ed8699127a",
+        "3fdd555555555555"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 23,
+      "parameter_bits": [
+        "3fcd70a3d70a3d71",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fda492492492492",
+        "3fde3f1f8fc7e3f3"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 24,
+      "parameter_bits": [
+        "3fceb851eb851eb8",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fdb26c9b26c9b26",
+        "3fdf22983759f229"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 25,
+      "parameter_bits": [
+        "3fd0000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fdbffffffffffff",
+        "3fe0000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 26,
+      "parameter_bits": [
+        "3fd0a3d70a3d70a4",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fdcd4e930288df1",
+        "3fe06bca1af286bd"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 27,
+      "parameter_bits": [
+        "3fd147ae147ae148",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fdda5a5a5a5a5a6",
+        "3fe0d4c77b03531e"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 28,
+      "parameter_bits": [
+        "3fd1eb851eb851ec",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fde7254813e22cc",
+        "3fe13b13b13b13b2"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 29,
+      "parameter_bits": [
+        "3fd28f5c28f5c28f",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fdf3b13b13b13b1",
+        "3fe19ec8e951033d"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 30,
+      "parameter_bits": [
+        "3fd3333333333333",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe0000000000000",
+        "3fe2000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 31,
+      "parameter_bits": [
+        "3fd3d70a3d70a3d7",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe0609a90e7d95c",
+        "3fe25ed097b425ed"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 32,
+      "parameter_bits": [
+        "3fd47ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe0bf66e0e5aea7",
+        "3fe2bb512bb512bb"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 33,
+      "parameter_bits": [
+        "3fd51eb851eb851f",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe11c71c71c71c7",
+        "3fe3159721ed7e75"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 34,
+      "parameter_bits": [
+        "3fd5c28f5c28f5c3",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe177c7a20e177c",
+        "3fe36db6db6db6dc"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 35,
+      "parameter_bits": [
+        "3fd6666666666666",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe1d1745d1745d2",
+        "3fe3c3c3c3c3c3c4"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 36,
+      "parameter_bits": [
+        "3fd70a3d70a3d70a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe22983759f2297",
+        "3fe417d05f417d06"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 37,
+      "parameter_bits": [
+        "3fd7ae147ae147ae",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe2800000000000",
+        "3fe469ee58469ee6"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 38,
+      "parameter_bits": [
+        "3fd851eb851eb852",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe2d4f4ac2d4f4a",
+        "3fe4ba2e8ba2e8ba"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 39,
+      "parameter_bits": [
+        "3fd8f5c28f5c28f6",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe3286bca1af286",
+        "3fe508a114228451"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 40,
+      "parameter_bits": [
+        "3fd999999999999a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe37a6f4de9bd38",
+        "3fe5555555555555"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 41,
+      "parameter_bits": [
+        "3fda3d70a3d70a3d",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe3cb08d3dcb08c",
+        "3fe5a05a05a05a05"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 42,
+      "parameter_bits": [
+        "3fdae147ae147ae1",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe41a41a41a41a3",
+        "3fe5e9bd37a6f4df"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 43,
+      "parameter_bits": [
+        "3fdb851eb851eb85",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe46822b63cbeeb",
+        "3fe6318c6318c631"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 44,
+      "parameter_bits": [
+        "3fdc28f5c28f5c29",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe4b4b4b4b4b4b5",
+        "3fe677d46cefa8d9"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 45,
+      "parameter_bits": [
+        "3fdccccccccccccd",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe4ffffffffffff",
+        "3fe6bca1af286bca"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 46,
+      "parameter_bits": [
+        "3fdd70a3d70a3d71",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe54a0cb1b810ed",
+        "3fe7000000000001"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 47,
+      "parameter_bits": [
+        "3fde147ae147ae14",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe592e29f79b474",
+        "3fe741fab8be0546"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 48,
+      "parameter_bits": [
+        "3fdeb851eb851eb8",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe5da895da895d9",
+        "3fe7829cbc14e5e1"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 49,
+      "parameter_bits": [
+        "3fdf5c28f5c28f5c",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe6210842108421",
+        "3fe7c1f07c1f07c3"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 50,
+      "parameter_bits": [
+        "3fe0000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe6666666666666",
+        "3fe8000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 51,
+      "parameter_bits": [
+        "3fe051eb851eb852",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe6aaaaaaaaaaab",
+        "3fe83cd4e930288c"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 52,
+      "parameter_bits": [
+        "3fe0a3d70a3d70a4",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe6eddbb76eddbc",
+        "3fe8787878787879"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 53,
+      "parameter_bits": [
+        "3fe0f5c28f5c28f6",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe7300000000001",
+        "3fe8b2f392a409f3"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 54,
+      "parameter_bits": [
+        "3fe147ae147ae148",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe7711dc47711dd",
+        "3fe8ec4ec4ec4ec5"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 55,
+      "parameter_bits": [
+        "3fe199999999999a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe7b13b13b13b14",
+        "3fe9249249249248"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 56,
+      "parameter_bits": [
+        "3fe1eb851eb851ec",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe7f05dcd30dadf",
+        "3fe95bc609a90e7e"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 57,
+      "parameter_bits": [
+        "3fe23d70a3d70a3d",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe82e8ba2e8ba2d",
+        "3fe991f1a515885f"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 58,
+      "parameter_bits": [
+        "3fe28f5c28f5c28f",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe86bca1af286bd",
+        "3fe9c71c71c71c72"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 59,
+      "parameter_bits": [
+        "3fe2e147ae147ae1",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe8a81e9131abf0",
+        "3fe9fb4d812c9fb4"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 60,
+      "parameter_bits": [
+        "3fe3333333333333",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe8e38e38e38e3a",
+        "3fea2e8ba2e8ba2f"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 61,
+      "parameter_bits": [
+        "3fe3851eb851eb85",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe91e1e1e1e1e1e",
+        "3fea60dd67c8a60d"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 62,
+      "parameter_bits": [
+        "3fe3d70a3d70a3d7",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe957d3273daa0c",
+        "3fea924924924925"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 63,
+      "parameter_bits": [
+        "3fe428f5c28f5c29",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe990b21642c858",
+        "3feac2d4f4ac2d4f"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 64,
+      "parameter_bits": [
+        "3fe47ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fe9c8bf8a2126ad",
+        "3feaf286bca1af29"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 65,
+      "parameter_bits": [
+        "3fe4cccccccccccd",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fea000000000000",
+        "3feb21642c8590b2"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 66,
+      "parameter_bits": [
+        "3fe51eb851eb851f",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fea3677d46cefa8",
+        "3feb4f72c234f72d"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 67,
+      "parameter_bits": [
+        "3fe570a3d70a3d71",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fea6c2b4481cd84",
+        "3feb7cb7cb7cb7cb"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 68,
+      "parameter_bits": [
+        "3fe5c28f5c28f5c3",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3feaa11e6efe35b5",
+        "3feba9386822b63d"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 69,
+      "parameter_bits": [
+        "3fe6147ae147ae14",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fead55555555556",
+        "3febd4f98bd4f98c"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 70,
+      "parameter_bits": [
+        "3fe6666666666666",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3feb08d3dcb08d3e",
+        "3fec000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 71,
+      "parameter_bits": [
+        "3fe6b851eb851eb8",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3feb3b9dcee773b9",
+        "3fec2a50658dc087"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 72,
+      "parameter_bits": [
+        "3fe70a3d70a3d70a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3feb6db6db6db6db",
+        "3fec53ef368eb042"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 73,
+      "parameter_bits": [
+        "3fe75c28f5c28f5c",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3feb9f22983759f2",
+        "3fec7ce0c7ce0c7d"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 74,
+      "parameter_bits": [
+        "3fe7ae147ae147ae",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3febcfe48293c225",
+        "3feca5294a5294a6"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 75,
+      "parameter_bits": [
+        "3fe8000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3febffffffffffff",
+        "3feccccccccccccd"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 76,
+      "parameter_bits": [
+        "3fe851eb851eb852",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fec2f785ef0bde0",
+        "3fecf3cf3cf3cf3c"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 77,
+      "parameter_bits": [
+        "3fe8a3d70a3d70a4",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fec5e50d79435e5",
+        "3fed1a3468d1a347"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 78,
+      "parameter_bits": [
+        "3fe8f5c28f5c28f6",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fec8c8c8c8c8c8c",
+        "3fed400000000001"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 79,
+      "parameter_bits": [
+        "3fe947ae147ae148",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fecba2e8ba2e8ba",
+        "3fed653594d65359"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 80,
+      "parameter_bits": [
+        "3fe999999999999a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fece739ce739ce7",
+        "3fed89d89d89d89d"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 81,
+      "parameter_bits": [
+        "3fe9eb851eb851ec",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fed13b13b13b13c",
+        "3fedadec75407d12"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 82,
+      "parameter_bits": [
+        "3fea3d70a3d70a3d",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fed3f97a4b01a15",
+        "3fedd1745d1745d1"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 83,
+      "parameter_bits": [
+        "3fea8f5c28f5c28f",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fed6aefcc26e2d5",
+        "3fedf4737d1cdf47"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 84,
+      "parameter_bits": [
+        "3feae147ae147ae1",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fed95bc609a90e6",
+        "3fee16ece540f489"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 85,
+      "parameter_bits": [
+        "3feb333333333333",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fedc00000000000",
+        "3fee38e38e38e38e"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 86,
+      "parameter_bits": [
+        "3feb851eb851eb85",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fede9bd37a6f4de",
+        "3fee5a5a5a5a5a5a"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 87,
+      "parameter_bits": [
+        "3febd70a3d70a3d7",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fee12f684bda130",
+        "3fee7b54166c612b"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 88,
+      "parameter_bits": [
+        "3fec28f5c28f5c29",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fee3bae54cf5019",
+        "3fee9bd37a6f4de9"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 89,
+      "parameter_bits": [
+        "3fec7ae147ae147b",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fee63e7063e7064",
+        "3feebbdb2a5c161a"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 90,
+      "parameter_bits": [
+        "3feccccccccccccd",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fee8ba2e8ba2e8b",
+        "3feedb6db6db6db7"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 91,
+      "parameter_bits": [
+        "3fed1eb851eb851f",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3feeb2e43dafcea7",
+        "3feefa8d9df51b3c"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 92,
+      "parameter_bits": [
+        "3fed70a3d70a3d71",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3feed9ad38b7f3bc",
+        "3fef193d4bb7e327"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 93,
+      "parameter_bits": [
+        "3fedc28f5c28f5c3",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fef000000000001",
+        "3fef377f1ada67d6"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 94,
+      "parameter_bits": [
+        "3fee147ae147ae14",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fef25deacafb74a",
+        "3fef555555555555"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 95,
+      "parameter_bits": [
+        "3fee666666666666",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fef4b4b4b4b4b4a",
+        "3fef72c234f72c24"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 96,
+      "parameter_bits": [
+        "3feeb851eb851eb8",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fef7047dc11f704",
+        "3fef8fc7e3f1f8fc"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 97,
+      "parameter_bits": [
+        "3fef0a3d70a3d70a",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fef94d653594d66",
+        "3fefac687d6343ea"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 98,
+      "parameter_bits": [
+        "3fef5c28f5c28f5c",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fefb8f899e55d3a",
+        "3fefc8a60dd67c8a"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 99,
+      "parameter_bits": [
+        "3fefae147ae147ae",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3fefdcb08d3dcb0a",
+        "3fefe48293c225cd"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 100,
+      "parameter_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 101,
+      "parameter_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": true,
+      "amount": 4294967295,
+      "parameter_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": false,
+      "amount": 0,
+      "parameter_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": false,
+      "amount": 50,
+      "parameter_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    },
+    {
+      "enabled": false,
+      "amount": 100,
+      "parameter_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "luminance_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    }
+  ],
+  "normalized_cases": [
+    {
+      "parameters": [
+        0.0,
+        0.0
+      ],
+      "luminance_bits": [
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      "chroma_bits": [
+        "0000000000000000",
+        "0000000000000000"
+      ]
+    },
+    {
+      "parameters": [
+        0.5,
+        0.25
+      ],
+      "luminance_bits": [
+        "3fe6666666666666",
+        "3fe8000000000000"
+      ],
+      "chroma_bits": [
+        "3fd0000000000000",
+        "3fd0000000000000"
+      ]
+    },
+    {
+      "parameters": [
+        0.01,
+        0.1
+      ],
+      "luminance_bits": [
+        "3f979435e50d7942",
+        "3f9e1e1e1e1e1e1e"
+      ],
+      "chroma_bits": [
+        "3fb999999999999a",
+        "3fb999999999999a"
+      ]
+    },
+    {
+      "parameters": [
+        0.987654321,
+        0.87654321
+      ],
+      "luminance_bits": [
+        "3fefd4591f60ae44",
+        "3fefde021fde9554"
+      ],
+      "chroma_bits": [
+        "3fec0ca4588f6336",
+        "3fec0ca4588f6336"
+      ]
+    },
+    {
+      "parameters": [
+        1.0,
+        1.0
+      ],
+      "luminance_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ],
+      "chroma_bits": [
+        "3ff0000000000000",
+        "3ff0000000000000"
+      ]
+    }
+  ]
+}

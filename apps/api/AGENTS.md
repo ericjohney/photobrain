@@ -583,3 +583,16 @@ Wall-clock budgets in performance tests go through `perfBudgetMs(ms)` from `setu
 `bun run bench:exif <1-20 distinct photo paths>` requires ExifTool but not the addon, reads the Rust metadata flags, and compares batched versus four-concurrent per-file metadata extraction with exact JSON equivalence checks. `EXIFTOOL_BIN` selects an executable for this benchmark only. See [import architecture and measurements](../../docs/import-performance.md) for historical measurements, locally verified incremental behavior, and remaining architectural options.
 
 `scripts/ui-test-server.ts` serves the real `/api/v1` and `/api/photos` routes over a temporary SQLite library seeded through the shared migrations with deterministic photos, EXIF, pHashes, tags, places, events, and collections. It stubs the native addon, never runs scans or Inngest, and exposes `POST /__fixture/reset` to restore the seed between UI tests. It is test infrastructure only; `apps/ios/scripts/run-ui-tests.sh` starts and stops it.
+
+### Experimental RAW Denoise
+
+`DENOISE_MODEL_DIR` enables opt-in Denoise, requiring Adobe, `ADOBE_PROFILE_DIR`
+and an explicit writable `DENOISE_CACHE_DIR`. Never bundle proprietary assets.
+`routes/denoise.ts` runs one cancellable native smart-preview job, reports shared
+output-tile counters, retains two previews, and fences source/revision changes.
+Jobs expire after 30 minutes and are lost on restart; retry uses the native disk
+cache. They never save recipes. `raw-edits.ts` accepts version 1 Basic recipes or
+version 2 with `denoise: 0..100`, preventing old clients from erasing v2 fields.
+Saved smart-preview/developed/export routes pass the amount to the native adapter.
+Only candidate X100VI/A1 II metadata exposes the iOS control; Rust checks exact
+calibration. See `packages/raw-develop/docs/adobe-denoise.md` for assets and limits.

@@ -2712,6 +2712,186 @@
 					}
 				}
 			}
+		},
+		"/api/v1/photos/{id}/denoise": {
+			"post": {
+				"operationId": "startDenoise",
+				"summary": "Prepare a draft Denoise smart preview; does not save a recipe",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["amount", "revision"],
+								"properties": {
+									"amount": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 100
+									},
+									"revision": {
+										"type": "integer",
+										"minimum": 0
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "Job accepted",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DenoiseJob"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Saved recipe changed"
+					},
+					"422": {
+						"description": "Unsupported RAW"
+					},
+					"503": {
+						"description": "Disabled or busy"
+					}
+				}
+			}
+		},
+		"/api/v1/photos/{id}/denoise/{job}": {
+			"get": {
+				"operationId": "getDenoiseJob",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"in": "path",
+						"name": "job",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Job state",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DenoiseJob"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Expired or server restarted; apply again"
+					}
+				}
+			},
+			"delete": {
+				"operationId": "cancelDenoiseJob",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"in": "path",
+						"name": "job",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Job state",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DenoiseJob"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Expired or server restarted; apply again"
+					}
+				}
+			}
+		},
+		"/api/v1/photos/{id}/denoise/{job}/preview": {
+			"get": {
+				"operationId": "downloadDenoisePreview",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"in": "path",
+						"name": "job",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Completed lossless smart preview",
+						"content": {
+							"application/vnd.photobrain.smart-preview": {
+								"schema": {
+									"type": "string",
+									"format": "binary"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Job expired"
+					},
+					"409": {
+						"description": "Incomplete job or stale source/recipe"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -3224,7 +3404,7 @@
 						"type": "array",
 						"minItems": 8,
 						"maxItems": 8,
-						"description": "Millimetres, inclusive: ≤15, 16–23, 24–34, 35–49, 50–84, 85–134, 135–299, ≥300",
+						"description": "Millimetres, inclusive: \u226415, 16\u201323, 24\u201334, 35\u201349, 50\u201384, 85\u2013134, 135\u2013299, \u2265300",
 						"items": {
 							"$ref": "#/components/schemas/GearBucket"
 						}
@@ -3233,7 +3413,7 @@
 						"type": "array",
 						"minItems": 7,
 						"maxItems": 7,
-						"description": "F-number rounded to one decimal, inclusive: ≤1.9, 2.0–2.7, 2.8–3.9, 4.0–5.5, 5.6–7.9, 8.0–10.9, ≥11",
+						"description": "F-number rounded to one decimal, inclusive: \u22641.9, 2.0\u20132.7, 2.8\u20133.9, 4.0\u20135.5, 5.6\u20137.9, 8.0\u201310.9, \u226511",
 						"items": {
 							"$ref": "#/components/schemas/GearBucket"
 						}
@@ -3242,7 +3422,7 @@
 						"type": "array",
 						"minItems": 6,
 						"maxItems": 6,
-						"description": "Seconds, `min` exclusive and `max` inclusive: ≤0.0005, (0.0005, 0.002], (0.002, 0.008], (0.008, 0.0334], (0.0334, 0.5], >0.5",
+						"description": "Seconds, `min` exclusive and `max` inclusive: \u22640.0005, (0.0005, 0.002], (0.002, 0.008], (0.008, 0.0334], (0.0334, 0.5], >0.5",
 						"items": {
 							"$ref": "#/components/schemas/GearBucket"
 						}
@@ -3251,7 +3431,7 @@
 						"type": "array",
 						"minItems": 7,
 						"maxItems": 7,
-						"description": "Inclusive: ≤200, 201–400, 401–800, 801–1600, 1601–3200, 3201–6400, ≥6401",
+						"description": "Inclusive: \u2264200, 201\u2013400, 401\u2013800, 801\u20131600, 1601\u20133200, 3201\u20136400, \u22656401",
 						"items": {
 							"$ref": "#/components/schemas/GearBucket"
 						}
@@ -4902,54 +5082,114 @@
 				}
 			},
 			"RawEditSettings": {
-				"type": "object",
-				"additionalProperties": false,
-				"required": [
-					"version",
-					"exposure",
-					"contrast",
-					"highlights",
-					"shadows",
-					"whites",
-					"blacks"
-				],
-				"properties": {
-					"version": {
-						"type": "integer",
-						"const": 1
+				"oneOf": [
+					{
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"version",
+							"exposure",
+							"contrast",
+							"highlights",
+							"shadows",
+							"whites",
+							"blacks"
+						],
+						"properties": {
+							"version": {
+								"type": "integer",
+								"const": 1
+							},
+							"exposure": {
+								"type": "number",
+								"minimum": -5,
+								"maximum": 5,
+								"multipleOf": 0.01
+							},
+							"contrast": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"highlights": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"shadows": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"whites": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"blacks": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							}
+						}
 					},
-					"exposure": {
-						"type": "number",
-						"minimum": -5,
-						"maximum": 5,
-						"multipleOf": 0.01
-					},
-					"contrast": {
-						"type": "integer",
-						"minimum": -100,
-						"maximum": 100
-					},
-					"highlights": {
-						"type": "integer",
-						"minimum": -100,
-						"maximum": 100
-					},
-					"shadows": {
-						"type": "integer",
-						"minimum": -100,
-						"maximum": 100
-					},
-					"whites": {
-						"type": "integer",
-						"minimum": -100,
-						"maximum": 100
-					},
-					"blacks": {
-						"type": "integer",
-						"minimum": -100,
-						"maximum": 100
+					{
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"version",
+							"exposure",
+							"contrast",
+							"highlights",
+							"shadows",
+							"whites",
+							"blacks",
+							"denoise"
+						],
+						"properties": {
+							"version": {
+								"type": "integer",
+								"enum": [2]
+							},
+							"exposure": {
+								"type": "number",
+								"minimum": -5,
+								"maximum": 5,
+								"multipleOf": 0.01
+							},
+							"contrast": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"highlights": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"shadows": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"whites": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"blacks": {
+								"type": "integer",
+								"minimum": -100,
+								"maximum": 100
+							},
+							"denoise": {
+								"type": "integer",
+								"minimum": 0,
+								"maximum": 100
+							}
+						}
 					}
-				}
+				]
 			},
 			"RawEditRecipe": {
 				"type": "object",
@@ -4969,6 +5209,37 @@
 					},
 					"supportsTone": {
 						"type": "boolean"
+					},
+					"supportsDenoise": {
+						"type": "boolean",
+						"description": "Opt-in server Denoise availability; native calibration validation occurs on Apply."
+					}
+				}
+			},
+			"DenoiseJob": {
+				"type": "object",
+				"required": ["id", "status", "amount", "completed", "total"],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["processing", "complete", "cancelled", "failed"]
+					},
+					"amount": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 100
+					},
+					"completed": {
+						"type": "integer"
+					},
+					"total": {
+						"type": "integer"
+					},
+					"message": {
+						"type": "string"
 					}
 				}
 			}

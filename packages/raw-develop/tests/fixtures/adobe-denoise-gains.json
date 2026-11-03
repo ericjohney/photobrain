@@ -1,0 +1,67 @@
+{
+  "format_version": 1,
+  "authority": "Native captured cr_stage_matrix3by3 constructor, mode0, signed16 Process_16",
+  "executable_sha256": "4001cc9abfa1e5352aa88c99c84833cf73c0282ad469ace6d8d196adb7d6aacc",
+  "cases": [
+    {
+      "name": "neural-gain",
+      "gains": [
+        1.0,
+        0.519793,
+        0.9931142134937723
+      ],
+      "black": 0.06243991760128176,
+      "shift": 14,
+      "matrix": [
+        [
+          16384,
+          0,
+          0,
+          8192
+        ],
+        [
+          0,
+          8516,
+          0,
+          -225632747
+        ],
+        [
+          0,
+          0,
+          16271,
+          -3235847
+        ]
+      ]
+    },
+    {
+      "name": "final-gain",
+      "gains": [
+        1.0,
+        1.9238427604835004,
+        1.0069335293087827
+      ],
+      "black": 0.06243991760128176,
+      "shift": 13,
+      "matrix": [
+        [
+          8192,
+          0,
+          0,
+          4096
+        ],
+        [
+          0,
+          15760,
+          0,
+          216994265
+        ],
+        [
+          0,
+          0,
+          8249,
+          1609732
+        ]
+      ]
+    }
+  ]
+}

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { photoRawEdits, photos } from "../db/schema";
 import type { ApiDatabase } from "./photo-catalog";
 
-export const rawEditSettingsSchema = z
+const basicSettingsSchema = z
 	.object({
 		version: z.literal(1),
 		exposure: z.number().finite().min(-5).max(5).multipleOf(0.01),
@@ -14,6 +14,17 @@ export const rawEditSettingsSchema = z
 		blacks: z.number().int().min(-100).max(100),
 	})
 	.strict();
+export const rawEditSettingsSchema = z.discriminatedUnion("version", [
+	basicSettingsSchema,
+	basicSettingsSchema
+		.extend({
+			version: z.literal(2),
+			denoise: z.number().int().min(0).max(100),
+		})
+		.strict(),
+]);
+export const denoiseAmount = (settings: RawEditSettings) =>
+	settings.version === 2 ? settings.denoise : 0;
 export type RawEditSettings = z.infer<typeof rawEditSettingsSchema>;
 export const defaultRawEditSettings: RawEditSettings = {
 	version: 1,
@@ -38,7 +49,9 @@ export class RawEditError extends Error {
 			| "PHOTO_NOT_FOUND"
 			| "NOT_RAW"
 			| "RAW_EDIT_CONFLICT"
-			| "RAW_TONE_UNSUPPORTED",
+			| "RAW_TONE_UNSUPPORTED"
+			| "RAW_RECIPE_UPGRADE_REQUIRED"
+			| "DENOISE_UNAVAILABLE",
 	) {
 		super(code);
 	}
@@ -76,6 +89,8 @@ export function readRawEdit(
 }
 
 export function validateRawTone(settings: RawEditSettings, engine: RawEngine) {
+	if (engine !== "adobe" && denoiseAmount(settings) > 0)
+		throw new RawEditError("DENOISE_UNAVAILABLE");
 	if (
 		engine === "apple" &&
 		[
@@ -101,6 +116,8 @@ export function saveRawEdit(
 		const current = readRawEdit(tx, photoId, defaultEngine);
 		if (expectedRevision !== current.revision)
 			throw new RawEditError("RAW_EDIT_CONFLICT");
+		if (current.settings.version === 2 && settings.version === 1)
+			throw new RawEditError("RAW_RECIPE_UPGRADE_REQUIRED");
 		validateRawTone(settings, current.engine);
 		const revision = current.revision + 1;
 		const values = {

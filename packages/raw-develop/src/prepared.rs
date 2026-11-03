@@ -72,6 +72,11 @@ impl Prepared {
     Ok(prepared)
   }
 
+  /// Starting settings for Basic edits, preserving immutable preparation choices.
+  pub fn render_settings(&self) -> DevelopSettings {
+    self.settings.clone()
+  }
+
   pub fn render_options(&self, cancel: crate::Cancel) -> Options {
     Options {
       quality: self.quality,

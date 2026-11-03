@@ -1,1 +1,4 @@
 target/
+# Caller-owned recovered neural model assets stay outside source control.
+*.pbdn
+*.mlmodel

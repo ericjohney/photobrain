@@ -142,6 +142,10 @@ export interface DevelopedRaw {
 export function clearDevelopedRawCache(): void;
 
 export interface DevelopedRawOptions {
+	denoiseAmount?: number;
+	denoiseModelDir?: string;
+	denoiseCacheDir?: string;
+	denoiseProgress?: Int32Array;
 	/** Core settings; the app exposes only its validated Basic recipe. */
 	settingsJson?: string;
 	/** 1024/2048 for a cached interactive proxy; omit for full-resolution output. */

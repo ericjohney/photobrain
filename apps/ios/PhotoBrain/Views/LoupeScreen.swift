@@ -325,7 +325,7 @@ struct LoupeScreen: View {
                     if rawEditor.isSaving { ProgressView().tint(.white) }
                     else { Text("Save").fontWeight(.semibold) }
                 }
-                .disabled(!rawEditor.isReady || rawEditor.isSaving)
+                .disabled(!rawEditor.isReady || rawEditor.isSaving || rawEditor.isDenoising || rawEditor.denoiseSelection != rawEditor.settings.denoiseAmount)
                 .accessibilityIdentifier("raw-edit-save")
             }
             .tint(.white)
@@ -771,6 +771,33 @@ struct LoupeScreen: View {
                 .accessibilityLabel("RAW \(rawControl.rawValue)")
                 .accessibilityValue(rawControl.label(in: rawEditor.settings))
                 .accessibilityIdentifier("raw-edit-\(rawControl.rawValue)")
+                if rawEditor.supportsDenoise && rawEditor.isLocal {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Label("Denoise", systemImage: "sparkles")
+                            Spacer()
+                            Text(rawEditor.denoiseSelection == 0 ? "Off" : "\(rawEditor.denoiseSelection)%").monospacedDigit()
+                        }
+                        Slider(value: Binding(get: { Double(rawEditor.denoiseSelection) }, set: { rawEditor.denoiseSelection = Int($0) }), in: 0...100, step: 1)
+                            .disabled(rawEditor.isDenoising)
+                            .accessibilityIdentifier("raw-edit-denoise-amount")
+                        if rawEditor.isDenoising {
+                            HStack {
+                                if let progress = rawEditor.denoiseProgress { ProgressView(value: progress) }
+                                else { ProgressView() }
+                                Text("Denoising…").font(.caption)
+                                Button("Cancel") { rawEditor.cancelDenoise() }
+                                    .accessibilityIdentifier("raw-edit-denoise-cancel")
+                            }
+                        } else {
+                            Button("Apply Denoise") { rawEditor.applyDenoise() }
+                                .disabled(rawEditor.denoiseSelection == rawEditor.settings.denoiseAmount)
+                                .accessibilityIdentifier("raw-edit-denoise-apply")
+                        }
+                        Text("Online · Experimental · Supported X100VI and A1 II RAW layouts")
+                            .font(.caption2).foregroundStyle(.white.opacity(0.7))
+                    }
+                }
                 Text(rawEditor.supportsTone ? "Save adjustments · Original RAW is preserved" : "Exposure adjustments · Original RAW is preserved")
                     .font(.caption).foregroundStyle(.white.opacity(0.7))
                 if let status = rawEditor.storageMessage {

@@ -115,6 +115,10 @@ protocol PhotoBrainAPI: Sendable {
     /// full-resolution Display P3 JPEG, rendered on demand. A busy renderer throws
     /// `PhotoBrainAPIError.server(status: 503, code: "DEVELOP_BUSY", ...)`.
     func smartPreview(photoId: Int, token: String?) async throws -> SmartPreviewDownload
+    func startDenoise(photoId: Int, amount: Int, revision: Int) async throws -> DenoiseJob
+    func denoiseJob(photoId: Int, jobID: String) async throws -> DenoiseJob
+    func cancelDenoise(photoId: Int, jobID: String) async throws
+    func denoisePreview(photoId: Int, jobID: String) async throws -> SmartPreviewDownload
     func rawEdit(photoId: Int) async throws -> RawEditRecipe
     func saveRawEdit(photoId: Int, settings: RawEditSettings, revision: Int) async throws -> RawEditRecipe
     func rawEditPreview(photoId: Int, settings: RawEditSettings, refined: Bool) async throws -> DevelopedRawImage
@@ -561,9 +565,28 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         return data.count > maximumErrorBytes ? Data() : data
     }
 
+    func startDenoise(photoId: Int, amount: Int, revision: Int) async throws -> DenoiseJob {
+        struct Input: Encodable { let amount: Int; let revision: Int }
+        return try await send(method: "POST", path: ["photos", String(photoId), "denoise"], body: Input(amount: amount, revision: revision))
+    }
+    func denoiseJob(photoId: Int, jobID: String) async throws -> DenoiseJob {
+        try await get(path: ["photos", String(photoId), "denoise", jobID])
+    }
+    func cancelDenoise(photoId: Int, jobID: String) async throws {
+        var request = try request(path: ["photos", String(photoId), "denoise", jobID])
+        request.httpMethod = "DELETE"
+        let _: DenoiseJob = try await perform(request)
+    }
+    func denoisePreview(photoId: Int, jobID: String) async throws -> SmartPreviewDownload {
+        try await downloadSmartPreview(url: baseURL.appendingPathComponent("api/v1/photos/\(photoId)/denoise/\(jobID)/preview"), token: nil)
+    }
     func smartPreview(photoId: Int, token: String?) async throws -> SmartPreviewDownload {
         guard photoId > 0 else { throw PhotoBrainAPIError.invalidRequest }
-        var request = URLRequest(url: baseURL.appendingPathComponent("api/photos/\(photoId)/smart-preview"))
+        return try await downloadSmartPreview(url: baseURL.appendingPathComponent("api/photos/\(photoId)/smart-preview"), token: token)
+    }
+
+    private func downloadSmartPreview(url: URL, token: String?) async throws -> SmartPreviewDownload {
+        var request = URLRequest(url: url)
         request.timeoutInterval = 120
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue(token, forHTTPHeaderField: "If-None-Match")
@@ -577,7 +600,7 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         guard data.count <= 96 * 1024 * 1024 + 20,
               let engine = http.value(forHTTPHeaderField: "X-Developed-Engine"), ["apple", "adobe"].contains(engine),
               let token = http.value(forHTTPHeaderField: "ETag") else { throw PhotoBrainAPIError.invalidResponse }
-        return SmartPreviewDownload(data: data, token: token, engine: engine)
+        return SmartPreviewDownload(data: data, token: token, engine: engine, denoiseAmount: http.value(forHTTPHeaderField: "X-Denoise-Amount").flatMap(Int.init))
     }
 
     func rawEdit(photoId: Int) async throws -> RawEditRecipe {
@@ -877,6 +900,10 @@ private final class APITransferMetricsDelegate: NSObject, URLSessionTaskDelegate
 
 
 extension PhotoBrainAPI {
+    func startDenoise(photoId: Int, amount: Int, revision: Int) async throws -> DenoiseJob { throw PhotoBrainAPIError.invalidRequest }
+    func denoiseJob(photoId: Int, jobID: String) async throws -> DenoiseJob { throw PhotoBrainAPIError.invalidRequest }
+    func cancelDenoise(photoId: Int, jobID: String) async throws { }
+    func denoisePreview(photoId: Int, jobID: String) async throws -> SmartPreviewDownload { throw PhotoBrainAPIError.invalidRequest }
     func smartPreview(photoId: Int, token: String?) async throws -> SmartPreviewDownload {
         throw RawEditError(message: "Smart previews are unavailable")
     }

@@ -103,6 +103,7 @@ describe("nondestructive RAW edits", () => {
 			revision: 0,
 			engine: "adobe",
 			supportsTone: true,
+			supportsDenoise: false,
 		});
 		const settings = {
 			...defaultRawEditSettings,
@@ -275,7 +276,11 @@ test("smart previews deliver opaque versioned bytes without paths or recipe muta
 	expect(new Uint8Array(await response.arrayBuffer())).toEqual(
 		new Uint8Array([80, 66, 83, 80]),
 	);
-	expect(f.calls[0]).toEqual({ engine: "adobe", adobeProfileDir: "/profiles" });
+	expect(f.calls[0]).toEqual({
+		engine: "adobe",
+		adobeProfileDir: "/profiles",
+		denoiseAmount: 0,
+	});
 	expect(f.db.select().from(photoRawEdits).all()).toHaveLength(0);
 	const cached = await f.app.request(path, {
 		headers: { "If-None-Match": '"opaque-token"' },

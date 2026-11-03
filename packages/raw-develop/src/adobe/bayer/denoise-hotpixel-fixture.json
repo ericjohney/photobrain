@@ -1,0 +1,52 @@
+{
+  "authority": "controlled-native-replay-with-entirely-synthetic-stage-input",
+  "executable_sha256": "4001cc9abfa1e5352aa88c99c84833cf73c0282ad469ace6d8d196adb7d6aacc",
+  "process_function": "0x100821270",
+  "thresholds": [
+    8000,
+    6000
+  ],
+  "input_formula": "((absolute_row*131+absolute_column*43+8192) rem_euclid 18000)+22000",
+  "flat_radius": 5,
+  "flat_value": 30000,
+  "spots": [
+    [
+      12,
+      12,
+      65535
+    ],
+    [
+      12,
+      29,
+      0
+    ],
+    [
+      30,
+      30,
+      0
+    ],
+    [
+      30,
+      47,
+      65535
+    ]
+  ],
+  "input": {
+    "rect": [
+      -2,
+      -2,
+      421,
+      405
+    ],
+    "sha256": "484b47ff412f08de2ef2dedac5e4f5e4fb3527284a4efadda3c32df9be0c6931"
+  },
+  "output": {
+    "rect": [
+      0,
+      0,
+      419,
+      403
+    ],
+    "sha256": "f81f5a6a4d2c7618ddf31c7a19cdcf489ca00728b50120927e830aa6bc63aa7d"
+  }
+}

@@ -102,6 +102,8 @@ struct RawEditSettings: Codable, Equatable, Sendable {
     var shadows = 0
     var whites = 0
     var blacks = 0
+    var denoise: Int?
+    var denoiseAmount: Int { denoise ?? 0 }
 }
 
 struct RawEditRecipe: Codable, Equatable, Sendable {
@@ -109,6 +111,16 @@ struct RawEditRecipe: Codable, Equatable, Sendable {
     let revision: Int
     let engine: String
     let supportsTone: Bool
+    var supportsDenoise: Bool? = nil
+}
+
+struct DenoiseJob: Decodable, Sendable {
+    let id: String
+    let status: String
+    let amount: Int
+    let completed: Int
+    let total: Int
+    let message: String?
 }
 
 enum RawEditControl: String, CaseIterable, Identifiable {
@@ -171,6 +183,12 @@ final class LoupeRawEditStore: ObservableObject {
     @Published private(set) var appliedSettings = RawEditSettings()
     @Published private(set) var isLocal = false
     @Published private(set) var storageMessage: String?
+    @Published private(set) var supportsDenoise = false
+    @Published private(set) var isDenoising = false
+    @Published private(set) var denoiseProgress: Double?
+    @Published var denoiseSelection = 0
+    private var denoiseTask: Task<Void, Never>?
+    private var denoiseJobID: String?
 
     var isActive: Bool { phase != .inactive }
     var isReady: Bool { phase == .ready }
@@ -238,14 +256,19 @@ final class LoupeRawEditStore: ObservableObject {
                 }
                 do {
                     let download = try await api.smartPreview(photoId: rawID, token: nil)
-                    guard let data = download.data, download.engine == recipe.engine else { throw PhotoBrainAPIError.invalidResponse }
+                    guard let data = download.data, download.engine == recipe.engine,
+                          download.denoiseAmount == nil || download.denoiseAmount == recipe.settings.denoiseAmount else { throw PhotoBrainAPIError.invalidResponse }
+                    if let desired = previous?.draft ?? previous?.pending, desired.denoiseAmount != recipe.settings.denoiseAmount {
+                        throw RawEditError(message: "The Denoise draft preview is unavailable. Reload saved adjustments to recover.")
+                    }
                     let entry = SmartPreviewCache.Entry(photo: photo, rawID: rawID, recipe: previous?.pending != nil || previous?.draft != nil ? previous!.recipe : recipe,
-                                                        token: download.token, draft: previous?.draft, pending: previous?.pending, accessed: Date())
+                                                        token: download.token, draft: previous?.draft, pending: previous?.pending, accessed: Date(), previewDenoise: recipe.settings.denoiseAmount)
                     try await self.openLocal(data: data, entry: entry, id: id)
                     try await cache.store(data, entry: entry, origin: api.baseURL)
                     return
                 } catch is CancellationError { throw CancellationError() }
                 catch {
+                    if ((previous?.draft ?? previous?.pending)?.denoiseAmount ?? 0) > 0 { throw error }
                     self.local = nil; self.isLocal = false
                     self.storageMessage = nil
                     // Older servers retain the existing server-preview editor.
@@ -269,9 +292,15 @@ final class LoupeRawEditStore: ObservableObject {
     private func applyRecipe(_ recipe: RawEditRecipe) {
         savedSettings = recipe.settings; savedRevision = recipe.revision
         settings = recipe.settings; supportsTone = recipe.supportsTone; engine = recipe.engine
+        supportsDenoise = recipe.supportsDenoise == true
+        denoiseSelection = recipe.settings.denoiseAmount
     }
 
     private func openLocal(data: Data, entry: SmartPreviewCache.Entry, id: UUID) async throws {
+        let desired = entry.draft ?? entry.pending ?? entry.recipe.settings
+        guard (entry.previewDenoise ?? entry.recipe.settings.denoiseAmount) == desired.denoiseAmount else {
+            throw RawEditError(message: "The cached preview does not match these Denoise adjustments. Reload saved adjustments while online.")
+        }
         let renderer = SmartRawEditRenderer()
         try await renderer.open(data: data, cancellation: localToken)
         let baseline = try await renderer.render(RawEditSettings(), refined: true, cancellation: localToken)
@@ -280,6 +309,7 @@ final class LoupeRawEditStore: ObservableObject {
         applyRecipe(entry.recipe)
         savedSettings = entry.pending ?? entry.recipe.settings
         settings = entry.draft ?? savedSettings
+        denoiseSelection = settings.denoiseAmount
         beforeImage = baseline; currentImage = baseline
         storageMessage = entry.pending != nil ? "Saved on device · Waiting to sync" : (entry.draft != nil ? "Recovered unsaved adjustments" : "Available offline")
         showImage(); phase = .ready
@@ -291,13 +321,37 @@ final class LoupeRawEditStore: ObservableObject {
             do {
                 _ = try await cache.sync(api: api, rawID: entry.rawID)
                 let fetched = try await api.rawEdit(photoId: entry.rawID)
-                let download = try await api.smartPreview(photoId: entry.rawID, token: entry.token)
                 guard let self, self.id == id, !Task.isCancelled else { return }
+                self.supportsDenoise = fetched.supportsDenoise == true
+                // A draft preview belongs to its applied amount, not necessarily the saved recipe.
+                if self.settings.denoiseAmount != fetched.settings.denoiseAmount && self.hasChanges {
+                    guard fetched.revision == entry.recipe.revision else { throw RawEditError(message: "Saved adjustments changed. Reload to resolve the conflict.") }
+                    return
+                }
+                let download = try await api.smartPreview(photoId: entry.rawID, token: entry.token)
+                guard self.id == id, !Task.isCancelled else { return }
                 let latest = await cache.entry(api.baseURL, entry.rawID) ?? entry
                 // A Save can finish while the preview is downloading. Never replace its
                 // newer recipe with the response captured before that download.
                 let remote = fetched.revision < latest.recipe.revision ? latest.recipe : fetched
                 guard remote.engine == self.engine else { throw RawEditError(message: "The RAW engine changed. Reload saved adjustments to review your edits.") }
+                guard download.denoiseAmount == nil || download.denoiseAmount == remote.settings.denoiseAmount else {
+                    throw RawEditError(message: "Saved Denoise adjustments changed during download. Reopen the editor.")
+                }
+                var replacement: SmartRawEditRenderer?
+                var replacementBaseline: UIImage?
+                if let data = download.data {
+                    guard download.engine == self.engine else { throw PhotoBrainAPIError.invalidResponse }
+                    let renderer = SmartRawEditRenderer()
+                    try await renderer.open(data: data, cancellation: self.localToken)
+                    replacementBaseline = try await renderer.render(RawEditSettings(), refined: true, cancellation: self.localToken)
+                    guard self.id == id, !Task.isCancelled else { return }
+                    replacement = renderer
+                }
+                let afterOpen = await cache.entry(api.baseURL, entry.rawID)
+                guard !self.isSaving, remote.revision >= self.savedRevision,
+                      afterOpen?.recipe.revision == latest.recipe.revision,
+                      afterOpen?.pending == latest.pending, afterOpen?.draft == latest.draft else { return }
                 if latest.pending == nil && latest.draft == nil && !self.hasChanges {
                     self.applyRecipe(remote)
                     var refreshed = latest; refreshed.recipe = remote; refreshed.accessed = Date()
@@ -306,14 +360,12 @@ final class LoupeRawEditStore: ObservableObject {
                     throw RawEditError(message: "This photo was edited elsewhere. Your adjustments are kept; resolve the conflict before sharing.")
                 }
                 self.savedRevision = latest.pending == nil ? remote.revision : latest.recipe.revision
-                if let data = download.data {
-                    guard download.engine == self.engine else { throw PhotoBrainAPIError.invalidResponse }
-                    let renderer = SmartRawEditRenderer()
-                    try await renderer.open(data: data, cancellation: self.localToken)
-                    guard self.id == id else { return }
+                if let data = download.data, let renderer = replacement {
                     self.local = renderer
+                    self.beforeImage = replacementBaseline
                     var updated = await cache.entry(api.baseURL, entry.rawID) ?? latest
                     updated.token = download.token; updated.photo = photo
+                    updated.previewDenoise = remote.settings.denoiseAmount
                     try await cache.store(data, entry: updated, origin: api.baseURL)
                 }
                 self.storageMessage = latest.pending == nil ? "Available offline" : "Saved on device · Waiting to sync"
@@ -324,6 +376,67 @@ final class LoupeRawEditStore: ObservableObject {
                 else { self.errorMessage = error.localizedDescription }
             }
         }
+    }
+
+    func applyDenoise() {
+        guard isReady, isLocal, supportsDenoise, !isSaving, !isDenoising,
+              let id, let rawID, denoiseSelection != settings.denoiseAmount else { return }
+        let amount = denoiseSelection
+        isDenoising = true; denoiseProgress = nil; errorMessage = nil
+        refreshTask?.cancel()
+        let refresh = refreshTask
+        renderTask?.cancel()
+        denoiseTask = Task { [weak self, api, cache] in
+            await refresh?.value
+            guard let self, self.id == id else { return }
+            defer { if self.id == id { self.isDenoising = false; self.denoiseJobID = nil } }
+            var startedJobID: String?
+            do {
+                await self.journalTask?.value
+                // Resolve queued saves first; a job must refer to the current server revision.
+                if let synced = try await cache.sync(api: api, rawID: rawID) { self.savedRevision = synced.revision }
+                var job = try await api.startDenoise(photoId: rawID, amount: amount, revision: self.savedRevision)
+                startedJobID = job.id
+                guard self.id == id, !Task.isCancelled else { throw CancellationError() }
+                self.denoiseJobID = job.id
+                while job.status == "processing" {
+                    try Task.checkCancellation()
+                    self.denoiseProgress = job.total > 0 ? Double(job.completed) / Double(job.total) : nil
+                    try await Task.sleep(for: .seconds(1))
+                    job = try await api.denoiseJob(photoId: rawID, jobID: job.id)
+                }
+                guard job.status == "complete" else { throw RawEditError(message: job.message ?? "Denoise cancelled") }
+                let preview = try await api.denoisePreview(photoId: rawID, jobID: job.id)
+                guard let data = preview.data, preview.engine == self.engine,
+                      preview.denoiseAmount == nil || preview.denoiseAmount == amount else { throw PhotoBrainAPIError.invalidResponse }
+                let renderer = SmartRawEditRenderer()
+                try await renderer.open(data: data, cancellation: self.localToken)
+                var updated = self.settings; updated.version = 2; updated.denoise = amount
+                let baseline = try await renderer.render(RawEditSettings(), refined: true, cancellation: self.localToken)
+                let image = try await renderer.render(updated, refined: true, cancellation: self.localToken)
+                guard self.id == id, !Task.isCancelled else { throw CancellationError() }
+                guard var entry = await cache.entry(api.baseURL, rawID) else { throw RawEditError(message: "Smart preview cache is unavailable") }
+                entry.token = preview.token; entry.previewDenoise = amount; entry.draft = updated
+                try await cache.store(data, entry: entry, origin: api.baseURL)
+                guard self.id == id, !Task.isCancelled else { throw CancellationError() }
+                self.local = renderer; self.settings = updated; self.appliedSettings = updated
+                self.beforeImage = baseline; self.currentImage = image; self.showingBefore = false
+                self.showImage(); self.storageMessage = "Denoise applied · Tap Save to keep it"
+            } catch {
+                if let jobID = startedJobID { try? await api.cancelDenoise(photoId: rawID, jobID: jobID) }
+                guard self.id == id, !Task.isCancelled else { return }
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func cancelDenoise() {
+        denoiseTask?.cancel(); denoiseTask = nil
+        if let jobID = denoiseJobID, let rawID {
+            Task { [api] in try? await api.cancelDenoise(photoId: rawID, jobID: jobID) }
+        }
+        denoiseJobID = nil
+        denoiseProgress = nil
     }
 
     private func persistDraft() {
@@ -343,7 +456,7 @@ final class LoupeRawEditStore: ObservableObject {
     }
 
     func set(_ control: RawEditControl, value: Double) {
-        guard isReady, !isSaving, controls.contains(control) else { return }
+        guard isReady, !isSaving, !isDenoising, controls.contains(control) else { return }
         control.set(value, in: &settings)
         showingBefore = false
         showImage()
@@ -352,8 +465,10 @@ final class LoupeRawEditStore: ObservableObject {
     }
 
     func reset() {
-        guard isReady, !isSaving else { return }
+        guard isReady, !isSaving, !isDenoising else { return }
+        let amount = settings.denoiseAmount, version = settings.version
         settings = RawEditSettings()
+        if version == 2 { settings.version = 2; settings.denoise = amount }
         persistDraft()
         showingBefore = false
         showImage()
@@ -361,7 +476,7 @@ final class LoupeRawEditStore: ObservableObject {
     }
 
     func setDragging(_ value: Bool) {
-        guard isReady, !isSaving else { return }
+        guard isReady, !isSaving, !isDenoising else { return }
         dragging = value
         requestRender()
     }
@@ -373,7 +488,7 @@ final class LoupeRawEditStore: ObservableObject {
     }
 
     func save() async -> Bool {
-        guard isReady, !isSaving, let id, let rawID else { return false }
+        guard isReady, !isSaving, !isDenoising, denoiseSelection == settings.denoiseAmount, let id, let rawID else { return false }
         isSaving = true
         errorMessage = nil
         defer { if self.id == id { isSaving = false } }
@@ -499,6 +614,10 @@ final class LoupeRawEditStore: ObservableObject {
     func retryPreview() { if isReady { requestRender() } }
 
     func end() {
+        cancelDenoise()
+        isDenoising = false
+        supportsDenoise = false
+        denoiseSelection = 0
         localToken.cancel()
         localToken = RawEditCancellation()
         local = nil
@@ -538,6 +657,7 @@ struct SmartPreviewDownload: Sendable {
     let data: Data?
     let token: String
     let engine: String
+    var denoiseAmount: Int? = nil
 }
 
 /// Application Support keeps previews and tiny draft journals together across restarts.
@@ -552,6 +672,7 @@ actor SmartPreviewCache {
         var draft: RawEditSettings?
         var pending: RawEditSettings?
         var accessed: Date
+        var previewDenoise: Int? = nil
         var generation: Date? { photo.thumbnailUpdatedAt }
     }
     private let root: URL

@@ -342,6 +342,61 @@ final class RawEditingTests: XCTestCase {
     }
 
 
+    func testDenoiseAppliesToDraftReopensAndSavesExplicitly() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root)
+        // State-machine test with synthetic pixels; neural/render parity has separate fixtures.
+        let api = await editingAPI(recipe: RawEditRecipe(settings: RawEditSettings(), revision: 0, engine: "apple", supportsTone: false, supportsDenoise: true))
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "synthetic", withExtension: "pbsp"))
+        await api.configureSmartPreview(try Data(contentsOf: file))
+        let store = LoupeRawEditStore(api: api, cache: cache)
+        store.start(raw)
+        await waitUntil { store.isReady && store.isLocal }
+        store.denoiseSelection = 50
+        let unappliedSave = await store.save()
+        XCTAssertFalse(unappliedSave) // Unapplied selection cannot silently save another amount.
+        store.applyDenoise()
+        await waitUntil { !store.isDenoising }
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(store.settings.denoiseAmount, 50)
+        XCTAssertEqual(store.settings.version, 2)
+        let unsaved = try await api.rawEdit(photoId: 2)
+        XCTAssertEqual(unsaved.revision, 0)
+        store.reset() // Reset Basic controls retains the explicitly applied preparation.
+        XCTAssertEqual(store.settings.denoiseAmount, 50)
+        store.end()
+        store.start(raw)
+        await waitUntil { store.isReady && store.settings.denoiseAmount == 50 }
+        let saved = await store.save()
+        XCTAssertTrue(saved)
+        let remote = try await api.rawEdit(photoId: 2)
+        XCTAssertEqual(remote.settings.denoiseAmount, 50)
+        XCTAssertEqual(remote.revision, 1)
+        store.end()
+    }
+
+    func testDenoiseCancellationRetainsOriginalDraftAndPreview() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root)
+        let api = await editingAPI(recipe: RawEditRecipe(settings: RawEditSettings(), revision: 0, engine: "apple", supportsTone: false, supportsDenoise: true))
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "synthetic", withExtension: "pbsp"))
+        await api.configureSmartPreview(try Data(contentsOf: file))
+        let store = LoupeRawEditStore(api: api, cache: cache)
+        store.start(raw)
+        await waitUntil { store.isReady && store.isLocal }
+        store.denoiseSelection = 50; store.applyDenoise()
+        await waitUntil { await api.denoiseAmount == 50 }
+        store.cancelDenoise()
+        await waitUntil { !store.isDenoising }
+        XCTAssertEqual(store.settings.denoiseAmount, 0)
+        XCTAssertFalse(store.hasChanges)
+        let cancelled = await api.denoiseCancelled
+        XCTAssertTrue(cancelled)
+        store.end()
+    }
+
     func testRealSmartPreviewOnSimulatorWhenConfigured() async throws {
         guard let path = ProcessInfo.processInfo.environment["PHOTOBRAIN_SMART_PREVIEW"] else {
             throw XCTSkip("Set TEST_RUNNER_PHOTOBRAIN_SMART_PREVIEW to a generated Adobe .pbsp file")

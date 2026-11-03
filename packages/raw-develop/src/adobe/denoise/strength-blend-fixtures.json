@@ -1,0 +1,98 @@
+{
+  "format_version": 1,
+  "authority": "controlled-replay",
+  "executable_sha256": "4001cc9abfa1e5352aa88c99c84833cf73c0282ad469ace6d8d196adb7d6aacc",
+  "constructor": "0x1008db868",
+  "process": "0x1008dbf38",
+  "dispatch": {
+    "reference": {
+      "matrix": "0x101403ac0",
+      "blur_across": "0x1014252bc",
+      "blur_down": "0x101426144"
+    },
+    "simd": {
+      "matrix": "0x10084dd5c",
+      "blur_across": "0x100847a3c",
+      "blur_down": "0x100847c04"
+    },
+    "simd_runtime_confirmation": "Observed same three function pointers at normal InterpolateBayer entry; wrapper/dispatch/dispatch.json."
+  },
+  "synthetic_input": "v=((x*17+y*29+c*43)%113-11)/96 as f64; channels 3..5 use 0.25+0.45*v; then cast f32",
+  "cases": [
+    {
+      "amount": 1,
+      "origin": [
+        0,
+        0
+      ],
+      "shape": [
+        6,
+        17,
+        19
+      ],
+      "source_sha256": "1939337c45f9fa2ba62d29085f42befde62997002a437a67c4886ad0908f612d",
+      "reference_sha256": "eef880cca52ae4c1cd17a942173c18c30a4bd1b0dacf013c57ea686788817ebc",
+      "simd_sha256": "30c3ea013fa1e5f1977bd06bb87dd10d45609cfec5b5395dd0d2f01eb9ca8ec2"
+    },
+    {
+      "amount": 25,
+      "origin": [
+        -3,
+        5
+      ],
+      "shape": [
+        6,
+        18,
+        20
+      ],
+      "source_sha256": "2c2454b9b98ada1be867dcb69000b0ef772cb92b7692b42b21eac463e676a3c8",
+      "reference_sha256": "2efbdcb54af0ba94be2311105c5a126831986c1c900a75a72d7534d27726cf6c",
+      "simd_sha256": "270ddce1347cb575fdadd4daed9f3c3f322176cbec97eeb00a4904f249da6740"
+    },
+    {
+      "amount": 50,
+      "origin": [
+        7,
+        -9
+      ],
+      "shape": [
+        6,
+        31,
+        37
+      ],
+      "source_sha256": "e553dfe863970c0aabda1a747a05789b0eb852ba3ecbce38ae298030b9609da7",
+      "reference_sha256": "3e79d52ab7d5d7f0bd1cb892b178b1a2d263177e7b9f3d56421a8c7643a6e0db",
+      "simd_sha256": "41ff084941c6d150007c6a1577599795802d77be2640985bd10858f2139172c0"
+    },
+    {
+      "amount": 75,
+      "origin": [
+        0,
+        0
+      ],
+      "shape": [
+        6,
+        24,
+        32
+      ],
+      "source_sha256": "4a53d07c8da21502ec01bf04b3f16d8f273fe8b9fb07fee7a1250e932b1cee34",
+      "reference_sha256": "f0173ed5803f5d49071c93cb06923d6488fbdabd5bd87962e92d55064342223a",
+      "simd_sha256": "047ee2a3b9e0d334305f00c73862764b443507009e52ddb04b1485adb0277fee"
+    },
+    {
+      "amount": 100,
+      "origin": [
+        1,
+        1
+      ],
+      "shape": [
+        6,
+        21,
+        23
+      ],
+      "source_sha256": "8b4949f6cf6b07a72440ce849ed75e2bdf23ff53bbc95bcd866ae4ec43df9b4c",
+      "reference_sha256": "a7aef926da22febb3422602c1890bd12fa29fd1144556ce547ecdd89f9f36a01",
+      "simd_sha256": "e79b3c6e3330eccd065d1e004701d85f6a4b49db338763178bf37f3c7dacef89"
+    }
+  ]
+}

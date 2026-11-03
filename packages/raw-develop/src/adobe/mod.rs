@@ -22,6 +22,8 @@ pub(crate) mod bayer;
 pub mod color;
 pub(crate) mod color_table;
 pub mod dcp;
+#[cfg(feature = "adobe-denoise")]
+pub mod denoise;
 pub(crate) mod input;
 pub(crate) mod lens;
 mod linearize;
@@ -405,8 +407,23 @@ impl AdobeRender {
   /// including the modern highlight shoulder and optional CR6 chroma NR.
   pub(crate) fn prepare_camera(
     &mut self,
+    img: RgbImage,
+    dcp: &Dcp,
+    meta: &RawMetadata,
+    settings: &crate::DevelopSettings,
+    cancel: &crate::Cancel,
+  ) -> Result<RgbImage> {
+    self.prepare_camera_with_statistics_profile(img, dcp, dcp, meta, settings, cancel)
+  }
+
+  /// The negative's default calibration can differ from its selected display
+  /// profile. Ordinary preparation retains its existing profile policy; the
+  /// experimental denoise bridge supplies the independently validated default.
+  pub(crate) fn prepare_camera_with_statistics_profile(
+    &mut self,
     mut img: RgbImage,
     dcp: &Dcp,
+    statistics_dcp: &Dcp,
     meta: &RawMetadata,
     settings: &crate::DevelopSettings,
     cancel: &crate::Cancel,
@@ -436,14 +453,16 @@ impl AdobeRender {
     self.scene = Some(tone::scene::Scene::new(
       &small,
       dcp,
+      statistics_dcp,
       meta,
       self.neutral,
       &settings.white_balance,
       self.black,
       flare,
     )?);
-    let source =
-      tone::mask::MaskSource::new(mask_camera, dcp, meta, self.neutral, self.black, flare);
+    let source = tone::mask::MaskSource::new(
+      mask_camera, statistics_dcp, meta, self.neutral, self.black, flare,
+    );
     let guide = tone::mask_upsample::Guide::prepare(&img, &source, [left, top], cancel)?;
     self.mask = Some(Arc::new(CachedMask {
       source,

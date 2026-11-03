@@ -1,6 +1,8 @@
 //! Full RAW development through `raw-develop` (Apple or opt-in Adobe pipeline), for
 //! the loupe's "Developed" view. Scans and thumbnails keep using the embedded preview.
 
+mod denoise;
+
 use napi::bindgen_prelude::{Buffer, Int32Array};
 use napi_derive::napi;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -26,6 +28,12 @@ pub struct DevelopedRawOptions {
   pub settings_json: Option<String>,
   /// Interactive proxy (1024 or 2048); absent means exact full-resolution output.
   pub max_edge: Option<u32>,
+  /// Opt-in neural denoise, zero/off or 1..100. Paths are server-owned.
+  pub denoise_amount: Option<u32>,
+  pub denoise_model_dir: Option<String>,
+  pub denoise_cache_dir: Option<String>,
+  /// Shared completed/total output tile counters, never pixel data.
+  pub denoise_progress: Option<Int32Array>,
 }
 
 impl DevelopedRawOptions {
@@ -61,8 +69,12 @@ pub fn clear_developed_raw_cache() {
 fn source_key(path: &str, options: &DevelopedRawOptions) -> Result<String, String> {
   use std::fmt::Write;
   let mut key = format!(
-    "{}:{:?}:{:?}",
-    path, options.engine, options.adobe_profile_dir
+    "{}:{:?}:{:?}:{:?}:{:?}",
+    path,
+    options.engine,
+    options.adobe_profile_dir,
+    options.denoise_amount.unwrap_or(0),
+    options.denoise_model_dir
   );
   let mut append = |path: &std::path::Path| -> Result<(), String> {
     let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
@@ -104,6 +116,15 @@ fn source_key(path: &str, options: &DevelopedRawOptions) -> Result<String, Strin
       for file in files {
         append(&file)?;
       }
+    }
+  }
+  if options.denoise_amount.unwrap_or(0) > 0 {
+    let dir = options
+      .denoise_model_dir
+      .as_ref()
+      .ok_or("Denoise is unavailable")?;
+    for name in ["dn_bayer.pbdn", "dn_xtrans.pbdn", "xtrans_details.pbdn"] {
+      append(&std::path::Path::new(dir).join(name))?;
     }
   }
   Ok(key)
@@ -151,7 +172,7 @@ fn develop_internal(
   flag: Option<*const AtomicI32>,
   options: DevelopedRawOptions,
 ) -> Result<DevelopedRaw, String> {
-  use raw_develop::{DevelopSettings, Error, Negative, Options, develop, encode, prepare};
+  use raw_develop::{DevelopSettings, Error, Negative, Options, develop, encode};
   // Reject invalid engine names before decoding a potentially large source.
   options.engine(false)?;
   if options
@@ -160,12 +181,15 @@ fn develop_internal(
   {
     return Err("interactive max_edge must be 1024 or 2048".into());
   }
-  let settings: DevelopSettings = match &options.settings_json {
+  let mut settings: DevelopSettings = match &options.settings_json {
     Some(json) => {
       serde_json::from_str(json).map_err(|e| format!("invalid develop settings: {e}"))?
     }
     None => DevelopSettings::default(),
   };
+  if options.denoise_amount.unwrap_or(0) > 0 {
+    settings.adobe_noise_reduction = denoise::settings(&options).adobe_noise_reduction;
+  }
   settings.validate().map_err(|e| e.to_string())?;
   let token = raw_develop::Cancel::new();
   // Mirror the shared JS flag into the token from a watcher thread, so the pipeline's
@@ -210,7 +234,7 @@ fn develop_internal(
         let neg = Negative::open(path).map_err(msg)?;
         token.check().map_err(msg)?;
         opts.engine = options.engine(neg.dng.is_some())?;
-        let refined = prepare(&neg, &DevelopSettings::default(), &opts).map_err(msg)?;
+        let refined = denoise::prepare(path, &neg, &options, &opts)?;
         drop(neg);
         let refined = refined.with_max_edge(2048).map_err(msg)?;
         let drag = refined.clone().with_max_edge(1024).map_err(msg)?;
@@ -238,7 +262,13 @@ fn develop_internal(
       let neg = Negative::open(path).map_err(msg)?;
       token.check().map_err(msg)?;
       opts.engine = options.engine(neg.dng.is_some())?;
-      develop(&neg, &settings, &opts).map_err(msg)?
+      if options.denoise_amount.unwrap_or(0) > 0 {
+        denoise::prepare(path, &neg, &options, &opts)?
+          .render(&settings, &opts)
+          .map_err(msg)?
+      } else {
+        develop(&neg, &settings, &opts).map_err(msg)?
+      }
     };
     token.check().map_err(msg)?;
     let jpeg = encode::encode(&out.image, encode::Format::Jpeg(quality)).map_err(msg)?;
@@ -381,7 +411,7 @@ pub fn prepare_smart_preview(
   cancel: Option<Int32Array>,
   options: Option<DevelopedRawOptions>,
 ) -> napi::Result<SmartPreview> {
-  use raw_develop::{DevelopSettings, Negative, Options, prepare};
+  use raw_develop::{Negative, Options};
   use sha2::{Digest, Sha256};
   let options = options.unwrap_or_default();
   let flag = match &cancel {
@@ -430,10 +460,7 @@ pub fn prepare_smart_preview(
         adobe_profile_dir: options.adobe_profile_dir.as_deref().map(Into::into),
         ..Options::default()
       };
-      (
-        prepare(&neg, &DevelopSettings::default(), &opts).map_err(|e| e.to_string())?,
-        engine,
-      )
+      (denoise::prepare(&path, &neg, &options, &opts)?, engine)
     };
     drop(cached);
     let data = prepared.encode_smart_preview(&token).map_err(|e| match e {

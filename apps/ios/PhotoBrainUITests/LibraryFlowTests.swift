@@ -4,6 +4,39 @@ import XCTest
 /// Library, loupe, review, and browse flows against the seeded fixture library.
 final class LibraryFlowTests: PhotoBrainUITestCase {
     @MainActor
+    func testDenoiseApplyCancelSaveAndReopen() async throws {
+        guard ProcessInfo.processInfo.environment["PHOTOBRAIN_DENOISE_UI_TEST"] == "1" else {
+            throw XCTSkip("Set UI_TEST_DENOISE_PREVIEW, UI_TEST_DENOISE_BEFORE and TEST_RUNNER_PHOTOBRAIN_DENOISE_UI_TEST=1")
+        }
+        openLibrary()
+        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        tap("More"); tap("Edit RAW")
+        let slider = app.sliders["raw-edit-denoise-amount"]
+        waitFor(slider, timeout: 30)
+        slider.adjust(toNormalizedSliderPosition: 1)
+        tap("Apply Denoise")
+        let cancel = app.buttons["raw-edit-denoise-cancel"]
+        waitFor(cancel); cancel.tap()
+        waitForAbsence(cancel, timeout: 15)
+        tap("Apply Denoise")
+        let applied = element("Denoise applied · Tap Save to keep it")
+        waitFor(applied, timeout: 30)
+        tap("Save")
+        waitForAbsence(slider)
+        tap("More"); tap("Edit RAW")
+        waitFor(slider, timeout: 30)
+        XCTAssertEqual(slider.value as? String, "100%")
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Denoise saved and reopened"
+        attachment.lifetime = .keepAlways; add(attachment)
+        slider.adjust(toNormalizedSliderPosition: 0)
+        tap("Apply Denoise")
+        waitFor(applied, timeout: 30)
+        tap("Save")
+        waitForAbsence(slider)
+    }
+
+    @MainActor
     func testRawEditorSavesReopensComparesAndDiscards() {
         openLibrary()
         gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()

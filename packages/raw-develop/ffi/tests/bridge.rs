@@ -108,7 +108,15 @@ fn null_inputs_and_invalid_files_report_owned_errors() {
 fn portable_session_matches_native_pixels_and_owns_its_download() {
   let negative = Negative::open(fixture().to_str().unwrap()).unwrap();
   let opts = Options::default();
-  let prepared = raw_develop::prepare(&negative, &DevelopSettings::default(), &opts).unwrap();
+  let settings = DevelopSettings {
+    adobe_noise_reduction: Some(raw_develop::settings::AdobeNoiseReduction {
+      color: 0,
+      luminance: 0,
+      ..Default::default()
+    }),
+    ..Default::default()
+  };
+  let prepared = raw_develop::prepare(&negative, &settings, &opts).unwrap();
   let bytes = prepared
     .clone()
     .encode_smart_preview(&raw_develop::Cancel::never())
@@ -128,7 +136,7 @@ fn portable_session_matches_native_pixels_and_owns_its_download() {
         .render(
           &DevelopSettings {
             exposure,
-            ..Default::default()
+            ..prepared.render_settings()
           },
           &opts,
         )

@@ -6,6 +6,7 @@ import { config } from "./config";
 import { db } from "./db";
 import { functions, inngest } from "./inngest";
 import { compressJson } from "./middleware/compress-json";
+import { createDenoiseRouter } from "./routes/denoise";
 import { createExportsRouter } from "./routes/exports";
 import { createFacesRouter } from "./routes/faces";
 import photosRouter from "./routes/photos";
@@ -56,7 +57,30 @@ app.route(
 		notifyUploaded: () => inngest.send({ name: "photos/uploaded", data: {} }),
 	}),
 );
-app.route("/api/v1", createRawEditsRouter(db, config.RAW_DEVELOP_ENGINE));
+app.route(
+	"/api/v1",
+	createRawEditsRouter(
+		db,
+		config.RAW_DEVELOP_ENGINE,
+		!!config.DENOISE_MODEL_DIR,
+	),
+);
+app.route(
+	"/api/v1",
+	createDenoiseRouter({
+		database: db,
+		photoDirectory: config.PHOTO_DIRECTORY,
+		renderer: nativeExecutor,
+		smartPreviews: nativeExecutor,
+		rawDevelop: {
+			engine: config.RAW_DEVELOP_ENGINE,
+			adobeProfileDir: config.ADOBE_PROFILE_DIR,
+			denoiseModelDir: config.DENOISE_MODEL_DIR,
+			denoiseCacheDir: config.DENOISE_CACHE_DIR,
+		},
+	}),
+);
+
 app.route(
 	"/api/v1",
 	createV1Router({
@@ -92,6 +116,8 @@ app.route(
 		rawDevelop: {
 			engine: config.RAW_DEVELOP_ENGINE,
 			adobeProfileDir: config.ADOBE_PROFILE_DIR,
+			denoiseModelDir: config.DENOISE_MODEL_DIR,
+			denoiseCacheDir: config.DENOISE_CACHE_DIR,
 		},
 	}),
 );

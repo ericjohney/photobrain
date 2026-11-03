@@ -202,6 +202,12 @@ Object.assign(process.env, {
 	RAW_DEVELOP_ENGINE:
 		process.env.UI_TEST_SMART_PREVIEWS === "1" ? "apple" : "adobe",
 	ADOBE_PROFILE_DIR: "/fixture-profiles",
+	DENOISE_MODEL_DIR: process.env.UI_TEST_DENOISE_PREVIEW
+		? "/fixture-models"
+		: undefined,
+	DENOISE_CACHE_DIR: process.env.UI_TEST_DENOISE_PREVIEW
+		? "/fixture-cache"
+		: undefined,
 	UPLOADS_ENABLED: "false",
 });
 
@@ -248,7 +254,36 @@ const PREVIEW_JPEG = Buffer.from(
 nativeExecutor.runCancellable = (async (
 	_signal: AbortSignal,
 	operation: string,
+	_path: string,
+	_quality: number,
+	options?: { denoiseAmount?: number; denoiseProgress?: Int32Array },
 ) => {
+	// Opt-in workflow test uses externally generated, real Adobe smart previews.
+	// Only job timing is simulated here; this does not validate CNN inference.
+	if (
+		operation === "prepareSmartPreview" &&
+		process.env.UI_TEST_DENOISE_PREVIEW
+	) {
+		if (options?.denoiseProgress) {
+			Atomics.store(options.denoiseProgress, 1, 20);
+			for (let i = 0; i < 20; i++) {
+				if (_signal.aborted) throw new Error("DEVELOP_CANCELLED");
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				Atomics.store(options.denoiseProgress, 0, i + 1);
+			}
+		}
+		const amount = options?.denoiseAmount ?? 0;
+		const file =
+			amount > 0
+				? process.env.UI_TEST_DENOISE_PREVIEW
+				: process.env.UI_TEST_DENOISE_BEFORE;
+		if (!file) throw new Error("Missing external UI-test smart preview");
+		return {
+			data: readFileSync(file),
+			engine: "adobe",
+			token: `denoise-fixture-${amount}`,
+		};
+	}
 	if (
 		operation === "prepareSmartPreview" &&
 		process.env.UI_TEST_SMART_PREVIEWS === "1"
@@ -320,7 +355,10 @@ type Seed = {
 	video?: { durationMs: number };
 };
 
-const SONY: [string, string] = ["SONY", "ILCE-7M4"];
+const SONY: [string, string] = [
+	"SONY",
+	process.env.UI_TEST_DENOISE_PREVIEW ? "ILCE-1M2" : "ILCE-7M4",
+];
 const IPHONE: [string, string] = ["Apple", "iPhone 15 Pro"];
 const FUJI: [string, string] = ["FUJIFILM", "X-T5"];
 

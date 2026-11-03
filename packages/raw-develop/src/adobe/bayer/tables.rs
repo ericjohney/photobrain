@@ -3,13 +3,13 @@
 const LOG_100: f64 = f64::from_bits(0x4012_6bb1_bbb5_5514);
 const INV_LOG_100: f64 = f64::from_bits(0x3fcb_cb7b_1526_e510);
 
-pub(super) fn log_encode(input: f64, black: f64) -> f64 {
+pub(crate) fn log_encode(input: f64, black: f64) -> f64 {
   signed_curve(input, black, if black > 0.0 { 0.25 } else { 0.0 }, |x| {
     (x.mul_add(0.99, 0.01).ln() + LOG_100) * INV_LOG_100
   })
 }
 
-pub(super) fn log_decode(input: f64, black: f64) -> f64 {
+pub(crate) fn log_decode(input: f64, black: f64) -> f64 {
   signed_curve(input, if black > 0.0 { 0.25 } else { 0.0 }, black, |x| {
     (x.mul_add(LOG_100, -LOG_100).exp() - 0.01) * (1.0 / 0.99)
   })

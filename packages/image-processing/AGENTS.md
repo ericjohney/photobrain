@@ -192,3 +192,15 @@ For focused verification, run `cargo test exif::tests`, `cargo test batch::tests
 `src/duplicates.rs` tests cover the distance boundary (threshold grouped, +1 not), transitive grouping with the reported diameter, identical hashes, skipping undecodable and over-64-bit hashes, never comparing different widths, the full-width threshold, rejection of misaligned inputs, that real pipeline hashes are 40 bits, and multi-index components matching brute force over random hashes at several thresholds (`cargo test duplicates`).
 
 `src/faces/` tests (`cargo test faces`, no network) cover: Umeyama recovering a known similarity and mapping landmarks onto the template, least-squares fits of noisy landmarks, degenerate landmarks, bilinear warp sampling with black borders; YuNet multi-stride decoding on synthetic tensors (score formula, threshold, grid offsets, landmark order), mismatched head sizes, NMS overlap/tie determinism, area-resampled padded BGR blobs; clustering chain resistance (two tight clusters bridged by a chain stay separate), inclusive thresholds, min cluster size, invalid shapes, planted-cluster recovery, and identical output across pool sizes; crop geometry centring/clamping at every edge and WebP crop rendering; model cache precedence, a loopback HTTP download installed atomically and then served from cache, SHA-256 and size mismatches (including oversized bodies) rejected with no file left, corrupt cache replacement, and unreachable servers. `cargo test faces -- --ignored` runs the real models over `/tmp/pb-f19-faces/library` (set `FACE_MODEL_DIR` to a populated cache to avoid the download).
+
+### Opt-in Denoise preparation
+
+`raw_develop` compiles its `adobe-denoise` feature for the server addon. The
+`DevelopedRawOptions` denoise fields are server-owned: amount, external model and
+cache directories, and optional shared `[completed,total]` tile counters.
+`src/develop/denoise.rs` validates calibration/profiles and caches exact canonical
+camera RGB (two completed files, checksummed and atomically published). Cache keys
+include source, profiles, models, amount and pipeline/cache versions. Basic
+controls do not invalidate inference. Both smart previews and full exports use
+the same preparation with explicit post-NR zero. Ordinary development is unchanged.
+The mobile FFI preserves these immutable settings through `Prepared::render_settings`.

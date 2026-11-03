@@ -5,6 +5,180 @@
 //! pipeline. Bounded tiles keep the intermediate planes off the full readout.
 
 mod balance;
+
+/// Observed denoise prepipe's u16 logarithmic encode/decode roundtrip.
+/// Spatial hot-pixel processing between these tables is a separate operation;
+/// this helper does not alter the existing developer path or implement repairs.
+#[cfg(all(test, feature = "adobe-denoise"))]
+fn denoise_roundtrip_table(black: f64) -> Vec<u16> {
+  let encode = tables::expand(|v| tables::log_encode(v, black));
+  let decode = tables::expand(|v| tables::log_decode(v, black));
+  encode.into_iter().map(|v| decode[v as usize]).collect()
+}
+/// Short-exposure Sony denoise prepipe: log encode, ordinary hot/cold repair,
+/// then log decode, retaining every u16 boundary. The caller must restrict this
+/// to the observed known-exposure <2s regime; longer/unknown exposures also use
+/// a paired-pixel stage and different thresholds. Coordinates are canonical RGGB.
+#[cfg(feature = "adobe-denoise")]
+pub(crate) fn denoise_prepare_short_exposure(
+  width: usize,
+  height: usize,
+  black: f64,
+  cancel: &Cancel,
+  sample: impl Fn(usize, usize) -> u16,
+) -> Result<Vec<u16>> {
+  if width < 2
+    || height < 2
+    || width % 2 != 0
+    || height % 2 != 0
+    || !black.is_finite()
+    || !(0.0..1.0).contains(&black)
+  {
+    return Err(Error::Malformed(
+      "denoise Bayer: invalid canonical extent or black level".into(),
+    ));
+  }
+  let count = width
+    .checked_mul(height)
+    .ok_or_else(|| Error::Malformed("denoise Bayer: extent overflow".into()))?;
+  let padded_width = width
+    .checked_add(4)
+    .ok_or_else(|| Error::Malformed("denoise Bayer: halo overflow".into()))?;
+  cancel.check()?;
+  let encode = tables::expand(|v| tables::log_encode(v, black));
+  let decode = tables::expand(|v| tables::log_decode(v, black));
+  let mut output = vec![0; count];
+  // CFA get-image repeats the nearest two-pixel block outside the image. This
+  // happens before denoise's later, wider mirrored-image construction.
+  let coordinate = |value: isize, extent: usize| -> usize {
+    if value < 0 {
+      value.rem_euclid(2) as usize
+    } else if value as usize >= extent {
+      extent - 2 + (value as usize - extent) % 2
+    } else {
+      value as usize
+    }
+  };
+  for first_row in (0..height).step_by(128) {
+    cancel.check()?;
+    let rows = (height - first_row).min(128);
+    let mut encoded = Vec::with_capacity((rows + 4) * padded_width);
+    for y in 0..rows + 4 {
+      cancel.check()?;
+      let row = coordinate(first_row as isize + y as isize - 2, height);
+      for x in 0..padded_width {
+        let column = coordinate(x as isize - 2, width);
+        encoded.push(encode[sample(row, column) as usize]);
+      }
+    }
+    let repaired = hotpixel::suppress(
+      &encoded,
+      padded_width,
+      rows + 4,
+      first_row as isize - 2,
+      -2,
+      8000,
+      6000,
+    );
+    for y in 0..rows {
+      cancel.check()?;
+      for x in 0..width {
+        output[(first_row + y) * width + x] =
+          decode[repaired[(y + 2) * padded_width + x + 2] as usize];
+      }
+    }
+  }
+  Ok(output)
+}
+
+/// Reference camera balance shared with the partial denoise wrapper.
+#[cfg(feature = "adobe-denoise")]
+pub(crate) fn denoise_reference_gains(negative: &Negative) -> Result<[f64; 3]> {
+  let m = &negative.meta;
+  default_color::gains(
+    &m.model,
+    calibration::camera_calibration(&m.model, m.sony_daylight_wb),
+  )
+}
+
+/// Numeric stages of the observed standard Bayer baseline, excluding source
+/// extraction, the wider denoise mirror, and the final inverse gain after blend.
+#[cfg(feature = "adobe-denoise")]
+pub(crate) struct DenoiseBaseline {
+  gain: [(f32, f32); 3],
+  encode: Vec<u16>,
+  decode: Vec<u16>,
+  core: core::Parameters,
+}
+
+#[cfg(feature = "adobe-denoise")]
+impl DenoiseBaseline {
+  pub(crate) fn new(negative: &Negative) -> Result<Self> {
+    let m = &negative.meta;
+    let black = (u32::from(m.black_levels[0]) << (16 - m.bits_per_sample)) as f64 / 65535.0;
+    let calibration = calibration::camera_calibration(&m.model, m.sony_daylight_wb);
+    let gains = default_color::gains(&m.model, calibration)?;
+    let iso = m
+      .iso
+      .filter(|&v| v > 0)
+      .ok_or_else(|| Error::Unsupported("denoise baseline: missing ISO".into()))?;
+    Ok(Self {
+      gain: gains.map(|v| affine(v, black)),
+      encode: tables::expand(|x| tables::log_encode(x, black)),
+      decode: tables::expand(|x| tables::log_decode(x, black)),
+      core: core::Parameters::from_detail_factor((0.6 * (iso as f64 / 100.0).sqrt()) as f32),
+    })
+  }
+
+  pub(crate) fn halo(&self) -> usize {
+    self.core.halo()
+  }
+
+  pub(crate) fn process(
+    &self,
+    source: &[f32],
+    width: usize,
+    height: usize,
+    top: isize,
+    left: isize,
+    cancel: &Cancel,
+  ) -> Result<RgbImage> {
+    if width.checked_mul(height) != Some(source.len()) {
+      return Err(Error::Malformed(
+        "denoise baseline: source extent mismatch".into(),
+      ));
+    }
+    let mut encoded = Vec::with_capacity(source.len());
+    for y in 0..height {
+      cancel.check()?;
+      for x in 0..width {
+        let c = channel(top + y as isize, left + x as isize);
+        let (gain, add) = self.gain[c];
+        encoded.push(normalized(
+          self.encode[code(source[y * width + x].mul_add(gain, add)) as usize],
+        ));
+      }
+    }
+    cancel.check()?;
+    let mut out = core::demosaic(&encoded, width, height, top, left, &self.core);
+    cancel.check()?;
+    // The actual pipe converts core's floats to u16 before the inverse log LUT.
+    // Leave undefined halo pixels as NaN; the caller crops them before Tensor::new.
+    for row in out.data.chunks_mut(width * 3) {
+      cancel.check()?;
+      for value in row {
+        if value.is_finite() {
+          *value = normalized(self.decode[code(*value) as usize]);
+        }
+      }
+    }
+    Ok(out)
+  }
+}
+
+#[cfg(all(test, feature = "adobe-denoise"))]
+mod denoise_prepipe_tests;
+
 pub(crate) mod calibration;
 mod core;
 mod default_color;

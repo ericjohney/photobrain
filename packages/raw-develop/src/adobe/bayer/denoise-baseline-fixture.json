@@ -1,0 +1,43 @@
+{
+  "authority": "native-baseline-pipeline-with-synthetic-gain-input",
+  "executable_sha256": "4001cc9abfa1e5352aa88c99c84833cf73c0282ad469ace6d8d196adb7d6aacc",
+  "context": {
+    "gains": [
+      1.0,
+      0.4861386916117311,
+      0.8922941531572025
+    ],
+    "black": 0.03125047684443427,
+    "detail": 0.6708203932499369,
+    "disable_refine": "00"
+  },
+  "formula": "normalized_u16(((absolute_row*137+absolute_column*53+33333) rem_euclid 50000)+4096)",
+  "input": {
+    "rect": [
+      -8,
+      -8,
+      172,
+      174
+    ],
+    "shape": [
+      180,
+      182,
+      1
+    ],
+    "f32_interleaved_sha256": "3dc25e97f9b4391399b40965630e58816d7db595c0dc4ab12536f43c0e22ed89"
+  },
+  "output": {
+    "rect": [
+      0,
+      0,
+      164,
+      166
+    ],
+    "shape": [
+      164,
+      166,
+      3
+    ],
+    "f32_interleaved_sha256": "9f8579649ac130acd302a7ede64b02271138568c2c126f3c8deab62f1237a5d3"
+  }
+}

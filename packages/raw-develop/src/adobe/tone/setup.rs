@@ -218,7 +218,10 @@ mod tests {
         checked += 1;
       }
       // The contrast key is measured before the profile-coloured post image.
-      assert_eq!(setup.key, 0.3136132649098005);
+      assert_eq!(
+        setup.key.to_bits(),
+        super::super::curves::contrast_key(f64_at(0xc0), f64_at(0x128), f64_at(0x160)).to_bits()
+      );
       let model = root.join("003_cr_stage_exposure_obj.bin");
       if model.exists() {
         let object = std::fs::read(model).unwrap();

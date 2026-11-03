@@ -86,6 +86,77 @@ reconstruction. Fuji distortion's encoded scratch also unmaps at stage return.
 
 ## Code Layout
 
+The optional `adobe-denoise` feature exposes `adobe::denoise::{Model, Tensor,
+Variant, pack_mosaic_tile, DecodedMosaic}` and the `raw-denoise` CLI. These are
+independent network/tile APIs for four recovered ACR denoise CNNs and the separate
+Fuji Enhance Details baseline, not a replacement for
+the current RAW renderer. `.pbdn` weights stay external. The Rust f32 executor has measured
+numerical agreement with Core ML CPU references, **not bit-exact parity**.
+`RAW_DENOISE_FIXTURES` enables the four-model external regression suite; ordinary
+unit tests use synthetic parameters. See [denoise networks](docs/adobe-denoise.md)
+before changing model execution or enabling it in a rendering pipeline.
+The optional `tiles`, `border`, `transfer` and `strength` modules expose recovered
+wrapper stages. `MosaicTilePlan` and `Model::predict_mosaic_tiles` accept explicitly
+calibrated canonical mosaics and return unblended camera RGB. Real Bayer/X-Trans
+input/output transfers, sparse packing/cropping and captured borders have exact
+checks; traversal, outer edge repetition and strength blending have native numeric
+oracles. Network inference remains numerical. `RAW_DENOISE_CAPTURE_FIXTURES`
+enables external real-RAW stage regressions. `DecodedMosaic` and CLI `raw-tiles`
+accept the validated X100VI layout and A1 II lossless-M layout (Sony requires a
+known exposure below 2s). Exact calibration includes Fuji CFA phase/crop mapping
+and Sony's u16 log/hotpixel/log prepipe. `RAW_DENOISE_RAW_FIXTURES` enables the
+whole-source and decoded-input comparisons. Exported tiles are preserved-black
+camera RGB with canonical bounds/active crop in a completion manifest, not
+display-ready images. Amount 100 retains the unblended float export; amounts
+1..99 use the native baseline/gain/u16/blend boundaries. Other layouts/exposures
+and complete renderer integration remain open. Fuji's
+partial-strength baseline uses a separate FP32 Enhance Details model; ordinary
+classical demosaic must not be substituted. Do not enable this automatically in
+the app.
+`PBDN0001` keeps FP16 payloads; `PBDN0002` preserves FP32 payloads. The latter
+supports the `XtransDetails` graph with channel concatenation and its 512→470
+geometry. `tools/adobe-denoise/export_details.py` exports locally supplied
+Espresso artifacts, with 186,819 used parameters (compiled padding excluded).
+`RAW_DENOISE_DETAILS_FIXTURES` enables its four-case numerical CPU regression.
+The denoise 1024-square tile wrapper rejects this baseline model explicitly.
+`baseline_bayer::BayerBaseline` produces the validated Sony classical baseline
+in gain-balanced space. `baseline_xtrans::XtransBaseline` borrows the calibrated
+mosaic and composes gain/log, edge-clamped source, histogram packing, prediction
+and u16 inverse log. `RAW_DENOISE_BASELINE_FIXTURES` and
+`RAW_DENOISE_RAW_FIXTURES` enable native baseline/gain regressions.
+`partial::predict_partial_raw_tiles` and CLI `--amount 1..99` compose these with
+three-pixel RGB edge repetition, u16 commits and post-blend inverse gains. Fuji
+requires `--details MODEL`; its gains use signed-16 matrix arithmetic, while
+Bayer uses float affine stages. Both model grids stay anchored to image bounds
+even for cropped exports. `RAW_DENOISE_PARTIAL_FIXTURES` points at the external
+investigation root for real seam/crop inference checks. Never substitute a simple
+blend of the old unbalanced float export.
+`denoise::render::{prepare, prepare_camera_rgb}` is a separate experimental
+full-quality Adobe bridge to `Prepared`. It requires explicit zero color/luma
+post-NR, commits canonical RGB to u16, applies calibrated crop/embedded CA and
+reuses existing color/tone rendering. CLI `render-tiles` validates a complete
+source-matched export before writing a new 16-bit Display P3 PNG; it requires
+`--no-post-nr`. Native amount-50 default controls are verified as zero color/luma NR for both
+calibrated cameras; explicit user overrides and composed display parity remain
+unverified. Post-AI native-pixel replay verifies CA (601,704 channels) and
+camera-to-RIMM (828,147 channels) exactly; CA uses captured warp parameters,
+and color requires the matched Adobe Standard profile. Ordinary preparation,
+recipes and app defaults do not change.
+The A1 II denoise bridge loads external Adobe Standard v2 for default scene/mask
+calibration while retaining selected Standard for display/post-tone color; both
+DCPs are required. Ordinary preparation keeps its existing profile policy.
+`RAW_DENOISE_SCENE_CAPTURE` enables native small-camera-to-Scene regression
+(297,770 exact distribution samples; accumulated means have a documented
+tolerance). Separate exposure-to-output replay checks 828,147 exact channels.
+Neither is a claim of bit-exact CNN inference.
+`RAW_DENOISE_RENDER_CAPTURE` enables the same-run native-camera → actual bridge
+→ scene → sampled sRGB output check: 297,770 distribution samples and 828,147
+final channels exact at amount50/default global controls. It injects native
+pre-CA camera pixels, not native warp/exposure/tone parameters; full CNN parity
+and whole-image final-pixel coverage are not established.
+`tools/adobe-denoise/validate_export.py` checks complete coverage and exact
+full-export/cropped-export consistency without learned parameters in the repo.
+
 - `src/metadata.rs`: `RawMetadata`; `src/negative.rs`: container detection and decode.
 - `src/prepared.rs`: reusable working image, render-setting validation, format-specific late stages and output geometry. `src/bin/raw-edit-bench.rs`: JSON benchmark of decode/preparation/resize and warmed repeated exposure renders (`--max-edge`, `--iterations`, `--threads`, `--full`, `--settings`). No encoding, network or UI latency is included.
 - `src/tiff.rs`: shared bounded TIFF reader (`read_ifd0_exif`), used by RAF, ARW and DNG.

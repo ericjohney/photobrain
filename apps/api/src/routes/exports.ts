@@ -19,6 +19,7 @@ import { NativeExecutorBusyError } from "../services/native-executor";
 import type { ApiDatabase } from "../services/photo-catalog";
 import { originalFilePath } from "../services/photo-files";
 import {
+	denoiseAmount,
 	RawEditError,
 	type RawEditSettings,
 	rawDevelopSettingsJson,
@@ -232,6 +233,7 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 		const renderOptions: DevelopedRawOptions = {
 			...rawDevelop,
 			engine: edit.engine,
+			denoiseAmount: denoiseAmount(preview?.settings ?? edit.settings),
 			settingsJson: rawDevelopSettingsJson(
 				preview?.settings ?? edit.settings,
 				edit.engine,
@@ -345,7 +347,11 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 				"prepareSmartPreview",
 				path,
 				0,
-				{ ...rawDevelop, engine: recipe.engine },
+				{
+					...rawDevelop,
+					engine: recipe.engine,
+					denoiseAmount: denoiseAmount(recipe.settings),
+				},
 			);
 			if (context.req.header("If-None-Match") === `"${preview.token}"`)
 				return new Response(null, {
@@ -361,6 +367,7 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 					"Content-Length": String(preview.data.byteLength),
 					"Cache-Control": "private, no-store",
 					"X-Developed-Engine": preview.engine,
+					"X-Denoise-Amount": String(denoiseAmount(recipe.settings)),
 					ETag: `"${preview.token}"`,
 				},
 			});

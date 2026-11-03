@@ -286,7 +286,7 @@ pub unsafe extern "C" fn pbraw_render_basic(
       let settings = DevelopSettings {
         exposure,
         adobe_tone: (opts.engine == raw_develop::Engine::Adobe).then_some(controls),
-        ..DevelopSettings::default()
+        ..prepared.render_settings()
       };
       pool().install(|| {
         let out = prepared.render(&settings, &opts)?.image;

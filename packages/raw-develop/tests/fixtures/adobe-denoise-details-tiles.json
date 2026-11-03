@@ -1,0 +1,372 @@
+{
+  "format_version": 1,
+  "authority": "controlled-replay",
+  "executable_sha256": "4001cc9abfa1e5352aa88c99c84833cf73c0282ad469ace6d8d196adb7d6aacc",
+  "executable": "/Users/eric/acr-re/dngc/DNGC.app/Contents/MacOS/Adobe DNG Converter",
+  "cases": [
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        0,
+        0,
+        465,
+        465
+      ],
+      "source": [
+        -24,
+        -24,
+        488,
+        488
+      ],
+      "output": [
+        -3,
+        -3,
+        467,
+        467
+      ],
+      "valid": [
+        -3,
+        -3,
+        467,
+        467
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        1,
+        1,
+        466,
+        466
+      ],
+      "source": [
+        -24,
+        -24,
+        488,
+        488
+      ],
+      "output": [
+        -3,
+        -3,
+        467,
+        467
+      ],
+      "valid": [
+        -3,
+        -3,
+        467,
+        467
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        -1,
+        -1,
+        464,
+        464
+      ],
+      "source": [
+        -24,
+        -24,
+        488,
+        488
+      ],
+      "output": [
+        -3,
+        -3,
+        467,
+        467
+      ],
+      "valid": [
+        -3,
+        -3,
+        467,
+        467
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        -5,
+        5,
+        -4,
+        7
+      ],
+      "source": [
+        -30,
+        -18,
+        482,
+        494
+      ],
+      "output": [
+        -9,
+        3,
+        461,
+        473
+      ],
+      "valid": [
+        -9,
+        3,
+        461,
+        473
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        5,
+        -5,
+        18,
+        12
+      ],
+      "source": [
+        -18,
+        -30,
+        494,
+        482
+      ],
+      "output": [
+        3,
+        -9,
+        473,
+        461
+      ],
+      "valid": [
+        3,
+        -9,
+        473,
+        461
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        6,
+        6,
+        471,
+        7
+      ],
+      "source": [
+        -18,
+        -18,
+        494,
+        494
+      ],
+      "output": [
+        3,
+        3,
+        473,
+        473
+      ],
+      "valid": [
+        3,
+        3,
+        473,
+        473
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        -6,
+        -6,
+        -5,
+        459
+      ],
+      "source": [
+        -30,
+        -30,
+        482,
+        482
+      ],
+      "output": [
+        -9,
+        -9,
+        461,
+        461
+      ],
+      "valid": [
+        -9,
+        -9,
+        461,
+        461
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        111,
+        112,
+        175,
+        177
+      ],
+      "source": [
+        90,
+        90,
+        602,
+        602
+      ],
+      "output": [
+        111,
+        111,
+        581,
+        581
+      ],
+      "valid": [
+        111,
+        111,
+        581,
+        581
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        112,
+        113,
+        176,
+        178
+      ],
+      "source": [
+        90,
+        90,
+        602,
+        602
+      ],
+      "output": [
+        111,
+        111,
+        581,
+        581
+      ],
+      "valid": [
+        111,
+        111,
+        581,
+        581
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        799,
+        859,
+        820,
+        890
+      ],
+      "source": [
+        774,
+        834,
+        1286,
+        1346
+      ],
+      "output": [
+        795,
+        855,
+        1265,
+        1325
+      ],
+      "valid": [
+        795,
+        855,
+        1265,
+        1325
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        2000,
+        3000,
+        2465,
+        3465
+      ],
+      "source": [
+        1974,
+        2976,
+        2486,
+        3488
+      ],
+      "output": [
+        1995,
+        2997,
+        2465,
+        3467
+      ],
+      "valid": [
+        1995,
+        2997,
+        2465,
+        3467
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        -1000,
+        -999,
+        -999,
+        -998
+      ],
+      "source": [
+        -1026,
+        -1020,
+        -514,
+        -508
+      ],
+      "output": [
+        -1005,
+        -999,
+        -535,
+        -529
+      ],
+      "valid": [
+        -1005,
+        -999,
+        -535,
+        -529
+      ]
+    },
+    {
+      "variant": "xtrans_details",
+      "function_address": "0x100761bc0",
+      "requested": [
+        2147482447,
+        -2147482448,
+        2147482470,
+        -2147482401
+      ],
+      "source": [
+        2147482422,
+        -2147482470,
+        2147482934,
+        -2147481958
+      ],
+      "output": [
+        2147482443,
+        -2147482449,
+        2147482913,
+        -2147481979
+      ],
+      "valid": [
+        2147482443,
+        -2147482449,
+        2147482913,
+        -2147481979
+      ]
+    }
+  ]
+}

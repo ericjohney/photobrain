@@ -8,6 +8,8 @@ const configSchema = z
 		PHOTO_DIRECTORY: z.string().default("../../temp-photos"),
 		THUMBNAILS_DIRECTORY: z.string().default("./thumbnails"),
 		RAW_DEVELOP_ENGINE: z.enum(["apple", "adobe"]).default("apple"),
+		DENOISE_MODEL_DIR: z.string().trim().min(1).optional(),
+		DENOISE_CACHE_DIR: z.string().trim().min(1).optional(),
 		ADOBE_PROFILE_DIR: z.string().trim().min(1).optional(),
 		INNGEST_REALTIME_BASE_URL: z.string().url().optional(),
 		INNGEST_SERVE_ORIGIN: z.string().url().optional(),
@@ -34,6 +36,19 @@ const configSchema = z
 			.default(10 * 1024 ** 3),
 	})
 	.superRefine((value, context) => {
+		if (
+			value.DENOISE_MODEL_DIR &&
+			(!value.DENOISE_CACHE_DIR ||
+				!value.ADOBE_PROFILE_DIR ||
+				value.RAW_DEVELOP_ENGINE !== "adobe")
+		) {
+			context.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["DENOISE_MODEL_DIR"],
+				message:
+					"Denoise requires Adobe engine, profiles and DENOISE_CACHE_DIR",
+			});
+		}
 		if (value.RAW_DEVELOP_ENGINE === "adobe" && !value.ADOBE_PROFILE_DIR) {
 			context.addIssue({
 				code: z.ZodIssueCode.custom,

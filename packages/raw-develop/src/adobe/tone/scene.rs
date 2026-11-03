@@ -82,6 +82,7 @@ impl Scene {
   pub(crate) fn new(
     image: &SmallImage,
     dcp: &Dcp,
+    statistics_dcp: &Dcp,
     meta: &RawMetadata,
     neutral: [f64; 3],
     white: &WhiteBalance,
@@ -92,7 +93,8 @@ impl Scene {
       Statistics::new(values, flare)
         .ok_or_else(|| Error::Settings("Adobe scene statistics require finite image values".into()))
     };
-    let gray = statistics(&GrayLogImage::new(dcp, meta, neutral, black).render(image, flare))?;
+    let gray =
+      statistics(&GrayLogImage::new(statistics_dcp, meta, neutral, black).render(image, flare))?;
     let colors: Vec<_> = stats_image::channel_logs(image, black, flare)
       .iter()
       .map(|v| statistics(v))
@@ -111,3 +113,7 @@ impl Scene {
     })
   }
 }
+
+#[cfg(all(test, feature = "adobe-denoise"))]
+#[path = "scene_capture_tests.rs"]
+mod capture_tests;

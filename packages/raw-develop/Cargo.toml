@@ -22,6 +22,11 @@ path = "src/bin/raw-compare.rs"
 name = "raw-edit-bench"
 path = "src/bin/raw-edit-bench.rs"
 
+[[bin]]
+name = "raw-denoise"
+path = "src/bin/raw-denoise.rs"
+required-features = ["adobe-denoise"]
+
 [dependencies]
 rayon = "1.10"
 # Anonymous CA/NR scratch mappings release full-image pages before cached renders.
@@ -37,10 +42,15 @@ png = "0.18"
 image = { version = "0.25", default-features = false, features = ["jpeg", "tiff", "png"] }
 # JPEG XL tiles in DNG 1.7 (iPhone 17 ProRAW). MIT OR Apache-2.0.
 jxl-oxide = { version = "0.12", default-features = false, features = ["rayon"], optional = true }
+# Standalone recovered denoise graphs; weights are external runtime assets.
+half = { version = "2", optional = true }
+matrixmultiply = { version = "0.3", optional = true }
+sha2 = { version = "0.10", optional = true }
 
 [features]
 default = ["jxl"]
 jxl = ["dep:jxl-oxide"]
+adobe-denoise = ["dep:half", "dep:matrixmultiply", "dep:sha2"]
 
 [dev-dependencies]
 approx = "0.5"

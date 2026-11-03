@@ -1,8 +1,11 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { photoExif } from "../db/schema";
 import type { ApiDatabase } from "../services/photo-catalog";
 import {
+	denoiseAmount,
 	RawEditError,
 	type RawEngine,
 	rawEditSettingsSchema,
@@ -13,6 +16,14 @@ import { photoIdSchema } from "./v1-schemas";
 
 export function rawEditErrorResponse(error: RawEditError): Response {
 	const errors = {
+		RAW_RECIPE_UPGRADE_REQUIRED: [
+			409,
+			"Update the app to edit this Denoise recipe",
+		],
+		DENOISE_UNAVAILABLE: [
+			422,
+			"Denoise is unavailable for this renderer or server",
+		],
 		PHOTO_NOT_FOUND: [404, "Photo not found"],
 		NOT_RAW: [422, "Only RAW photos can be edited"],
 		RAW_EDIT_CONFLICT: [
@@ -53,8 +64,22 @@ const saveSchema = z
 		settings: rawEditSettingsSchema,
 	})
 	.strict();
-export function createRawEditsRouter(database: ApiDatabase, engine: RawEngine) {
+export function createRawEditsRouter(
+	database: ApiDatabase,
+	engine: RawEngine,
+	denoiseEnabled = false,
+) {
 	const router = new Hono();
+	const capability = (id: number, actualEngine: RawEngine) => {
+		if (!denoiseEnabled || actualEngine !== "adobe") return false;
+		const metadata = database
+			.select({ model: photoExif.cameraModel })
+			.from(photoExif)
+			.where(eq(photoExif.photoId, id))
+			.get();
+		// UI candidate gate only. Rust validates sensor geometry, CFA, levels and exposure.
+		return metadata?.model === "X100VI" || metadata?.model === "ILCE-1M2";
+	};
 	router.use("/photos/:id/raw-edit", rawEditBodyLimit);
 	router.on(["GET", "PUT"], "/photos/:id/raw-edit", async (context) => {
 		const id = photoIdSchema.safeParse(context.req.param("id"));
@@ -65,8 +90,13 @@ export function createRawEditsRouter(database: ApiDatabase, engine: RawEngine) {
 			);
 		context.header("Cache-Control", "private, no-store");
 		try {
-			if (context.req.method === "GET")
-				return context.json(readRawEdit(database, id.data, engine));
+			if (context.req.method === "GET") {
+				const edit = readRawEdit(database, id.data, engine);
+				return context.json({
+					...edit,
+					supportsDenoise: capability(id.data, edit.engine),
+				});
+			}
 			const input = saveSchema.safeParse(
 				await context.req.json().catch((error: unknown) => {
 					if (error instanceof SyntaxError) return null;
@@ -83,15 +113,24 @@ export function createRawEditsRouter(database: ApiDatabase, engine: RawEngine) {
 					},
 					400,
 				);
-			return context.json(
-				saveRawEdit(
-					database,
-					id.data,
-					input.data.revision,
-					input.data.settings,
-					engine,
-				),
+			const current = readRawEdit(database, id.data, engine);
+			if (
+				!denoiseEnabled &&
+				denoiseAmount(input.data.settings) > 0 &&
+				denoiseAmount(input.data.settings) !== denoiseAmount(current.settings)
+			)
+				throw new RawEditError("DENOISE_UNAVAILABLE");
+			const saved = saveRawEdit(
+				database,
+				id.data,
+				input.data.revision,
+				input.data.settings,
+				engine,
 			);
+			return context.json({
+				...saved,
+				supportsDenoise: capability(id.data, saved.engine),
+			});
 		} catch (error) {
 			if (error instanceof RawEditError) return rawEditErrorResponse(error);
 			throw error;
