@@ -10,6 +10,18 @@ const configSchema = z
 		RAW_DEVELOP_ENGINE: z.enum(["apple", "adobe"]).default("apple"),
 		DENOISE_MODEL_DIR: z.string().trim().min(1).optional(),
 		DENOISE_CACHE_DIR: z.string().trim().min(1).optional(),
+		DENOISE_BACKEND: z
+			.enum([
+				"auto",
+				"cpu",
+				"gpu",
+				"metal",
+				"vulkan",
+				"coreml",
+				"coreml-gpu",
+				"cuda",
+			])
+			.default("auto"),
 		ADOBE_PROFILE_DIR: z.string().trim().min(1).optional(),
 		INNGEST_REALTIME_BASE_URL: z.string().url().optional(),
 		INNGEST_SERVE_ORIGIN: z.string().url().optional(),

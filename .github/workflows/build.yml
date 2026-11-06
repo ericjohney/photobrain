@@ -86,7 +86,9 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          target: api
+          target: api-cuda
+          platforms: linux/amd64
+          build-args: DENOISE_CUDA=1
           push: true
           tags: |
             registry.ericj5.com/photobrain-api:latest
@@ -154,6 +156,12 @@ jobs:
         run: |
           cd argocd/apps/photobrain
           yq -i '.image.tag = "${{ github.sha }}"' values-api.yaml
+          # Keep the CUDA image and shared-GPU allocation in the same GitOps rollout.
+          # Preserve the existing Recreate strategy, PVCs and read-only photo mounts.
+          yq -i '.nvidia = true | .envMap.DENOISE_BACKEND = "cuda" | .envMap.NVIDIA_TF32_OVERRIDE = "0" |
+            .resources.requests.cpu = "1" | .resources.requests.memory = "2Gi" |
+            .resources.requests."nvidia.com/gpu" = "1" | .resources.limits.memory = "8Gi" |
+            .resources.limits."nvidia.com/gpu" = "1"' values-api.yaml
           yq -i '.image.tag = "${{ github.sha }}"' values-web.yaml
 
       - name: Commit and push changes

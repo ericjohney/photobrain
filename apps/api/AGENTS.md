@@ -586,6 +586,14 @@ Wall-clock budgets in performance tests go through `perfBudgetMs(ms)` from `setu
 
 ### Experimental RAW Denoise
 
+`DENOISE_BACKEND` is server-owned: `auto` retains Metal/Vulkan initialization
+fallback, while explicit macOS `coreml` / `coreml-gpu` use checksum-bound external
+companion models. Explicit Linux `cuda` uses the optional CUDA addon and requires
+`NVIDIA_TF32_OVERRIDE=0` at process startup (the `api-cuda` image sets both).
+Backend selection is not a recipe field. Core ML changes
+numerical output, has separate cache identity, and cancels between complete
+network predictions. See [Core ML execution](../../packages/raw-develop/docs/adobe-denoise-coreml.md).
+
 `DENOISE_MODEL_DIR` enables opt-in Denoise, requiring Adobe, `ADOBE_PROFILE_DIR`
 and an explicit writable `DENOISE_CACHE_DIR`. Never bundle proprietary assets.
 `routes/denoise.ts` runs one cancellable native smart-preview job, reports shared

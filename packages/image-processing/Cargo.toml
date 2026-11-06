@@ -31,10 +31,14 @@ sha2 = "0.10"
 tempfile = "3.24.0"
 matrixmultiply = "0.3"
 # Full RAW development (Apple RawCamera-equivalent pipeline) for the loupe toggle.
-raw_develop = { path = "../raw-develop", features = ["adobe-denoise"] }
+raw_develop = { path = "../raw-develop", features = ["adobe-denoise-gpu", "adobe-denoise-coreml"] }
 
 [build-dependencies]
 napi-build = "2"
+
+[features]
+# Opt-in Linux image; normal Mac/CPU builds keep their current ORT linkage.
+adobe-denoise-cuda = ["raw_develop/adobe-denoise-cuda"]
 
 [profile.release]
 lto = true

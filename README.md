@@ -162,6 +162,7 @@ IOS_DESTINATION='platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5' \
 | `THUMBNAILS_DIRECTORY` | `./thumbnails` | Generated thumbnail root |
 | `RAW_DEVELOP_ENGINE` | `apple` | Server loupe Developed renderer: `apple` or experimental `adobe` for supported RAF/ARW; ProRAW always uses Apple |
 | `ADOBE_PROFILE_DIR` | unset | Runtime Adobe Standard DCP directory, required when `RAW_DEVELOP_ENGINE=adobe`; profiles are not bundled |
+| `DENOISE_BACKEND` | `auto` | Server denoise executor. Production CUDA image uses `cuda`; Mac can explicitly select `coreml` or `coreml-gpu`. Auto selects Metal/Vulkan with initialization fallback. See [setup and validation](packages/raw-develop/docs/adobe-denoise-cuda.md). |
 | `NODE_ENV` | `development` | Runtime environment |
 | `RUN_DB_INIT` | `false` | Set to `true` or `1` to run shared migrations on startup |
 | `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false` | Enables native `POST /api/v1/scans`; compatibility reads remain available while disabled |
@@ -289,16 +290,17 @@ Run `bun run bench:exif <1-20 distinct photo paths>` from `apps/api` to compare 
 
 ## Production Builds
 
-The Dockerfile has four targets (`builder`, `api`, `web-builder`, `web`); build the deployable ones with:
+The Dockerfile has ordinary API/web targets and a separate NVIDIA CUDA API target:
 
 ```bash
 docker build --target api -t photobrain-api .
 docker build --target web -t photobrain-web .
+docker build --platform linux/amd64 --target api-cuda --build-arg DENOISE_CUDA=1 -t photobrain-api:cuda .
 ```
 
 The API image applies shared migrations on startup and runs on port 3000. The web image serves the Vite SPA on port 3001.
 
-The permanent GitHub Actions build workflow runs API tests/typecheck and web Playwright tests, builds and pushes API and web images, and updates their external ArgoCD image tags on pushes to `main`.
+The permanent GitHub Actions build workflow runs API tests/typecheck and web Playwright tests, builds and pushes the amd64 `api-cuda` and web images, and updates their external ArgoCD image tags on pushes to `main`. The same GitOps update assigns the API one shared NVIDIA GPU slot and selects `DENOISE_BACKEND=cuda` with `NVIDIA_TF32_OVERRIDE=0`, preserving existing storage and Recreate. CUDA 12/cuDNN 9 and ONNX Runtime are packaged in the image; the NVIDIA container runtime supplies the driver. Adobe profiles and denoise models remain external runtime mounts. Follow the homelab's off-volume database backup and iSCSI-snapshot procedure before rollout; GPU time slicing does not isolate VRAM.
 
 Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator, plus fixture-backed UI flows on iPhone and iPad Air simulators. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**` (or by manual dispatch with custom inputs); it validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 

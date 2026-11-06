@@ -1,0 +1,3933 @@
+{
+  "shader_revision": "wgpu24-f32-v3",
+  "metal": {
+    "device": "Apple M4 Pro",
+    "learned_graph_cases": [
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.108977041,
+        "max_abs": 1.210719347000122e-08,
+        "model": "bayer",
+        "rms": 1.1494698984904599e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.035194042,
+        "max_abs": 7.3015689849853516e-06,
+        "model": "bayer",
+        "rms": 1.9952203060944482e-07,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.037380584,
+        "max_abs": 1.1920928955078125e-07,
+        "model": "bayer",
+        "rms": 1.7707715269076252e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.224044,
+        "max_abs": 1.043081283569336e-07,
+        "model": "xtrans",
+        "rms": 8.494968899333014e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.184995959,
+        "max_abs": 1.9073486328125e-06,
+        "model": "xtrans",
+        "rms": 2.4034824896567077e-07,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.191567,
+        "max_abs": 4.6193599700927734e-07,
+        "model": "xtrans",
+        "rms": 5.193346534517257e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.10430875,
+        "max_abs": 1.1920928955078125e-07,
+        "model": "linear_raw",
+        "rms": 7.300048299977713e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.037169667,
+        "max_abs": 5.662441253662109e-07,
+        "model": "linear_raw",
+        "rms": 6.131153066213258e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.036065042,
+        "max_abs": 2.980232238769531e-07,
+        "model": "linear_raw",
+        "rms": 5.2943505406618595e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.094150458,
+        "max_abs": 2.384185791015625e-07,
+        "model": "panorama_raw",
+        "rms": 1.7547132305955582e-07,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.039216959,
+        "max_abs": 5.364418029785156e-07,
+        "model": "panorama_raw",
+        "rms": 6.809640288637311e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.037199583,
+        "max_abs": 3.2782554626464844e-07,
+        "model": "panorama_raw",
+        "rms": 6.179075731744581e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 0.089673625,
+        "max_abs": 3.3527612686157227e-08,
+        "model": "xtrans_details",
+        "rms": 2.0545462901113302e-08,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 0.083100708,
+        "max_abs": 5.781650543212891e-06,
+        "model": "xtrans_details",
+        "rms": 3.1915721392756017e-07,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 0.083073958,
+        "max_abs": 8.344650268554688e-07,
+        "model": "xtrans_details",
+        "rms": 1.1792391009004618e-07,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      },
+      {
+        "case": "real",
+        "cpu_seconds": null,
+        "gpu_seconds": 0.082094334,
+        "max_abs": 1.9669532775878906e-06,
+        "model": "xtrans_details",
+        "rms": 3.0668715175267236e-07,
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true
+      }
+    ],
+    "cancellation_including_request_delay_seconds": 0.088,
+    "request_delay_seconds": 0.051759702100000006,
+    "native_x100vi_amount_100": [
+      {
+        "cached": false,
+        "seconds": 75.721387917,
+        "bytes": 38665924,
+        "sha256": "ca4c16acd3b6926cc563395a26bb50915b32b7b81189f0ed40370d5c71aa364f",
+        "engine": "adobe",
+        "token": "cc6de5608a01e8d31e5e08110b79ee69c47acefa2ce2b4faf2e594d1d719f6e5"
+      },
+      {
+        "cached": true,
+        "seconds": 1.7584510420000006,
+        "bytes": 38665924,
+        "sha256": "ca4c16acd3b6926cc563395a26bb50915b32b7b81189f0ed40370d5c71aa364f",
+        "engine": "adobe",
+        "token": "cc6de5608a01e8d31e5e08110b79ee69c47acefa2ce2b4faf2e594d1d719f6e5"
+      }
+    ],
+    "paired_bayer_structured_benchmark": {
+      "cpu": {
+        "runs": [
+          {
+            "model": {
+              "backend": "cpu-f32-v1",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 2.676475209
+          },
+          {
+            "model": {
+              "backend": "cpu-f32-v1",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 2.73476475
+          },
+          {
+            "model": {
+              "backend": "cpu-f32-v1",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 2.752875042
+          }
+        ],
+        "median_seconds": 2.73476475
+      },
+      "metal": {
+        "runs": [
+          {
+            "model": {
+              "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 1.7152720000000001
+          },
+          {
+            "model": {
+              "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 1.7243920419999998
+          },
+          {
+            "model": {
+              "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 1.6919512920000002
+          }
+        ],
+        "median_seconds": 1.7152720000000001
+      },
+      "shader_revision": "wgpu24-f32-v2"
+    },
+    "native_sony_cancellation": {
+      "cancelled": true,
+      "seconds": 0.7200801250000001,
+      "completedCacheFiles": 0,
+      "request_delay_seconds": 0.7,
+      "error_code": "DEVELOP_CANCELLED",
+      "shader_revision": "wgpu24-f32-v3"
+    },
+    "adobe_coreml_gpu_comparison": {
+      "platform": "macOS-27.2-arm64-arm-64bit",
+      "coremltools": "9.0",
+      "scope": "network-only; identical structured inputs and recovered model parameters; no decode, calibration, stitching, model load or encoding",
+      "coreml_compute_units": "CPU_AND_GPU",
+      "coreml_warmups": 1,
+      "timed_runs": 5,
+      "variants": {
+        "bayer": {
+          "model_source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+          "input_sha256": "c1c2a4ec41fe606f9254880708dd1054f2bcc478e8ce9b2b59153b370161d0d3",
+          "input_shape": [
+            3,
+            1024,
+            1024
+          ],
+          "output_shape": [
+            3,
+            800,
+            800
+          ],
+          "coreml_cpu_gpu": {
+            "seconds": [
+              0.3517261660017539,
+              0.3504609579977114,
+              0.35043483399931574,
+              0.3506379160025972,
+              0.35037208299763734
+            ],
+            "median_seconds": 0.3504609579977114,
+            "repeat_bit_exact": true
+          },
+          "coreml_gpu_vs_cpu": {
+            "max_abs": 0.016097426414489746,
+            "rms": 0.0011278279899925123,
+            "bit_exact": false
+          },
+          "rust_metal_vs_coreml_gpu": {
+            "max_abs": 0.016097426414489746,
+            "rms": 0.0011278279899925123,
+            "bit_exact": false
+          },
+          "rust_over_coreml_time_ratio": 4.640486470423392,
+          "rust_metal_first_prediction_after_load": {
+            "runs": [
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 175,
+                  "output_shape": [
+                    3,
+                    800,
+                    800
+                  ],
+                  "parameters": 14956675,
+                  "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+                  "variant": "bayer",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+                },
+                "output_shape": [
+                  3,
+                  800,
+                  800
+                ],
+                "seconds": 1.718095291
+              },
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 175,
+                  "output_shape": [
+                    3,
+                    800,
+                    800
+                  ],
+                  "parameters": 14956675,
+                  "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+                  "variant": "bayer",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+                },
+                "output_shape": [
+                  3,
+                  800,
+                  800
+                ],
+                "seconds": 1.689527666
+              },
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 175,
+                  "output_shape": [
+                    3,
+                    800,
+                    800
+                  ],
+                  "parameters": 14956675,
+                  "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+                  "variant": "bayer",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+                },
+                "output_shape": [
+                  3,
+                  800,
+                  800
+                ],
+                "seconds": 1.690673167
+              },
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 175,
+                  "output_shape": [
+                    3,
+                    800,
+                    800
+                  ],
+                  "parameters": 14956675,
+                  "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+                  "variant": "bayer",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+                },
+                "output_shape": [
+                  3,
+                  800,
+                  800
+                ],
+                "seconds": 1.6922732090000001
+              },
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 175,
+                  "output_shape": [
+                    3,
+                    800,
+                    800
+                  ],
+                  "parameters": 14956675,
+                  "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+                  "variant": "bayer",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+                },
+                "output_shape": [
+                  3,
+                  800,
+                  800
+                ],
+                "seconds": 1.684075
+              }
+            ],
+            "median_seconds": 1.690673167
+          },
+          "rust_metal_warm": {
+            "runs": [
+              {
+                "variant": "bayer",
+                "run": 0,
+                "seconds": 1.626309334,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 1,
+                "seconds": 1.627489,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 2,
+                "seconds": 1.6246368329999998,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 3,
+                "seconds": 1.640578916,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 4,
+                "seconds": 1.625769709,
+                "repeat_bit_exact": true
+              }
+            ],
+            "median_seconds": 1.626309334
+          }
+        },
+        "xtrans": {
+          "model_source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+          "input_sha256": "70630c891e3864aa3a8a17303e5226fe13dcaff24ba502b9330c5fb2a1e77a38",
+          "input_shape": [
+            3,
+            1024,
+            1024
+          ],
+          "output_shape": [
+            3,
+            864,
+            864
+          ],
+          "coreml_cpu_gpu": {
+            "seconds": [
+              0.3523751250031637,
+              0.3498404580022907,
+              0.3527088749979157,
+              0.3576905000008992,
+              0.3544112499948824
+            ],
+            "median_seconds": 0.3527088749979157,
+            "repeat_bit_exact": true
+          },
+          "coreml_gpu_vs_cpu": {
+            "max_abs": 0.0030387043952941895,
+            "rms": 0.0006486771156343334,
+            "bit_exact": false
+          },
+          "rust_metal_vs_coreml_gpu": {
+            "max_abs": 0.0030387043952941895,
+            "rms": 0.0006486771156343334,
+            "bit_exact": false
+          },
+          "rust_over_coreml_time_ratio": 5.621875122965697,
+          "rust_metal_first_prediction_after_load": {
+            "runs": [
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 147,
+                  "output_shape": [
+                    3,
+                    864,
+                    864
+                  ],
+                  "parameters": 21952771,
+                  "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+                  "variant": "xtrans",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+                },
+                "output_shape": [
+                  3,
+                  864,
+                  864
+                ],
+                "seconds": 2.023913209
+              },
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 147,
+                  "output_shape": [
+                    3,
+                    864,
+                    864
+                  ],
+                  "parameters": 21952771,
+                  "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+                  "variant": "xtrans",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+                },
+                "output_shape": [
+                  3,
+                  864,
+                  864
+                ],
+                "seconds": 2.021077084
+              },
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 147,
+                  "output_shape": [
+                    3,
+                    864,
+                    864
+                  ],
+                  "parameters": 21952771,
+                  "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+                  "variant": "xtrans",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+                },
+                "output_shape": [
+                  3,
+                  864,
+                  864
+                ],
+                "seconds": 2.029397458
+              },
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 147,
+                  "output_shape": [
+                    3,
+                    864,
+                    864
+                  ],
+                  "parameters": 21952771,
+                  "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+                  "variant": "xtrans",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+                },
+                "output_shape": [
+                  3,
+                  864,
+                  864
+                ],
+                "seconds": 2.027077208
+              },
+              {
+                "model": {
+                  "backend": "wgpu24-f32-v2:Metal:Apple M4 Pro:0:0:::26B123",
+                  "format_version": 1,
+                  "input_shape": [
+                    3,
+                    1024,
+                    1024
+                  ],
+                  "layers": 147,
+                  "output_shape": [
+                    3,
+                    864,
+                    864
+                  ],
+                  "parameters": 21952771,
+                  "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+                  "variant": "xtrans",
+                  "weight_dtype": "float16",
+                  "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+                },
+                "output_shape": [
+                  3,
+                  864,
+                  864
+                ],
+                "seconds": 2.030131875
+              }
+            ],
+            "median_seconds": 2.027077208
+          },
+          "rust_metal_warm": {
+            "runs": [
+              {
+                "variant": "xtrans",
+                "run": 0,
+                "seconds": 1.984644458,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 1,
+                "seconds": 1.991121334,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 2,
+                "seconds": 1.98288525,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 3,
+                "seconds": 1.9804736250000001,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 4,
+                "seconds": 1.9783120840000001,
+                "repeat_bit_exact": true
+              }
+            ],
+            "median_seconds": 1.98288525
+          }
+        }
+      },
+      "rust_warmups": 1,
+      "precision_note": "Rust Metal uses FP32 shaders. Core ML CPU_AND_GPU uses the runtime defaults; GPU execution placement and internal arithmetic precision were not instrumented. This is not an equal-precision comparison or a whole Adobe Camera Raw application benchmark.",
+      "shader_revision": "wgpu24-f32-v2"
+    },
+    "previous_v2_learned_graph_cases": [
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.760874042,
+        "max_abs": 1.210719347000122e-08,
+        "model": "bayer",
+        "rms": 1.1494698984904599e-08
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.636677333,
+        "max_abs": 7.3015689849853516e-06,
+        "model": "bayer",
+        "rms": 1.9952203060944482e-07
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.639521625,
+        "max_abs": 1.1920928955078125e-07,
+        "model": "bayer",
+        "rms": 1.7707715269076252e-08
+      },
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 2.055159167,
+        "max_abs": 1.043081283569336e-07,
+        "model": "xtrans",
+        "rms": 8.494968899333014e-08
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.995050375,
+        "max_abs": 1.9073486328125e-06,
+        "model": "xtrans",
+        "rms": 2.4034824896567077e-07
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.9916675000000001,
+        "max_abs": 4.6193599700927734e-07,
+        "model": "xtrans",
+        "rms": 5.193346534517257e-08
+      },
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.723408666,
+        "max_abs": 1.1920928955078125e-07,
+        "model": "linear_raw",
+        "rms": 7.300048299977713e-08
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.63869225,
+        "max_abs": 5.662441253662109e-07,
+        "model": "linear_raw",
+        "rms": 6.131153066213258e-08
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.649483209,
+        "max_abs": 2.980232238769531e-07,
+        "model": "linear_raw",
+        "rms": 5.2943505406618595e-08
+      },
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.714619167,
+        "max_abs": 2.384185791015625e-07,
+        "model": "panorama_raw",
+        "rms": 1.7547132305955582e-07
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.6485824999999998,
+        "max_abs": 5.364418029785156e-07,
+        "model": "panorama_raw",
+        "rms": 6.809640288637311e-08
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 1.664043792,
+        "max_abs": 3.2782554626464844e-07,
+        "model": "panorama_raw",
+        "rms": 6.179075731744581e-08
+      },
+      {
+        "case": "zero",
+        "cpu_seconds": null,
+        "gpu_seconds": 0.138700833,
+        "max_abs": 3.3527612686157227e-08,
+        "model": "xtrans_details",
+        "rms": 2.0545462901113302e-08
+      },
+      {
+        "case": "structured",
+        "cpu_seconds": null,
+        "gpu_seconds": 0.129524375,
+        "max_abs": 5.781650543212891e-06,
+        "model": "xtrans_details",
+        "rms": 3.1915721392756017e-07
+      },
+      {
+        "case": "noisy",
+        "cpu_seconds": null,
+        "gpu_seconds": 0.127696667,
+        "max_abs": 8.344650268554688e-07,
+        "model": "xtrans_details",
+        "rms": 1.1792391009004618e-07
+      },
+      {
+        "case": "real",
+        "cpu_seconds": null,
+        "gpu_seconds": 0.130674542,
+        "max_abs": 1.9669532775878906e-06,
+        "model": "xtrans_details",
+        "rms": 3.0668715175267236e-07
+      }
+    ],
+    "previous_v2_cancellation_including_request_delay_seconds": 0.268,
+    "performance_pass_v3": {
+      "date": "2026-11-04",
+      "device": "Apple M4 Pro",
+      "gpu_cores": 16,
+      "os_build": "26B123",
+      "warmups": 1,
+      "timed_runs": 5,
+      "scope": "Matching structured 1024-square inputs and weights; retained models; inference only, no model load/file I/O; original and optimized executors ran sequentially with no concurrent builds or inference.",
+      "variants": {
+        "bayer": {
+          "previous_v2": {
+            "runs": [
+              {
+                "variant": "bayer",
+                "run": 0,
+                "seconds": 1.654406792,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 1,
+                "seconds": 1.659894125,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 2,
+                "seconds": 1.642163042,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 3,
+                "seconds": 1.649073708,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 4,
+                "seconds": 1.645114792,
+                "repeat_bit_exact": true
+              }
+            ],
+            "median_seconds": 1.649073708
+          },
+          "optimized_v3": {
+            "runs": [
+              {
+                "variant": "bayer",
+                "run": 0,
+                "seconds": 1.057839167,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 1,
+                "seconds": 1.060511625,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 2,
+                "seconds": 1.049221875,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 3,
+                "seconds": 1.050390166,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "bayer",
+                "run": 4,
+                "seconds": 1.047999333,
+                "repeat_bit_exact": true
+              }
+            ],
+            "median_seconds": 1.050390166
+          },
+          "speedup": 1.5699630112492886,
+          "latency_reduction_fraction": 0.3630423183000624,
+          "arena_mib": {
+            "previous": 2612,
+            "optimized": 1844
+          },
+          "dispatches_per_tile": {
+            "previous": 131,
+            "optimized": 90
+          }
+        },
+        "xtrans": {
+          "previous_v2": {
+            "runs": [
+              {
+                "variant": "xtrans",
+                "run": 0,
+                "seconds": 1.996991417,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 1,
+                "seconds": 2.019851833,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 2,
+                "seconds": 2.0233815,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 3,
+                "seconds": 2.019214209,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 4,
+                "seconds": 2.016277125,
+                "repeat_bit_exact": true
+              }
+            ],
+            "median_seconds": 2.019214209
+          },
+          "optimized_v3": {
+            "runs": [
+              {
+                "variant": "xtrans",
+                "run": 0,
+                "seconds": 1.196012208,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 1,
+                "seconds": 1.190577208,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 2,
+                "seconds": 1.208732917,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 3,
+                "seconds": 1.211616583,
+                "repeat_bit_exact": true
+              },
+              {
+                "variant": "xtrans",
+                "run": 4,
+                "seconds": 1.209866083,
+                "repeat_bit_exact": true
+              }
+            ],
+            "median_seconds": 1.208732917
+          },
+          "speedup": 1.6705214035302058,
+          "latency_reduction_fraction": 0.40138450313371377,
+          "arena_mib": {
+            "previous": 1524,
+            "optimized": 1012
+          },
+          "dispatches_per_tile": {
+            "previous": 111,
+            "optimized": 76
+          }
+        }
+      },
+      "baseline_snapshots_sha256": {
+        "baseline-bayer-noisy.f32": "f41f80f964809d729d084d13c23f84052bfdaa407f69f0ff5a8e334a0c85d1e4",
+        "baseline-bayer-structured.f32": "fda3c672d0a89f2d0443c1b9469105ae4547e60d84ca6c1b4e1be820729b5b86",
+        "baseline-bayer-zero.f32": "bc5755e93f871556477e349918fe39f1ca146894a6ffb13b187586af4b9bc5b7",
+        "baseline-linear_raw-noisy.f32": "575199d6e0b402b54e31a55a2bcc72ff48b8aab44f15044174c2de1f77b6b00c",
+        "baseline-linear_raw-structured.f32": "c883d26d3bf6df59e00706590c8b645f71c06a3d14fc45fc9b8f1dc3a494b948",
+        "baseline-linear_raw-zero.f32": "53a5df776c16566d4b4ea885a766fcb87eadf103e7eef40aa468cdbd91d0fc9c",
+        "baseline-panorama_raw-noisy.f32": "02e48205ccdae7b54686f1e18177cd6a2b29fc7162549f6ed96588e831e52cb2",
+        "baseline-panorama_raw-structured.f32": "d4991e3dbba22159171bfdafa47ac118a60a28334a7b7f51f500c2a32bc5d431",
+        "baseline-panorama_raw-zero.f32": "ad51de234c16763fc080fddccd99f352e28892c7a1623d2c18ba6692aa0e6a0d",
+        "baseline-xtrans-noisy.f32": "c11200ba9233c1476ffc9058264db1afcd7c82d35a3182d50b0fb87dd732d23c",
+        "baseline-xtrans-structured.f32": "3aed08561f749e757d4912746e5bceb0f77ee9a77cc0a8d49271e0eb5b0de971",
+        "baseline-xtrans-zero.f32": "a03bfa7034eb03b0dd05240f8f8e6c35696a76f90d502885d1d6b17b37ac8c90",
+        "baseline-xtrans_details-noisy.f32": "62c1e2e332f2cdf1f63ae62517a1d82ed3a425af87790c04b11b66eec35e5137",
+        "baseline-xtrans_details-real.f32": "8d185ac65674494f32646734eed47fed13a20b9a38e723302e21129719f18fb3",
+        "baseline-xtrans_details-structured.f32": "4912c8cdf7d53d674e7cc999bc6a90e8233f37dd581c25dc0e07b8f0e22fc00d",
+        "baseline-xtrans_details-zero.f32": "2463971352d9660766ba411929f90dae1cb8b552419e90242e7aad3673e03ee6"
+      },
+      "guarantee_scope": "All 16 same-device/driver fixture tensors preserve v2 GPU bits; not CPU bit-exactness, universal GPU determinism or Adobe parity.",
+      "rejected_trials": [
+        "K32 dynamic reduction loop",
+        "M64 K32 with static 16-element subloops"
+      ],
+      "native_smart_preview": {
+        "tile_count": 60,
+        "scope": "Single fresh-cache native addon integration runs, not repeated medians or HTTP/UI timings. Same X100VI source, amount100, 1600px smart-preview request.",
+        "previous_preview_bit_exact": true,
+        "old_cache_preserved": true,
+        "v3_used_fresh_cache_directory": true,
+        "latency_reduction_fraction": 0.40093682351420346,
+        "speedup": 1.6692730237003799
+      }
+    },
+    "adobe_runtime_investigation": {
+      "target": "Adobe DNG Converter 18.7 arm64",
+      "sha256": "4001cc9abfa1e5352aa88c99c84833cf73c0282ad469ace6d8d196adb7d6aacc",
+      "macho_identity_evidence_id": "ev_5ce3ce0a2a30af45ce5eefa864018a388a3ab880c2b00af00c8a97658e869e47",
+      "macho_identity_evidence_bundle": "/tmp/photobrain-gpu-opt/rea-evidence.json",
+      "static_observation_source": "Existing Ghidra database, read-only focused decompilation through shell; separate from authenticated REA Evidence.",
+      "functions": {
+        "0x10075b1d8": "MakeCNNBayerDenoiseModel_Apple",
+        "0x10075b4d8": "MakeCNNFuji6x6DenoiseModel_Apple",
+        "0x10075d494": "PickMetalDevice",
+        "0x100760c58": "cnn_rgb_data_cml::Predict"
+      },
+      "runtime_replay": {
+        "events": [
+          {
+            "kind": "controlled_enable",
+            "function": "InterpolateFuji6x6(dng_host&, dng_negative&, dng_image const&, dng_image&, unsigned int, dng_vector const&)",
+            "original_options": "00000000320000000001000000000000"
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setPreferredMetalDevice:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setComputeUnits:]",
+            "argument_x2": 2
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setComputeUnits:]",
+            "argument_x2": 2
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setAllowLowPrecisionAccumulationOnGPU:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setPreferredMetalDevice:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setComputeUnits:]",
+            "argument_x2": 2
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setAllowLowPrecisionAccumulationOnGPU:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setPreferredMetalDevice:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setComputeUnits:]",
+            "argument_x2": 2
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setAllowLowPrecisionAccumulationOnGPU:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setPreferredMetalDevice:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setComputeUnits:]",
+            "argument_x2": 2
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setAllowLowPrecisionAccumulationOnGPU:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setPreferredMetalDevice:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setComputeUnits:]",
+            "argument_x2": 2
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setAllowLowPrecisionAccumulationOnGPU:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "configuration",
+            "function": "-[MLModelConfiguration setPreferredMetalDevice:]",
+            "argument_x2": 0
+          },
+          {
+            "kind": "prediction",
+            "seconds_including_debugger_boundary": 0.30865387500000097,
+            "batch": 1,
+            "tensor_header_hex": "10464f0801000000010000000300000000040000000400000b00000000000000"
+          },
+          {
+            "kind": "prediction",
+            "seconds_including_debugger_boundary": 0.166429707999999,
+            "batch": 1,
+            "tensor_header_hex": "10464f0801000000010000000300000000040000000400000b00000000000000"
+          },
+          {
+            "kind": "prediction",
+            "seconds_including_debugger_boundary": 0.1590922920000004,
+            "batch": 1,
+            "tensor_header_hex": "10464f0801000000010000000300000000040000000400000b00000000000000"
+          },
+          {
+            "kind": "prediction",
+            "seconds_including_debugger_boundary": 0.1614289169999985,
+            "batch": 1,
+            "tensor_header_hex": "10464f0801000000010000000300000000040000000400000b00000000000000"
+          }
+        ],
+        "complete": true,
+        "scope": "controlled native replay; denoise amount100 enabled in launched process; prediction timers include LLDB entry/return overhead"
+      },
+      "coreml_modes": {
+        "bayer": {
+          "model_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+          "input_sha256": "c1c2a4ec41fe606f9254880708dd1054f2bcc478e8ce9b2b59153b370161d0d3",
+          "modes": {
+            "CPU_AND_GPU/single": {
+              "seconds": [
+                0.3536762910007383,
+                0.35283070799778216,
+                0.35238474999641767,
+                0.35159091699460987,
+                0.3518608750018757
+              ],
+              "median_seconds": 0.35238474999641767,
+              "repeat_bit_exact": true
+            },
+            "CPU_AND_GPU/batch1": {
+              "seconds": [
+                0.35178658299992094,
+                0.35291029200016055,
+                0.3521393330011051,
+                0.35181837499840185,
+                0.3523473750028643
+              ],
+              "median_seconds": 0.3521393330011051,
+              "repeat_bit_exact": true
+            },
+            "ALL/single": {
+              "seconds": [
+                0.17733416600094642,
+                0.17718212500039954,
+                0.17736662500101374,
+                0.17706816700228956,
+                0.1764480830024695
+              ],
+              "median_seconds": 0.17718212500039954,
+              "repeat_bit_exact": true
+            },
+            "ALL/batch1": {
+              "seconds": [
+                0.17715912499988917,
+                0.178103917001863,
+                0.17781333399761934,
+                0.1770635829961975,
+                0.17722679199505365
+              ],
+              "median_seconds": 0.17722679199505365,
+              "repeat_bit_exact": true
+            }
+          },
+          "vs_rust_cpu": {
+            "CPU_AND_GPU": {
+              "max_abs": 0.016094565391540527,
+              "rms": 0.0011278055560544587,
+              "bit_exact": false
+            },
+            "ALL": {
+              "max_abs": 0.00902026891708374,
+              "rms": 0.00039168740173230155,
+              "bit_exact": false
+            }
+          },
+          "anticipated_compute_plan": {
+            "MLNeuralEngineComputeDevice": 175
+          },
+          "v3_over_coreml_cpu_gpu_batch1_time_ratio": 2.9828822501822128,
+          "v3_over_coreml_all_batch1_time_ratio": 5.926813627757343
+        },
+        "xtrans": {
+          "model_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+          "input_sha256": "70630c891e3864aa3a8a17303e5226fe13dcaff24ba502b9330c5fb2a1e77a38",
+          "modes": {
+            "CPU_AND_GPU/single": {
+              "seconds": [
+                0.35510266699566273,
+                0.3550099999993108,
+                0.3527784170000814,
+                0.35283508300199173,
+                0.35258983400126453
+              ],
+              "median_seconds": 0.35283508300199173,
+              "repeat_bit_exact": true
+            },
+            "CPU_AND_GPU/batch1": {
+              "seconds": [
+                0.35434362499654526,
+                0.35292774999834364,
+                0.3528526250011055,
+                0.3529965830020956,
+                0.35283466600230895
+              ],
+              "median_seconds": 0.35292774999834364,
+              "repeat_bit_exact": true
+            },
+            "ALL/single": {
+              "seconds": [
+                0.14431820799654815,
+                0.14451166599610588,
+                0.14435054099885747,
+                0.14469179099978646,
+                0.14456370900006732
+              ],
+              "median_seconds": 0.14451166599610588,
+              "repeat_bit_exact": true
+            },
+            "ALL/batch1": {
+              "seconds": [
+                0.1446013330059941,
+                0.14509945800091373,
+                0.14501387500058627,
+                0.1442263749995618,
+                0.14319637500011595
+              ],
+              "median_seconds": 0.1446013330059941,
+              "repeat_bit_exact": true
+            }
+          },
+          "vs_rust_cpu": {
+            "CPU_AND_GPU": {
+              "max_abs": 0.0030385851860046387,
+              "rms": 0.0006486769029233992,
+              "bit_exact": false
+            },
+            "ALL": {
+              "max_abs": 0.2501240670681,
+              "rms": 0.0441474075869282,
+              "bit_exact": false
+            }
+          },
+          "anticipated_compute_plan": {
+            "MLNeuralEngineComputeDevice": 147
+          },
+          "v3_over_coreml_cpu_gpu_batch1_time_ratio": 3.4248735527474756,
+          "v3_over_coreml_all_batch1_time_ratio": 8.35907174486348
+        }
+      },
+      "timing_method": "Core ML 9.0, one warmup and five predictions for each retained model/mode/API, sequential execution.",
+      "limits": [
+        "Core ML anticipated device plan is not a runtime per-layer trace.",
+        "Native prediction timings include LLDB entry/return and adapter overhead; not whole-photo latency.",
+        "ComputeUnitsAll permits Neural Engine; observations do not establish GPU-only execution.",
+        "No equal-precision claim: Core ML internal arithmetic/storage precision was not forced to match Rust FP32.",
+        "Native amount100 was enabled only in the launched debug process; stopped after four predictions without a completed photo export."
+      ]
+    },
+    "previous_v2_native_x100vi_amount_100": [
+      {
+        "cached": false,
+        "seconds": 126.39967016700001,
+        "bytes": 38665924,
+        "sha256": "ca4c16acd3b6926cc563395a26bb50915b32b7b81189f0ed40370d5c71aa364f",
+        "engine": "adobe",
+        "token": "3c0a94ba562296e9b8e06c5133aca3fa79ba87cb00a689c46a48f4cca8ba1fb1"
+      },
+      {
+        "cached": true,
+        "seconds": 1.7227996249999997,
+        "bytes": 38665924,
+        "sha256": "ca4c16acd3b6926cc563395a26bb50915b32b7b81189f0ed40370d5c71aa364f",
+        "engine": "adobe",
+        "token": "3c0a94ba562296e9b8e06c5133aca3fa79ba87cb00a689c46a48f4cca8ba1fb1"
+      }
+    ],
+    "previous_v2_native_sony_cancellation": {
+      "cancelled": true,
+      "seconds": 0.797010333,
+      "completedCacheFiles": 0,
+      "request_delay_seconds": 0.7,
+      "error_code": "DEVELOP_CANCELLED",
+      "shader_revision": "wgpu24-f32-v2"
+    }
+  },
+  "nvidia": {
+    "device": "NVIDIA GeForce RTX 4070 Ti SUPER",
+    "driver": "610.43.02",
+    "shader_revision": "wgpu24-f32-v3",
+    "previous_v2_diagnostics": {
+      "operator_smoke": {
+        "max_abs": 0.0,
+        "rms": 0.0,
+        "repeat_bit_exact": true
+      },
+      "learned_graph_diagnostics": {
+        "bayer": {
+          "input_edge": 256,
+          "max_abs": 7.562339305877686e-07,
+          "rms": 1.3177066853487532e-07,
+          "repeat_bit_exact": true
+        },
+        "xtrans": {
+          "input_edge": 256,
+          "max_abs": 1.1920928955078125e-06,
+          "rms": 1.759933345542095e-07,
+          "repeat_bit_exact": true
+        }
+      },
+      "scope": "Original Bayer/X-Trans learned layers and weights with 256-square graph input geometry. Full 1024-square wrapper and whole-photo NVIDIA validation pending GPU reservation and VRAM headroom.",
+      "shader_revision": "wgpu24-f32-v2"
+    },
+    "v3_tuning_validated": true,
+    "validated_at": "2026-11-04",
+    "scope": "All five complete learned graphs, 16 original-geometry cases, previous-v2 and repeat exact checks, CPU numerical checks; complete 60-tile X100VI amount100 canonical camera-RGB wrapper exact against previous NVIDIA v2. Production API GPU image/overlay has not been deployed.",
+    "learned_graph_cases": [
+      {
+        "model": "bayer",
+        "model_file": "dn_bayer.pbdn",
+        "case": "zero",
+        "stem": "bayer-zero",
+        "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 1.210719347000122e-08,
+        "rms_vs_saved_cpu": 1.1494698984904599e-08,
+        "output_sha256": "bc5755e93f871556477e349918fe39f1ca146894a6ffb13b187586af4b9bc5b7",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.339775753
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.298281262
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.298241345
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "bayer",
+        "model_file": "dn_bayer.pbdn",
+        "case": "structured",
+        "stem": "bayer-structured",
+        "input_sha256": "c1c2a4ec41fe606f9254880708dd1054f2bcc478e8ce9b2b59153b370161d0d3",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 7.3015689849853516e-06,
+        "rms_vs_saved_cpu": 1.9952203060944482e-07,
+        "output_sha256": "fda3c672d0a89f2d0443c1b9469105ae4547e60d84ca6c1b4e1be820729b5b86",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.338491617
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.260403485
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.262822971
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "bayer",
+        "model_file": "dn_bayer.pbdn",
+        "case": "noisy",
+        "stem": "bayer-noisy",
+        "input_sha256": "35a2379b2a9ff0be82689ca2d53e55aa5b3ec91d5fbb5552a249a5f2c81d2715",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 1.1920928955078125e-07,
+        "rms_vs_saved_cpu": 1.7707715269076252e-08,
+        "output_sha256": "f41f80f964809d729d084d13c23f84052bfdaa407f69f0ff5a8e334a0c85d1e4",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.333516025
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.258696132
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+              "variant": "bayer",
+              "weight_dtype": "float16",
+              "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.25924605
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "xtrans",
+        "model_file": "dn_xtrans.pbdn",
+        "case": "zero",
+        "stem": "xtrans-zero",
+        "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 1.043081283569336e-07,
+        "rms_vs_saved_cpu": 8.494968899333014e-08,
+        "output_sha256": "a03bfa7034eb03b0dd05240f8f8e6c35696a76f90d502885d1d6b17b37ac8c90",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.351422534
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.290479696
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.304279825
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "xtrans",
+        "model_file": "dn_xtrans.pbdn",
+        "case": "structured",
+        "stem": "xtrans-structured",
+        "input_sha256": "70630c891e3864aa3a8a17303e5226fe13dcaff24ba502b9330c5fb2a1e77a38",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 1.9073486328125e-06,
+        "rms_vs_saved_cpu": 2.4034824896567077e-07,
+        "output_sha256": "3aed08561f749e757d4912746e5bceb0f77ee9a77cc0a8d49271e0eb5b0de971",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.386261411
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.329330072
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.287929522
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "xtrans",
+        "model_file": "dn_xtrans.pbdn",
+        "case": "noisy",
+        "stem": "xtrans-noisy",
+        "input_sha256": "8de02b40ba52de52ac1eeb06677ee2d503641a7cea38368577eb966fad9a17ce",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 4.6193599700927734e-07,
+        "rms_vs_saved_cpu": 5.193346534517257e-08,
+        "output_sha256": "c11200ba9233c1476ffc9058264db1afcd7c82d35a3182d50b0fb87dd732d23c",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.345242177
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.296477649
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 147,
+              "output_shape": [
+                3,
+                864,
+                864
+              ],
+              "parameters": 21952771,
+              "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+              "variant": "xtrans",
+              "weight_dtype": "float16",
+              "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+            },
+            "output_shape": [
+              3,
+              864,
+              864
+            ],
+            "seconds": 0.293336061
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "linear_raw",
+        "model_file": "dn_s3_raw.pbdn",
+        "case": "zero",
+        "stem": "linear_raw-zero",
+        "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 1.1920928955078125e-07,
+        "rms_vs_saved_cpu": 7.300048299977713e-08,
+        "output_sha256": "53a5df776c16566d4b4ea885a766fcb87eadf103e7eef40aa468cdbd91d0fc9c",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.329630006
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.256340561
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.260715056
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "linear_raw",
+        "model_file": "dn_s3_raw.pbdn",
+        "case": "structured",
+        "stem": "linear_raw-structured",
+        "input_sha256": "f8c71e350a835668fb3100fec0a72ffd03c9eafe56a59416cf3770d739c55bc2",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 5.662441253662109e-07,
+        "rms_vs_saved_cpu": 6.131153066213258e-08,
+        "output_sha256": "c883d26d3bf6df59e00706590c8b645f71c06a3d14fc45fc9b8f1dc3a494b948",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.366420326
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.296899383
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.301791553
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "linear_raw",
+        "model_file": "dn_s3_raw.pbdn",
+        "case": "noisy",
+        "stem": "linear_raw-noisy",
+        "input_sha256": "23854c03636aaf4d80eaaa1bd3b025c65b35823025461224939b6c41c8e0446b",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 2.980232238769531e-07,
+        "rms_vs_saved_cpu": 5.2943505406618595e-08,
+        "output_sha256": "575199d6e0b402b54e31a55a2bcc72ff48b8aab44f15044174c2de1f77b6b00c",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.35631256
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.266397656
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+              "variant": "linear_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7845803c6ebe1f7ab251022a61de2ce1eee80d4d6c201614c562f99c18ce8120"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.268201029
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "panorama_raw",
+        "model_file": "dn_pano_raw.pbdn",
+        "case": "zero",
+        "stem": "panorama_raw-zero",
+        "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 2.384185791015625e-07,
+        "rms_vs_saved_cpu": 1.7547132305955582e-07,
+        "output_sha256": "ad51de234c16763fc080fddccd99f352e28892c7a1623d2c18ba6692aa0e6a0d",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.332736422
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.256808931
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.261359917
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "panorama_raw",
+        "model_file": "dn_pano_raw.pbdn",
+        "case": "structured",
+        "stem": "panorama_raw-structured",
+        "input_sha256": "f8c71e350a835668fb3100fec0a72ffd03c9eafe56a59416cf3770d739c55bc2",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 5.364418029785156e-07,
+        "rms_vs_saved_cpu": 6.809640288637311e-08,
+        "output_sha256": "d4991e3dbba22159171bfdafa47ac118a60a28334a7b7f51f500c2a32bc5d431",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.329695413
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.260847029
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.256695696
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "panorama_raw",
+        "model_file": "dn_pano_raw.pbdn",
+        "case": "noisy",
+        "stem": "panorama_raw-noisy",
+        "input_sha256": "23854c03636aaf4d80eaaa1bd3b025c65b35823025461224939b6c41c8e0446b",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 3.2782554626464844e-07,
+        "rms_vs_saved_cpu": 6.179075731744581e-08,
+        "output_sha256": "02e48205ccdae7b54686f1e18177cd6a2b29fc7162549f6ed96588e831e52cb2",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.334569738
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.260878898
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 1,
+              "input_shape": [
+                3,
+                1024,
+                1024
+              ],
+              "layers": 175,
+              "output_shape": [
+                3,
+                800,
+                800
+              ],
+              "parameters": 14956675,
+              "source_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+              "variant": "panorama_raw",
+              "weight_dtype": "float16",
+              "weights_sha256": "7b9b01ec7dfff3bfaa76be8c5f878101c5ef6ec7c15a181b0b52a37653ee9ba5"
+            },
+            "output_shape": [
+              3,
+              800,
+              800
+            ],
+            "seconds": 0.261775971
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "xtrans_details",
+        "model_file": "xtrans_details.pbdn",
+        "case": "zero",
+        "stem": "xtrans_details-zero",
+        "input_sha256": "33e9d4da914b5303f4f3aa116700df8c7c03ef763ee7a308bccdc417f4f29911",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 3.3527612686157227e-08,
+        "rms_vs_saved_cpu": 2.0545462901113302e-08,
+        "output_sha256": "2463971352d9660766ba411929f90dae1cb8b552419e90242e7aad3673e03ee6",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.026665516
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.024983382
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.023209855
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "xtrans_details",
+        "model_file": "xtrans_details.pbdn",
+        "case": "structured",
+        "stem": "xtrans_details-structured",
+        "input_sha256": "3e635cbe4f18dd0951aa7fcbf5c9a552cb7c10bc93013026b116a9254b949456",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 5.781650543212891e-06,
+        "rms_vs_saved_cpu": 3.1915721392756017e-07,
+        "output_sha256": "4912c8cdf7d53d674e7cc999bc6a90e8233f37dd581c25dc0e07b8f0e22fc00d",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.023484363
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.023631972
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.048865445
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "xtrans_details",
+        "model_file": "xtrans_details.pbdn",
+        "case": "noisy",
+        "stem": "xtrans_details-noisy",
+        "input_sha256": "854ea0e5b7235aa2b6d8963c833163deb441bb76a6f17b38d5baa774687a8962",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 8.344650268554688e-07,
+        "rms_vs_saved_cpu": 1.1792391009004618e-07,
+        "output_sha256": "62c1e2e332f2cdf1f63ae62517a1d82ed3a425af87790c04b11b66eec35e5137",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.02254959
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.024421401
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.022713067
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      },
+      {
+        "model": "xtrans_details",
+        "model_file": "xtrans_details.pbdn",
+        "case": "real",
+        "stem": "xtrans_details-real",
+        "input_sha256": "e4293e135ee084ed11acf47ebde82de578986935a976f8c5d829621de6174e77",
+        "previous_gpu_bit_exact": true,
+        "repeat_bit_exact": true,
+        "max_abs_vs_saved_cpu": 1.9669532775878906e-06,
+        "rms_vs_saved_cpu": 3.0668715175267236e-07,
+        "output_sha256": "8d185ac65674494f32646734eed47fed13a20b9a38e723302e21129719f18fb3",
+        "predictions": {
+          "previous": {
+            "model": {
+              "backend": "wgpu24-f32-v2:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.028483747
+          },
+          "current": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.026560117
+          },
+          "repeat": {
+            "model": {
+              "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+              "format_version": 2,
+              "input_shape": [
+                3,
+                512,
+                512
+              ],
+              "layers": 46,
+              "output_shape": [
+                3,
+                470,
+                470
+              ],
+              "parameters": 186819,
+              "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+              "variant": "xtrans_details",
+              "weight_dtype": "float32",
+              "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+            },
+            "output_shape": [
+              3,
+              470,
+              470
+            ],
+            "seconds": 0.028911123
+          }
+        },
+        "mac_gpu_fixture_bit_exact": true
+      }
+    ],
+    "guarantee_scope": "Preserves previous NVIDIA GPU bits on this tested device/driver. The 16 prepared tensor fixtures also match saved Mac GPU bits; the complete RAW camera-RGB output differs across platforms for an unresolved reason. Neither CPU bit-exactness nor Adobe parity is claimed.",
+    "cancellation": {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "cancelled": true,
+      "request_delay_seconds": 0.01,
+      "seconds": 0.020439987,
+      "arena_reuse_bit_exact": true
+    },
+    "whole_x100vi_amount_100": {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "camera": "X100VI",
+      "amount": 100,
+      "completed_tiles": 60,
+      "width": 7733,
+      "height": 5154,
+      "camera_rgb_sha256": "5e2c5332f4561ee3593e977250d5c56d974e4a9e3d5a230056f39feaea5f07cd",
+      "previous_nvidia_camera_rgb_bit_exact": true,
+      "mac_camera_rgb_bit_exact": false,
+      "decode_calibration_inference_stitch_seconds": 19.823135532,
+      "source_file": "DSCF0008.RAF",
+      "scope": "Complete canonical camera-RGB HWC f32 wrapper, amount100; compared with all 60 stitched previous NVIDIA v2 tiles. Excludes display rendering and model load.",
+      "mac_camera_rgb_sha256": "8e0706067e261d7f61090e2aa49b0d43917dc3626f2fcab6221b7f0105cf59eb",
+      "cross_platform_difference_cause": "Not isolated; whole-RAW Mac/Linux bit parity is not established."
+    },
+    "shared_gpu": {
+      "infrastructure_commit": "de2de397c15576d2011e511de3b9bbf164aa7585",
+      "node": "k3s1",
+      "strategy": "time-slicing",
+      "resource_name": "nvidia.com/gpu",
+      "advertised_slots": 2,
+      "slots_per_workload": 1,
+      "fail_requests_greater_than_one": true,
+      "vram_isolation": false,
+      "guaranteed_compute_split": false,
+      "qwen_main_gpu_layers": 40,
+      "previous_qwen_main_gpu_layers": 60,
+      "qwen_context_tokens": 65536,
+      "qwen_model_and_draft_preserved": true,
+      "qwen_cuda_build_runtime_pins_preserved": true,
+      "qwen_tradeoff": "Moving main-model layers to CPU slows generation; shared compute adds contention.",
+      "idle_memory": {
+        "used_mib": 11340,
+        "free_mib": 4633,
+        "total_mib": 16376
+      },
+      "concurrent_qwen_request": {
+        "configuration": {
+          "context": 65536,
+          "model": "/models/Qwen3.8-27B-UD-IQ3_S.gguf",
+          "slots": 1,
+          "startUnixMs": 1793824738634
+        },
+        "result": {
+          "status": 200,
+          "seconds": 80.232170252,
+          "endUnixMs": 1793824818895,
+          "usage": {
+            "completion_tokens": 192,
+            "prompt_tokens": 16,
+            "total_tokens": 208,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 16,
+            "prompt_ms": 2403.341,
+            "prompt_per_token_ms": 150.2088125,
+            "prompt_per_second": 6.657399012458074,
+            "predicted_n": 192,
+            "predicted_ms": 77751.034,
+            "predicted_per_token_ms": 407.07347643979057,
+            "predicted_per_second": 2.4565589700067525,
+            "draft_n": 521,
+            "draft_n_accepted": 115
+          },
+          "nonempty": true
+        }
+      },
+      "concurrent_memory": {
+        "sample_count": 120,
+        "start_unix_seconds": 1793824733.748515,
+        "end_unix_seconds": 1793824797.2737887,
+        "min_free_mib": 1839.0,
+        "max_used_mib": 14134.0,
+        "scope": "Includes concurrent Qwen and previous v2/current v3 graph runs, including larger v2 arenas; not a v3-only memory peak.",
+        "samples": [
+          {
+            "unix_seconds": 1793824733.748515,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824734.274114,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824734.800709,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824735.3252912,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824735.8510094,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824736.375459,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824736.8998897,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824737.4250352,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824737.9504862,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824738.475688,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824739.004488,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824739.5326867,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824740.0588157,
+            "used_mib": 11340.0,
+            "free_mib": 4633.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824740.590823,
+            "used_mib": 11344.0,
+            "free_mib": 4629.0,
+            "utilization_percent": 27.0
+          },
+          {
+            "unix_seconds": 1793824741.1138487,
+            "used_mib": 11346.0,
+            "free_mib": 4627.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824741.6423671,
+            "used_mib": 11356.0,
+            "free_mib": 4617.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824742.1683753,
+            "used_mib": 11356.0,
+            "free_mib": 4617.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824742.6994445,
+            "used_mib": 11362.0,
+            "free_mib": 4611.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824743.2373796,
+            "used_mib": 11362.0,
+            "free_mib": 4611.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824743.7623868,
+            "used_mib": 11386.0,
+            "free_mib": 4587.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824744.2868328,
+            "used_mib": 11386.0,
+            "free_mib": 4587.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824744.8128476,
+            "used_mib": 11386.0,
+            "free_mib": 4587.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824745.340836,
+            "used_mib": 11417.0,
+            "free_mib": 4556.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824745.8653028,
+            "used_mib": 11417.0,
+            "free_mib": 4556.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824746.3925443,
+            "used_mib": 11417.0,
+            "free_mib": 4556.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824746.9214604,
+            "used_mib": 11417.0,
+            "free_mib": 4556.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824747.449214,
+            "used_mib": 11417.0,
+            "free_mib": 4556.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824747.9728491,
+            "used_mib": 11417.0,
+            "free_mib": 4556.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824748.5015624,
+            "used_mib": 11417.0,
+            "free_mib": 4556.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824749.0259125,
+            "used_mib": 11417.0,
+            "free_mib": 4556.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824749.5515637,
+            "used_mib": 14029.0,
+            "free_mib": 1943.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824750.076186,
+            "used_mib": 14126.0,
+            "free_mib": 1846.0,
+            "utilization_percent": 97.0
+          },
+          {
+            "unix_seconds": 1793824750.6114376,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 13.0
+          },
+          {
+            "unix_seconds": 1793824751.1376073,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824751.7055607,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 99.0
+          },
+          {
+            "unix_seconds": 1793824752.2367644,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824752.797593,
+            "used_mib": 11401.0,
+            "free_mib": 4572.0,
+            "utilization_percent": 18.0
+          },
+          {
+            "unix_seconds": 1793824753.3816657,
+            "used_mib": 11418.0,
+            "free_mib": 4555.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824753.9136515,
+            "used_mib": 14126.0,
+            "free_mib": 1846.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824754.4372272,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 63.0
+          },
+          {
+            "unix_seconds": 1793824754.9652562,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824755.4896038,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 99.0
+          },
+          {
+            "unix_seconds": 1793824756.0193233,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 97.0
+          },
+          {
+            "unix_seconds": 1793824756.5655713,
+            "used_mib": 11383.0,
+            "free_mib": 4589.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824757.0908654,
+            "used_mib": 14126.0,
+            "free_mib": 1846.0,
+            "utilization_percent": 16.0
+          },
+          {
+            "unix_seconds": 1793824757.6415644,
+            "used_mib": 11394.0,
+            "free_mib": 4578.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824758.1668243,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824758.7055006,
+            "used_mib": 11395.0,
+            "free_mib": 4578.0,
+            "utilization_percent": 52.0
+          },
+          {
+            "unix_seconds": 1793824759.233045,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824759.7644897,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 76.0
+          },
+          {
+            "unix_seconds": 1793824760.3295643,
+            "used_mib": 13019.0,
+            "free_mib": 2954.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824760.8647137,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 64.0
+          },
+          {
+            "unix_seconds": 1793824761.3975604,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 18.0
+          },
+          {
+            "unix_seconds": 1793824761.9484658,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824762.485559,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 33.0
+          },
+          {
+            "unix_seconds": 1793824763.0128355,
+            "used_mib": 12544.0,
+            "free_mib": 3429.0,
+            "utilization_percent": 98.0
+          },
+          {
+            "unix_seconds": 1793824763.5424914,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824764.0668273,
+            "used_mib": 13052.0,
+            "free_mib": 2921.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824764.597254,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 39.0
+          },
+          {
+            "unix_seconds": 1793824765.1294951,
+            "used_mib": 12434.0,
+            "free_mib": 3538.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824765.6629705,
+            "used_mib": 11401.0,
+            "free_mib": 4572.0,
+            "utilization_percent": 99.0
+          },
+          {
+            "unix_seconds": 1793824766.201566,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824766.7293742,
+            "used_mib": 12544.0,
+            "free_mib": 3429.0,
+            "utilization_percent": 30.0
+          },
+          {
+            "unix_seconds": 1793824767.2752578,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824767.8065197,
+            "used_mib": 13052.0,
+            "free_mib": 2921.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824768.3536057,
+            "used_mib": 11387.0,
+            "free_mib": 4586.0,
+            "utilization_percent": 99.0
+          },
+          {
+            "unix_seconds": 1793824768.8829231,
+            "used_mib": 12502.0,
+            "free_mib": 3471.0,
+            "utilization_percent": 2.0
+          },
+          {
+            "unix_seconds": 1793824769.4084122,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824769.9340582,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824770.4609363,
+            "used_mib": 11401.0,
+            "free_mib": 4572.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824771.0011494,
+            "used_mib": 11401.0,
+            "free_mib": 4572.0,
+            "utilization_percent": 63.0
+          },
+          {
+            "unix_seconds": 1793824771.5335765,
+            "used_mib": 14126.0,
+            "free_mib": 1846.0,
+            "utilization_percent": 98.0
+          },
+          {
+            "unix_seconds": 1793824772.071526,
+            "used_mib": 11418.0,
+            "free_mib": 4555.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824772.599389,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824773.1298916,
+            "used_mib": 11418.0,
+            "free_mib": 4555.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824773.6574798,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824774.1822023,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 20.0
+          },
+          {
+            "unix_seconds": 1793824774.709267,
+            "used_mib": 14126.0,
+            "free_mib": 1846.0,
+            "utilization_percent": 2.0
+          },
+          {
+            "unix_seconds": 1793824775.2484434,
+            "used_mib": 11383.0,
+            "free_mib": 4590.0,
+            "utilization_percent": 99.0
+          },
+          {
+            "unix_seconds": 1793824775.7895646,
+            "used_mib": 13370.0,
+            "free_mib": 2602.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824776.3143377,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 98.0
+          },
+          {
+            "unix_seconds": 1793824776.8492477,
+            "used_mib": 13322.0,
+            "free_mib": 2650.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824777.3756385,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 25.0
+          },
+          {
+            "unix_seconds": 1793824777.9049768,
+            "used_mib": 11418.0,
+            "free_mib": 4555.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824778.454105,
+            "used_mib": 13846.0,
+            "free_mib": 2126.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824778.9789805,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 75.0
+          },
+          {
+            "unix_seconds": 1793824779.5455713,
+            "used_mib": 11413.0,
+            "free_mib": 4560.0,
+            "utilization_percent": 93.0
+          },
+          {
+            "unix_seconds": 1793824780.0764189,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824780.6006532,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 89.0
+          },
+          {
+            "unix_seconds": 1793824781.1357174,
+            "used_mib": 11391.0,
+            "free_mib": 4582.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824781.6763148,
+            "used_mib": 14126.0,
+            "free_mib": 1846.0,
+            "utilization_percent": 3.0
+          },
+          {
+            "unix_seconds": 1793824782.204854,
+            "used_mib": 11418.0,
+            "free_mib": 4555.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824782.735103,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 20.0
+          },
+          {
+            "unix_seconds": 1793824783.2644231,
+            "used_mib": 11422.0,
+            "free_mib": 4551.0,
+            "utilization_percent": 35.0
+          },
+          {
+            "unix_seconds": 1793824783.793598,
+            "used_mib": 13363.0,
+            "free_mib": 2610.0,
+            "utilization_percent": 30.0
+          },
+          {
+            "unix_seconds": 1793824784.333581,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 60.0
+          },
+          {
+            "unix_seconds": 1793824784.8581674,
+            "used_mib": 14126.0,
+            "free_mib": 1846.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824785.3902798,
+            "used_mib": 11391.0,
+            "free_mib": 4582.0,
+            "utilization_percent": 97.0
+          },
+          {
+            "unix_seconds": 1793824785.9223208,
+            "used_mib": 13370.0,
+            "free_mib": 2602.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824786.4585814,
+            "used_mib": 11387.0,
+            "free_mib": 4586.0,
+            "utilization_percent": 23.0
+          },
+          {
+            "unix_seconds": 1793824786.9836605,
+            "used_mib": 13370.0,
+            "free_mib": 2602.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824787.517617,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824788.0486388,
+            "used_mib": 14134.0,
+            "free_mib": 1839.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824788.5837734,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 64.0
+          },
+          {
+            "unix_seconds": 1793824789.1405191,
+            "used_mib": 13266.0,
+            "free_mib": 2706.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824789.6735847,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 98.0
+          },
+          {
+            "unix_seconds": 1793824790.229602,
+            "used_mib": 13274.0,
+            "free_mib": 2698.0,
+            "utilization_percent": 2.0
+          },
+          {
+            "unix_seconds": 1793824790.7577121,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 89.0
+          },
+          {
+            "unix_seconds": 1793824791.3128371,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824791.867327,
+            "used_mib": 11401.0,
+            "free_mib": 4572.0,
+            "utilization_percent": 1.0
+          },
+          {
+            "unix_seconds": 1793824792.4020336,
+            "used_mib": 11486.0,
+            "free_mib": 4487.0,
+            "utilization_percent": 2.0
+          },
+          {
+            "unix_seconds": 1793824792.9270763,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 16.0
+          },
+          {
+            "unix_seconds": 1793824793.4742055,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 28.0
+          },
+          {
+            "unix_seconds": 1793824794.0050325,
+            "used_mib": 11486.0,
+            "free_mib": 4487.0,
+            "utilization_percent": 18.0
+          },
+          {
+            "unix_seconds": 1793824794.5268314,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824795.0695684,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824795.6177866,
+            "used_mib": 11413.0,
+            "free_mib": 4560.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824796.1714575,
+            "used_mib": 11383.0,
+            "free_mib": 4589.0,
+            "utilization_percent": 2.0
+          },
+          {
+            "unix_seconds": 1793824796.7215695,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 0.0
+          },
+          {
+            "unix_seconds": 1793824797.2737887,
+            "used_mib": 11375.0,
+            "free_mib": 4598.0,
+            "utilization_percent": 1.0
+          }
+        ]
+      },
+      "performance_scope": "Diagnostic single CLI predictions under concurrent Qwen load, not isolated paired performance benchmarks. Earlier short Qwen request used a different prompt/length and is not a paired baseline.",
+      "production_api_gpu_deployed": false,
+      "production_api_image": "registry.ericj5.com/photobrain-api:dc9d1f009fa6218945081cf7db9a1d6bfaf64a69",
+      "validation_environment": "Temporary no-PVC pods; NVIDIA validation pod requested and limited one shared slot.",
+      "post_validation": {
+        "temporary_pods_deleted": true,
+        "qwen_http_health": {
+          "status": "ok"
+        },
+        "qwen_ready": true,
+        "qwen_restarts": 0,
+        "gpu_memory_used_mib": 11375,
+        "gpu_memory_free_mib": 4598,
+        "nvidia_application": {
+          "sync": "Synced",
+          "health": "Healthy"
+        },
+        "qwen_application": {
+          "sync": "Synced",
+          "health": "Healthy"
+        },
+        "production_api_image_unchanged": true,
+        "production_api_restarts": 0
+      }
+    }
+  },
+  "checks": {
+    "rust_gpu_library": 278,
+    "rust_cpu_library": 276,
+    "native_develop_cache": 5,
+    "api": 309,
+    "ffi_locked_check": true,
+    "production_overlay_render": true,
+    "previous_gpu_bit_exact_cases": 16,
+    "native_release_addon_rebuilt": true,
+    "raw_denoise_release_cli_rebuilt": true,
+    "nvidia_v3_full_size_cases": 16,
+    "nvidia_previous_gpu_bit_exact_cases": 16,
+    "nvidia_repeat_bit_exact_cases": 16,
+    "nvidia_mac_gpu_fixture_bit_exact_cases": 16,
+    "nvidia_whole_x100vi_previous_gpu_bit_exact": true,
+    "nvidia_cancellation_and_exact_reuse": true,
+    "qwen_concurrent_inference": true
+  }
+}

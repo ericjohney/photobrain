@@ -1,12 +1,19 @@
 //! Server-owned experimental inference and bounded, atomic camera-RGB cache.
 use super::{DevelopedRawOptions, source_key};
-use raw_develop::adobe::denoise::{DecodedMosaic, Model, Variant, render};
+use raw_develop::adobe::denoise::{Backend, DecodedMosaic, Model, Variant, render};
 use raw_develop::{DevelopSettings, Negative, Options, Prepared, image::RgbImage};
 use sha2::{Digest, Sha256};
 use std::{
   io::{Read, Write},
   sync::atomic::{AtomicI32, Ordering},
 };
+
+fn pipeline_error(error: raw_develop::Error) -> String {
+  match error {
+    raw_develop::Error::Cancelled => super::DEVELOP_CANCELLED.into(),
+    error => error.to_string(),
+  }
+}
 
 pub(super) fn settings(options: &DevelopedRawOptions) -> DevelopSettings {
   let mut settings = DevelopSettings::default();
@@ -29,12 +36,12 @@ pub(super) fn prepare(
   let amount = options.denoise_amount.unwrap_or(0);
   let settings = settings(options);
   if amount == 0 {
-    return raw_develop::prepare(negative, &settings, opts).map_err(|e| e.to_string());
+    return raw_develop::prepare(negative, &settings, opts).map_err(pipeline_error);
   }
   if amount > 100 || opts.engine != raw_develop::Engine::Adobe {
     return Err("Denoise requires Adobe and an amount in 1..100".into());
   }
-  render::validate_render_inputs(negative, &settings, opts).map_err(|e| e.to_string())?;
+  render::validate_render_inputs(negative, &settings, opts).map_err(pipeline_error)?;
   let models = options
     .denoise_model_dir
     .as_ref()
@@ -46,7 +53,7 @@ pub(super) fn prepare(
       .ok_or("Denoise cache is unavailable")?,
   );
   // This validates the complete calibration, including Sony exposure, before cache reuse.
-  let mosaic = DecodedMosaic::new_with_cancel(negative, &opts.cancel).map_err(|e| e.to_string())?;
+  let mosaic = DecodedMosaic::new_with_cancel(negative, &opts.cancel).map_err(pipeline_error)?;
   let variant = mosaic.variant();
   let [height, width] = mosaic.bounds().size();
   drop(mosaic);
@@ -83,20 +90,24 @@ pub(super) fn prepare(
       } else {
         "dn_xtrans.pbdn"
       };
-      let model =
-        Model::load(std::path::Path::new(models).join(filename)).map_err(|e| e.to_string())?;
+      let backend = Backend::from_env().map_err(pipeline_error)?;
+      let model = Model::load_with_backend(std::path::Path::new(models).join(filename), backend)
+        .map_err(pipeline_error)?;
       let details = if variant == Variant::Xtrans && amount < 100 {
         Some(
-          Model::load(std::path::Path::new(models).join("xtrans_details.pbdn"))
-            .map_err(|e| e.to_string())?,
+          Model::load_with_backend(
+            std::path::Path::new(models).join("xtrans_details.pbdn"),
+            backend,
+          )
+          .map_err(pipeline_error)?,
         )
       } else {
         None
       };
       let image =
         render::predict_camera_rgb(negative, &model, details.as_ref(), amount, opts, progress)
-          .map_err(|e| e.to_string())?;
-      opts.cancel.check().map_err(|e| e.to_string())?;
+          .map_err(pipeline_error)?;
+      opts.cancel.check().map_err(pipeline_error)?;
       if key != source_key(path, options)? {
         return Err("RAW or model changed during Denoise; retry".into());
       }
@@ -124,9 +135,9 @@ pub(super) fn prepare(
       image
     }
   };
-  opts.cancel.check().map_err(|e| e.to_string())?;
+  opts.cancel.check().map_err(pipeline_error)?;
   let prepared =
-    render::prepare_camera_rgb(negative, image, &settings, opts).map_err(|e| e.to_string())?;
+    render::prepare_camera_rgb(negative, image, &settings, opts).map_err(pipeline_error)?;
   if key != source_key(path, options)? {
     return Err("RAW or model changed during Denoise; retry".into());
   }

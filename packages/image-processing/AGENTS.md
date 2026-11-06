@@ -4,6 +4,28 @@ Scope: `packages/image-processing`.
 
 ## Package Boundary
 
+The denoise adapter builds `raw_develop/adobe-denoise-gpu` for Metal locally and
+Vulkan on NVIDIA Linux, plus `adobe-denoise-coreml` for explicit macOS Core ML.
+`DENOISE_BACKEND=auto|cpu|gpu|metal|vulkan|coreml|coreml-gpu|cuda` is server-owned
+environment configuration, never a client recipe setting. Backend/device/driver
+identity enters `source_key` before either preview or camera-RGB cache lookup.
+CPU/GPU CNN pixels are numerical equivalents, not bit-identical. Keep the CPU
+executor available and never silently switch backends after inference starts.
+Core ML All (`coreml`) permits the Neural Engine; `coreml-gpu` permits CPU/GPU.
+Auto remains Metal/Vulkan. Both require `.mlmodel` and `.coreml.json` companions
+beside each PBDN, prepared with the external-asset tool. These companions enter
+source/cache identity; Core ML also records compute policy, OS/framework and
+eligible hardware. This does not identify actual per-layer placement. Core ML
+cancels between complete network predictions. See
+[Core ML setup and validation](../raw-develop/docs/adobe-denoise-coreml.md).
+The native build includes raw-develop's `build.rs` in its Turbo inputs.
+The optional addon feature `adobe-denoise-cuda` shares the same pinned ORT ABI
+with FastEmbed/faces and generates ONNX from validated PBDN models on Linux.
+`cuda` requires `NVIDIA_TF32_OVERRIDE=0` at process startup and CUDA 12/cuDNN 9
+runtime libraries. Use the separate `api-cuda` Docker target; ordinary builds
+retain their linkage. Auto does not select CUDA. See
+[CUDA setup](../raw-develop/docs/adobe-denoise-cuda.md).
+
 This private workspace package is a Rust `cdylib` exposed to JavaScript through N-API. The native artifact is generated under `dist/` and is ignored by Git. It is not published independently; build it before running API code that imports native functions.
 
 ```bash

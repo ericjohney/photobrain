@@ -92,7 +92,9 @@ output.write("/external/output.f32")?;
 # Ok::<(), raw_develop::Error>(())
 ```
 
-`Model` is immutable and can be retained/shared. Each prediction owns its scratch.
+`Model` can be retained/shared. CPU predictions own scratch; GPU predictions
+reuse a device arena. [GPU setup and validation](adobe-denoise-gpu.md) covers
+the optional Metal/NVIDIA executor, backend selection and numerical limits.
 Graph reference counts release activations after their last consumer. Internally,
 HWC storage lets GEMM write independent spatial blocks directly. Convolution
 uses bounded 128-pixel im2col blocks, a direct 1×1 path, and Rayon parallelism;

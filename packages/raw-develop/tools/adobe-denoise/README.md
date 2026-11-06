@@ -71,6 +71,26 @@ The source digest covers the graph, shapes and weight bytes in that order, each
 prefixed by its little-endian u64 byte length. The 186,819 used FP32 parameters
 exclude compiled bias padding and unused slots. No recovered files are bundled.
 
+## Core ML runtime companions
+
+`prepare_coreml.py` prepares external `.mlmodel` / `.coreml.json` files beside a
+PBDN bundle for the optional native Core ML backend. For FP16 denoisers, provide
+the original recovered specification; the tool re-exports and checks the entire
+graph and parameter payload. For Details, it reconstructs the supported FP32
+graph from PBDN and rejects convolution attributes it cannot represent.
+
+```sh
+python prepare_coreml.py /external/rust/dn_bayer.pbdn --model /external/models/dn_bayer.mlmodel
+python prepare_coreml.py /external/rust/dn_xtrans.pbdn --model /external/models/dn_xtrans.mlmodel
+python prepare_coreml.py /external/rust/xtrans_details.pbdn
+```
+
+The runtime verifies bundle and companion hashes plus input/output geometry.
+Existing different companions require `--overwrite`; identical preparation is
+idempotent. All learned assets remain outside Git and application images.
+See [Core ML execution](../../docs/adobe-denoise-coreml.md) for build/run commands,
+precision, cancellation, cache policy and measured native-Adobe agreement.
+
 `PBDT0001` tensors contain an 8-byte magic, three u32 dimensions `(C,H,W)`, then
 planar float32 values. Their header is 20 bytes; no padding or extra metadata is
 present. Reference manifests record each complete tensor file's SHA-256 digest.
@@ -89,3 +109,19 @@ per-tile hashes and exact overlapping float bits. Partial-strength outputs must
 lie on the normalized u16 lattice; full-strength float exports may retain
 headroom before the renderer commits them. `--compare-region` is repeatable.
 Synthetic tests cover coverage, corrupt data and crop mismatches without models.
+
+## NVIDIA export validation
+
+The optional `adobe-denoise-cuda` Rust feature generates ONNX directly from the
+validated PBDN graph. `raw-denoise onnx MODEL NEW_OUTPUT.onnx` exposes that graph
+for diagnostics; keep learned exports external. `check_onnx.py BINARY MODEL INPUT
+CPU_REFERENCE` runs the official checker and compares ONNX Runtime CPU output
+against Rust. It needs `onnx==1.17.0`, `onnxruntime==1.20.1` and numpy; none are
+needed by the running app. See [CUDA execution](../../docs/adobe-denoise-cuda.md).
+
+`check_cuda_image.ts APP_ROOT ASSET_DIR REPORT.json` is a Bun integration check
+for the complete Linux `api-cuda` image, with real HTTP denoise and CPU CLIP/face
+inference sharing the packaged ORT runtime. It starts a private loopback API and
+throwaway database, requires the documented external calibration fixtures, and
+asserts the prior Linux preview hashes. See the packaged API check in the same
+CUDA guide for asset layout and execution instructions.

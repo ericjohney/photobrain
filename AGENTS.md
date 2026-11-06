@@ -44,7 +44,7 @@ packages/
 docs/
   superpowers/            Historical design specifications and implementation plans
 .github/workflows/        CI, native iOS CI/releases, and ArgoCD tag updates
-Dockerfile                Four targets: builder, api, web-builder, web
+Dockerfile                Six targets: builder, api, cuda-runtime, api-cuda, web-builder, web
 ```
 
 ## Runtime Architecture
@@ -212,6 +212,7 @@ The schema and defaults are in `apps/api/src/config.ts`:
 | `ADOBE_PROFILE_DIR` | unset | Runtime Adobe Standard DCP directory; required with `RAW_DEVELOP_ENGINE=adobe`, never bundled |
 | `DENOISE_MODEL_DIR` | unset | Enables opt-in server Denoise; external dn_bayer/dn_xtrans/xtrans_details PBDN assets; requires Adobe engine/profiles |
 | `DENOISE_CACHE_DIR` | unset | Required writable cache directory when Denoise is enabled; up to two completed canonical images (~1 GB), plus temporary-write space |
+| `DENOISE_BACKEND` | `auto` | Denoise CNN executor: `auto`, `cpu`, `gpu`, `metal`, `vulkan`, explicit Mac `coreml` / `coreml-gpu`, or opt-in Linux `cuda` (requires the CUDA addon/runtime and `NVIDIA_TF32_OVERRIDE=0`). Auto still selects Metal/Vulkan with initialization fallback. Core ML requires checksum-bound companion assets; numerical output differs by executor. Cache keys separate runtimes, policies, hardware and model assets |
 | `NODE_ENV` | `development` | `development`, `production`, or `test` |
 | `RUN_DB_INIT` | `false` | `true` or `1` runs shared migrations on API startup |
 | `V1_NATIVE_SCAN_MUTATIONS_ENABLED` | `false` | Enables `POST /api/v1/scans`; catalog/search/status compatibility routes remain readable while disabled |
@@ -425,8 +426,8 @@ There is no worker image.
 `.github/workflows/build.yml` currently:
 
 - Runs API tests/typecheck and web Playwright tests.
-- Builds and pushes API and web Docker targets.
-- Updates API/web image tags in the external ArgoCD repository on pushes to `main`.
+- Builds and pushes the Linux amd64 `api-cuda` target (`DENOISE_CUDA=1`) and the web target.
+- Updates API/web image tags in the external ArgoCD repository on pushes to `main`, atomically setting the API's NVIDIA runtime, one shared GPU slot, `DENOISE_BACKEND=cuda`, and `NVIDIA_TF32_OVERRIDE=0`. Preserve the existing Recreate strategy and PVC/photo mounts. Follow the external repository's backup/iSCSI-snapshot rules before a rollout.
 
 Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**`, with default inputs (or by manual dispatch with custom inputs); it validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight. Apple identities, GitHub secrets, tester setup, and certificate renewal are recorded in [iOS distribution](docs/ios-distribution.md).
 

@@ -1,4 +1,16 @@
 node_modules
+**/node_modules
+**/target
+**/dist
+**/.turbo
+**/.fastembed_cache
+**/.face_models
+# Local investigations and externally supplied Adobe assets are never image inputs.
+/work
+**/*.pbdn
+**/*.mlmodel
+**/*.mlmodelc
+**/*.dcp
 .fastembed_cache
 apps/api/.fastembed_cache
 apps/api/photobrain.db

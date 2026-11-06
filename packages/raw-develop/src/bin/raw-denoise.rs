@@ -2,7 +2,7 @@
 use raw_develop::{
   Cancel, Negative,
   adobe::denoise::{
-    DecodedMosaic, Model, MosaicTilePlan, Tensor, Variant, border::TileTraversal,
+    Backend, DecodedMosaic, Model, MosaicTilePlan, Tensor, Variant, border::TileTraversal,
     partial::predict_partial_raw_tiles, tiles::Rect,
   },
 };
@@ -33,7 +33,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     return render_tiles(args);
   }
   let model_path = args.next().ok_or("missing model path")?;
-  let model = Model::load(model_path)?;
+  let backend = if command == "info" || command == "onnx" {
+    Backend::Cpu
+  } else {
+    Backend::from_env()?
+  };
+  let model = Model::load_with_backend(model_path, backend)?;
+  #[cfg(feature = "adobe-denoise-cuda")]
+  if command == "onnx" {
+    let path = args.next().ok_or("missing ONNX output path")?;
+    if args.next().is_some() {
+      return Err("unexpected argument".into());
+    }
+    use std::io::Write;
+    std::fs::OpenOptions::new()
+      .write(true)
+      .create_new(true)
+      .open(path)?
+      .write_all(&model.to_onnx())?;
+    return Ok(());
+  }
   if command == "info" {
     if args.next().is_some() {
       return Err("unexpected argument".into());
@@ -285,7 +304,9 @@ fn raw_tiles(
   if amount < 100 && dump_input {
     return Err("--dump-input currently requires amount 100".into());
   }
-  let details = details_path.map(Model::load).transpose()?;
+  let details = details_path
+    .map(|p| Model::load_with_backend(p, Backend::from_env()?))
+    .transpose()?;
   if details.is_some() && (amount == 100 || model.info().variant != Variant::Xtrans) {
     return Err("--details is only used for partial-strength X-Trans denoise".into());
   }

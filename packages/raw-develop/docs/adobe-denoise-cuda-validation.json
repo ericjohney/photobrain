@@ -1,0 +1,1441 @@
+{
+  "date": "2026-11-04",
+  "device": "NVIDIA GeForce RTX 4070 Ti SUPER",
+  "driver": "610.43.02",
+  "cuda_runtime": "12.6",
+  "cudnn": "9.5.1",
+  "cublas": "12.6.4",
+  "onnxruntime": "1.20.0",
+  "policy": "FP32, TF32 disabled through EP and NVIDIA_TF32_OVERRIDE=0, basic graph optimization, heuristic cuDNN, deterministic request, CPU fallback disabled",
+  "scope": "Temporary shared-GPU validation pod; Qwen service left running. Network comparisons are sequential warmed five-run medians on the same GPU; native previews are individual calls in a two-CPU-limited pod. No production rollout. No full-photo Adobe parity claim.",
+  "comparison": [
+    {
+      "model": "bayer",
+      "cuda_seconds": 0.182172904,
+      "vulkan_seconds": 0.23245337,
+      "speedup": 1.2760040867548557
+    },
+    {
+      "model": "xtrans",
+      "cuda_seconds": 0.124614673,
+      "vulkan_seconds": 0.263531302,
+      "speedup": 2.1147694381062174
+    },
+    {
+      "model": "linear_raw",
+      "cuda_seconds": 0.181992354,
+      "vulkan_seconds": 0.233952279,
+      "speedup": 1.2855060877997107
+    },
+    {
+      "model": "panorama_raw",
+      "cuda_seconds": 0.182061484,
+      "vulkan_seconds": 0.233400807,
+      "speedup": 1.2819889296299485
+    },
+    {
+      "model": "xtrans_details",
+      "cuda_seconds": 0.007123728,
+      "vulkan_seconds": 0.017560213,
+      "speedup": 2.465031371214623
+    }
+  ],
+  "cuda_cases": [
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "zero",
+      "cold_seconds": 0.186379376,
+      "five_repeats_exact": true,
+      "load_seconds": 0.131092725,
+      "max_abs_vs_cpu": 3.725290298461914e-08,
+      "median_seconds": 0.182014635,
+      "model": "bayer",
+      "rms_vs_cpu": 2.3070998819850655e-08,
+      "warm_seconds": [
+        0.182014635,
+        0.182713165,
+        0.182687326,
+        0.181494131,
+        0.181463536
+      ]
+    },
+    {
+      "cancel_seconds": 0.180629581,
+      "model": "bayer",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "structured",
+      "cold_seconds": 0.18239335,
+      "five_repeats_exact": true,
+      "load_seconds": 0.131092725,
+      "max_abs_vs_cpu": 6.258487701416016e-06,
+      "median_seconds": 0.182172904,
+      "model": "bayer",
+      "rms_vs_cpu": 1.945487769981034e-07,
+      "warm_seconds": [
+        0.182206418,
+        0.181664414,
+        0.182212269,
+        0.182160231,
+        0.182172904
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "noisy",
+      "cold_seconds": 0.182166663,
+      "five_repeats_exact": true,
+      "load_seconds": 0.131092725,
+      "max_abs_vs_cpu": 1.1920928955078125e-07,
+      "median_seconds": 0.18225515,
+      "model": "bayer",
+      "rms_vs_cpu": 1.770113737904908e-08,
+      "warm_seconds": [
+        0.18225515,
+        0.184870557,
+        0.185216251,
+        0.181934685,
+        0.182058638
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "zero",
+      "cold_seconds": 0.127152456,
+      "five_repeats_exact": true,
+      "load_seconds": 0.168683906,
+      "max_abs_vs_cpu": 7.078051567077637e-08,
+      "median_seconds": 0.123079936,
+      "model": "xtrans",
+      "rms_vs_cpu": 5.316429989687514e-08,
+      "warm_seconds": [
+        0.123558499,
+        0.123079936,
+        0.122963787,
+        0.123134339,
+        0.122894175
+      ]
+    },
+    {
+      "cancel_seconds": 0.122418078,
+      "model": "xtrans",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "structured",
+      "cold_seconds": 0.124391652,
+      "five_repeats_exact": true,
+      "load_seconds": 0.168683906,
+      "max_abs_vs_cpu": 1.4901161193847656e-06,
+      "median_seconds": 0.124614673,
+      "model": "xtrans",
+      "rms_vs_cpu": 1.8693841028356268e-07,
+      "warm_seconds": [
+        0.124614673,
+        0.124080605,
+        0.125253268,
+        0.124631094,
+        0.124355203
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "noisy",
+      "cold_seconds": 0.124537838,
+      "five_repeats_exact": true,
+      "load_seconds": 0.168683906,
+      "max_abs_vs_cpu": 4.6193599700927734e-07,
+      "median_seconds": 0.124235988,
+      "model": "xtrans",
+      "rms_vs_cpu": 3.8176854357139284e-08,
+      "warm_seconds": [
+        0.124900404,
+        0.124192797,
+        0.124235988,
+        0.124396041,
+        0.124172469
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "zero",
+      "cold_seconds": 0.186409432,
+      "five_repeats_exact": true,
+      "load_seconds": 0.130705633,
+      "max_abs_vs_cpu": 5.960464477539063e-08,
+      "median_seconds": 0.181652981,
+      "model": "linear_raw",
+      "rms_vs_cpu": 5.960464477539063e-08,
+      "warm_seconds": [
+        0.18196915,
+        0.181848671,
+        0.181476478,
+        0.18130769,
+        0.181652981
+      ]
+    },
+    {
+      "cancel_seconds": 0.180391881,
+      "model": "linear_raw",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "structured",
+      "cold_seconds": 0.182386607,
+      "five_repeats_exact": true,
+      "load_seconds": 0.130705633,
+      "max_abs_vs_cpu": 5.960464477539062e-07,
+      "median_seconds": 0.181992354,
+      "model": "linear_raw",
+      "rms_vs_cpu": 6.018666307926044e-08,
+      "warm_seconds": [
+        0.184841863,
+        0.182234049,
+        0.181992354,
+        0.181905539,
+        0.181985079
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "noisy",
+      "cold_seconds": 0.185189529,
+      "five_repeats_exact": true,
+      "load_seconds": 0.130705633,
+      "max_abs_vs_cpu": 2.980232238769531e-07,
+      "median_seconds": 0.182112589,
+      "model": "linear_raw",
+      "rms_vs_cpu": 5.216142997640363e-08,
+      "warm_seconds": [
+        0.182584451,
+        0.182251231,
+        0.182112589,
+        0.181812634,
+        0.181751257
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "zero",
+      "cold_seconds": 0.186495295,
+      "five_repeats_exact": true,
+      "load_seconds": 0.154717558,
+      "max_abs_vs_cpu": 3.2782554626464844e-07,
+      "median_seconds": 0.181850364,
+      "model": "panorama_raw",
+      "rms_vs_cpu": 2.2168868387164075e-07,
+      "warm_seconds": [
+        0.183347601,
+        0.181865172,
+        0.181610521,
+        0.18162546,
+        0.181850364
+      ]
+    },
+    {
+      "cancel_seconds": 0.180332288,
+      "model": "panorama_raw",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "structured",
+      "cold_seconds": 0.182572167,
+      "five_repeats_exact": true,
+      "load_seconds": 0.154717558,
+      "max_abs_vs_cpu": 5.066394805908203e-07,
+      "median_seconds": 0.182061484,
+      "model": "panorama_raw",
+      "rms_vs_cpu": 6.73495474144657e-08,
+      "warm_seconds": [
+        0.182309862,
+        0.181900329,
+        0.182140713,
+        0.181963217,
+        0.182061484
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "noisy",
+      "cold_seconds": 0.182361248,
+      "five_repeats_exact": true,
+      "load_seconds": 0.154717558,
+      "max_abs_vs_cpu": 3.2782554626464844e-07,
+      "median_seconds": 0.18205543,
+      "model": "panorama_raw",
+      "rms_vs_cpu": 6.137524019644793e-08,
+      "warm_seconds": [
+        0.182237035,
+        0.181838752,
+        0.182634444,
+        0.18205543,
+        0.181913102
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "zero",
+      "cold_seconds": 0.01128721,
+      "five_repeats_exact": true,
+      "load_seconds": 0.007411012,
+      "max_abs_vs_cpu": 3.3527612686157227e-08,
+      "median_seconds": 0.007163123,
+      "model": "xtrans_details",
+      "rms_vs_cpu": 2.0545462901113302e-08,
+      "warm_seconds": [
+        0.007491224,
+        0.00724042,
+        0.007163123,
+        0.007126615,
+        0.007070728
+      ]
+    },
+    {
+      "cancel_seconds": 0.006810449,
+      "model": "xtrans_details",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "structured",
+      "cold_seconds": 0.007231773,
+      "five_repeats_exact": true,
+      "load_seconds": 0.007411012,
+      "max_abs_vs_cpu": 5.781650543212891e-06,
+      "median_seconds": 0.007123728,
+      "model": "xtrans_details",
+      "rms_vs_cpu": 3.1915721392756017e-07,
+      "warm_seconds": [
+        0.007233086,
+        0.007168805,
+        0.007123728,
+        0.007117018,
+        0.007113841
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "noisy",
+      "cold_seconds": 0.007418156,
+      "five_repeats_exact": true,
+      "load_seconds": 0.007411012,
+      "max_abs_vs_cpu": 8.344650268554688e-07,
+      "median_seconds": 0.007353733,
+      "model": "xtrans_details",
+      "rms_vs_cpu": 1.1792391009004618e-07,
+      "warm_seconds": [
+        0.007353733,
+        0.007212808,
+        0.007296155,
+        0.007588598,
+        0.007598497
+      ]
+    },
+    {
+      "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+      "case": "real",
+      "cold_seconds": 0.007307276,
+      "five_repeats_exact": true,
+      "load_seconds": 0.007411012,
+      "max_abs_vs_cpu": 1.9669532775878906e-06,
+      "median_seconds": 0.007148256,
+      "model": "xtrans_details",
+      "rms_vs_cpu": 3.0668715175267236e-07,
+      "warm_seconds": [
+        0.007242634,
+        0.007149699,
+        0.007137406,
+        0.00711876,
+        0.007148256
+      ]
+    }
+  ],
+  "vulkan_cases": [
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "zero",
+      "cold_seconds": 0.258347066,
+      "five_repeats_exact": true,
+      "load_seconds": 1.003599282,
+      "max_abs_vs_cpu": 1.210719347000122e-08,
+      "median_seconds": 0.231402796,
+      "model": "bayer",
+      "rms_vs_cpu": 1.1494698984904599e-08,
+      "warm_seconds": [
+        0.235696533,
+        0.230799247,
+        0.230391346,
+        0.231402796,
+        0.232415197
+      ]
+    },
+    {
+      "cancel_seconds": 0.003691098,
+      "model": "bayer",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "structured",
+      "cold_seconds": 0.231631838,
+      "five_repeats_exact": true,
+      "load_seconds": 1.003599282,
+      "max_abs_vs_cpu": 7.3015689849853516e-06,
+      "median_seconds": 0.23245337,
+      "model": "bayer",
+      "rms_vs_cpu": 1.9952203060944482e-07,
+      "warm_seconds": [
+        0.231708533,
+        0.23245337,
+        0.232388396,
+        0.232620475,
+        0.233405236
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "noisy",
+      "cold_seconds": 0.231717199,
+      "five_repeats_exact": true,
+      "load_seconds": 1.003599282,
+      "max_abs_vs_cpu": 1.1920928955078125e-07,
+      "median_seconds": 0.232008269,
+      "model": "bayer",
+      "rms_vs_cpu": 1.7707715269076252e-08,
+      "warm_seconds": [
+        0.232227563,
+        0.231898631,
+        0.231780469,
+        0.232211423,
+        0.232008269
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "zero",
+      "cold_seconds": 0.273078558,
+      "five_repeats_exact": true,
+      "load_seconds": 0.229484304,
+      "max_abs_vs_cpu": 1.043081283569336e-07,
+      "median_seconds": 0.261271566,
+      "model": "xtrans",
+      "rms_vs_cpu": 8.494968899333014e-08,
+      "warm_seconds": [
+        0.261113418,
+        0.263038511,
+        0.261556053,
+        0.261271566,
+        0.259887613
+      ]
+    },
+    {
+      "cancel_seconds": 0.002771182,
+      "model": "xtrans",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "structured",
+      "cold_seconds": 0.263720619,
+      "five_repeats_exact": true,
+      "load_seconds": 0.229484304,
+      "max_abs_vs_cpu": 1.9073486328125e-06,
+      "median_seconds": 0.263531302,
+      "model": "xtrans",
+      "rms_vs_cpu": 2.4034824896567077e-07,
+      "warm_seconds": [
+        0.26278851,
+        0.265313888,
+        0.263643192,
+        0.263531302,
+        0.262876394
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "noisy",
+      "cold_seconds": 0.2621739,
+      "five_repeats_exact": true,
+      "load_seconds": 0.229484304,
+      "max_abs_vs_cpu": 4.6193599700927734e-07,
+      "median_seconds": 0.263477431,
+      "model": "xtrans",
+      "rms_vs_cpu": 5.193346534517257e-08,
+      "warm_seconds": [
+        0.263477431,
+        0.264750553,
+        0.263464105,
+        0.263892454,
+        0.262916662
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "zero",
+      "cold_seconds": 0.260604817,
+      "five_repeats_exact": true,
+      "load_seconds": 0.138447911,
+      "max_abs_vs_cpu": 1.1920928955078125e-07,
+      "median_seconds": 0.231769097,
+      "model": "linear_raw",
+      "rms_vs_cpu": 7.300048299977713e-08,
+      "warm_seconds": [
+        0.231138817,
+        0.231646665,
+        0.231769097,
+        0.232188719,
+        0.231920472
+      ]
+    },
+    {
+      "cancel_seconds": 0.002626428,
+      "model": "linear_raw",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "structured",
+      "cold_seconds": 0.233107834,
+      "five_repeats_exact": true,
+      "load_seconds": 0.138447911,
+      "max_abs_vs_cpu": 5.662441253662109e-07,
+      "median_seconds": 0.233952279,
+      "model": "linear_raw",
+      "rms_vs_cpu": 6.131153066213258e-08,
+      "warm_seconds": [
+        0.233952279,
+        0.234008223,
+        0.237249002,
+        0.232910051,
+        0.232809981
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "noisy",
+      "cold_seconds": 0.231954386,
+      "five_repeats_exact": true,
+      "load_seconds": 0.138447911,
+      "max_abs_vs_cpu": 2.980232238769531e-07,
+      "median_seconds": 0.232439741,
+      "model": "linear_raw",
+      "rms_vs_cpu": 5.2943505406618595e-08,
+      "warm_seconds": [
+        0.231933717,
+        0.233053491,
+        0.233113564,
+        0.231873875,
+        0.232439741
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "zero",
+      "cold_seconds": 0.261092897,
+      "five_repeats_exact": true,
+      "load_seconds": 0.145933834,
+      "max_abs_vs_cpu": 2.384185791015625e-07,
+      "median_seconds": 0.231439634,
+      "model": "panorama_raw",
+      "rms_vs_cpu": 1.7547132305955582e-07,
+      "warm_seconds": [
+        0.231004863,
+        0.231439634,
+        0.231472135,
+        0.231646514,
+        0.231298758
+      ]
+    },
+    {
+      "cancel_seconds": 0.003002409,
+      "model": "panorama_raw",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "structured",
+      "cold_seconds": 0.232399817,
+      "five_repeats_exact": true,
+      "load_seconds": 0.145933834,
+      "max_abs_vs_cpu": 5.364418029785156e-07,
+      "median_seconds": 0.233400807,
+      "model": "panorama_raw",
+      "rms_vs_cpu": 6.809640288637311e-08,
+      "warm_seconds": [
+        0.233400807,
+        0.233080972,
+        0.234430842,
+        0.23279401,
+        0.233850957
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "noisy",
+      "cold_seconds": 0.232987566,
+      "five_repeats_exact": true,
+      "load_seconds": 0.145933834,
+      "max_abs_vs_cpu": 3.2782554626464844e-07,
+      "median_seconds": 0.232900662,
+      "model": "panorama_raw",
+      "rms_vs_cpu": 6.179075731744581e-08,
+      "warm_seconds": [
+        0.232900662,
+        0.233099456,
+        0.232589535,
+        0.232703139,
+        0.233337706
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "zero",
+      "cold_seconds": 0.018414627,
+      "five_repeats_exact": true,
+      "load_seconds": 0.005061537,
+      "max_abs_vs_cpu": 3.3527612686157227e-08,
+      "median_seconds": 0.017451898,
+      "model": "xtrans_details",
+      "rms_vs_cpu": 2.0545462901113302e-08,
+      "warm_seconds": [
+        0.017589769,
+        0.017318107,
+        0.017451898,
+        0.017424797,
+        0.017459502
+      ]
+    },
+    {
+      "cancel_seconds": 0.003415098,
+      "model": "xtrans_details",
+      "request_delay_seconds": 0.002,
+      "reuse_exact": true
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "structured",
+      "cold_seconds": 0.017947324,
+      "five_repeats_exact": true,
+      "load_seconds": 0.005061537,
+      "max_abs_vs_cpu": 5.781650543212891e-06,
+      "median_seconds": 0.017560213,
+      "model": "xtrans_details",
+      "rms_vs_cpu": 3.1915721392756017e-07,
+      "warm_seconds": [
+        0.017560213,
+        0.017561836,
+        0.017413025,
+        0.017460795,
+        0.017567736
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "noisy",
+      "cold_seconds": 0.017582414,
+      "five_repeats_exact": true,
+      "load_seconds": 0.005061537,
+      "max_abs_vs_cpu": 8.344650268554688e-07,
+      "median_seconds": 0.017544142,
+      "model": "xtrans_details",
+      "rms_vs_cpu": 1.1792391009004618e-07,
+      "warm_seconds": [
+        0.017553781,
+        0.017502343,
+        0.017544142,
+        0.017608424,
+        0.017350026
+      ]
+    },
+    {
+      "backend": "wgpu24-f32-v3:Vulkan:NVIDIA GeForce RTX 4070 Ti SUPER:10de:2705:NVIDIA:610.43.02:",
+      "case": "real",
+      "cold_seconds": 0.017528563,
+      "five_repeats_exact": true,
+      "load_seconds": 0.005061537,
+      "max_abs_vs_cpu": 1.9669532775878906e-06,
+      "median_seconds": 0.017462278,
+      "model": "xtrans_details",
+      "rms_vs_cpu": 3.0668715175267236e-07,
+      "warm_seconds": [
+        0.017418035,
+        0.017564682,
+        0.017462278,
+        0.017358813,
+        0.017533001
+      ]
+    }
+  ],
+  "onnx_cpu_export_checks": [
+    {
+      "model": "dn_bayer.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 3.725290298461914e-08,
+      "rms_vs_rust": 2.806357885397852e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "zero"
+    },
+    {
+      "model": "dn_bayer.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 3.933906555175781e-06,
+      "rms_vs_rust": 1.380961127543128e-07,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "structured"
+    },
+    {
+      "model": "dn_bayer.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 1.341104507446289e-07,
+      "rms_vs_rust": 1.7021421015301434e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "noisy"
+    },
+    {
+      "model": "dn_xtrans.pbdn",
+      "nodes": 147,
+      "max_abs_vs_rust": 5.587935447692871e-08,
+      "rms_vs_rust": 4.3550327213481517e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "zero"
+    },
+    {
+      "model": "dn_xtrans.pbdn",
+      "nodes": 147,
+      "max_abs_vs_rust": 1.430511474609375e-06,
+      "rms_vs_rust": 1.5891081471322543e-07,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "structured"
+    },
+    {
+      "model": "dn_xtrans.pbdn",
+      "nodes": 147,
+      "max_abs_vs_rust": 2.8312206268310547e-07,
+      "rms_vs_rust": 3.286148599442499e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "noisy"
+    },
+    {
+      "model": "dn_s3_raw.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 5.960464477539063e-08,
+      "rms_vs_rust": 5.1619136559035694e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "zero"
+    },
+    {
+      "model": "dn_s3_raw.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 4.76837158203125e-07,
+      "rms_vs_rust": 5.461391515175299e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "structured"
+    },
+    {
+      "model": "dn_s3_raw.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 2.682209014892578e-07,
+      "rms_vs_rust": 4.948495365974303e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "noisy"
+    },
+    {
+      "model": "dn_pano_raw.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 1.4901161193847656e-07,
+      "rms_vs_rust": 1.101745814721725e-07,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "zero"
+    },
+    {
+      "model": "dn_pano_raw.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 4.172325134277344e-07,
+      "rms_vs_rust": 5.8254544926813956e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "structured"
+    },
+    {
+      "model": "dn_pano_raw.pbdn",
+      "nodes": 175,
+      "max_abs_vs_rust": 3.2782554626464844e-07,
+      "rms_vs_rust": 5.784427841773094e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "noisy"
+    },
+    {
+      "model": "xtrans_details.pbdn",
+      "nodes": 46,
+      "max_abs_vs_rust": 3.725290298461914e-08,
+      "rms_vs_rust": 2.67339872092145e-08,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "zero"
+    },
+    {
+      "model": "xtrans_details.pbdn",
+      "nodes": 46,
+      "max_abs_vs_rust": 4.708766937255859e-06,
+      "rms_vs_rust": 2.917137882144111e-07,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "structured"
+    },
+    {
+      "model": "xtrans_details.pbdn",
+      "nodes": 46,
+      "max_abs_vs_rust": 7.897615432739258e-07,
+      "rms_vs_rust": 1.0926939242172074e-07,
+      "checker": true,
+      "onnx": "1.17.0",
+      "onnxruntime": "1.20.1",
+      "case": "noisy"
+    }
+  ],
+  "adobe_captures": [
+    {
+      "capture": "wrapper/bayer-output",
+      "max_abs_vs_adobe": 0.0006688758730888367,
+      "rms_vs_adobe": 5.806429199084626e-05,
+      "bit_exact": false,
+      "prediction": {
+        "model": {
+          "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+          "format_version": 1,
+          "input_shape": [
+            3,
+            1024,
+            1024
+          ],
+          "layers": 175,
+          "output_shape": [
+            3,
+            800,
+            800
+          ],
+          "parameters": 14956675,
+          "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+          "variant": "bayer",
+          "weight_dtype": "float16",
+          "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+        },
+        "output_shape": [
+          3,
+          800,
+          800
+        ],
+        "seconds": 0.376323364
+      }
+    },
+    {
+      "capture": "wrapper/bayer-corner",
+      "max_abs_vs_adobe": 0.0014781951904296875,
+      "rms_vs_adobe": 0.00019786824637992031,
+      "bit_exact": false,
+      "prediction": {
+        "model": {
+          "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+          "format_version": 1,
+          "input_shape": [
+            3,
+            1024,
+            1024
+          ],
+          "layers": 175,
+          "output_shape": [
+            3,
+            800,
+            800
+          ],
+          "parameters": 14956675,
+          "source_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+          "variant": "bayer",
+          "weight_dtype": "float16",
+          "weights_sha256": "bca77c0bf3cde5e95fca0785baba3207a040b4121a05eac5cce8ee5160b3d127"
+        },
+        "output_shape": [
+          3,
+          800,
+          800
+        ],
+        "seconds": 0.340029052
+      }
+    },
+    {
+      "capture": "wrapper/xtrans-output",
+      "max_abs_vs_adobe": 0.001172482967376709,
+      "rms_vs_adobe": 0.00021497972741516542,
+      "bit_exact": false,
+      "prediction": {
+        "model": {
+          "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+          "format_version": 1,
+          "input_shape": [
+            3,
+            1024,
+            1024
+          ],
+          "layers": 147,
+          "output_shape": [
+            3,
+            864,
+            864
+          ],
+          "parameters": 21952771,
+          "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+          "variant": "xtrans",
+          "weight_dtype": "float16",
+          "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+        },
+        "output_shape": [
+          3,
+          864,
+          864
+        ],
+        "seconds": 0.269050298
+      }
+    },
+    {
+      "capture": "wrapper/xtrans-corner",
+      "max_abs_vs_adobe": 0.0010306239128112793,
+      "rms_vs_adobe": 0.0002075891255352648,
+      "bit_exact": false,
+      "prediction": {
+        "model": {
+          "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+          "format_version": 1,
+          "input_shape": [
+            3,
+            1024,
+            1024
+          ],
+          "layers": 147,
+          "output_shape": [
+            3,
+            864,
+            864
+          ],
+          "parameters": 21952771,
+          "source_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+          "variant": "xtrans",
+          "weight_dtype": "float16",
+          "weights_sha256": "b5dee74a7a0009d3e7b9579bc59a68d6ab450ec742e566ebc99813473facc5f5"
+        },
+        "output_shape": [
+          3,
+          864,
+          864
+        ],
+        "seconds": 0.314554837
+      }
+    },
+    {
+      "capture": "baseline/xtrans-tile",
+      "max_abs_vs_adobe": 0.001677393913269043,
+      "rms_vs_adobe": 0.00031170536516875294,
+      "bit_exact": false,
+      "prediction": {
+        "model": {
+          "backend": "cuda-onnx-f32-v1:compact-nearest-pointwise=1:tf32=0:deterministic=1:opt=basic:algo=heuristic:tf32-override=0:workspace-preference=limited:arena=3221225472:details-arena=402653184:memory-pattern=off:device=fea87a1bca1fb69373736f42df3adef1:name=NVIDIA GeForce RTX 4070 Ti SUPER:driver-api=13030:driver=NVRM version: NVIDIA UNIX x86_64 Kernel Module  610.43.02  Tue May 19 11:18:18 UTC 2026\nGCC version:  gcc version 14.2.0 (Debian 14.2.0-19):runtime=12060:cudnn=90501:cublas=[12, 6, 4]:ort=ORT Build Info: git-branch=rel-1.20.0, git-commit-id=c4fb724, build type=Release, cmake cxx flags:  -ffunction-sections -fdata-sections -Wno-restrict  -DCPUINFO_SUPPORTED",
+          "format_version": 2,
+          "input_shape": [
+            3,
+            512,
+            512
+          ],
+          "layers": 46,
+          "output_shape": [
+            3,
+            470,
+            470
+          ],
+          "parameters": 186819,
+          "source_sha256": "69177fbf92572db70200bf20dcadce6fccf6e16ddaea079417fd209e00105dcf",
+          "variant": "xtrans_details",
+          "weight_dtype": "float32",
+          "weights_sha256": "95eb60245428dd9158d8f684604c4cf388450aaaf99c953eeb8bec5a4e4b693c"
+        },
+        "output_shape": [
+          3,
+          470,
+          470
+        ],
+        "seconds": 0.1910426
+      }
+    }
+  ],
+  "native_previews": [
+    {
+      "camera": "x100vi",
+      "amount": 100,
+      "cached": false,
+      "seconds": 22.528846326,
+      "bytes": 38666366,
+      "sha256": "9f8952dad734497a4294a0155a1c7b46b86b982b412b28c2eb3ba64134cb383f",
+      "token": "9698ed5246e18f4c7a0069d6e33a7ff7a7b2500924abb4ef1a22e89fadea5c31",
+      "tiles": [
+        60,
+        60
+      ],
+      "cache": "/work/cuda-cache-JFl9cw"
+    },
+    {
+      "camera": "x100vi",
+      "amount": 100,
+      "cached": true,
+      "seconds": 8.400535788000001,
+      "bytes": 38666366,
+      "sha256": "9f8952dad734497a4294a0155a1c7b46b86b982b412b28c2eb3ba64134cb383f",
+      "token": "9698ed5246e18f4c7a0069d6e33a7ff7a7b2500924abb4ef1a22e89fadea5c31",
+      "tiles": [
+        1,
+        1
+      ],
+      "cache": "/work/cuda-cache-JFl9cw"
+    },
+    {
+      "camera": "x100vi",
+      "amount": 50,
+      "cached": false,
+      "seconds": 33.864613950999995,
+      "bytes": 38741668,
+      "sha256": "a69bda3ac2c46a343afb9e41f0644cdc963000f709eb5ca1f76b4dfa3c5c26ee",
+      "token": "79be16eed7b22432b4e5b5ea588fb8d5bf962c8866b31505016ff9e4dcd21ca2",
+      "tiles": [
+        60,
+        60
+      ],
+      "cache": "/work/cuda-cache-i7Bl6l"
+    },
+    {
+      "camera": "x100vi",
+      "amount": 50,
+      "cached": true,
+      "seconds": 8.106132429999997,
+      "bytes": 38741668,
+      "sha256": "a69bda3ac2c46a343afb9e41f0644cdc963000f709eb5ca1f76b4dfa3c5c26ee",
+      "token": "79be16eed7b22432b4e5b5ea588fb8d5bf962c8866b31505016ff9e4dcd21ca2",
+      "tiles": [
+        1,
+        1
+      ],
+      "cache": "/work/cuda-cache-i7Bl6l"
+    },
+    {
+      "camera": "a1m2",
+      "amount": 100,
+      "cached": false,
+      "seconds": 14.771994609000002,
+      "bytes": 35945895,
+      "sha256": "52c6d132bec41fc3ba4dc6c628404e34f4b0ea59eddf2a234ab60b8833e33183",
+      "token": "0846534f67a2f8b71b585ae805e30807beeb96b7fee3685a4294a4ff3633b3b7",
+      "tiles": [
+        40,
+        40
+      ],
+      "cache": "/work/cuda-cache-ax0Wa4"
+    },
+    {
+      "camera": "a1m2",
+      "amount": 100,
+      "cached": true,
+      "seconds": 4.747665351000003,
+      "bytes": 35945895,
+      "sha256": "52c6d132bec41fc3ba4dc6c628404e34f4b0ea59eddf2a234ab60b8833e33183",
+      "token": "0846534f67a2f8b71b585ae805e30807beeb96b7fee3685a4294a4ff3633b3b7",
+      "tiles": [
+        1,
+        1
+      ],
+      "cache": "/work/cuda-cache-ax0Wa4"
+    }
+  ],
+  "memory": {
+    "learned": {
+      "min_free_mib": 1825.0,
+      "max_used_mib": 14148.0,
+      "samples": 100
+    },
+    "native": {
+      "min_free_mib": 1825.0,
+      "max_used_mib": 14148.0,
+      "samples": 410
+    },
+    "concurrent": {
+      "min_free_mib": 2735.0,
+      "max_used_mib": 13238.0,
+      "samples": 382
+    }
+  },
+  "checks": {
+    "mac_library_passed": 282,
+    "linux_library_passed": 279,
+    "linux_library_excluded": {
+      "test": "adobe::tone::scalar_tests::scalar_functions_match_native_f64_payloads",
+      "reason": "Existing Mac f64 payload differs on Linux (black_lift_0.03125); reproduced in CPU-only build with no denoise feature."
+    },
+    "native_develop_cache_passed": 6,
+    "api_config_passed": 3,
+    "prior_wgpu_snapshots_preserved": 16,
+    "ios_ffi_host_check": true,
+    "onnx_synthetic_all_operator_and_shared_resize_checks": "passed, exact CPU outputs",
+    "full_container_build": "passed; digest-pinned api-cuda image and real HTTP/CPU integration checks recorded in container_validation"
+  },
+  "concurrent": {
+    "qwen": {
+      "http_status": 200,
+      "seconds": 88.87295794487,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 69,
+        "total_tokens": 325,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 69,
+        "prompt_ms": 4512.08,
+        "prompt_per_token_ms": 65.39246376811595,
+        "prompt_per_second": 15.292282051736672,
+        "predicted_n": 256,
+        "predicted_ms": 84184.758,
+        "predicted_per_token_ms": 330.13630588235293,
+        "predicted_per_second": 3.029051886090829,
+        "draft_n": 559,
+        "draft_n_accepted": 174
+      },
+      "nonempty": true
+    },
+    "native_previews": [
+      {
+        "camera": "x100vi",
+        "amount": 100,
+        "cached": false,
+        "seconds": 21.72147788,
+        "bytes": 38666366,
+        "sha256": "9f8952dad734497a4294a0155a1c7b46b86b982b412b28c2eb3ba64134cb383f",
+        "token": "9698ed5246e18f4c7a0069d6e33a7ff7a7b2500924abb4ef1a22e89fadea5c31",
+        "tiles": [
+          60,
+          60
+        ],
+        "cache": "/work/cuda-cache-Mk7Rer"
+      },
+      {
+        "camera": "x100vi",
+        "amount": 100,
+        "cached": true,
+        "seconds": 9.301614348,
+        "bytes": 38666366,
+        "sha256": "9f8952dad734497a4294a0155a1c7b46b86b982b412b28c2eb3ba64134cb383f",
+        "token": "9698ed5246e18f4c7a0069d6e33a7ff7a7b2500924abb4ef1a22e89fadea5c31",
+        "tiles": [
+          1,
+          1
+        ],
+        "cache": "/work/cuda-cache-Mk7Rer"
+      }
+    ],
+    "check": {
+      "output_matches_isolated": true,
+      "start_unix": 1793852641.3682022,
+      "native_end_unix": 1793852672.545782,
+      "end_unix": 1793852730.3183398
+    },
+    "scope": "One fresh X100VI amount-100 smart preview plus cache replay, concurrent with a real 256-token Qwen request. Both completed; pixels match the isolated run. No paired Qwen latency baseline."
+  },
+  "source_sha256": {
+    "packages/raw-develop/src/adobe/denoise/cuda.rs": "fbac884b65393e72e5277e4f75945fc08c7f135db7b031b1d503ee4cacec0682",
+    "packages/raw-develop/src/adobe/denoise/onnx.rs": "b3093d0a20fead84130bddf3a4054886b116c4bf7c9b56454ef1d9bab0155c36",
+    "packages/raw-develop/src/adobe/denoise/mod.rs": "7651b2f23181740743dbac578c854cf922a2b33b15ae441ae611413f34580305",
+    "Dockerfile": "513c7d1c34273c08aec9f8d61c6ae9bda4dc940be07502a0a9a1eff9f747cdb1"
+  },
+  "native_cancellation": {
+    "cancelled": true,
+    "elapsed_ms": 1411,
+    "after_request_ms": 70,
+    "tiles": [
+      1,
+      40
+    ],
+    "completed_cache_files": 0
+  },
+  "error_paths": [
+    {
+      "case": "missing_override",
+      "exit_code": 1,
+      "error": "malformed RAW: denoise: malformed RAW: denoise: CUDA FP32 requires NVIDIA_TF32_OVERRIDE=0 at process startup"
+    },
+    {
+      "case": "no_visible_gpu",
+      "exit_code": 1,
+      "error": "malformed RAW: denoise: malformed RAW: denoise: CUDA identity query failed: 100"
+    },
+    {
+      "case": "insufficient_headroom",
+      "reserved_bytes": 1902903296,
+      "exit_code": 1,
+      "error": "malformed RAW: denoise: CUDA requires at least 3328 MiB free before loading this model; 2343 MiB available. Other GPU workloads must release memory"
+    }
+  ],
+  "container_validation": {
+    "date": "2026-11-05",
+    "recorded_at_utc": "2026-11-06T01:59:36.083616+00:00",
+    "image": "registry.ericj5.com/photobrain-api:cuda-validation-20261105",
+    "digest": "sha256:55dcf8d70f7a2e9c0f383d4ec3bf31ebdfe49f71f780480b7d0c64b439ead46c",
+    "config_digest": "sha256:f496877fca302cfcac7b10051212f386bdfefeb67a7eeb66b0d6250d84a61a96",
+    "platform": "linux/amd64",
+    "target": "api-cuda",
+    "build_args": {
+      "DENOISE_CUDA": "1"
+    },
+    "compressed_layer_bytes": 3099124822,
+    "source_base_commit": "dc9d1f009fa6218945081cf7db9a1d6bfaf64a69",
+    "source_includes_uncommitted_changes": true,
+    "source_archive_sha256": "824603a968f9c15f029cec30664657c0736876ff3211caa0605c72cd77103515",
+    "source_file_manifest_sha256": "c03d483b6d287a1112bce7902c00ec1a3394311c3c57e93d94b0eec6ed926bb7",
+    "packaging_source_sha256": {
+      "Dockerfile": "aac404e7a15364b15ccac28dd3dd2605a3f033fca7200e5fa8f3c6812b1f431b",
+      ".dockerignore": "09b35a6fad78b31ded6478e4c5842805291625f292dfd0e73f9d8db68d09c7e7",
+      "packages/raw-develop/tools/adobe-denoise/check_cuda_image.ts": "7823b4eddbf7c4406707707a6174aac9e7740cc3d98448dd87e387472faf00ea"
+    },
+    "runtime": {
+      "bun": "1.4.3",
+      "rust_builder": "1.99.1 (58cf8f9c3 2026-10-13)",
+      "glibc": "2.41-12+deb13u4",
+      "libheif": "1.23.6-2~deb13u1",
+      "openssl": "3.5.7-1~deb13u3"
+    },
+    "packaging_fixes": [
+      "Copy ORT libraries from the explicit x86_64-unknown-linux-gnu N-API target directory.",
+      "Persist ORT download cache alongside the Cargo caches; verified a warm rebuild.",
+      "Exclude generated dist/target/node_modules, scratch work and external Adobe model/profile assets from Docker inputs."
+    ],
+    "scope": "Isolated pod using the published image digest, two CPU limit, 6 GiB memory limit, one time-sliced RTX slot. Own loopback API and throwaway SQLite/cache; no production data mounts or deployment changes. CPU models run before and after CUDA in one N-API process. Whole-preview SHA-256 matches the previous Linux addon for all three cases. Individual timings are not a performance comparison.",
+    "passed": true,
+    "process_exit_code": 0,
+    "integration_records": [
+      {
+        "check": "api-startup",
+        "migrations": {
+          "n": 22
+        },
+        "health": true,
+        "catalog": 2,
+        "denoiseCapability": true,
+        "sqliteIntegrity": "ok"
+      },
+      {
+        "check": "http-denoise",
+        "amount": 100,
+        "seconds": 24.493552259,
+        "tiles": 60,
+        "bytes": 38666366,
+        "sha256": "9f8952dad734497a4294a0155a1c7b46b86b982b412b28c2eb3ba64134cb383f"
+      },
+      {
+        "check": "saved-recipe-replay",
+        "amount": 100,
+        "exactPreview": true,
+        "conditional304": true,
+        "staleRevision409": true
+      },
+      {
+        "check": "http-denoise",
+        "amount": 50,
+        "seconds": 31.928121297000004,
+        "tiles": 60,
+        "bytes": 38741668,
+        "sha256": "a69bda3ac2c46a343afb9e41f0644cdc963000f709eb5ca1f76b4dfa3c5c26ee"
+      },
+      {
+        "check": "saved-recipe-replay",
+        "amount": 50,
+        "exactPreview": true,
+        "conditional304": true,
+        "staleRevision409": true
+      },
+      {
+        "check": "api-clip-text-search",
+        "responseKeys": [
+          "photos",
+          "total",
+          "query"
+        ]
+      },
+      {
+        "check": "cpu-models-before-cuda",
+        "textDimension": 512,
+        "imageDimension": 512,
+        "faces": 1
+      },
+      {
+        "check": "native-sony-denoise",
+        "cached": false,
+        "sha256": "52c6d132bec41fc3ba4dc6c628404e34f4b0ea59eddf2a234ab60b8833e33183",
+        "seconds": 14.737317010999991,
+        "tiles": [
+          40,
+          40
+        ]
+      },
+      {
+        "check": "native-sony-denoise",
+        "cached": true,
+        "sha256": "52c6d132bec41fc3ba4dc6c628404e34f4b0ea59eddf2a234ab60b8833e33183",
+        "seconds": 4.552732373000006,
+        "tiles": [
+          1,
+          1
+        ]
+      },
+      {
+        "check": "cpu-models-after-cuda",
+        "exact": true,
+        "libraries": [
+          "/opt/cuda/lib/libcudnn_heuristic.so.9.5.1",
+          "/opt/cuda/lib/libcudnn_engines_precompiled.so.9.5.1",
+          "/opt/cuda/lib/libcudnn_ops.so.9.5.1",
+          "/opt/onnxruntime/lib/libonnxruntime_providers_cuda.so",
+          "/opt/cuda/lib/libcudnn_engines_runtime_compiled.so.9.5.1",
+          "/opt/cuda/lib/libcublasLt.so.12.6.4.1",
+          "/opt/cuda/lib/libcublas.so.12.6.4.1",
+          "/opt/cuda/lib/libcudnn_graph.so.9.5.1",
+          "/opt/cuda/lib/libcudnn.so.9",
+          "/opt/cuda/lib/libcudart.so.12.6.77",
+          "/opt/onnxruntime/lib/libonnxruntime.so",
+          "/opt/onnxruntime/lib/libonnxruntime_providers_shared.so"
+        ]
+      }
+    ],
+    "gpu_memory": {
+      "samples": 260,
+      "minimum_free_mib": 1823,
+      "maximum_used_mib": 14150,
+      "free_mib_after_process_exit": 4590
+    },
+    "concurrent_qwen": {
+      "start_seconds": 5.426,
+      "seconds": 49.535,
+      "http_status": 200,
+      "nonempty": true,
+      "usage": {
+        "completion_tokens": 68,
+        "prompt_tokens": 61,
+        "total_tokens": 129,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 61,
+        "prompt_ms": 27042.142,
+        "prompt_per_token_ms": 443.3138032786885,
+        "prompt_per_second": 2.2557384692381244,
+        "predicted_n": 68,
+        "predicted_ms": 21483.995,
+        "predicted_per_token_ms": 320.65664179104476,
+        "predicted_per_second": 3.1186006140850435,
+        "draft_n": 133,
+        "draft_n_accepted": 49
+      }
+    },
+    "qwen_timing_limit": "Successful concurrent inference, not a slowdown measurement; no paired Qwen baseline.",
+    "external_assets": {
+      "DSCF0008.RAF": {
+        "bytes": 41133152,
+        "sha256": "f7895c01bdae03bcf0a9ef04554b0f833b497b24695610adcd96d9b610b15723"
+      },
+      "12766.ARW": {
+        "bytes": 25165824,
+        "sha256": "885ea2abe0bb6304fe9feaa679e0ce1a2089c27009c21593845835531ec1b99d"
+      },
+      "face.jpg": {
+        "bytes": 91814,
+        "sha256": "7de7ed51a1594fff247f4cae2301eceacf5313d6011e37b4a4c8733f7bb72c07"
+      },
+      "models/dn_bayer.pbdn": {
+        "bytes": 29938523,
+        "sha256": "371e266f4100d39dd851b72c96182a91932ebdb64c9ae4fd5ddc21d53203922f"
+      },
+      "models/dn_xtrans.pbdn": {
+        "bytes": 43926551,
+        "sha256": "db12d61d5f854713b5c62c4326074b8d7ef08526b99cb0891ae92e8a09115d9d"
+      },
+      "models/xtrans_details.pbdn": {
+        "bytes": 754025,
+        "sha256": "3d9f859a9a979dfeeb19666dbad4d8622c0058d6240c954d6f5877f273126fa7"
+      },
+      "profiles/Adobe Standard/Fujifilm X100VI Adobe Standard.dcp": {
+        "bytes": 120694,
+        "sha256": "679f6ecb7b03d461f4c3452f6e801300571b9e2780ef74228c60db78c5c9eecc"
+      },
+      "profiles/Adobe Standard/Sony ILCE-1M2 Adobe Standard.dcp": {
+        "bytes": 120642,
+        "sha256": "08a6d198eb267da160a49f13065766f106f98a815bf9fa02c1fb880b08643eda"
+      },
+      "profiles/Adobe Standard/Sony ILCE-1M2 Adobe Standard v2.dcp": {
+        "bytes": 120644,
+        "sha256": "13e25dfe06eb368fcdfe2be0e5c5f38cc2a32d6ebde35b08c326aa97a67c0b77"
+      }
+    },
+    "face_fixture_source": "https://raw.githubusercontent.com/opencv/opencv/4.12.0/samples/data/lena.jpg",
+    "production_deployed": false,
+    "remaining_rollout_work": [
+      "Commit source and publish a commit-addressed CUDA build through CI. The current CI still builds target api with no CUDA feature.",
+      "Coordinate the API CI target/tag with the GPU GitOps settings so later CI releases keep CUDA enabled.",
+      "Before rollout, verify the off-volume SQLite backup and actual iSCSI snapshot; no migrations changed in this pass. Preserve existing PVCs and Recreate."
+    ],
+    "cleanup": {
+      "temporary_build_and_test_pods_removed": true,
+      "validation_image_retained": true,
+      "production_api_health_http": 200,
+      "qwen_health_http": 200,
+      "production_api_restarts": 0,
+      "qwen_restarts": 0
+    }
+  }
+}

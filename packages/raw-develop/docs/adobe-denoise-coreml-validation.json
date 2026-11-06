@@ -1,0 +1,1211 @@
+{
+  "revision": "coreml-v1",
+  "date": "2026-11-04",
+  "device": "Apple M4 Pro",
+  "os_build": "26B123",
+  "framework_version": "3600.25.2",
+  "assets": {
+    "bayer": {
+      "format_version": 1,
+      "bundle_sha256": "371e266f4100d39dd851b72c96182a91932ebdb64c9ae4fd5ddc21d53203922f",
+      "model_sha256": "33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+      "input_shape": [
+        3,
+        1024,
+        1024
+      ],
+      "output_shape": [
+        3,
+        800,
+        800
+      ]
+    },
+    "xtrans": {
+      "format_version": 1,
+      "bundle_sha256": "db12d61d5f854713b5c62c4326074b8d7ef08526b99cb0891ae92e8a09115d9d",
+      "model_sha256": "3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+      "input_shape": [
+        3,
+        1024,
+        1024
+      ],
+      "output_shape": [
+        3,
+        864,
+        864
+      ]
+    },
+    "linear_raw": {
+      "format_version": 1,
+      "bundle_sha256": "95bac34fbd8690660b1b1e28a1a0d498b4954803581eb69089f237754804eb8a",
+      "model_sha256": "9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+      "input_shape": [
+        3,
+        1024,
+        1024
+      ],
+      "output_shape": [
+        3,
+        800,
+        800
+      ]
+    },
+    "panorama_raw": {
+      "format_version": 1,
+      "bundle_sha256": "8c9f176e6c41a709c7ca31a32e163afff28f03de0d9ec05d077eb5884b3ea8c8",
+      "model_sha256": "ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+      "input_shape": [
+        3,
+        1024,
+        1024
+      ],
+      "output_shape": [
+        3,
+        800,
+        800
+      ]
+    },
+    "xtrans_details": {
+      "format_version": 1,
+      "bundle_sha256": "3d9f859a9a979dfeeb19666dbad4d8622c0058d6240c954d6f5877f273126fa7",
+      "model_sha256": "b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "input_shape": [
+        3,
+        512,
+        512
+      ],
+      "output_shape": [
+        3,
+        470,
+        470
+      ]
+    }
+  },
+  "network_validation": [
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+      "case": "zero",
+      "first_prediction_seconds": 0.207829083,
+      "median_seconds": 0.180434458,
+      "mode": "all",
+      "model": "bayer",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.00040920451283454895,
+        "rms": 0.00026956285299009695
+      },
+      "warm_seconds": [
+        0.184088333,
+        0.179850375,
+        0.17940525,
+        0.18068825,
+        0.180434458
+      ],
+      "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+      "cpu_reference_sha256": "c2eba9ff26f4c72faaca53c81948af564591a6e1b8dcbdf877d29c763ff1bd51",
+      "output_sha256": "8a3b1d377133538397661a843917db8853b6ad4eab6722e87784d5a08ef1ef23"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+      "case": "structured",
+      "first_prediction_seconds": 0.180024,
+      "median_seconds": 0.180490083,
+      "mode": "all",
+      "model": "bayer",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.00902026891708374,
+        "rms": 0.00039168740173225704
+      },
+      "warm_seconds": [
+        0.180490083,
+        0.179968542,
+        0.179767292,
+        0.181575958,
+        0.180635125
+      ],
+      "input_sha256": "c1c2a4ec41fe606f9254880708dd1054f2bcc478e8ce9b2b59153b370161d0d3",
+      "cpu_reference_sha256": "e1e0c7d6a010451eb1ed64d0559a71aca1e2e85945ddb49fc281e9e602274f4a",
+      "output_sha256": "3f7445393095add3f1adcc17de450b0c6373df8e9dfb81b5a01ddbf84d54090f"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+      "case": "noisy",
+      "first_prediction_seconds": 0.180201958,
+      "median_seconds": 0.180884625,
+      "mode": "all",
+      "model": "bayer",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.00029027462005615234,
+        "rms": 5.686708821150784e-05
+      },
+      "warm_seconds": [
+        0.180663,
+        0.180884625,
+        0.180293,
+        0.181954834,
+        0.183599834
+      ],
+      "input_sha256": "35a2379b2a9ff0be82689ca2d53e55aa5b3ec91d5fbb5552a249a5f2c81d2715",
+      "cpu_reference_sha256": "c7b75563f74d14679837eaa9a4790af6847a603a757bb72f07cf533653c81f8e",
+      "output_sha256": "416b5bf68756ecd06833a64c482509d482200c2c3a6eb6efd9eed0c71a1a14c7"
+    },
+    {
+      "adobe_capture": "bayer-output",
+      "mode": "all",
+      "model": "bayer",
+      "vs_adobe": {
+        "bit_exact": true,
+        "max_abs": 0.0,
+        "rms": 0.0
+      },
+      "input_sha256": "f671183615e6e8d321ce5b53d18b8b27fd08da0243f31b3b51bb1637065f773a",
+      "adobe_output_sha256": "f4ae1a6747ef9017985ccb8b1c1a7d56e5106b109220110d7fcc1bd08257eb15"
+    },
+    {
+      "adobe_capture": "bayer-corner",
+      "mode": "all",
+      "model": "bayer",
+      "vs_adobe": {
+        "bit_exact": true,
+        "max_abs": 0.0,
+        "rms": 0.0
+      },
+      "input_sha256": "a4e842805d34d4af3d1388d9ddd6504a7100d05945deba786f51289df68ea604",
+      "adobe_output_sha256": "db40da90d17bae60fad0ecfc02d4b60d0ae14371419b6bb192f4e348b0ad8364"
+    },
+    {
+      "cancelled": true,
+      "mode": "all",
+      "request_delay_seconds": 0.01,
+      "reuse_bit_exact": true,
+      "seconds": 0.178153375
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+      "case": "zero",
+      "first_prediction_seconds": 0.16196125,
+      "median_seconds": 0.146936959,
+      "mode": "all",
+      "model": "xtrans",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.00014445185661315918,
+        "rms": 9.013497853509112e-05
+      },
+      "warm_seconds": [
+        0.147256917,
+        0.146936959,
+        0.147138542,
+        0.146531625,
+        0.146731959
+      ],
+      "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+      "cpu_reference_sha256": "c6de18c6c1184f780d5e13f96f4f77d75730b22dc294301c29102b3843f94bb6",
+      "output_sha256": "bd5c61e075f7d25a3e59c220adb4095e65d4ca86be314a2158b9da2808cd08e8"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+      "case": "structured",
+      "first_prediction_seconds": 0.151948791,
+      "median_seconds": 0.14692625,
+      "mode": "all",
+      "model": "xtrans",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.2501240670681,
+        "rms": 0.04414740758701207
+      },
+      "warm_seconds": [
+        0.147352958,
+        0.147357125,
+        0.14692625,
+        0.146068417,
+        0.145851334
+      ],
+      "input_sha256": "70630c891e3864aa3a8a17303e5226fe13dcaff24ba502b9330c5fb2a1e77a38",
+      "cpu_reference_sha256": "f01049f60a5316e5178be57984da0a2c193d68d4d98d8b812e36c9f2d43edfb6",
+      "output_sha256": "91a0e3b58b0e74307464cd209156652511cee1cb99f46d95ed44aa1453d597c6"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+      "case": "noisy",
+      "first_prediction_seconds": 0.145739292,
+      "median_seconds": 0.145751458,
+      "mode": "all",
+      "model": "xtrans",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.002059653401374817,
+        "rms": 0.00019626609096354115
+      },
+      "warm_seconds": [
+        0.145357958,
+        0.145940167,
+        0.144930541,
+        0.145751458,
+        0.145941875
+      ],
+      "input_sha256": "8de02b40ba52de52ac1eeb06677ee2d503641a7cea38368577eb966fad9a17ce",
+      "cpu_reference_sha256": "e7ce9a8721716eea3e93d038017b5d9ad14e6667c324c32c92b0746515786271",
+      "output_sha256": "b517d546500b441f1b30966cadb519fef7315e6092f832baac87248100b552a1"
+    },
+    {
+      "adobe_capture": "xtrans-output",
+      "mode": "all",
+      "model": "xtrans",
+      "vs_adobe": {
+        "bit_exact": true,
+        "max_abs": 0.0,
+        "rms": 0.0
+      },
+      "input_sha256": "2f1aa9ca6ab57489ba2ff7d4e1d91a864893f545cc61b185222a6ebdae07b971",
+      "adobe_output_sha256": "85f1f08f635a0ccf8708b5ae6f44117ea47442552fb31d9099990f601879d1e4"
+    },
+    {
+      "adobe_capture": "xtrans-corner",
+      "mode": "all",
+      "model": "xtrans",
+      "vs_adobe": {
+        "bit_exact": true,
+        "max_abs": 0.0,
+        "rms": 0.0
+      },
+      "input_sha256": "4b773a801f2f87778ee25b3ad1536be27253654dfb9dcae9a7801596499efc4d",
+      "adobe_output_sha256": "e24da7119ec122888d2c331f2d84295b1063491aa7396c2ed05d77bf30f10b25"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+      "case": "zero",
+      "first_prediction_seconds": 0.203154208,
+      "median_seconds": 0.178396708,
+      "mode": "all",
+      "model": "linear_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.000253140926361084,
+        "rms": 0.0001775982947017853
+      },
+      "warm_seconds": [
+        0.17937275,
+        0.177633458,
+        0.178374,
+        0.179355458,
+        0.178396708
+      ],
+      "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+      "cpu_reference_sha256": "6f990102ce6f25850efac065559eafeb163788aab6ed36b559d53c7b0d1f2830",
+      "output_sha256": "2b686c191109f82814de23235a1cfeedf23d75a0e9ba704ef12ce81e81bd0634"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+      "case": "structured",
+      "first_prediction_seconds": 0.177162458,
+      "median_seconds": 0.178609,
+      "mode": "all",
+      "model": "linear_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0010600090026855469,
+        "rms": 0.0002486733619752613
+      },
+      "warm_seconds": [
+        0.178624,
+        0.179046583,
+        0.178609,
+        0.178082875,
+        0.176899667
+      ],
+      "input_sha256": "f8c71e350a835668fb3100fec0a72ffd03c9eafe56a59416cf3770d739c55bc2",
+      "cpu_reference_sha256": "a2139add7632f73216aa3ca78698e311936fd24b5af106794d05911256c555af",
+      "output_sha256": "524890f8bcf28435f3e628daf9f3f3725d23c4a0f7896fc6c6c21028ff778a7f"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+      "case": "noisy",
+      "first_prediction_seconds": 0.178829667,
+      "median_seconds": 0.181516,
+      "mode": "all",
+      "model": "linear_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0008558034896850586,
+        "rms": 0.00023248989322097996
+      },
+      "warm_seconds": [
+        0.180104209,
+        0.182407916,
+        0.182678167,
+        0.181516,
+        0.180340917
+      ],
+      "input_sha256": "23854c03636aaf4d80eaaa1bd3b025c65b35823025461224939b6c41c8e0446b",
+      "cpu_reference_sha256": "1c76e52acb8cc7745247910af5699c628b55da940bad1d3a67e552ae45cf0ee0",
+      "output_sha256": "a468c68d08749c657db3fd4e353dda644ee3abd36986b067a9c154801a7350da"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+      "case": "zero",
+      "first_prediction_seconds": 0.202233083,
+      "median_seconds": 0.179481166,
+      "mode": "all",
+      "model": "panorama_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0005169808864593506,
+        "rms": 0.0003494628888224933
+      },
+      "warm_seconds": [
+        0.179045459,
+        0.178341959,
+        0.179833042,
+        0.179871042,
+        0.179481166
+      ],
+      "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+      "cpu_reference_sha256": "896f0b0a83c191ebce9385fcc66505d652db0f99d4fd9af6a96de5000050829b",
+      "output_sha256": "0406319f1ed010cdcfda8096b8bbb63f82bf39d0f66569f7a61464831ba9d510"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+      "case": "structured",
+      "first_prediction_seconds": 0.179594167,
+      "median_seconds": 0.18038125,
+      "mode": "all",
+      "model": "panorama_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.001045525074005127,
+        "rms": 0.0002698702488068489
+      },
+      "warm_seconds": [
+        0.180667708,
+        0.18038125,
+        0.180745334,
+        0.178570291,
+        0.180175541
+      ],
+      "input_sha256": "f8c71e350a835668fb3100fec0a72ffd03c9eafe56a59416cf3770d739c55bc2",
+      "cpu_reference_sha256": "d31d7b2dcd7eeb7c06539464a3ec170a368027d4c7c4ccb7b7eb53059f633b2a",
+      "output_sha256": "d3c789c5a8494a1cd70b39cd90c41faaeec6f2e93d34551652b8569c12907886"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+      "case": "noisy",
+      "first_prediction_seconds": 0.179026125,
+      "median_seconds": 0.179468792,
+      "mode": "all",
+      "model": "panorama_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0009183883666992188,
+        "rms": 0.00024158789739513471
+      },
+      "warm_seconds": [
+        0.179468792,
+        0.179559917,
+        0.179018958,
+        0.178832333,
+        0.180102333
+      ],
+      "input_sha256": "23854c03636aaf4d80eaaa1bd3b025c65b35823025461224939b6c41c8e0446b",
+      "cpu_reference_sha256": "138a1561ef354021672ef9ff7f6fe99515ac37ccb52af5eeb533f57df6b6411f",
+      "output_sha256": "99e5175c8b19742b662fb8702e15bcf054d3c178ce81ac5edbc776aeda6152fd"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "case": "zero",
+      "first_prediction_seconds": 0.014056166,
+      "median_seconds": 0.007229458,
+      "mode": "all",
+      "model": "xtrans_details",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.00018706731498241425,
+        "rms": 0.00011566041521413174
+      },
+      "warm_seconds": [
+        0.007280958,
+        0.007205125,
+        0.007284166,
+        0.007229458,
+        0.007226042
+      ],
+      "input_sha256": "33e9d4da914b5303f4f3aa116700df8c7c03ef763ee7a308bccdc417f4f29911",
+      "cpu_reference_sha256": "16ca8cbfffc93afc99462cb43077bd6f69057965434656093971b1e293b8c203",
+      "output_sha256": "88326ffb18d02c018853fabac6a1db2d49401fae32db65a7a0e97a35cb188a66"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "case": "structured",
+      "first_prediction_seconds": 0.007373125,
+      "median_seconds": 0.007237,
+      "mode": "all",
+      "model": "xtrans_details",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.007618725299835205,
+        "rms": 0.00029984810694935277
+      },
+      "warm_seconds": [
+        0.007273959,
+        0.007237,
+        0.007232084,
+        0.007251792,
+        0.007208125
+      ],
+      "input_sha256": "3e635cbe4f18dd0951aa7fcbf5c9a552cb7c10bc93013026b116a9254b949456",
+      "cpu_reference_sha256": "584a8fefd90c9019bb82a11c8b0b4ed72ce2e761847ff9ddc5469b1a3886224b",
+      "output_sha256": "099a2b1906039bee54759d9608d5be6602ae3709adeece06c4acb38c417ec053"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "case": "noisy",
+      "first_prediction_seconds": 0.007285458,
+      "median_seconds": 0.007237916,
+      "mode": "all",
+      "model": "xtrans_details",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.001047283411026001,
+        "rms": 0.00014030535603069228
+      },
+      "warm_seconds": [
+        0.007152375,
+        0.007237625,
+        0.007237916,
+        0.007274333,
+        0.007267083
+      ],
+      "input_sha256": "854ea0e5b7235aa2b6d8963c833163deb441bb76a6f17b38d5baa774687a8962",
+      "cpu_reference_sha256": "c0241ea01b23f39957a4262fb3f1719a5cc18f60e503629c986d21f09082b645",
+      "output_sha256": "24f9d9bdc6b40adb79eed0ad9fc4e6d060e319853944399058390e1489798f57"
+    },
+    {
+      "backend": "coreml-v1:all:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "case": "real",
+      "first_prediction_seconds": 0.007312917,
+      "median_seconds": 0.007217083,
+      "mode": "all",
+      "model": "xtrans_details",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.001677393913269043,
+        "rms": 0.0003117048535122584
+      },
+      "warm_seconds": [
+        0.0072275,
+        0.007213958,
+        0.007284833,
+        0.007217083,
+        0.007210209
+      ],
+      "input_sha256": "e4293e135ee084ed11acf47ebde82de578986935a976f8c5d829621de6174e77",
+      "cpu_reference_sha256": "5c4ab26c11947c65ae95c00704133af341c4a64ff87e95a863e034ce76aa43ad",
+      "output_sha256": "44d74d5027fee4cd3a6205e2447e69501ad52096b15ef99e0f6a18445fbc7d14"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+      "case": "zero",
+      "first_prediction_seconds": 0.409408542,
+      "median_seconds": 0.351629292,
+      "mode": "gpu",
+      "model": "bayer",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.00010410882532596588,
+        "rms": 8.057187315679521e-05
+      },
+      "warm_seconds": [
+        0.351629292,
+        0.352647583,
+        0.350295708,
+        0.35416625,
+        0.350445375
+      ],
+      "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+      "cpu_reference_sha256": "c2eba9ff26f4c72faaca53c81948af564591a6e1b8dcbdf877d29c763ff1bd51",
+      "output_sha256": "a85a9d876d7ffd12af239b4ddf8d6c66e30539b137c561ffcd5cb67d433510ec"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+      "case": "structured",
+      "first_prediction_seconds": 0.350331791,
+      "median_seconds": 0.35106225,
+      "mode": "gpu",
+      "model": "bayer",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.016094565391540527,
+        "rms": 0.0011278055560518896
+      },
+      "warm_seconds": [
+        0.352199792,
+        0.350869333,
+        0.350223666,
+        0.352403208,
+        0.35106225
+      ],
+      "input_sha256": "c1c2a4ec41fe606f9254880708dd1054f2bcc478e8ce9b2b59153b370161d0d3",
+      "cpu_reference_sha256": "e1e0c7d6a010451eb1ed64d0559a71aca1e2e85945ddb49fc281e9e602274f4a",
+      "output_sha256": "ddc67442197349919c2616065e46578a29687054effe29ec5e00ca99f821fad7"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=33b2b29ec4f072f996fc6509ee4d8443aa4f829feca0c9a19a86426a97ff7dfe",
+      "case": "noisy",
+      "first_prediction_seconds": 0.350492916,
+      "median_seconds": 0.350718584,
+      "mode": "gpu",
+      "model": "bayer",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0005840063095092773,
+        "rms": 0.0002539497719384689
+      },
+      "warm_seconds": [
+        0.351859917,
+        0.350718584,
+        0.350179042,
+        0.350084833,
+        0.352116083
+      ],
+      "input_sha256": "35a2379b2a9ff0be82689ca2d53e55aa5b3ec91d5fbb5552a249a5f2c81d2715",
+      "cpu_reference_sha256": "c7b75563f74d14679837eaa9a4790af6847a603a757bb72f07cf533653c81f8e",
+      "output_sha256": "b72689eb4cff7948a06ef63e2db99450aac3c13267a1e482f186d5725fcc0ae8"
+    },
+    {
+      "adobe_capture": "bayer-output",
+      "mode": "gpu",
+      "model": "bayer",
+      "vs_adobe": {
+        "bit_exact": false,
+        "max_abs": 0.000732421875,
+        "rms": 0.0002422429711111431
+      },
+      "input_sha256": "f671183615e6e8d321ce5b53d18b8b27fd08da0243f31b3b51bb1637065f773a",
+      "adobe_output_sha256": "f4ae1a6747ef9017985ccb8b1c1a7d56e5106b109220110d7fcc1bd08257eb15"
+    },
+    {
+      "adobe_capture": "bayer-corner",
+      "mode": "gpu",
+      "model": "bayer",
+      "vs_adobe": {
+        "bit_exact": false,
+        "max_abs": 0.00244140625,
+        "rms": 0.0011151243869326687
+      },
+      "input_sha256": "a4e842805d34d4af3d1388d9ddd6504a7100d05945deba786f51289df68ea604",
+      "adobe_output_sha256": "db40da90d17bae60fad0ecfc02d4b60d0ae14371419b6bb192f4e348b0ad8364"
+    },
+    {
+      "cancelled": true,
+      "mode": "gpu",
+      "request_delay_seconds": 0.01,
+      "reuse_bit_exact": true,
+      "seconds": 0.350793209
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+      "case": "zero",
+      "first_prediction_seconds": 0.385171541,
+      "median_seconds": 0.349893458,
+      "mode": "gpu",
+      "model": "xtrans",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 2.238154411315918e-05,
+        "rms": 1.549864351330185e-05
+      },
+      "warm_seconds": [
+        0.34982475,
+        0.349893458,
+        0.351250959,
+        0.350867333,
+        0.349581166
+      ],
+      "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+      "cpu_reference_sha256": "c6de18c6c1184f780d5e13f96f4f77d75730b22dc294301c29102b3843f94bb6",
+      "output_sha256": "9ac58d457e8c24b68c16e6b38e50bcea74fc0e13a21cba0d33c8ec5dc354cde3"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+      "case": "structured",
+      "first_prediction_seconds": 0.349243542,
+      "median_seconds": 0.350536959,
+      "mode": "gpu",
+      "model": "xtrans",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0030385851860046387,
+        "rms": 0.0006486769029229106
+      },
+      "warm_seconds": [
+        0.349465917,
+        0.350536959,
+        0.353313334,
+        0.352238458,
+        0.349860584
+      ],
+      "input_sha256": "70630c891e3864aa3a8a17303e5226fe13dcaff24ba502b9330c5fb2a1e77a38",
+      "cpu_reference_sha256": "f01049f60a5316e5178be57984da0a2c193d68d4d98d8b812e36c9f2d43edfb6",
+      "output_sha256": "157a6fa7951eace3b0ae830dcd0c4d938d21c4d70a3a3a1d993c4e82d196dd2c"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=3c50315b5d642efcb38d88c98883fc110d34d82daf58bc5f9ede3e2b1c8ad0e2",
+      "case": "noisy",
+      "first_prediction_seconds": 0.349925458,
+      "median_seconds": 0.350980667,
+      "mode": "gpu",
+      "model": "xtrans",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0010970234870910645,
+        "rms": 9.262960235499388e-05
+      },
+      "warm_seconds": [
+        0.353769375,
+        0.350980667,
+        0.349627667,
+        0.35101325,
+        0.349467542
+      ],
+      "input_sha256": "8de02b40ba52de52ac1eeb06677ee2d503641a7cea38368577eb966fad9a17ce",
+      "cpu_reference_sha256": "e7ce9a8721716eea3e93d038017b5d9ad14e6667c324c32c92b0746515786271",
+      "output_sha256": "90b6ed3be7e5f2066a12aa4d1037ccb399761321138d899a0dd75862c09a6eaf"
+    },
+    {
+      "adobe_capture": "xtrans-output",
+      "mode": "gpu",
+      "model": "xtrans",
+      "vs_adobe": {
+        "bit_exact": false,
+        "max_abs": 0.00146484375,
+        "rms": 0.00034299463741754496
+      },
+      "input_sha256": "2f1aa9ca6ab57489ba2ff7d4e1d91a864893f545cc61b185222a6ebdae07b971",
+      "adobe_output_sha256": "85f1f08f635a0ccf8708b5ae6f44117ea47442552fb31d9099990f601879d1e4"
+    },
+    {
+      "adobe_capture": "xtrans-corner",
+      "mode": "gpu",
+      "model": "xtrans",
+      "vs_adobe": {
+        "bit_exact": false,
+        "max_abs": 0.00146484375,
+        "rms": 0.0003781706699939851
+      },
+      "input_sha256": "4b773a801f2f87778ee25b3ad1536be27253654dfb9dcae9a7801596499efc4d",
+      "adobe_output_sha256": "e24da7119ec122888d2c331f2d84295b1063491aa7396c2ed05d77bf30f10b25"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+      "case": "zero",
+      "first_prediction_seconds": 0.397340209,
+      "median_seconds": 0.3514665,
+      "mode": "gpu",
+      "model": "linear_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0003000497817993164,
+        "rms": 0.0002459861111165651
+      },
+      "warm_seconds": [
+        0.3514665,
+        0.351922792,
+        0.351079041,
+        0.352608083,
+        0.350582958
+      ],
+      "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+      "cpu_reference_sha256": "6f990102ce6f25850efac065559eafeb163788aab6ed36b559d53c7b0d1f2830",
+      "output_sha256": "65ae57947a8392ee1efbda7a26e072db89c4dd8ceaf372c49611c0fa5853dd81"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+      "case": "structured",
+      "first_prediction_seconds": 0.350503042,
+      "median_seconds": 0.350808041,
+      "mode": "gpu",
+      "model": "linear_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.002595454454421997,
+        "rms": 0.0005121693638332779
+      },
+      "warm_seconds": [
+        0.352747125,
+        0.350808041,
+        0.350298167,
+        0.350613625,
+        0.3523905
+      ],
+      "input_sha256": "f8c71e350a835668fb3100fec0a72ffd03c9eafe56a59416cf3770d739c55bc2",
+      "cpu_reference_sha256": "a2139add7632f73216aa3ca78698e311936fd24b5af106794d05911256c555af",
+      "output_sha256": "4ea418e0f9e5d6c376540d0a56ea9f5ee583e1f878d92a032b2952fd38b0867c"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=9db60385115dfd09527ccb515791a0aa76795a9b3d741e1a13977f3874ea5862",
+      "case": "noisy",
+      "first_prediction_seconds": 0.350592375,
+      "median_seconds": 0.351542667,
+      "mode": "gpu",
+      "model": "linear_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0009812712669372559,
+        "rms": 0.0003177953839093344
+      },
+      "warm_seconds": [
+        0.351542667,
+        0.350952833,
+        0.351687708,
+        0.351023917,
+        0.354183125
+      ],
+      "input_sha256": "23854c03636aaf4d80eaaa1bd3b025c65b35823025461224939b6c41c8e0446b",
+      "cpu_reference_sha256": "1c76e52acb8cc7745247910af5699c628b55da940bad1d3a67e552ae45cf0ee0",
+      "output_sha256": "11f77a151ed2c8f476ab7f810598644b11c4ab0a775539273bc9282b03d33ffc"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+      "case": "zero",
+      "first_prediction_seconds": 0.396745542,
+      "median_seconds": 0.351585875,
+      "mode": "gpu",
+      "model": "panorama_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0004461705684661865,
+        "rms": 0.00035266840925457114
+      },
+      "warm_seconds": [
+        0.351585875,
+        0.350548125,
+        0.35262325,
+        0.350888958,
+        0.351774584
+      ],
+      "input_sha256": "9d2d451524288fc3b3706a6773b4242b385b751ba44a291c7ce973ccfcfc7c8c",
+      "cpu_reference_sha256": "896f0b0a83c191ebce9385fcc66505d652db0f99d4fd9af6a96de5000050829b",
+      "output_sha256": "22c5d3db75c8a5dad7a220eb6b9cf2c327c335b8e16e26da73a3576cf9d53b1c"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+      "case": "structured",
+      "first_prediction_seconds": 0.350433334,
+      "median_seconds": 0.351735833,
+      "mode": "gpu",
+      "model": "panorama_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.002740323543548584,
+        "rms": 0.0004933925247529227
+      },
+      "warm_seconds": [
+        0.352536666,
+        0.351735833,
+        0.350968375,
+        0.351820375,
+        0.350451375
+      ],
+      "input_sha256": "f8c71e350a835668fb3100fec0a72ffd03c9eafe56a59416cf3770d739c55bc2",
+      "cpu_reference_sha256": "d31d7b2dcd7eeb7c06539464a3ec170a368027d4c7c4ccb7b7eb53059f633b2a",
+      "output_sha256": "ea073e5baa2e198aab90988060649dabe6b616664bd89d7c6244f3f2bbac9356"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=ebcfe6a78fcfe23eebff08099e4656678a69607e65b9ca3c54db88c725c0a715",
+      "case": "noisy",
+      "first_prediction_seconds": 0.350566125,
+      "median_seconds": 0.3515515,
+      "mode": "gpu",
+      "model": "panorama_raw",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.000685274600982666,
+        "rms": 0.00015307916218730607
+      },
+      "warm_seconds": [
+        0.352540291,
+        0.351281375,
+        0.3515515,
+        0.353234875,
+        0.351247459
+      ],
+      "input_sha256": "23854c03636aaf4d80eaaa1bd3b025c65b35823025461224939b6c41c8e0446b",
+      "cpu_reference_sha256": "138a1561ef354021672ef9ff7f6fe99515ac37ccb52af5eeb533f57df6b6411f",
+      "output_sha256": "ef08b5b47ff6d7f4b0a7eb322771218d9c958c845a2e8a7d0460cb5e5b2b8461"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "case": "zero",
+      "first_prediction_seconds": 0.020868417,
+      "median_seconds": 0.015153875,
+      "mode": "gpu",
+      "model": "xtrans_details",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 3.1618401408195496e-05,
+        "rms": 2.1587042041788154e-05
+      },
+      "warm_seconds": [
+        0.015256041,
+        0.015153875,
+        0.0151295,
+        0.015188958,
+        0.015149584
+      ],
+      "input_sha256": "33e9d4da914b5303f4f3aa116700df8c7c03ef763ee7a308bccdc417f4f29911",
+      "cpu_reference_sha256": "16ca8cbfffc93afc99462cb43077bd6f69057965434656093971b1e293b8c203",
+      "output_sha256": "27e181ccc3f25d913355a7ea1f820491aa207290986966024cf3003d894bd72d"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "case": "structured",
+      "first_prediction_seconds": 0.015743458,
+      "median_seconds": 0.015144166,
+      "mode": "gpu",
+      "model": "xtrans_details",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.008373856544494629,
+        "rms": 0.0015220015696597625
+      },
+      "warm_seconds": [
+        0.015127291,
+        0.015144166,
+        0.015138,
+        0.015144958,
+        0.015147208
+      ],
+      "input_sha256": "3e635cbe4f18dd0951aa7fcbf5c9a552cb7c10bc93013026b116a9254b949456",
+      "cpu_reference_sha256": "584a8fefd90c9019bb82a11c8b0b4ed72ce2e761847ff9ddc5469b1a3886224b",
+      "output_sha256": "d6a858199ad1acbf98909141130071d023717eeaef59f595f987c05fa5f15fc7"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "case": "noisy",
+      "first_prediction_seconds": 0.015733417,
+      "median_seconds": 0.015141208,
+      "mode": "gpu",
+      "model": "xtrans_details",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0015867948532104492,
+        "rms": 0.0002270658353370355
+      },
+      "warm_seconds": [
+        0.015123333,
+        0.015162125,
+        0.015132459,
+        0.015141208,
+        0.015152333
+      ],
+      "input_sha256": "854ea0e5b7235aa2b6d8963c833163deb441bb76a6f17b38d5baa774687a8962",
+      "cpu_reference_sha256": "c0241ea01b23f39957a4262fb3f1719a5cc18f60e503629c986d21f09082b645",
+      "output_sha256": "72163f72305e2da0dcdbf80d44c9e8e545e8e8ca90a6fde912e20ccf0884a4c7"
+    },
+    {
+      "backend": "coreml-v1:cpu-gpu:low-precision-accumulation=false:Mac16,11:Apple M4 Pro:Version 27.2 (Build 26B123):framework=3600.25.2:eligible-metal=Apple M4 Pro:4294968532:model=b4599c5d377e857a06dc4fbde61922d3775a4eff02f4d0d0a8636f2f4bd1eeb9",
+      "case": "real",
+      "first_prediction_seconds": 0.015539375,
+      "median_seconds": 0.015140958,
+      "mode": "gpu",
+      "model": "xtrans_details",
+      "repeat_bit_exact": true,
+      "vs_cpu": {
+        "bit_exact": false,
+        "max_abs": 0.0033710598945617676,
+        "rms": 0.0009443250519674353
+      },
+      "warm_seconds": [
+        0.01511475,
+        0.015140958,
+        0.015152042,
+        0.015138458,
+        0.015147167
+      ],
+      "input_sha256": "e4293e135ee084ed11acf47ebde82de578986935a976f8c5d829621de6174e77",
+      "cpu_reference_sha256": "5c4ab26c11947c65ae95c00704133af341c4a64ff87e95a863e034ce76aa43ad",
+      "output_sha256": "8932f8e8f4d930b123cb9d334eb0c2719392ff605a6286728033eab835d83d91"
+    }
+  ],
+  "details_native_adobe": {
+    "capture": "baseline/xtrans-tile",
+    "input_sha256": "e4293e135ee084ed11acf47ebde82de578986935a976f8c5d829621de6174e77",
+    "adobe_output_sha256": "44d74d5027fee4cd3a6205e2447e69501ad52096b15ef99e0f6a18445fbc7d14",
+    "actual_output_sha256": "44d74d5027fee4cd3a6205e2447e69501ad52096b15ef99e0f6a18445fbc7d14",
+    "all_bit_exact": true,
+    "all_max_abs": 0,
+    "all_rms": 0,
+    "cpu_gpu_max_abs": 0.00390625,
+    "cpu_gpu_rms": 0.000999671070587976
+  },
+  "partial_strength_native_adobe": [
+    {
+      "camera": "bayer",
+      "amount": 1,
+      "rect": [
+        0,
+        0,
+        111,
+        111
+      ],
+      "channels": 36963,
+      "max_abs_vs_adobe": 0.0,
+      "rms_vs_adobe": 0.0,
+      "bit_mismatches": 0,
+      "output_sha256": "50d3d83b15f6904c25034dae50da30972fd45702733d5f6620904eac6a0b2417",
+      "seconds": 0.473809834
+    },
+    {
+      "camera": "bayer",
+      "amount": 99,
+      "rect": [
+        0,
+        0,
+        111,
+        111
+      ],
+      "channels": 36963,
+      "max_abs_vs_adobe": 0.0,
+      "rms_vs_adobe": 0.0,
+      "bit_mismatches": 0,
+      "output_sha256": "f90e708e19eca61efc70f0a004890717b53513b0a4e5d6118140410e3c4c0a51",
+      "seconds": 0.475035292
+    },
+    {
+      "camera": "fuji",
+      "amount": 1,
+      "rect": [
+        0,
+        0,
+        111,
+        111
+      ],
+      "channels": 36963,
+      "max_abs_vs_adobe": 0.0,
+      "rms_vs_adobe": 0.0,
+      "bit_mismatches": 0,
+      "output_sha256": "394163beda1b5914f1b2f5e9ae5d0ca519dddba47617f85722e4f6de8b5e4333",
+      "seconds": 0.375890375
+    },
+    {
+      "camera": "fuji",
+      "amount": 99,
+      "rect": [
+        0,
+        0,
+        111,
+        111
+      ],
+      "channels": 36963,
+      "max_abs_vs_adobe": 0.0,
+      "rms_vs_adobe": 0.0,
+      "bit_mismatches": 0,
+      "output_sha256": "9535544b0b68327062a24c85389e57ba10e169bdbe70f936ce520abce3e4b5b4",
+      "seconds": 0.373940417
+    }
+  ],
+  "partial_crop_seams": {
+    "amount": 50,
+    "overlap_channels_per_case": 300,
+    "cases": [
+      {
+        "model": "bayer",
+        "seam": 799
+      },
+      {
+        "model": "xtrans",
+        "seam": 465
+      },
+      {
+        "model": "xtrans",
+        "seam": 859
+      }
+    ],
+    "overlap_bit_exact": true
+  },
+  "native_smart_preview": [
+    {
+      "camera": "x100vi",
+      "amount": 100,
+      "cached": false,
+      "seconds": 13.093158084,
+      "bytes": 38668354,
+      "sha256": "9de09bc142d0d563c0f9d0192b883ddbe5f700980a42a3b9c686a1bedfe810d9",
+      "token": "5f2cbea980ebe03e58ed36be459507836d4be3e99dcaae2a52d37861efec727b",
+      "tiles": [
+        60,
+        60
+      ],
+      "cacheDirectory": "/tmp/photobrain-coreml-native-8WRXlj",
+      "independent_run_bit_exact": true
+    },
+    {
+      "camera": "x100vi",
+      "amount": 100,
+      "cached": true,
+      "seconds": 1.692803249999999,
+      "bytes": 38668354,
+      "sha256": "9de09bc142d0d563c0f9d0192b883ddbe5f700980a42a3b9c686a1bedfe810d9",
+      "token": "5f2cbea980ebe03e58ed36be459507836d4be3e99dcaae2a52d37861efec727b",
+      "tiles": [
+        1,
+        1
+      ],
+      "cacheDirectory": "/tmp/photobrain-coreml-native-8WRXlj",
+      "independent_run_bit_exact": true
+    },
+    {
+      "camera": "x100vi",
+      "amount": 50,
+      "cached": false,
+      "seconds": 17.705786125,
+      "bytes": 38742760,
+      "sha256": "0df5d721966b2e8cb08c744e45bdc3b7eb6c8f4991d6e360e39b36f0f6978361",
+      "token": "35561ae10c2069d9105f36eafafb5ddce3979ce4a17938388d57397d5253df66",
+      "tiles": [
+        60,
+        60
+      ],
+      "cacheDirectory": "/tmp/photobrain-coreml-native-8WRXlj",
+      "independent_run_bit_exact": true
+    },
+    {
+      "camera": "x100vi",
+      "amount": 50,
+      "cached": true,
+      "seconds": 1.675023000000001,
+      "bytes": 38742760,
+      "sha256": "0df5d721966b2e8cb08c744e45bdc3b7eb6c8f4991d6e360e39b36f0f6978361",
+      "token": "35561ae10c2069d9105f36eafafb5ddce3979ce4a17938388d57397d5253df66",
+      "tiles": [
+        1,
+        1
+      ],
+      "cacheDirectory": "/tmp/photobrain-coreml-native-8WRXlj",
+      "independent_run_bit_exact": true
+    },
+    {
+      "camera": "a1m2",
+      "amount": 100,
+      "cached": false,
+      "seconds": 10.2131495,
+      "bytes": 35997850,
+      "sha256": "a00895769c7f63d4fb2ea0800aefd547f36cf19e57fa7d7fe4606fea8320bfd9",
+      "token": "afa22f8b204e66cac9209c39f4ce1b5cfbbb9a299afc2d0f78b1d68cdd58e8ed",
+      "tiles": [
+        40,
+        40
+      ],
+      "cacheDirectory": "/tmp/photobrain-coreml-native-8WRXlj",
+      "independent_run_bit_exact": true
+    },
+    {
+      "camera": "a1m2",
+      "amount": 100,
+      "cached": true,
+      "seconds": 1.1093672920000026,
+      "bytes": 35997850,
+      "sha256": "a00895769c7f63d4fb2ea0800aefd547f36cf19e57fa7d7fe4606fea8320bfd9",
+      "token": "afa22f8b204e66cac9209c39f4ce1b5cfbbb9a299afc2d0f78b1d68cdd58e8ed",
+      "tiles": [
+        1,
+        1
+      ],
+      "cacheDirectory": "/tmp/photobrain-coreml-native-8WRXlj",
+      "independent_run_bit_exact": true
+    },
+    {
+      "cancelled": true,
+      "seconds": 1.309,
+      "afterRequestSeconds": 0.011,
+      "completedCacheFiles": 0,
+      "requestedAfterFirstTile": true
+    }
+  ],
+  "previous_metal_v3_x100vi_amount_100": [
+    {
+      "cached": false,
+      "seconds": 75.721387917,
+      "bytes": 38665924,
+      "sha256": "ca4c16acd3b6926cc563395a26bb50915b32b7b81189f0ed40370d5c71aa364f",
+      "engine": "adobe",
+      "token": "cc6de5608a01e8d31e5e08110b79ee69c47acefa2ce2b4faf2e594d1d719f6e5"
+    },
+    {
+      "cached": true,
+      "seconds": 1.7584510420000006,
+      "bytes": 38665924,
+      "sha256": "ca4c16acd3b6926cc563395a26bb50915b32b7b81189f0ed40370d5c71aa364f",
+      "engine": "adobe",
+      "token": "cc6de5608a01e8d31e5e08110b79ee69c47acefa2ce2b4faf2e594d1d719f6e5"
+    }
+  ],
+  "timing_scope": "Network: one first prediction then five timed repeats per case, retained model, excludes loading/I/O. Native: individual fresh camera-RGB cache calls; framework compilation cache may already be warm. Includes RAW processing, whole-image inference, rendering preparation and smart-preview encoding, excludes HTTP/UI. Earlier Metal integration run is historical, not a paired statistical benchmark.",
+  "checks": {
+    "rust_library": 279,
+    "native_develop_cache": 6,
+    "python_tools": 18,
+    "api_config": 3,
+    "coreml_network_cases": 32,
+    "native_denoise_captures_all_exact": 4,
+    "native_details_capture_all_exact": true,
+    "native_partial_strength_exact_channels": 147852,
+    "previous_wgpu_bit_exact_cases": 16,
+    "linux_x86_64_cross_check": true,
+    "ffi_locked_host_check": true,
+    "mac_coreml_only_check": true,
+    "cpu_only_check": true,
+    "final_native_release_addon_rebuilt": true,
+    "final_native_addon_cache_replay_exact": true,
+    "native_geometry_rejection": true,
+    "details_native_adobe_test": true
+  },
+  "limits": [
+    "Core ML does not preserve Rust FP32 output bits.",
+    "Captured Adobe comparisons establish only the supplied real tensors/crops on this Mac/OS, not whole-photo Adobe parity.",
+    "Actual per-layer runtime accelerator placement was not captured.",
+    "No complete Adobe photo timing or new NVIDIA vendor-runtime speed measurement.",
+    "Auto remains Metal/Vulkan; no production rollout or iOS on-device denoise integration."
+  ],
+  "nvidia_assessment": {
+    "implemented": false,
+    "current_backend": "Vulkan",
+    "candidate": "ONNX Runtime CUDA/cuDNN, then TensorRT if beneficial",
+    "image_runtime_dependencies_required": true,
+    "shared_vram_validation_required": true
+  }
+}

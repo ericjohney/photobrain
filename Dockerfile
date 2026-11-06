@@ -41,10 +41,24 @@ COPY apps/api apps/api
 COPY apps/web apps/web
 
 # Build the Rust N-API image-processing package with Cargo cache mount
+# Cache ORT beside Cargo: cached build outputs symlink into its download directory.
+# napi --platform uses an explicit Rust target directory even on native Linux.
+ARG DENOISE_CUDA=0
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/root/.cache/ort.pyke.io \
     --mount=type=cache,target=/app/packages/image-processing/target \
-    bun run build --filter=@photobrain/image-processing
+    mkdir -p /app/onnxruntime/lib && \
+    if [ "$DENOISE_CUDA" = "1" ]; then \
+      cd packages/image-processing && \
+      bun run build --features adobe-denoise-cuda && \
+      cp -L target/x86_64-unknown-linux-gnu/release/libonnxruntime.so \
+        target/x86_64-unknown-linux-gnu/release/libonnxruntime_providers_cuda.so \
+        target/x86_64-unknown-linux-gnu/release/libonnxruntime_providers_shared.so /app/onnxruntime/lib/ && \
+      ln -s libonnxruntime.so /app/onnxruntime/lib/libonnxruntime.so.1; \
+    else \
+      bun run build --filter=@photobrain/image-processing; \
+    fi
 
 # =============================================================================
 # Stage 2: API Production Image
@@ -59,6 +73,10 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     libzstd1 \
     libheif1 \
+    libvulkan1 \
+    libx11-6 \
+    libxext6 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -89,6 +107,27 @@ COPY --from=builder /app/apps/api/tsconfig.json ./apps/api/
 # Remove darwin native modules from node_modules
 RUN find /app/node_modules -name "*.darwin-*.node" -delete 2>/dev/null || true
 
+WORKDIR /app/apps/api
+EXPOSE 3000
+CMD ["bun", "run", "src/index.ts"]
+
+# Optional CUDA/cuDNN API image. Build with --target api-cuda --build-arg
+# DENOISE_CUDA=1. Ordinary api/web builds retain their current runtime.
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04@sha256:8aef630a54bc5c5146ae5ce68e6af5caa3df0fb690bb91544175c91f307e4356 AS cuda-runtime
+FROM api AS api-cuda
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+# Keep the existing Debian native dependencies, including libheif >= 1.18.
+# CUDA's user-space libraries do not include a driver; the NVIDIA runtime injects it.
+COPY --from=cuda-runtime /usr/local/cuda/targets/x86_64-linux/lib /opt/cuda/lib
+COPY --from=cuda-runtime /usr/lib/x86_64-linux-gnu/libcudnn*.so* /opt/cuda/lib/
+COPY --from=builder /app/onnxruntime /opt/onnxruntime
+RUN test -s /opt/onnxruntime/lib/libonnxruntime_providers_cuda.so
+ENV LD_LIBRARY_PATH="/opt/onnxruntime/lib:/opt/cuda/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
+ENV NVIDIA_DRIVER_CAPABILITIES="compute,utility,graphics"
+ENV RUN_DB_INIT=true
+ENV DENOISE_BACKEND=cuda
+ENV NVIDIA_TF32_OVERRIDE=0
 WORKDIR /app/apps/api
 EXPOSE 3000
 CMD ["bun", "run", "src/index.ts"]

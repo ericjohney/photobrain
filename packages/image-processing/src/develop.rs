@@ -67,6 +67,19 @@ pub fn clear_developed_raw_cache() {
 }
 
 fn source_key(path: &str, options: &DevelopedRawOptions) -> Result<String, String> {
+  let backend = if options.denoise_amount.unwrap_or(0) > 0 {
+    raw_develop::adobe::denoise::Backend::from_env().map_err(|e| e.to_string())?
+  } else {
+    raw_develop::adobe::denoise::Backend::Cpu
+  };
+  source_key_for_backend(path, options, backend)
+}
+
+fn source_key_for_backend(
+  path: &str,
+  options: &DevelopedRawOptions,
+  backend: raw_develop::adobe::denoise::Backend,
+) -> Result<String, String> {
   use std::fmt::Write;
   let mut key = format!(
     "{}:{:?}:{:?}:{:?}:{:?}",
@@ -76,6 +89,10 @@ fn source_key(path: &str, options: &DevelopedRawOptions) -> Result<String, Strin
     options.denoise_amount.unwrap_or(0),
     options.denoise_model_dir
   );
+  if options.denoise_amount.unwrap_or(0) > 0 {
+    let identity = backend.identity().map_err(|e| e.to_string())?;
+    write!(&mut key, ":denoise-backend:{identity}").unwrap();
+  }
   let mut append = |path: &std::path::Path| -> Result<(), String> {
     let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
     write!(&mut key, ":{:?}:{}:{:?}", path, meta.len(), meta.modified()).unwrap();
@@ -123,8 +140,14 @@ fn source_key(path: &str, options: &DevelopedRawOptions) -> Result<String, Strin
       .denoise_model_dir
       .as_ref()
       .ok_or("Denoise is unavailable")?;
+    let coreml = backend.is_coreml();
     for name in ["dn_bayer.pbdn", "dn_xtrans.pbdn", "xtrans_details.pbdn"] {
-      append(&std::path::Path::new(dir).join(name))?;
+      let model = std::path::Path::new(dir).join(name);
+      append(&model)?;
+      if coreml {
+        append(&model.with_extension("mlmodel"))?;
+        append(&model.with_extension("coreml.json"))?;
+      }
     }
   }
   Ok(key)
@@ -345,6 +368,73 @@ mod tests {
     );
     clear_developed_raw_cache();
     assert!(PREVIEW_CACHE.lock().unwrap().is_none());
+  }
+
+  #[test]
+  #[cfg(target_os = "macos")]
+  fn coreml_modes_and_companion_changes_have_separate_cache_keys() {
+    use raw_develop::adobe::denoise::Backend;
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("source.ARW");
+    std::fs::write(&source, "raw").unwrap();
+    for name in ["dn_bayer", "dn_xtrans", "xtrans_details"] {
+      for extension in ["pbdn", "mlmodel", "coreml.json"] {
+        std::fs::write(tmp.path().join(format!("{name}.{extension}")), "asset").unwrap();
+      }
+    }
+    let options = DevelopedRawOptions {
+      engine: Some("adobe".into()),
+      denoise_amount: Some(100),
+      denoise_model_dir: Some(tmp.path().to_string_lossy().into()),
+      ..Default::default()
+    };
+    let key =
+      |backend| source_key_for_backend(source.to_str().unwrap(), &options, backend).unwrap();
+    let cpu = key(Backend::Cpu);
+    let coreml = key(Backend::CoreMl);
+    assert_ne!(cpu, coreml);
+    assert_ne!(coreml, key(Backend::CoreMlGpu));
+    std::fs::write(
+      tmp.path().join("dn_xtrans.mlmodel"),
+      "changed compiled input",
+    )
+    .unwrap();
+    let changed = key(Backend::CoreMl);
+    assert_ne!(coreml, changed);
+    assert_eq!(cpu, key(Backend::Cpu));
+    std::fs::write(tmp.path().join("dn_xtrans.coreml.json"), "changed binding").unwrap();
+    assert_ne!(changed, key(Backend::CoreMl));
+    std::fs::remove_file(tmp.path().join("dn_xtrans.coreml.json")).unwrap();
+    assert!(source_key_for_backend(source.to_str().unwrap(), &options, Backend::CoreMl).is_err());
+  }
+
+  #[test]
+  #[cfg(all(feature = "adobe-denoise-cuda", target_os = "linux"))]
+  fn cuda_cache_identity_is_separate_from_cpu() {
+    use raw_develop::adobe::denoise::Backend;
+    if std::env::var_os("RAW_DENOISE_CUDA_TESTS").is_none() {
+      return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("source.ARW");
+    std::fs::write(&source, "raw").unwrap();
+    for name in ["dn_bayer", "dn_xtrans", "xtrans_details"] {
+      std::fs::write(tmp.path().join(format!("{name}.pbdn")), "model").unwrap();
+    }
+    let options = DevelopedRawOptions {
+      engine: Some("adobe".into()),
+      denoise_amount: Some(100),
+      denoise_model_dir: Some(tmp.path().to_string_lossy().into()),
+      ..Default::default()
+    };
+    let cpu = source_key_for_backend(source.to_str().unwrap(), &options, Backend::Cpu).unwrap();
+    let cuda = source_key_for_backend(source.to_str().unwrap(), &options, Backend::Cuda).unwrap();
+    assert_ne!(cpu, cuda);
+    std::fs::write(tmp.path().join("dn_bayer.pbdn"), "changed model").unwrap();
+    assert_ne!(
+      cuda,
+      source_key_for_backend(source.to_str().unwrap(), &options, Backend::Cuda).unwrap()
+    );
   }
 
   #[test]

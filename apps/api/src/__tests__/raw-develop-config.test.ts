@@ -2,6 +2,21 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { parseConfig } from "../config";
 
 describe("Developed RAW engine configuration", () => {
+	test("accepts explicit acceleration backends and keeps auto as the default", () => {
+		expect(parseConfig({}).DENOISE_BACKEND).toBe("auto");
+		for (const backend of [
+			"coreml",
+			"coreml-gpu",
+			"cpu",
+			"metal",
+			"vulkan",
+			"cuda",
+		] as const) {
+			expect(parseConfig({ DENOISE_BACKEND: backend }).DENOISE_BACKEND).toBe(
+				backend,
+			);
+		}
+	});
 	test("keeps Apple as the default and accepts explicitly configured Adobe", () => {
 		expect(parseConfig({}).RAW_DEVELOP_ENGINE).toBe("apple");
 		expect(

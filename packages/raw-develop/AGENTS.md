@@ -86,6 +86,56 @@ reconstruction. Fuji distortion's encoded scratch also unmaps at stage return.
 
 ## Code Layout
 
+The optional `adobe-denoise-cuda` feature adds an explicit Linux NVIDIA executor
+(`denoise/cuda.rs`, `onnx.rs`) sharing the addon's pinned ORT ABI. It generates
+ONNX directly from validated PBDN graphs; no companion assets are needed.
+`DENOISE_BACKEND=cuda` requires `NVIDIA_TF32_OVERRIDE=0` at process startup.
+FP32/TF32-off execution is numerical, not bit-identical to prior executors.
+The provider disables CPU fallback and uses bounded per-model ORT arenas;
+cuDNN 9 can exceed the legacy workspace preference. Cancellation discards a
+completed prediction; cache identity includes CUDA device/driver/library and
+compute policies. Auto remains Metal/Vulkan. The addon feature and `api-cuda`
+Docker target are opt-in; production rollout is separate. See
+[CUDA setup and validation](docs/adobe-denoise-cuda.md).
+
+The optional `adobe-denoise-coreml` feature adds a public Core ML bridge on macOS
+(`denoise/coreml.rs`, `coreml.m`, package `build.rs`). Explicit `coreml` allows all
+compute units; `coreml-gpu` allows CPU/GPU. Neither changes auto selection. The
+native addon builds both features; iOS FFI remains independent. External PBDN
+companions are prepared by `tools/adobe-denoise/prepare_coreml.py`: original
+Core ML specs must reproduce the FP16 bundle, while Details is reconstructed
+from FP32 parameters. Bundle/model hashes and native tensor shapes are checked
+before inference. One retained model/input array serves all tiles in a job;
+prediction is process-serialized and cancellation discards the current tile
+after Core ML returns. The compiler chooses internal precision and placement;
+never describe this backend as preserving Rust FP32 bits. Model assets, compute
+policy, OS/framework and eligible hardware enter cache identity. See
+[Core ML setup and validation](docs/adobe-denoise-coreml.md).
+
+The optional `adobe-denoise-gpu` feature adds a shared FP32 wgpu executor
+(`denoise/gpu.rs`, `gpu.wgsl`): Metal on macOS and Vulkan on Linux/NVIDIA.
+`Model::load` stays CPU; `load_with_backend` opts into acceleration. The native
+addon builds this feature and selects `DENOISE_BACKEND` (default `auto`).
+Weights/activations remain on the GPU across tiles, with liveness-planned reuse,
+identity elimination and fused convolution/LeakyReLU, adjacent single-consumer
+residual Adds and nearest2x/pointwise convolution. The v3 shaders retain K16 FMA
+order with larger output blocks and specialized spatial/pointwise pipelines.
+Keep the prior-GPU snapshot checks when tuning; CPU agreement is numerical.
+`DENOISE_GPU_PROFILE=1` measures per-dispatch submission/completion wall time,
+including waits; it is not a GPU timestamp or normal batched performance.
+Device work is serialized;
+cancellation drains bounded dispatch batches. Auto falls back only when device
+initialization fails, never mid-image. GPU output is numerically close to CPU,
+not bit-identical. Actual device/driver/implementation identity participates in
+both native image and disk cache keys. Do not remove that separation.
+See [GPU setup and validation](docs/adobe-denoise-gpu.md), including NVIDIA
+container dependencies, VRAM requirements and shared-device validation. The
+deployed NVIDIA device advertises two time-sliced slots alongside Qwen with
+40-layer main-model GPU offload; sharing does not isolate VRAM. Full-size v3
+fixtures and the complete X100VI camera-RGB wrapper preserve prior NVIDIA bits.
+Whole-RAW Mac/Linux bit parity remains unestablished. PhotoBrain's GPU-capable
+production image/overlay rollout is still pending.
+
 The optional `adobe-denoise` feature exposes `adobe::denoise::{Model, Tensor,
 Variant, pack_mosaic_tile, DecodedMosaic}` and the `raw-denoise` CLI. These are
 independent network/tile APIs for four recovered ACR denoise CNNs and the separate

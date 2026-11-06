@@ -19,6 +19,8 @@ derived from, its output. It is a standalone Rust crate; the app uses it only fo
 | [Using the library](usage.md) | call the crate or the CLI, store edit settings, integrate it later |
 | [Adobe engine](adobe-engine.md) | use the secondary Adobe engine, six NR controls, exact stage checks and remaining tone/lens work |
 | [Adobe denoise networks](adobe-denoise.md) | run optional Rust CNNs and validated RAW-tile exports with external weights; inspect native parity checks |
+| [Denoise GPU execution](adobe-denoise-gpu.md) | configure Metal/Vulkan, inspect FP32 optimization and shared NVIDIA validation |
+| [Core ML denoise](adobe-denoise-coreml.md) | run the optional Mac Core ML executor, prepare external companions and inspect native Adobe comparisons |
 | [Interactive editing](interactive-editing.md) | inspect repeat-render measurements and the remaining iOS work |
 | [Reference: Apple's pipeline](apple-reference.md) | see what we observed in RawCamera and how it maps onto our code |
 | [Plan: other cameras](plan-other-cameras.md) | read how the Sony ARW, iPhone ProRAW and X100VI support was built, and what remains |
@@ -56,3 +58,5 @@ RAF / ARW / DNG file
 - On Apple Silicon (CPU, rayon): decode 0.03–0.2 s; full develop about 2.0 s for X-Trans
   40 MP, 2.4–2.7 s for Sony 61 MP and 0.4 s for iPhone 12 MP. The X-Trans
   one-third-resolution preview takes about 0.12 s.
+
+- [NVIDIA CUDA denoise](adobe-denoise-cuda.md): optional CUDA/cuDNN backend, runtime packaging and validation.

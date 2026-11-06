@@ -1,0 +1,19 @@
+# Merge into the external ArgoCD PhotoBrain API values with a verified api-cuda
+# image built with DENOISE_CUDA=1. Production CI applies these settings together
+# with the new image tag. Set DENOISE_BACKEND=vulkan to select the wgpu executor.
+# Shared slots and Qwen's 40-layer offload are live; recheck >=4 GiB idle
+# free VRAM and simultaneous inference before rollout. Slots do not isolate VRAM.
+# This is an overlay for the existing webapp chart, not a standalone manifest.
+# Preserve Recreate and all PVC/photo mounts; follow the backup/snapshot procedure.
+nvidia: true
+envMap:
+  DENOISE_BACKEND: cuda
+  NVIDIA_TF32_OVERRIDE: "0"
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+    nvidia.com/gpu: "1"
+  limits:
+    memory: 8Gi
+    nvidia.com/gpu: "1"

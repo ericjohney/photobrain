@@ -10,6 +10,7 @@
 				"Cargo.lock",
 				"package.json",
 				"$TURBO_ROOT$/packages/raw-develop/src/**",
+				"$TURBO_ROOT$/packages/raw-develop/build.rs",
 				"$TURBO_ROOT$/packages/raw-develop/profiles/**",
 				"$TURBO_ROOT$/packages/raw-develop/Cargo.toml"
 			],

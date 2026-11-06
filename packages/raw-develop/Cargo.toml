@@ -46,11 +46,26 @@ jxl-oxide = { version = "0.12", default-features = false, features = ["rayon"], 
 half = { version = "2", optional = true }
 matrixmultiply = { version = "0.3", optional = true }
 sha2 = { version = "0.10", optional = true }
+wgpu = { version = "24.0.5", default-features = false, features = ["wgsl", "metal", "vulkan-portability"], optional = true }
+pollster = { version = "0.4", optional = true }
+prost = { version = "0.13", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Share the exact ABI already pinned by FastEmbed and the face executor.
+ort = { version = "=2.0.0-rc.9", default-features = false, features = ["cuda", "download-binaries", "copy-dylibs"], optional = true }
+ort-sys = { version = "=2.0.0-rc.9", default-features = false, optional = true }
+libloading = { version = "0.8", optional = true }
 
 [features]
 default = ["jxl"]
 jxl = ["dep:jxl-oxide"]
 adobe-denoise = ["dep:half", "dep:matrixmultiply", "dep:sha2"]
+adobe-denoise-gpu = ["adobe-denoise", "dep:wgpu", "dep:pollster"]
+adobe-denoise-coreml = ["adobe-denoise", "dep:cc"]
+adobe-denoise-cuda = ["adobe-denoise", "dep:prost", "dep:ort", "dep:ort-sys", "dep:libloading"]
+
+[build-dependencies]
+cc = { version = "1", optional = true }
 
 [dev-dependencies]
 approx = "0.5"

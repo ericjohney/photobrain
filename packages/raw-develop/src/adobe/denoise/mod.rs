@@ -13,9 +13,17 @@
 pub mod baseline_bayer;
 pub mod baseline_xtrans;
 pub mod border;
+#[cfg(feature = "adobe-denoise-coreml")]
+mod coreml;
+#[cfg(feature = "adobe-denoise-cuda")]
+mod cuda;
 mod format;
 pub mod gains;
+#[cfg(feature = "adobe-denoise-gpu")]
+mod gpu;
 mod kernels;
+#[cfg(feature = "adobe-denoise-cuda")]
+mod onnx;
 pub mod raw;
 pub mod render;
 pub use raw::DecodedMosaic;
@@ -82,12 +90,98 @@ pub fn pack_mosaic_tile(
   Tensor::new([3, EDGE, EDGE], data)
 }
 
-/// Immutable model, shareable between callers. Each inference owns its scratch.
+/// Shareable model. CPU predictions own scratch; GPU predictions reuse a
+/// process-serialized device arena across tiles.
 pub struct Model {
   manifest: Manifest,
   weights: Vec<f32>,
   shapes: Vec<[usize; 3]>,
   uses: Vec<usize>,
+  #[cfg(feature = "adobe-denoise-coreml")]
+  bundle_sha256: String,
+  #[cfg(feature = "adobe-denoise-coreml")]
+  coreml: Option<coreml::CoreMlModel>,
+  #[cfg(feature = "adobe-denoise-gpu")]
+  gpu: Option<gpu::GpuModel>,
+  #[cfg(feature = "adobe-denoise-cuda")]
+  cuda: Option<cuda::CudaModel>,
+}
+
+/// CPU is the reference implementation. Auto falls back only during device
+/// initialization; inference failures are returned rather than mixing backends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Backend {
+  Cpu,
+  Auto,
+  Gpu,
+  Metal,
+  Vulkan,
+  CoreMl,
+  CoreMlGpu,
+  Cuda,
+}
+
+impl Backend {
+  pub fn from_env() -> Result<Self> {
+    match std::env::var("DENOISE_BACKEND")
+      .as_deref()
+      .unwrap_or("auto")
+    {
+      "cpu" => Ok(Self::Cpu),
+      "auto" => Ok(Self::Auto),
+      "gpu" => Ok(Self::Gpu),
+      "metal" => Ok(Self::Metal),
+      "vulkan" => Ok(Self::Vulkan),
+      "coreml" => Ok(Self::CoreMl),
+      "coreml-gpu" => Ok(Self::CoreMlGpu),
+      "cuda" => Ok(Self::Cuda),
+      _ => Err(invalid(
+        "DENOISE_BACKEND must be auto, cpu, gpu, metal, vulkan, coreml, coreml-gpu or cuda",
+      )),
+    }
+  }
+
+  pub fn is_coreml(self) -> bool {
+    matches!(self, Self::CoreMl | Self::CoreMlGpu)
+  }
+
+  /// Resolve the actual device before looking up cached pixels. Auto may resolve
+  /// to CPU, so using only the requested backend would collide across machines.
+  pub fn identity(self) -> Result<String> {
+    if self == Self::Cuda {
+      #[cfg(feature = "adobe-denoise-cuda")]
+      return cuda::identity();
+      #[cfg(not(feature = "adobe-denoise-cuda"))]
+      return Err(invalid(
+        "CUDA requires Linux and the adobe-denoise-cuda Cargo feature",
+      ));
+    }
+    if self.is_coreml() {
+      #[cfg(feature = "adobe-denoise-coreml")]
+      return coreml::identity(self);
+      #[cfg(not(feature = "adobe-denoise-coreml"))]
+      return Err(invalid(
+        "Core ML requires macOS and the adobe-denoise-coreml Cargo feature",
+      ));
+    }
+    if self == Self::Cpu {
+      return Ok("cpu-f32-v1".into());
+    }
+    #[cfg(feature = "adobe-denoise-gpu")]
+    match gpu::context(self) {
+      Ok(context) => return Ok(context.identity().into()),
+      Err(_) if self == Self::Auto => return Ok("cpu-f32-v1".into()),
+      Err(error) => return Err(invalid(error)),
+    }
+    #[cfg(not(feature = "adobe-denoise-gpu"))]
+    if self == Self::Auto {
+      Ok("cpu-f32-v1".into())
+    } else {
+      Err(invalid(
+        "GPU backend requires the adobe-denoise-gpu Cargo feature",
+      ))
+    }
+  }
 }
 
 /// Public metadata for inspecting a runtime model without executing it.
@@ -102,9 +196,103 @@ pub struct ModelInfo<'a> {
   pub output_shape: [usize; 3],
   pub layers: usize,
   pub parameters: usize,
+  pub backend: &'a str,
 }
 
 impl Model {
+  /// Explicit opt-in to accelerated inference. `load` remains the CPU oracle.
+  pub fn load_with_backend(path: impl AsRef<Path>, backend: Backend) -> Result<Self> {
+    if backend.is_coreml() {
+      #[cfg(feature = "adobe-denoise-coreml")]
+      {
+        let mut model = Self::load(&path)?;
+        model.coreml = Some(coreml::CoreMlModel::load(path.as_ref(), &model, backend)?);
+        return Ok(model);
+      }
+      #[cfg(not(feature = "adobe-denoise-coreml"))]
+      return Err(invalid(
+        "Core ML requires macOS and the adobe-denoise-coreml Cargo feature",
+      ));
+    }
+    Self::load(path)?.with_backend(backend)
+  }
+
+  pub fn with_backend(self, backend: Backend) -> Result<Self> {
+    if backend.is_coreml() {
+      return Err(invalid(
+        "Core ML requires load_with_backend and checksum-bound companion assets",
+      ));
+    }
+    let model = self;
+    #[cfg(feature = "adobe-denoise-coreml")]
+    let model = {
+      let mut model = model;
+      model.coreml = None;
+      model
+    };
+    #[cfg(feature = "adobe-denoise-cuda")]
+    let model = {
+      let mut model = model;
+      model.cuda = None;
+      #[cfg(feature = "adobe-denoise-gpu")]
+      {
+        model.gpu = None;
+      }
+      if backend == Backend::Cuda {
+        model.cuda = Some(cuda::CudaModel::new(&model)?);
+        return Ok(model);
+      }
+      model
+    };
+    #[cfg(not(feature = "adobe-denoise-cuda"))]
+    if backend == Backend::Cuda {
+      return Err(invalid(
+        "CUDA requires Linux and the adobe-denoise-cuda Cargo feature",
+      ));
+    }
+    #[cfg(feature = "adobe-denoise-gpu")]
+    {
+      let mut model = model;
+      model.gpu = None;
+      if backend != Backend::Cpu {
+        match gpu::context(backend) {
+          Ok(context) => model.gpu = Some(gpu::GpuModel::new(&model, context)?),
+          Err(error) if backend == Backend::Auto => {
+            eprintln!("denoise: GPU unavailable; using CPU: {error}");
+          }
+          Err(error) => return Err(invalid(error)),
+        }
+      }
+      Ok(model)
+    }
+    #[cfg(not(feature = "adobe-denoise-gpu"))]
+    {
+      if !matches!(backend, Backend::Cpu | Backend::Auto) {
+        return Err(invalid(
+          "GPU backend requires the adobe-denoise-gpu Cargo feature",
+        ));
+      }
+      Ok(model)
+    }
+  }
+
+  /// Includes implementation revision, device and driver for cache separation.
+  pub fn backend_identity(&self) -> &str {
+    #[cfg(feature = "adobe-denoise-cuda")]
+    if let Some(cuda) = &self.cuda {
+      return cuda.identity();
+    }
+    #[cfg(feature = "adobe-denoise-coreml")]
+    if let Some(coreml) = &self.coreml {
+      return coreml.identity();
+    }
+    #[cfg(feature = "adobe-denoise-gpu")]
+    if let Some(gpu) = &self.gpu {
+      return gpu.identity();
+    }
+    "cpu-f32-v1"
+  }
+
   pub fn load(path: impl AsRef<Path>) -> Result<Self> {
     let mut file = std::fs::File::open(path)?;
     let metadata = file.metadata()?;
@@ -171,7 +359,14 @@ impl Model {
     if weights.iter().any(|w| !w.is_finite()) {
       return Err(invalid("non-finite weights"));
     }
-    Self::validate(m, weights)
+    let model = Self::validate(m, weights)?;
+    #[cfg(feature = "adobe-denoise-coreml")]
+    let model = {
+      let mut model = model;
+      model.bundle_sha256 = format!("{:x}", Sha256::digest(bytes));
+      model
+    };
+    Ok(model)
   }
 
   fn validate(m: Manifest, weights: Vec<f32>) -> Result<Self> {
@@ -304,7 +499,21 @@ impl Model {
       weights,
       shapes,
       uses,
+      #[cfg(feature = "adobe-denoise-coreml")]
+      bundle_sha256: String::new(),
+      #[cfg(feature = "adobe-denoise-coreml")]
+      coreml: None,
+      #[cfg(feature = "adobe-denoise-gpu")]
+      gpu: None,
+      #[cfg(feature = "adobe-denoise-cuda")]
+      cuda: None,
     })
+  }
+
+  /// Encode only the already validated graph; no external ONNX is executed.
+  #[cfg(feature = "adobe-denoise-cuda")]
+  pub fn to_onnx(&self) -> Vec<u8> {
+    onnx::encode(self)
   }
 
   pub fn info(&self) -> ModelInfo<'_> {
@@ -322,12 +531,25 @@ impl Model {
       output_shape: self.manifest.output_shape,
       layers: self.manifest.layers.len(),
       parameters: self.weights.len(),
+      backend: self.backend_identity(),
     }
   }
 
   /// Evaluate one already prepared tile. The caller supplies CHW samples in the
   /// model's input domain. No transfer function, clipping or strength is added.
   pub fn predict(&self, input: &Tensor, cancel: &Cancel) -> Result<Tensor> {
+    #[cfg(feature = "adobe-denoise-cuda")]
+    if let Some(cuda) = &self.cuda {
+      return cuda.predict(input, cancel);
+    }
+    #[cfg(feature = "adobe-denoise-coreml")]
+    if let Some(coreml) = &self.coreml {
+      return coreml.predict(input, cancel);
+    }
+    #[cfg(feature = "adobe-denoise-gpu")]
+    if let Some(gpu) = &self.gpu {
+      return gpu.predict(input, cancel);
+    }
     self.predict_with_observer(input, cancel, |_, _, _| Ok(()))
   }
 
@@ -341,6 +563,18 @@ impl Model {
     mut observe_layer: impl FnMut(usize, &str) -> bool,
     mut observer: impl FnMut(usize, &str, &Tensor) -> Result<()>,
   ) -> Result<Tensor> {
+    #[cfg(feature = "adobe-denoise-cuda")]
+    if self.cuda.is_some() {
+      return Err(invalid("layer observation requires the CPU backend"));
+    }
+    #[cfg(feature = "adobe-denoise-coreml")]
+    if self.coreml.is_some() {
+      return Err(invalid("layer observation requires the CPU backend"));
+    }
+    #[cfg(feature = "adobe-denoise-gpu")]
+    if self.gpu.is_some() {
+      return Err(invalid("layer observation requires the CPU backend"));
+    }
     self.predict_with_observer(input, cancel, |i, name, b| {
       if observe_layer(i, name) {
         observer(i, name, &b.to_planar()?)?;
