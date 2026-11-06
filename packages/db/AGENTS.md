@@ -148,3 +148,7 @@ Any change to embedding serialization must be coordinated across `apps/api/src/i
 ## Tests
 
 API tests use `apps/api/src/__tests__/setup.ts` to create an in-memory SQLite database and apply the shared migrations. If a schema change breaks test setup, update the schema/migration and seed data together. There is no standalone package test script.
+
+## Background RAW preview receipts
+
+Migration `0022_raw_previews.sql` adds `photo_raw_previews` (one private receipt per RAW: source/config/recipe/generation and pair identities, completion/failure, bounded retry state, viewer dimensions/engine) and singleton `preview_revision`. Publication swaps RAW and paired JPEG `photos` artifact fields and increments the revision in one transaction; generation-fenced indexing follows. Receipts never cross public photo DTO boundaries; clients read only `{revision}`. `deletePhotos` explicitly deletes receipts. Current photos own thumbnail-GC references; stale receipts do not protect artifacts or get served. Incremental import reuses these developed generations through ordinary fingerprint validation.

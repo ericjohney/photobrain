@@ -190,6 +190,11 @@ export const generateEmbeddingsFunction = inngest.createFunction(
 			data: {},
 		});
 
+		await step.sendEvent("trigger-raw-previews-v1", {
+			name: "photos/raw-previews.requested",
+			data: {},
+		});
+
 		return { processed: processedCount, successful: successCount };
 	},
 );

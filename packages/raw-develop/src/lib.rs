@@ -4,7 +4,7 @@
 //! linear colour, exposure, sharpening, look, output). LinearRaw DNGs take RawCamera's
 //! "8.dng" variant (no demosaic; colour, exposure and tone from DNG tags).
 //!
-//! The crate is standalone: it is not yet wired into `image-processing` scans.
+//! Used by `image-processing` for asynchronous import previews, interactive editing and exports.
 //!
 //! ```no_run
 //! use raw_develop::{Negative, DevelopSettings, Options, develop};

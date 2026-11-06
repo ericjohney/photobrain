@@ -63,6 +63,7 @@ app.route(
 		db,
 		config.RAW_DEVELOP_ENGINE,
 		!!config.DENOISE_MODEL_DIR,
+		() => inngest.send({ name: "photos/raw-previews.requested", data: {} }),
 	),
 );
 app.route(
@@ -108,6 +109,7 @@ app.all("/api/trpc/*", async (c) => {
 app.route(
 	"/api",
 	createExportsRouter({
+		storedPreviews: { thumbnailsDirectory: config.THUMBNAILS_DIRECTORY },
 		database: db,
 		photoDirectory: config.PHOTO_DIRECTORY,
 		renderer: nativeExecutor,

@@ -10,7 +10,7 @@ PhotoBrain is a self-hosted photo library with a Lightroom-inspired web interfac
 - CLIP semantic search with embeddings generated after a scan.
 - EXIF extraction through `exiftool`, including camera, lens, exposure, date, GPS, and orientation data.
 - Standard image, HEIF/HEIC, common RAW, and video (`.mp4`, `.mov`, `.m4v`) discovery; videos get `ffmpeg` poster thumbnails, duration/codec metadata, Range-streamed playback, and Live Photo pairing.
-- RAW display through embedded JPEG previews extracted with `exiftool`; this checkout does not demosaic RAW files.
+- RAW photos appear first using embedded JPEG previews, then supported Fujifilm RAF, Sony ARW and Apple ProRAW DNG photos receive RAW-developed thumbnails and viewer previews asynchronously.
 - Perceptual hashes for duplicate and burst grouping.
 - Automatic face grouping into people (offline YuNet detection and SFace embeddings), with naming, hiding, merging, per-face correction, a person filter, and loupe face boxes on web and native iOS.
 - Phone and browser backup: native iOS backs up the camera roll in the background, and the web app uploads by picker or drag-and-drop. Originals land in `Uploads/{device}/{YYYY}/{MM}/`, are deduplicated by content and asset, and are imported by a debounced incremental scan. Off unless `UPLOADS_ENABLED=true`.
@@ -160,7 +160,7 @@ IOS_DESTINATION='platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5' \
 | `DATABASE_URL` | `./photobrain.db` | SQLite path, relative to the API process |
 | `PHOTO_DIRECTORY` | `../../temp-photos` | Directory scanned by Inngest |
 | `THUMBNAILS_DIRECTORY` | `./thumbnails` | Generated thumbnail root |
-| `RAW_DEVELOP_ENGINE` | `apple` | Server loupe Developed renderer: `apple` or experimental `adobe` for supported RAF/ARW; ProRAW always uses Apple |
+| `RAW_DEVELOP_ENGINE` | `apple` | Background previews, RAW editing and export renderer: `apple` or experimental `adobe` for supported RAF/ARW; ProRAW always uses Apple |
 | `ADOBE_PROFILE_DIR` | unset | Runtime Adobe Standard DCP directory, required when `RAW_DEVELOP_ENGINE=adobe`; profiles are not bundled |
 | `DENOISE_BACKEND` | `auto` | Server denoise executor. Production CUDA image uses `cuda`; Mac can explicitly select `coreml` or `coreml-gpu`. Auto selects Metal/Vulkan with initialization fallback. See [setup and validation](packages/raw-develop/docs/adobe-denoise-cuda.md). |
 | `NODE_ENV` | `development` | Runtime environment |
@@ -180,7 +180,7 @@ IOS_DESTINATION='platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5' \
 
 More photo workers use more decoded-image memory. Reduce `PHOTO_PROCESSING_THREADS` on memory-constrained hosts; storage, ExifTool, startup, and the final few photos can still leave CPUs idle. See [historical measured CPU, memory, and throughput](docs/import-performance.md#continuous-pool--2026-09-19).
 
-To try the experimental Adobe renderer in the iOS loupe's **Show Developed RAW** view,
+To use the Adobe renderer for background previews, RAW editing and developed exports,
 start the API from the repository root with locally installed camera profiles:
 
 ```bash
@@ -191,8 +191,7 @@ bun run dev:api
 
 This selects full Adobe development for supported Fujifilm/Sony RAWs. ProRAW continues
 through Apple, and the response's `X-Developed-Engine` header reports the actual engine.
-The **Edit RAW** editor uses the server engine with saved Basic adjustments; ProRAW offers exposure only. Scans, thumbnails and existing preview exports
-keep their existing behavior. On another host, configure a directory containing the
+The **Edit RAW** editor uses the server engine with saved Basic adjustments; ProRAW offers exposure only. Background previews use the saved recipe, and ordinary viewing reads stored images. Existing `/export` downloads retain their embedded-preview behavior. On another host, configure a directory containing the
 required DCPs (mount it at runtime for Docker); the application never downloads or
 bundles them. Missing camera profiles return a development error. See
 [Adobe engine setup and limitations](packages/raw-develop/docs/adobe-engine.md#app-integration).
@@ -223,7 +222,7 @@ The production Bun server reads `API_URL`, `HOST`, and `PORT`. It injects the AP
 
 ### Native iOS
 
-Building the app requires Xcode 26.6 and rustup Rust 1.98.0 with iOS device and simulator targets. The Xcode build phase compiles the local RAW engine automatically. See [RAW editing setup](packages/raw-develop/docs/interactive-editing.md#build-and-package). In the loupe, **Edit RAW** offers server-rendered Exposure, Contrast, Highlights, Shadows, Whites and Blacks for Adobe RAWs (exposure only for ProRAW), Before/After, Reset and explicit Save/Cancel. Saved adjustments reopen with the photo and apply to **Show Developed RAW** and **Share Developed Photo**, which exports a full-resolution Display P3 JPEG. Original RAWs remain intact. Apply migration `0021_photo_raw_edits.sql` and rebuild the native addon before using the new editor.
+Building the app requires Xcode 26.6 and rustup Rust 1.98.0 with iOS device and simulator targets. The Xcode build phase compiles the local RAW engine automatically. See [RAW editing setup](packages/raw-develop/docs/interactive-editing.md#build-and-package). In the loupe, **Edit RAW** offers server-rendered Exposure, Contrast, Highlights, Shadows, Whites and Blacks for Adobe RAWs (exposure only for ProRAW), Before/After, Reset and explicit Save/Cancel. Saved adjustments reopen with the photo, refresh library previews asynchronously, and apply to **Share Developed Photo**, which exports a full-resolution Display P3 JPEG. Original RAWs remain intact. Apply migration `0021_photo_raw_edits.sql` and rebuild the native addon before using the new editor.
 
 The native app's `PhotoBrainAPIURL` comes from the selected file under `apps/ios/Config`. Debug uses `http://localhost:3000`; Preview and Production use the configured non-local HTTPS origin and reject local/insecure origins.
 
@@ -271,6 +270,10 @@ Use **Reprocess all photos** in the web toolbar or native iOS **Library Options*
 Media work enters a continuously fed pool with new paths first; workers do not wait for an input batch, and photos appear in clients as they finish and commit. Inngest checkpoints every 20 completed results while native work continues behind bounded queues. After media processing, one embedding job reads committed `large` WebP previews in batches of 16 and stores CLIP vectors. Embedding remains active work, not completion. Web combines Realtime with durable polling; native iOS recovers and polls durable scan status through `/api/v1`.
 
 The native pipeline independently prefetches `exiftool` metadata (up to 20 photos per command), uses separate ExifTool commands for embedded RAW previews, `libheif-rs` for HEIF decoding, and the Rust `image` crate for standard formats. A shared Rayon pool defaults to available CPU capacity, with `PHOTO_PROCESSING_THREADS` as a memory/concurrency override. See [`packages/image-processing/AGENTS.md`](packages/image-processing/AGENTS.md) for format and processing caveats.
+
+After scan and initial indexing finish, `develop-raw-previews-v1` develops supported RAWs one at a time. Photos stay visible throughout: each successful render atomically replaces all four thumbnails (including the stacked JPEG's previews) and publishes a stored 2048-pixel Display P3 JPEG for the larger viewer. iOS and web check a small preview revision every five seconds while foregrounded, then refresh image cache tokens automatically. Ordinary viewing does no RAW development. Originals and pHash remain unchanged; embeddings, tags, quality and faces refresh against the new generation.
+
+The background job also runs every five minutes to backfill existing tracked photos and recover interrupted work, with at most 100 photos per run and continuation events. Saved edits queue replacement previews. Unsupported cameras or failed development retain the last usable previews, with up to three attempts per source/configuration/recipe generation, an hour apart. Denoise is used only when explicitly saved in the recipe. Apply `0022_raw_previews.sql`, rebuild the native addon, and run the registered Inngest functions before enabling this code; an updated iOS build is needed for automatic refresh. Smart previews for local **Edit RAW** remain prepared on demand; full-resolution developed sharing still renders the saved recipe afresh.
 
 Generated previews use lossy WebP color encoding (quality 80/85/85/90 for tiny/small/medium/large) and lossless alpha encoding. Original photo files are not modified. A thumbnail generation failure does not mark that photo ready.
 

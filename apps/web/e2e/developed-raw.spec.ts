@@ -3,7 +3,7 @@ import { TINY_JPEG_BYTES } from "./fixtures/images";
 import { expect, test } from "./fixtures/test";
 
 const RENDITION = '[data-testid="loupe-rendition"]';
-const TOGGLE = 'role=button[name="Show developed RAW"]';
+const TOGGLE = 'role=button[name="Show larger preview"]';
 const MAIN_IMAGE = '[data-testid="loupe-view"] img[alt]:not([alt=""])';
 
 async function openLoupe(page: Page, id: number) {
@@ -38,13 +38,11 @@ test("RAW loupe switches from embedded preview to developed render", async ({
 	});
 
 	await openLoupe(page, 2);
-	await expect(page.locator(RENDITION)).toHaveText(
-		"Embedded preview · 1600 px",
-	);
+	await expect(page.locator(RENDITION)).toHaveText("Preview · 1600 px");
 	await expect(page.locator(TOGGLE)).toHaveAttribute("aria-pressed", "false");
 
 	await page.locator(TOGGLE).click();
-	await expect(page.locator(RENDITION)).toHaveText("Developing…");
+	await expect(page.locator(RENDITION)).toHaveText("Loading preview…");
 	// The embedded preview stays on screen while developing.
 	await expect(page.locator(MAIN_IMAGE)).toHaveAttribute(
 		"src",
@@ -52,7 +50,7 @@ test("RAW loupe switches from embedded preview to developed render", async ({
 	);
 
 	release();
-	await expect(page.locator(RENDITION)).toHaveText("Developed · 9504 × 6336");
+	await expect(page.locator(RENDITION)).toHaveText("Preview · 9504 × 6336");
 	await expect(page.locator(RENDITION)).toHaveAttribute(
 		"data-rendition",
 		"developed",
@@ -62,16 +60,14 @@ test("RAW loupe switches from embedded preview to developed render", async ({
 
 	// R switches back and forth; the preference persists across reloads.
 	await page.keyboard.press("r");
-	await expect(page.locator(RENDITION)).toHaveText(
-		"Embedded preview · 1600 px",
-	);
+	await expect(page.locator(RENDITION)).toHaveText("Preview · 1600 px");
 	await page.keyboard.press("r");
-	await expect(page.locator(RENDITION)).toHaveText("Developed · 9504 × 6336");
+	await expect(page.locator(RENDITION)).toHaveText("Preview · 9504 × 6336");
 	await page.reload();
 	await page.keyboard.press("g");
 	await page.locator('[data-photo-id="2"]').dblclick();
 	await expect(page.locator(TOGGLE)).toHaveAttribute("aria-pressed", "true");
-	await expect(page.locator(RENDITION)).toHaveText("Developed · 9504 × 6336");
+	await expect(page.locator(RENDITION)).toHaveText("Preview · 9504 × 6336");
 });
 
 test("without size headers, the label uses the decoded image size", async ({
@@ -86,7 +82,7 @@ test("without size headers, the label uses the decoded image size", async ({
 	);
 	await openLoupe(page, 2);
 	await page.locator(TOGGLE).click();
-	await expect(page.locator(RENDITION)).toHaveText(/^Developed · \d+ × \d+$/);
+	await expect(page.locator(RENDITION)).toHaveText(/^Preview · \d+ × \d+$/);
 });
 
 test("unsupported camera shows a reason and keeps the preview", async ({

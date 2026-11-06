@@ -6,6 +6,7 @@ import {
 	clearDevelopedRawCache,
 	detectFaces,
 	discoverPhotos,
+	generateDevelopedPreviews,
 	prepareSmartPreview,
 	processPhotosBatch,
 	renderDevelopedRaw,
@@ -144,6 +145,12 @@ async function execute(
 			await closeSession();
 			if (shuttingDown) return;
 			switch (request.operation) {
+				case "generateDevelopedPreviews":
+					response = {
+						id: request.id,
+						result: generateDevelopedPreviews(...request.args),
+					};
+					break;
 				case "discoverPhotos":
 					response = {
 						id: request.id,

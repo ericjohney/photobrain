@@ -5,6 +5,7 @@ import { detectFacesFunction } from "./functions/faces";
 import { libraryMaintenanceFunction } from "./functions/maintenance";
 import { placePhotosFunction } from "./functions/places";
 import { analyzeQualityFunction } from "./functions/quality";
+import { developRawPreviewsFunction } from "./functions/raw-previews";
 import { scanPhotosFunction } from "./functions/scan";
 import { tagPhotosFunction } from "./functions/tags";
 import { scanAfterUploadFunction } from "./functions/uploads";
@@ -12,6 +13,7 @@ import { scanAfterUploadFunction } from "./functions/uploads";
 export { inngest };
 
 export const functions = [
+	developRawPreviewsFunction,
 	scanPhotosFunction,
 	generateEmbeddingsFunction,
 	tagPhotosFunction,

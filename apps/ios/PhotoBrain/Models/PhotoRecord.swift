@@ -184,7 +184,7 @@ struct PhotoRecord: Identifiable, Hashable, Codable, Sendable {
         durationMs = dto.durationMs
         videoCodec = dto.videoCodec
         motionVideoId = dto.motionVideoId
-        fileURL = Self.fileURL(baseURL: apiBaseURL, id: dto.id)
+        fileURL = Self.fileURL(baseURL: apiBaseURL, id: dto.id, updatedAt: dto.thumbnailUpdatedAt)
         motionVideoURL = dto.motionVideoId.map { Self.fileURL(baseURL: apiBaseURL, id: $0) }
     }
 
@@ -213,12 +213,14 @@ struct PhotoRecord: Identifiable, Hashable, Codable, Sendable {
     }
 
     /// `GET /api/photos/{id}/file`, a binary route outside `/api/v1`.
-    static func fileURL(baseURL: URL, id: Int) -> URL {
-        baseURL
+    static func fileURL(baseURL: URL, id: Int, updatedAt: Date? = nil) -> URL {
+        let url = baseURL
             .appendingPathComponent("api")
             .appendingPathComponent("photos")
             .appendingPathComponent(String(id))
             .appendingPathComponent("file")
+        guard let updatedAt else { return url }
+        return url.appending(queryItems: [URLQueryItem(name: "v", value: String(Int64(updatedAt.timeIntervalSince1970 * 1000)))])
     }
 }
 

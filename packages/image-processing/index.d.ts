@@ -226,3 +226,6 @@ export function prepareSmartPreview(
 	cancel?: Int32Array,
 	options?: DevelopedRawOptions,
 ): SmartPreview;
+
+export interface DevelopedPreviewFiles { width: number; height: number; engine: string }
+export function generateDevelopedPreviews(path: string, key: string, root: string, options?: DevelopedRawOptions): DevelopedPreviewFiles

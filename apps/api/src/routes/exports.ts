@@ -27,10 +27,12 @@ import {
 	readRawEdit,
 	validateRawTone,
 } from "../services/raw-edits";
+import { storedRawPreview } from "../services/raw-previews";
 import { rawEditBodyLimit, rawEditErrorResponse } from "./raw-edits";
 import { collectionIdSchema, photoIdSchema } from "./v1-schemas";
 
 export type ExportDependencies = {
+	storedPreviews?: { thumbnailsDirectory: string };
 	database: ApiDatabase;
 	photoDirectory: string;
 	renderer: ExportRenderer;
@@ -178,8 +180,8 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 		});
 	});
 
-	// Full RAW development (raw-develop) for the loupe's "Developed" view: a
-	// full-resolution Display P3 JPEG, rendered on demand and not cached.
+	// Ordinary viewing reads stored import previews. Editing and full-resolution
+	// downloads use the cancellable RAW renderer below.
 	router.use("/photos/:id/developed", rawEditBodyLimit);
 	router.on(["GET", "POST"], "/photos/:id/developed", async (context) => {
 		const id = photoIdSchema.safeParse(context.req.param("id"));
@@ -198,6 +200,36 @@ export function createExportsRouter(dependencies: ExportDependencies) {
 		if (!photo) return errorResponse("PHOTO_NOT_FOUND", "Photo not found", 404);
 		if (!photo.isRaw)
 			return errorResponse("NOT_RAW", "Only RAW photos can be developed", 422);
+		if (
+			context.req.method === "GET" &&
+			context.req.query("download") !== "1" &&
+			dependencies.storedPreviews
+		) {
+			const stored = storedRawPreview(
+				database,
+				id.data,
+				dependencies.storedPreviews.thumbnailsDirectory,
+			);
+			if (!stored || !(await Bun.file(stored.path).exists()))
+				return errorResponse(
+					"PREVIEW_PENDING",
+					"The import preview is not ready",
+					404,
+				);
+			return new Response(Bun.file(stored.path), {
+				headers: {
+					"Content-Type": stored.contentType,
+					"Cache-Control": "private, no-cache",
+					"X-Developed-Engine": stored.engine ?? "embedded",
+					...(stored.width && stored.height
+						? {
+								"X-Developed-Width": String(stored.width),
+								"X-Developed-Height": String(stored.height),
+							}
+						: {}),
+				},
+			});
+		}
 		let edit: ReturnType<typeof readRawEdit>;
 		let preview:
 			| {

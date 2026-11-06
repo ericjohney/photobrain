@@ -15,20 +15,20 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { EmptyState } from "@/components/ui/empty-state";
-import {
-	type DevelopedRaw,
-	developableRawId,
-	useDevelopedRaw,
-} from "@/hooks/use-developed-raw";
 import { badgeVariants, RawBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+	type DevelopedRaw,
+	developableRawId,
+	useDevelopedRaw,
+} from "@/hooks/use-developed-raw";
 import { rawBadge } from "@/lib/raw-badge";
 import { getFullImageUrl, getThumbnailUrl } from "@/lib/thumbnails";
 import type { PhotoFace, PhotoMetadata } from "@/lib/types";
@@ -64,10 +64,10 @@ function renditionLabel(
 		// Headers when exposed, else the decoded image's natural size.
 		const width = developed.width || decoded?.width;
 		const height = developed.height || decoded?.height;
-		return width && height ? `Developed · ${width} × ${height}` : "Developed";
+		return width && height ? `Preview · ${width} × ${height}` : "Preview";
 	}
-	if (enabled && developed.status === "loading") return "Developing…";
-	return "Embedded preview · 1600 px";
+	if (enabled && developed.status === "loading") return "Loading preview…";
+	return "Preview · 1600 px";
 }
 
 /**
@@ -267,22 +267,18 @@ export function LoupeView({
 	const [livePlaying, setLivePlaying] = useState(false);
 	const stopLive = useCallback(() => setLivePlaying(false), []);
 	const rawId = developableRawId(photo);
-	const developed = useDevelopedRaw(showDeveloped ? rawId : null);
+	const developed = useDevelopedRaw(
+		showDeveloped ? rawId : null,
+		photo?.thumbnailUpdatedAt,
+	);
 	const showingDeveloped = showDeveloped && developed.status === "ready";
 
 	// Reset image loaded and Live playback state when photo changes
 	useEffect(() => {
+		if (!photo?.id) return;
 		setImageLoaded(false);
 		setLivePlaying(false);
 	}, [photo?.id]);
-
-	const handleZoomChange = useCallback(() => {
-		setZoomLevel((current) => {
-			if (current === "fit") return "fill";
-			if (current === "fill") return "100";
-			return "fit";
-		});
-	}, []);
 
 	const handlePrev = useCallback(() => {
 		onNavigate?.("prev");
@@ -540,7 +536,7 @@ export function LoupeView({
 									variant="glass-ghost"
 									size="icon-sm"
 									aria-pressed={showDeveloped}
-									aria-label="Show developed RAW"
+									aria-label="Show larger preview"
 									onClick={onToggleDeveloped}
 								>
 									<Aperture
@@ -550,8 +546,8 @@ export function LoupeView({
 							</TooltipTrigger>
 							<TooltipContent>
 								{showDeveloped
-									? "Show embedded preview (R)"
-									: "Develop full RAW (R)"}
+									? "Show standard preview (R)"
+									: "Show larger preview (R)"}
 							</TooltipContent>
 						</Tooltip>
 					)}

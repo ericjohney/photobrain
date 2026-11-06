@@ -620,3 +620,33 @@ export type Upload = typeof uploads.$inferSelect;
 export type NewUpload = typeof uploads.$inferInsert;
 export type UploadAsset = typeof uploadAssets.$inferSelect;
 export type NewUploadAsset = typeof uploadAssets.$inferInsert;
+
+// Durable receipts for the asynchronous RAW display-preview pass. Private: never in photo DTOs.
+export const photoRawPreviews = sqliteTable(
+	"photo_raw_previews",
+	{
+		photoId: integer("photo_id")
+			.primaryKey()
+			.references(() => photos.id, { onDelete: "cascade" }),
+		thumbnailKey: text("thumbnail_key").notNull(),
+		sourceFingerprint: text("source_fingerprint").notNull(),
+		recipeRevision: integer("recipe_revision").notNull(),
+		configKey: text("config_key").notNull(),
+		pairPhotoId: integer("pair_photo_id"),
+		pairThumbnailKey: text("pair_thumbnail_key"),
+		status: text("status", { enum: ["completed", "failed"] }).notNull(),
+		attempts: integer("attempts").notNull().default(0),
+		retryAt: integer("retry_at", { mode: "timestamp" }),
+		error: text("error"),
+		width: integer("width"),
+		height: integer("height"),
+		engine: text("engine"),
+	},
+	(table) => [index("idx_raw_previews_pair").on(table.pairPhotoId)],
+);
+
+// A small public polling token; advanced in the same transaction as preview publication.
+export const previewRevision = sqliteTable("preview_revision", {
+	id: integer("id").primaryKey(),
+	revision: integer("revision").notNull().default(0),
+});

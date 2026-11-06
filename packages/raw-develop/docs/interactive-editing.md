@@ -5,6 +5,10 @@ immutable `Prepared` image; exposure, tone amount, crop and rotation can change 
 decoding or preparing again. The existing one-shot `develop` uses the same implementation.
 See [usage](usage.md#repeated-editing) for the API and cache invalidation rules.
 
+## Stored viewing previews
+
+Ordinary viewing uses import artifacts: embedded previews first, followed asynchronously by full-quality RAW-derived thumbnails and a 2048-pixel P3 JPEG. `GET /api/photos/:id/developed` reads the stored JPEG or initial WebP without developing. Foreground clients check a revision every five seconds and refresh grids and open viewers when publication changes their cache tokens. Migration `0022_raw_previews.sql` stores generation/retry receipts. The background job runs after scan/indexing, also backfills every five minutes, and retains existing previews for unsupported cameras or failures.
+
 ## Smart previews and saved edits
 
 The iOS loupe’s **Edit RAW** downloads a full-quality, prepared 2048-pixel smart preview once, then runs the linked Rust renderer locally. Adobe RAF/ARW previews expose Exposure, Contrast, Highlights, Shadows, Whites and Blacks; ProRAW keeps Apple and Exposure only. Dragging renders at 1024 pixels and release at 2048. **Before / After**, **Reset**, and saved recipes share the same working state. No RAW decode or runtime Adobe profile is needed on the phone.
@@ -17,7 +21,7 @@ The phone caches previews and photo metadata in origin-scoped Application Suppor
 
 **Save** queues a revision-checked recipe locally before attempting sync. Offline saves remain in the editor with “Saved on device”; startup, foreground, reopening the editor and developed sharing retry sync. Conflicts preserve local edits and never overwrite newer server settings. **Reload Saved Adjustments** explicitly confirms replacing the local draft/queue with the server version. Full-resolution **Share Developed Photo** must finish syncing first; it fails when offline or conflicted rather than exporting an older recipe. Ordinary photo/original sharing keeps its existing behavior.
 
-`GET /api/v1/photos/:id/raw-edit` returns `{ settings, revision, engine, supportsTone }`; `PUT` takes `{ settings, revision }`. Version 1 settings support exposure -5..5 EV in hundredths and integer tone controls -100..100. A stale revision returns 409 `RAW_EDIT_CONFLICT`. Migration `0021_photo_raw_edits.sql` stores independent user recipes and scans preserve them. The original RAW and library thumbnails are never overwritten by an edit.
+`GET /api/v1/photos/:id/raw-edit` returns `{ settings, revision, engine, supportsTone }`; `PUT` takes `{ settings, revision }`. Version 1 settings support exposure -5..5 EV in hundredths and integer tone controls -100..100. A stale revision returns 409 `RAW_EDIT_CONFLICT`. Migration `0021_photo_raw_edits.sql` stores independent user recipes and scans preserve them. The original RAW stays intact. Saving queues background replacement of the library thumbnails and stored viewer JPEG; the previous previews stay visible until publication.
 
 Older servers retain the server-preview fallback: POST `/api/photos/:id/developed` coalesces slider renders using the existing 1024/2048 proxy cache with 60 s idle expiry. GET `/api/photos/:id/developed?download=1` always renders the saved recipe afresh at full resolution with Display P3 ICC. Server preview POSTs never save.
 

@@ -222,6 +222,7 @@ if (process.env.PHOTOBRAIN_EMBEDDING_TEST_CHILD !== "1") {
 			{ id: "trigger-photo-tags-v1", name: "photos/quality.requested" },
 			{ id: "trigger-photo-tags-v1", name: "photos/places.requested" },
 			{ id: "trigger-photo-faces-v1", name: "photos/faces.requested" },
+			{ id: "trigger-raw-previews-v1", name: "photos/raw-previews.requested" },
 		]);
 	});
 

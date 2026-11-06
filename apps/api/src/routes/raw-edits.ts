@@ -68,6 +68,7 @@ export function createRawEditsRouter(
 	database: ApiDatabase,
 	engine: RawEngine,
 	denoiseEnabled = false,
+	notifyPreview?: () => Promise<unknown>,
 ) {
 	const router = new Hono();
 	const capability = (id: number, actualEngine: RawEngine) => {
@@ -127,6 +128,12 @@ export function createRawEditsRouter(
 				input.data.settings,
 				engine,
 			);
+			// The persisted recipe is the durable queue; cron recovers failed dispatch.
+			try {
+				await notifyPreview?.();
+			} catch (error) {
+				console.error("RAW preview dispatch failed", error);
+			}
 			return context.json({
 				...saved,
 				supportsDenoise: capability(id.data, saved.engine),

@@ -135,6 +135,7 @@ protocol PhotoBrainAPI: Sendable {
     func resolveDuplicateGroup(key: String, resolution: DuplicateResolution) async throws -> ResolveDuplicateGroupResponseDTO
     func startScan(force: Bool) async throws -> StartScanResponseDTO
     func scan(id: String) async throws -> ScanDTO?
+    func previewRevision() async throws -> Int?
     func activeScans() async throws -> ActiveScansResponseDTO
     /// Downloads an export into its own temporary directory and returns the file, named from
     /// `Content-Disposition`. A failed or cancelled download leaves no files behind; the caller
@@ -191,6 +192,12 @@ final class APIClient: @unchecked Sendable, PhotoBrainAPI {
         }
         decoder = APIModelCoding.decoder()
         encoder = APIModelCoding.encoder()
+    }
+
+    func previewRevision() async throws -> Int? {
+        struct Revision: Decodable { let revision: Int }
+        let result: Revision = try await get(path: ["previews", "revision"])
+        return result.revision
     }
 
     func folders() async throws -> FoldersResponseDTO {
@@ -900,6 +907,7 @@ private final class APITransferMetricsDelegate: NSObject, URLSessionTaskDelegate
 
 
 extension PhotoBrainAPI {
+    func previewRevision() async throws -> Int? { nil }
     func startDenoise(photoId: Int, amount: Int, revision: Int) async throws -> DenoiseJob { throw PhotoBrainAPIError.invalidRequest }
     func denoiseJob(photoId: Int, jobID: String) async throws -> DenoiseJob { throw PhotoBrainAPIError.invalidRequest }
     func cancelDenoise(photoId: Int, jobID: String) async throws { }

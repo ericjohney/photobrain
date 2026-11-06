@@ -5,9 +5,11 @@ import {
 	type ThumbnailSize,
 } from "@photobrain/utils";
 import type { BunFile } from "bun";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { config } from "../config";
 import { db } from "../db";
+import { photoRawPreviews } from "../db/schema";
 import { parseByteRange } from "../services/byte-range";
 import { originalFilePath } from "../services/photo-files";
 
@@ -71,9 +73,19 @@ router.get("/:id/file", async (c) => {
 
 		// For RAW files, serve the large thumbnail instead of the original
 		// (browsers can't display RAW files directly)
-		if (photo.isRaw) {
+		const rawPairPreview = db
+			.select()
+			.from(photoRawPreviews)
+			.where(
+				and(
+					eq(photoRawPreviews.pairPhotoId, photo.id),
+					eq(photoRawPreviews.thumbnailKey, photo.thumbnailKey ?? ""),
+				),
+			)
+			.get();
+		if (photo.isRaw || rawPairPreview) {
 			// Check if conversion was successful
-			if (photo.rawStatus !== "converted") {
+			if (photo.isRaw && photo.rawStatus !== "converted") {
 				return c.json(
 					{
 						error: "RAW file not converted",

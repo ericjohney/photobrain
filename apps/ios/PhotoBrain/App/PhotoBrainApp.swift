@@ -160,6 +160,7 @@ private struct RootTabView: View {
     @State private var libraryUtility: LibraryUtility?
     @State private var gearStatsPresented = false
     @State private var calendarPresented = false
+    @State private var previewRevision: Int?
 
     @ViewBuilder
     private var tabs: some View {
@@ -265,6 +266,23 @@ private struct RootTabView: View {
         .environment(\.showInLibrary, ShowInLibraryAction { shortcut in
             showInSearch(shortcut)
         })
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                if let revision = try? await environment.api.previewRevision(), !Task.isCancelled {
+                    if previewRevision != revision {
+                        previewRevision = revision
+                        NotificationCenter.default.post(name: .rawPreviewsUpdated, object: environment.api.baseURL)
+                        search.retry()
+                        await onThisDay.load()
+                        await collections.load()
+                        await smartAlbums.load()
+                        await events.load()
+                    }
+                }
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            }
+        }
         .preferredColorScheme(theme.preference.colorScheme)
         .onAppear {
             applyPendingLink()

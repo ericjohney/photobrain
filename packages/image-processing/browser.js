@@ -36,3 +36,7 @@ export function clearDevelopedRawCache() {
 }
 
 module.exports.prepareSmartPreview = notAvailable("prepareSmartPreview");
+
+module.exports.generateDevelopedPreviews = notAvailable(
+	"generateDevelopedPreviews",
+);

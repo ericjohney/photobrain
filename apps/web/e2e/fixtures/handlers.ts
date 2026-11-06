@@ -3,8 +3,8 @@ import superjson, { type SuperJSONResult } from "superjson";
 import { TINY_JPEG_BYTES, TINY_WEBP_BYTES } from "./images";
 import {
 	FIXTURE_DUPLICATE_GROUPS,
-	FIXTURE_FOLDERS,
 	FIXTURE_FACES,
+	FIXTURE_FOLDERS,
 	FIXTURE_JUNK_REASONS,
 	FIXTURE_PEOPLE,
 	FIXTURE_PHOTO_PLACES,
@@ -858,6 +858,7 @@ function createDefaultHandlers(
 			};
 		},
 		scan: () => ({ success: true, jobId: FIXTURE_JOB_ID }),
+		previewRevision: () => ({ revision: 0 }),
 		scanStatus: (input) => ({
 			id:
 				typeof input === "object" && input !== null && "jobId" in input
@@ -923,7 +924,8 @@ export async function installTrpcHandlers(
 						},
 					};
 				}
-				(calls[path] ??= []).push(input);
+				calls[path] ??= [];
+				calls[path].push(input);
 				try {
 					// superjson response envelope preserves Date/undefined/etc via meta
 					const value = await handler(input, defaults);

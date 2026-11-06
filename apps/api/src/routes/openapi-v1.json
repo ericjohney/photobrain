@@ -2892,6 +2892,30 @@
 					}
 				}
 			}
+		},
+		"/api/v1/previews/revision": {
+			"get": {
+				"summary": "Current background RAW preview publication revision",
+				"responses": {
+					"200": {
+						"description": "Opaque monotonic revision; refetch photo metadata when it changes.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["revision"],
+									"properties": {
+										"revision": {
+											"type": "integer",
+											"minimum": 0
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {

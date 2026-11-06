@@ -46,9 +46,9 @@ final class DevelopedRawTests: XCTestCase {
     }
 
     func testLabelsSayWhichRenditionIsShown() {
-        XCTAssertEqual(LoupeRendition.embedded.label, "Embedded preview · 1600 px")
-        XCTAssertEqual(LoupeRendition.developing.label, "Developing…")
-        XCTAssertEqual(LoupeRendition.developed(width: 9504, height: 6336).label, "Developed · 9504 × 6336")
+        XCTAssertEqual(LoupeRendition.embedded.label, "Preview · 1600 px")
+        XCTAssertEqual(LoupeRendition.developing.label, "Loading preview…")
+        XCTAssertEqual(LoupeRendition.developed(width: 9504, height: 6336).label, "Preview · 9504 × 6336")
     }
 
     func testDevelopableRawIDCoversRawsAndPairsOnly() {
@@ -57,6 +57,22 @@ final class DevelopedRawTests: XCTestCase {
         XCTAssertEqual(LoupeRendition.developableRawID(for: pairedJPEG), 13)
         XCTAssertNil(LoupeRendition.developableRawID(for: record(TestModels.photo(id: 1))))
         XCTAssertNil(LoupeRendition.developableRawID(for: nil))
+    }
+
+    func testSamePhotoReloadsWhenBackgroundPreviewGenerationChanges() async {
+        let api = TestAPI()
+        await api.setDevelopedResults([
+            .success(DevelopedRawImage(data: Self.jpeg(), width: 1600, height: 1066)),
+            .success(DevelopedRawImage(data: Self.jpeg(), width: 2048, height: 1365)),
+        ])
+        let store = LoupeDevelopedStore(api: api, defaults: defaults)
+        store.setOn(true, photo: raw)
+        await waitFor(store) { $0 == .developed(width: 1600, height: 1066) }
+        let changed = record(TestModels.photo(id: 2, name: "DSC_0002.ARW", isRaw: true, rawFormat: "ARW", thumbnailUpdatedAt: Date(timeIntervalSince1970: 1_800_000_000)))
+        store.show(changed)
+        await waitFor(store) { $0 == .developed(width: 2048, height: 1365) }
+        let requests = await api.developedRequests
+        XCTAssertEqual(requests, [2, 2])
     }
 
     func testOffByDefaultAndDevelopsOnDemand() async {

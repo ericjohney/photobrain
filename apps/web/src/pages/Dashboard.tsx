@@ -16,6 +16,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { AppHeader, type Crumb } from "@/components/AppHeader";
 import { DuplicateGroupList } from "@/components/DuplicateGroupList";
 import { DuplicatesHeader } from "@/components/DuplicatesHeader";
 import { Filmstrip } from "@/components/Filmstrip";
@@ -28,31 +29,24 @@ import { PhotoGrid } from "@/components/PhotoGrid";
 import { ActivityPanel } from "@/components/panels/ActivityPanel";
 import { AppSidebar } from "@/components/panels/AppSidebar";
 import { MetadataPanel } from "@/components/panels/MetadataPanel";
-import { faceRowId } from "@/components/panels/PhotoPeople";
 import { PanelLayout } from "@/components/panels/PanelLayout";
+import { faceRowId } from "@/components/panels/PhotoPeople";
 import { ReviewHeader } from "@/components/ReviewHeader";
 import { SaveSmartAlbumSheet } from "@/components/SaveSmartAlbumSheet";
-import { AppHeader, type Crumb } from "@/components/AppHeader";
 import { StatusBar, type StatusMode } from "@/components/StatusBar";
-import {
-	EMPTY_LIBRARY_FILTERS,
-	FLAG_FILTER_LABELS,
-	type LibraryFilters,
-	minRatingLabel,
-} from "@/lib/library-filters";
 import { UploadDropZone } from "@/components/UploadDropZone";
 import { Button } from "@/components/ui/button";
 import { RemovableChip } from "@/components/ui/chip";
 import { EmptyState, Spinner } from "@/components/ui/empty-state";
 import { ViewHeader } from "@/components/ui/view-header";
 import { useCollections } from "@/hooks/use-collections";
-import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
-import { useJobProgress } from "@/hooks/use-job-progress";
-import { useJunkReview } from "@/hooks/use-junk-review";
 import {
 	developableRawId,
 	useDevelopedPreference,
 } from "@/hooks/use-developed-raw";
+import { useDuplicateGroups } from "@/hooks/use-duplicate-groups";
+import { useJobProgress } from "@/hooks/use-job-progress";
+import { useJunkReview } from "@/hooks/use-junk-review";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import {
 	useLibraryState,
@@ -66,6 +60,7 @@ import {
 	type CurationPatch,
 	usePhotoCuration,
 } from "@/hooks/use-photo-curation";
+import { usePreviewUpdates } from "@/hooks/use-preview-updates";
 import {
 	fromSmartAlbumFilters,
 	smartAlbumMatches,
@@ -76,6 +71,12 @@ import { useUploads } from "@/hooks/use-uploads";
 import { eventTitle } from "@/lib/events";
 import { downloadUrl, exportFileName } from "@/lib/export";
 import { JUNK_REASON_LABELS } from "@/lib/junk-review";
+import {
+	EMPTY_LIBRARY_FILTERS,
+	FLAG_FILTER_LABELS,
+	type LibraryFilters,
+	minRatingLabel,
+} from "@/lib/library-filters";
 import { photoLocation } from "@/lib/map";
 import { formatCapturedDate } from "@/lib/on-this-day";
 import { exportPhotoUrl } from "@/lib/thumbnails";
@@ -271,6 +272,7 @@ export function Dashboard() {
 	});
 
 	// Job progress tracking via Inngest Realtime
+	usePreviewUpdates();
 	const jobProgress = useJobProgress(activeJobId);
 	const scanDisabled = scanMutation.isPending || jobProgress.isActive;
 	// The upload import scan is tracked like a manual one once it starts.

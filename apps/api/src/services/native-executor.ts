@@ -10,6 +10,7 @@ type NativeOperations = Pick<
 	| "batchGenerateClipEmbeddings"
 	| "validateThumbnails"
 	| "analyzeImageQuality"
+	| "generateDevelopedPreviews"
 	| "renderExportJpeg"
 	| "renderDevelopedRaw"
 	| "prepareSmartPreview"

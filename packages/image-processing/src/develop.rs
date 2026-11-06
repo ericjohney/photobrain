@@ -1,5 +1,5 @@
 //! Full RAW development through `raw-develop` (Apple or opt-in Adobe pipeline), for
-//! the loupe's "Developed" view. Scans and thumbnails keep using the embedded preview.
+//! interactive editing, exports, and background import previews.
 
 mod denoise;
 
@@ -195,7 +195,30 @@ fn develop_internal(
   flag: Option<*const AtomicI32>,
   options: DevelopedRawOptions,
 ) -> Result<DevelopedRaw, String> {
-  use raw_develop::{DevelopSettings, Error, Negative, Options, develop, encode};
+  let (out, engine) = develop_pixels(path, flag, options)?;
+  let jpeg = raw_develop::encode::encode(&out.image, raw_develop::encode::Format::Jpeg(quality))
+    .map_err(|e| e.to_string())?;
+  Ok(DevelopedRaw {
+    jpeg: jpeg.into(),
+    width: out.image.width as u32,
+    height: out.image.height as u32,
+    engine: engine_name(engine).into(),
+  })
+}
+
+fn engine_name(engine: raw_develop::Engine) -> &'static str {
+  match engine {
+    raw_develop::Engine::Apple => "apple",
+    raw_develop::Engine::Adobe => "adobe",
+  }
+}
+
+fn develop_pixels(
+  path: &str,
+  flag: Option<*const AtomicI32>,
+  options: DevelopedRawOptions,
+) -> Result<(raw_develop::Developed, raw_develop::Engine), String> {
+  use raw_develop::{DevelopSettings, Error, Negative, Options, develop};
   // Reject invalid engine names before decoding a potentially large source.
   options.engine(false)?;
   if options
@@ -294,24 +317,70 @@ fn develop_internal(
       }
     };
     token.check().map_err(msg)?;
-    let jpeg = encode::encode(&out.image, encode::Format::Jpeg(quality)).map_err(msg)?;
-    Ok((out, jpeg, opts.engine))
+    Ok((out, opts.engine))
   })();
   done.store(true, Ordering::Relaxed);
   if let Some(w) = watcher {
     let _ = w.join();
   }
-  let (out, jpeg, engine) = result?;
-  Ok(DevelopedRaw {
-    jpeg: jpeg.into(),
-    width: out.image.width as u32,
-    height: out.image.height as u32,
-    engine: match engine {
-      raw_develop::Engine::Apple => "apple",
-      raw_develop::Engine::Adobe => "adobe",
-    }
-    .into(),
-  })
+  result
+}
+
+#[napi(object)]
+pub struct DevelopedPreviewFiles {
+  pub width: u32,
+  pub height: u32,
+  pub engine: String,
+}
+
+/// Full-quality RAW development followed by bounded, colour-tagged display artifacts.
+/// The caller supplies a unique unpublished generation key and publishes only on success.
+#[napi]
+pub fn generate_developed_previews(
+  path: String,
+  key: String,
+  root: String,
+  options: Option<DevelopedRawOptions>,
+) -> napi::Result<DevelopedPreviewFiles> {
+  let result = (|| -> Result<_, String> {
+    let mut options = options.unwrap_or_default();
+    options.max_edge = None;
+    let (out, engine) = develop_pixels(&path, None, options)?;
+    let width = out.image.width as u32;
+    let height = out.image.height as u32;
+    let pixels = out
+      .image
+      .data
+      .iter()
+      .map(|v| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8)
+      .collect();
+    let rgb = image::RgbImage::from_raw(width, height, pixels).ok_or("Invalid RAW dimensions")?;
+    drop(out);
+    let image = image::DynamicImage::ImageRgb8(rgb);
+    let icc = raw_develop::encode::display_p3_icc();
+    crate::thumbnails::generate_profiled_thumbnails(&image, &key, &root, &icc)?;
+    let preview = if width.max(height) > 2048 {
+      image.resize(2048, 2048, image::imageops::FilterType::Lanczos3)
+    } else {
+      image
+    };
+    use image::{GenericImageView, ImageEncoder};
+    let (width, height) = preview.dimensions();
+    let filename = std::path::Path::new(&root)
+      .join("large")
+      .join(&key)
+      .with_extension("jpg");
+    let file = std::fs::File::create(filename).map_err(|e| e.to_string())?;
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(file, 95);
+    encoder.set_icc_profile(icc).map_err(|e| e.to_string())?;
+    encoder.encode_image(&preview).map_err(|e| e.to_string())?;
+    Ok(DevelopedPreviewFiles {
+      width,
+      height,
+      engine: engine_name(engine).into(),
+    })
+  })();
+  result.map_err(napi::Error::from_reason)
 }
 
 #[cfg(test)]

@@ -596,6 +596,7 @@ describe("API v1 contract", () => {
 			"/api/v1/photos/{id}/raw-edit",
 			"/api/v1/photos/{id}/similar",
 			"/api/v1/photos/{id}/tags",
+			"/api/v1/previews/revision",
 			"/api/v1/review/junk",
 			"/api/v1/review/junk/resolve",
 			"/api/v1/scans",

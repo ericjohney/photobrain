@@ -334,6 +334,11 @@ export const scanPhotosFunction = inngest.createFunction(
 				data: {},
 			});
 		}
+		if (finished)
+			await step.sendEvent("trigger-raw-previews-v1", {
+				name: "photos/raw-previews.requested",
+				data: {},
+			});
 		return result;
 	},
 );

@@ -19,10 +19,10 @@ enum LoupeRendition: Equatable {
     /// The loupe badge text, so the viewer always knows which rendition is shown.
     var label: String {
         switch self {
-        case .embedded: "Embedded preview · 1600 px"
-        case .developing: "Developing…"
-        case let .developed(width, height): "Developed · \(width) × \(height)"
-        case let .failed(message): "Embedded preview · \(message)"
+        case .embedded: "Preview · 1600 px"
+        case .developing: "Loading preview…"
+        case let .developed(width, height): "Preview · \(width) × \(height)"
+        case let .failed(message): "Preview · \(message)"
         }
     }
 
@@ -48,8 +48,8 @@ enum LoupeRendition: Equatable {
     }
 }
 
-/// Loupe "Show Developed RAW": a persisted preference plus the open photo's render. Only the
-/// open photo is developed (on demand, not cached); paging away cancels and drops it.
+/// Loupe "Show Larger Preview": a persisted preference plus the open photo's image. Only the
+/// open photo downloads its stored import preview; paging away cancels the download.
 @MainActor
 final class LoupeDevelopedStore: ObservableObject {
     static let preferenceKey = "com.photobrain.loupeShowsDeveloped"
@@ -66,6 +66,7 @@ final class LoupeDevelopedStore: ObservableObject {
     private let busyDelay: Duration
     private var task: Task<Void, Never>?
     private var currentPhotoID: Int?
+    private var currentThumbnailUpdatedAt: Date?
 
     init(api: any PhotoBrainAPI, defaults: UserDefaults = .standard, busyDelay: Duration = .seconds(1)) {
         self.api = api
@@ -81,10 +82,11 @@ final class LoupeDevelopedStore: ObservableObject {
         show(photo)
     }
 
-    /// Develops `photo` (when on and developable), replacing any earlier render.
+    /// Loads the stored preview (when enabled), refreshing after background publication.
     func show(_ photo: PhotoRecord?) {
         let rawID = isOn ? LoupeRendition.developableRawID(for: photo) : nil
-        guard photo?.id != currentPhotoID || rawID == nil else { return }
+        guard photo?.id != currentPhotoID || photo?.thumbnailUpdatedAt != currentThumbnailUpdatedAt || rawID == nil else { return }
+        currentThumbnailUpdatedAt = photo?.thumbnailUpdatedAt
         currentPhotoID = photo?.id
         task?.cancel()
         task = nil

@@ -1040,7 +1040,8 @@ enum TestModels {
         isRaw: Bool = false,
         rawFormat: String? = nil,
         pairedPhotoId: Int? = nil,
-        pairedFormat: String? = nil
+        pairedFormat: String? = nil,
+        thumbnailUpdatedAt: Date? = nil
     ) -> PhotoDTO {
         let name = name ?? "photo_\(id).jpg"
         return PhotoDTO(
@@ -1058,7 +1059,7 @@ enum TestModels {
             rawStatus: isRaw ? "converted" : nil,
             rawError: nil,
             thumbnailStatus: "completed",
-            thumbnailUpdatedAt: Date(timeIntervalSince1970: 1_700_000_200 + Double(id)),
+            thumbnailUpdatedAt: thumbnailUpdatedAt ?? Date(timeIntervalSince1970: 1_700_000_200 + Double(id)),
             embeddingStatus: "completed",
             phashStatus: "completed",
             exif: PhotoEXIFDTO(

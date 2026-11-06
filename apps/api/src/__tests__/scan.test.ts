@@ -284,6 +284,7 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		const checkpoints = new Map<string, unknown>();
 		const published: Progress[] = [];
 		const dispatched: EmbeddingEvent[] = [];
+		const previewDispatches: unknown[] = [];
 		const eventIds = new Set<string>();
 		let depth = 0;
 		let publishIndex = 0;
@@ -322,6 +323,10 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 					if (!eventIds.has(id)) {
 						eventIds.add(id);
 						for (const single of [event].flat()) {
+							if (String(single.name) === "photos/raw-previews.requested") {
+								previewDispatches.push(single);
+								continue;
+							}
 							dispatched.push(single);
 							await controls.onDispatch(single);
 						}
@@ -353,6 +358,7 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 			checkpoints,
 			published,
 			dispatched,
+			previewDispatches,
 			controls,
 			execute: () => {
 				publishIndex = 0;
@@ -428,6 +434,9 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		expect(loads).toHaveLength(1);
 		// Fully indexed scans skip embeddings but still request tag/quality backfill.
 		expect(unchanged.dispatched).toEqual(BACKFILLS_REQUESTED);
+		expect(unchanged.previewDispatches).toEqual([
+			{ name: "photos/raw-previews.requested", data: {} },
+		]);
 		expect(job()?.status).toBe("completed");
 		expect(db.select().from(photos).get()).toEqual(completed);
 		expect(statSync(artifact, { bigint: true })).toEqual(before);
@@ -539,6 +548,7 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		).toBe(oldId);
 		expect(job()).toMatchObject({ phase: "completed", current: 3 });
 		expect(run.dispatched).toHaveLength(1);
+		expect(run.previewDispatches).toHaveLength(1);
 		expect(db.select().from(scanManifests).all()).toEqual([]);
 	});
 
@@ -715,6 +725,7 @@ if (process.env.PHOTOBRAIN_SCAN_TEST_CHILD !== "1") {
 		expect(db.select().from(scanItems).all()).toHaveLength(2);
 		expect(await run.execute()).toEqual({ processed: 2, successful: 2 });
 		expect(run.dispatched).toHaveLength(1);
+		expect(run.previewDispatches).toHaveLength(1);
 		expect(run.dispatched[0].data.photoIds).toEqual(ids);
 		expect(job()).toMatchObject({ phase: "completed", current: 2, total: 2 });
 		expect(db.select().from(scanItems).all()).toEqual([]);

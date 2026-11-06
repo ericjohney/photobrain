@@ -227,6 +227,9 @@ struct LoupeScreen: View {
             developed.show(activeRecord)
             runEntrance()
         }
+        .onChange(of: activeRecord?.thumbnailUpdatedAt) { _, _ in
+            if !rawEditor.isActive { developed.show(activeRecord) }
+        }
         .onChange(of: activeID) { _, _ in
             rawEditor.end()
             playback.show(item: activeItem)
@@ -479,7 +482,7 @@ struct LoupeScreen: View {
                             developed.setOn(!developed.isOn, photo: activeRecord)
                         } label: {
                             Label(
-                                developed.isOn ? "Show Embedded Preview" : "Show Developed RAW",
+                                developed.isOn ? "Show Standard Preview" : "Show Larger Preview",
                                 systemImage: "camera.aperture"
                             )
                         }

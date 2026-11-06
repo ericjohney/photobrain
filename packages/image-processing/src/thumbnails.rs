@@ -417,3 +417,77 @@ pub fn generate_all_thumbnails_internal(
       )
     })
 }
+
+/// Add ICC to our opaque lossy VP8 WebPs. A VP8X header declares the profile and
+/// canvas; the existing VP8 chunk is retained byte-for-byte.
+pub(crate) fn generate_profiled_thumbnails(
+  img: &DynamicImage,
+  key: &str,
+  root: &str,
+  icc: &[u8],
+) -> Result<(), String> {
+  generate_all_thumbnails_internal(img, key, root)?;
+  for (size, config) in ThumbnailSizes::default().configs() {
+    let path = Path::new(root).join(size).join(key).with_extension("webp");
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    if bytes.get(12..16) != Some(b"VP8 ") {
+      return Err("Expected opaque VP8 thumbnail".into());
+    }
+    let (w, h) = thumbnail_dimensions(img.dimensions(), config.max_dimension);
+    let mut body = b"WEBPVP8X".to_vec();
+    body.extend_from_slice(&10u32.to_le_bytes());
+    body.extend_from_slice(&[0x20, 0, 0, 0]);
+    body.extend_from_slice(&(w - 1).to_le_bytes()[..3]);
+    body.extend_from_slice(&(h - 1).to_le_bytes()[..3]);
+    body.extend_from_slice(b"ICCP");
+    body.extend_from_slice(&(icc.len() as u32).to_le_bytes());
+    body.extend_from_slice(icc);
+    if icc.len() % 2 != 0 {
+      body.push(0);
+    }
+    body.extend_from_slice(&bytes[12..]);
+    let mut encoded = b"RIFF".to_vec();
+    encoded.extend_from_slice(&(body.len() as u32).to_le_bytes());
+    encoded.extend(body);
+    fs::write(path, encoded).map_err(|e| e.to_string())?;
+  }
+  Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn profiled_previews_preserve_colour_profile_dimensions_and_pixels() {
+  use image::ImageDecoder;
+  let root = tempfile::tempdir().unwrap();
+  let img = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+    321,
+    245,
+    image::Rgb([194, 52, 87]),
+  ));
+  let profile = raw_develop::encode::display_p3_icc();
+  generate_all_thumbnails_internal(&img, "plain.image", root.path().to_str().unwrap()).unwrap();
+  generate_profiled_thumbnails(
+    &img,
+    ".versions/test/photo.image",
+    root.path().to_str().unwrap(),
+    &profile,
+  )
+  .unwrap();
+  for (size, config) in ThumbnailSizes::default().configs() {
+    let path = root.path().join(size).join(".versions/test/photo.webp");
+    let mut decoder = image::ImageReader::open(&path)
+      .unwrap()
+      .into_decoder()
+      .unwrap();
+    assert_eq!(decoder.icc_profile().unwrap().unwrap(), profile);
+    assert_eq!(
+      decoder.dimensions(),
+      thumbnail_dimensions(img.dimensions(), config.max_dimension)
+    );
+    let before = image::open(root.path().join(size).join("plain.webp"))
+      .unwrap()
+      .to_rgb8();
+    let after = image::open(path).unwrap().to_rgb8();
+    assert_eq!(before, after);
+  }
+}

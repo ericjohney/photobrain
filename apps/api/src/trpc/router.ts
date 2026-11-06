@@ -68,6 +68,7 @@ import { getPhotoPlace } from "../services/photo-places";
 import { searchPhotoCatalog } from "../services/photo-search";
 import { getPhotoTags } from "../services/photo-tagging";
 import { COUNTRY_CODE_PATTERN } from "../services/place-lookup";
+import { getPreviewRevision } from "../services/raw-previews";
 import { getScan, startScan } from "../services/scan-jobs";
 import {
 	createSmartAlbum,
@@ -244,6 +245,9 @@ function faceMutation<T>(run: () => T): T {
 }
 
 export const appRouter = router({
+	previewRevision: publicProcedure.query(({ ctx }) =>
+		getPreviewRevision(ctx.db),
+	),
 	folders: publicProcedure.query(({ ctx }) => listFolders(ctx.db)),
 
 	filterOptions: publicProcedure

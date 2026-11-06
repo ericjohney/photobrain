@@ -32,6 +32,9 @@ function photoResult(path: string, name = path): PhotoProcessingResult {
 // the production worker entrypoint, in a separate module registry from API tests.
 mock.module("@photobrain/image-processing", () => ({
 	clearDevelopedRawCache() {},
+	generateDevelopedPreviews() {
+		return { width: 2048, height: 1365, engine: "adobe" };
+	},
 	discoverPhotos(directory: string) {
 		if (streamsActive)
 			throw new Error("Native operation overlapped active stream writers");

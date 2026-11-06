@@ -62,10 +62,13 @@ async function errorMessage(response: Response): Promise<string> {
 
 /**
  * Fetches the developed render of `rawId` (null = nothing), keeping it as an
- * object URL until the photo changes. Not cached: every visit renders again.
+ * object URL until the photo changes. The server reads a precomputed import preview.
  * A busy renderer (503 with `Retry-After`) is retried a few times.
  */
-export function useDevelopedRaw(rawId: number | null): DevelopedRaw {
+export function useDevelopedRaw(
+	rawId: number | null,
+	generation?: Date | string | null,
+): DevelopedRaw {
 	const [tagged, setTagged] = useState<{
 		id: number | null;
 		state: DevelopedRaw;
@@ -89,7 +92,10 @@ export function useDevelopedRaw(rawId: number | null): DevelopedRaw {
 
 		(async () => {
 			for (let attempt = 0; ; attempt++) {
-				const response = await fetch(getDevelopedUrl(rawId), {
+				const url = new URL(getDevelopedUrl(rawId));
+				if (generation)
+					url.searchParams.set("v", String(new Date(generation).getTime()));
+				const response = await fetch(url, {
 					signal: controller.signal,
 				});
 				if (response.status === 503 && attempt < MAX_BUSY_RETRIES) {
@@ -123,7 +129,7 @@ export function useDevelopedRaw(rawId: number | null): DevelopedRaw {
 			// Forget the revoked URL, so re-enabling renders afresh.
 			setTagged({ id: null, state: { status: "idle" } });
 		};
-	}, [rawId]);
+	}, [rawId, generation]);
 
 	// A state from another photo (before the effect re-runs) is never shown.
 	if (rawId === null) return { status: "idle" };

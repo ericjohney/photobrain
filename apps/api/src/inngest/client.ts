@@ -2,6 +2,7 @@ import { realtimeMiddleware } from "@inngest/realtime/middleware";
 import { EventSchemas, Inngest } from "inngest";
 
 type PhotoEvents = {
+	"photos/raw-previews.requested": { data: Record<string, never> };
 	"photos/scan.requested": {
 		data: {
 			directory: string;

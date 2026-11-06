@@ -41,6 +41,7 @@ import { getPhotoPlace } from "../services/photo-places";
 import type { PhotoSearchProvider } from "../services/photo-search";
 import { searchPhotoCatalog } from "../services/photo-search";
 import { getPhotoTags } from "../services/photo-tagging";
+import { getPreviewRevision } from "../services/raw-previews";
 import type { ScanEventDispatcher } from "../services/scan-jobs";
 import { getScan, listActiveScans, startScan } from "../services/scan-jobs";
 import {
@@ -253,6 +254,10 @@ async function parseJsonBody<T>(
 export function createV1Router(dependencies: V1Dependencies) {
 	const router = new Hono();
 
+	router.get("/previews/revision", (context) => {
+		context.header("Cache-Control", "no-store");
+		return context.json(getPreviewRevision(dependencies.database));
+	});
 	router.get("/folders", async () => {
 		try {
 			return jsonResponse(

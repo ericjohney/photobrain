@@ -137,6 +137,20 @@ export function useLibraryState(photos: PhotoMetadata[] = []) {
 		[],
 	);
 
+	// The open viewer keeps its selection while background imports replace its pixels.
+	useEffect(() => {
+		setActivePhoto((current) => {
+			if (!current) return current;
+			const fresh = photos.find((photo) => photo.id === current.id);
+			if (
+				!fresh ||
+				String(fresh.thumbnailUpdatedAt) === String(current.thumbnailUpdatedAt)
+			)
+				return current;
+			return { ...current, thumbnailUpdatedAt: fresh.thumbnailUpdatedAt };
+		});
+	}, [photos]);
+
 	// When entering loupe mode, ensure we have an active photo
 	useEffect(() => {
 		if (viewMode === "loupe" && !activePhoto && photos.length > 0) {

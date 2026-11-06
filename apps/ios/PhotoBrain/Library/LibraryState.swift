@@ -2,6 +2,8 @@ import Combine
 import Foundation
 import SwiftUI
 
+extension Notification.Name { static let rawPreviewsUpdated = Notification.Name("PhotoBrain.rawPreviewsUpdated") }
+
 struct LibraryFilters: Hashable, Sendable {
     /// `filterRaw` wire value: RAW stills, non-RAW stills, or videos (Live Photo motion clips
     /// excluded by the server); `.all` is everything.
@@ -341,6 +343,7 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
     private var pendingRemovalIDs: Set<Int> = []
     private var cachedCaptureCalendar: CaptureCalendar?
     private var deviceSubscription: AnyCancellable?
+    private var previewSubscription: AnyCancellable?
 
     init(
         api: any PhotoBrainAPI,
@@ -355,6 +358,11 @@ final class LibraryStore: ObservableObject, FilterEditingStore, CurationApplying
         self.filters = filters
         self.device = scope == .library ? device : nil
         self.curation.register(self)
+        previewSubscription = NotificationCenter.default.publisher(for: .rawPreviewsUpdated)
+            .sink { [weak self] notification in
+                guard let self, notification.object as? URL == self.api.baseURL else { return }
+                Task { @MainActor [weak self] in await self?.load() }
+            }
         deviceSubscription = self.device?.$revision
             .dropFirst()
             .removeDuplicates()
