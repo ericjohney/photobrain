@@ -4,7 +4,7 @@
 FROM oven/bun:1.4.3-debian AS builder
 WORKDIR /app
 
-# Install Rust toolchain and build dependencies
+# ort-sys rc.9 expects the Cargo output layout used by this verified toolchain.
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     libclang-dev \
     libheif-dev \
-    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.99.1 \
     && rm -rf /var/lib/apt/lists/*
 ENV PATH="/root/.cargo/bin:${PATH}"
 
