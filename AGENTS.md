@@ -426,9 +426,9 @@ There is no worker image.
 
 `.github/workflows/build.yml` currently:
 
-- Runs API tests/typecheck and web Playwright tests.
-- Builds and pushes the Linux amd64 `api-cuda` target (`DENOISE_CUDA=1`) and the web target.
-- Updates API/web image tags in the external ArgoCD repository on pushes to `main`, atomically setting the API's NVIDIA runtime, one shared GPU slot, `DENOISE_BACKEND=cuda`, and `NVIDIA_TF32_OVERRIDE=0`. Preserve the existing Recreate strategy and PVC/photo mounts. Follow the external repository's backup/iSCSI-snapshot rules before a rollout.
+- Runs API tests/typecheck and web Playwright tests on GitHub-hosted Linux runners. Pull requests also build the CUDA API and web Docker targets on hosted runners.
+- After a successful push build for `main` or a `v*` tag, the release notification sends its run ID to the private GitOps repository. That workflow verifies the run and ref, builds the two images and publishes them to the internal registry. Main releases update both GitOps image tags together. GPU configuration, PVCs and photo mounts are managed in the GitOps repository.
+
 
 Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**`, with default inputs (or by manual dispatch with custom inputs); it validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight. Apple identities, GitHub secrets, tester setup, and certificate renewal are recorded in [iOS distribution](docs/ios-distribution.md).
 
