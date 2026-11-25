@@ -4,7 +4,6 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { parseConfig } from "../config";
 import { photoExif, photos, scanJobs } from "../db/schema";
-import { createV1Router } from "../routes/v1";
 import {
 	curationFlagFilterSchema,
 	filterOptionsResponseSchema,
@@ -41,8 +40,9 @@ mock.module("../inngest/client", () => ({
 mock.module("@inngest/realtime", () => ({
 	getSubscriptionToken: async () => ({ token: "test-token" }),
 }));
-// The legacy router must load after Bun installs its process-wide dependency mocks.
+// Both routers import vector-search and must load after its test double.
 const { appRouter } = await import("../trpc/router");
+const { createV1Router } = await import("../routes/v1");
 
 type Dispatch = Mock<(event: ScanRequestedEvent) => Promise<void>>;
 
