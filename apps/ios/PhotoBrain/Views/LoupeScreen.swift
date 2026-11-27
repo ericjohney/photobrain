@@ -31,7 +31,8 @@ struct LoupeScreen: View {
     @State private var rawControl: RawEditControl = .exposure
     @State private var confirmDiscardRawEdit = false
     @State private var confirmReloadRawEdit = false
-    @State private var rawControlsHeight: CGFloat = 240
+    @State private var rawFilename: String?
+    @State private var showSavedNotice = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.showInLibrary) private var showInLibrary
     @State private var bridge = LoupePagerBridge()
@@ -126,7 +127,16 @@ struct LoupeScreen: View {
     }
 
     var body: some View {
-        ZStack {
+        GeometryReader { geometry in loupe(size: geometry.size) }
+    }
+
+    private func loupe(size: CGSize) -> some View {
+        let sideBySide = rawEditor.isActive && size.width > size.height
+        // Reserve the same canvas while controls, status messages and Denoise progress change.
+        let exposureOnly = (activeRecord?.isRaw == true ? activeRecord?.rawFormat : activeRecord?.pairedFormat)?.uppercased() == "DNG"
+        let trayHeight = min(size.height * 0.44, dynamicTypeSize.isAccessibilitySize ? 420 : (exposureOnly ? 224 : 292))
+        let trayWidth = min(400, size.width * 0.45)
+        return ZStack {
             Color.black.opacity(dismissDragging ? 0 : backdropOpacity).ignoresSafeArea()
             PagedLoupe(
                 records: records,
@@ -138,6 +148,8 @@ struct LoupeScreen: View {
                 faceBoxes: faceBoxes.visibleBoxes,
                 developedImages: rawEditor.isActive ? rawEditor.images : developed.images,
                 rawEditingActive: rawEditor.isActive,
+                onCompareHold: rawEditor.holdBefore,
+                beforePhotoID: rawEditor.displaysBefore ? activeRecord?.id : nil,
                 onDismissDragActive: { active in
                     withAnimation(.easeOut(duration: 0.15)) { dismissDragging = active }
                 },
@@ -161,9 +173,10 @@ struct LoupeScreen: View {
                     }
                 }
             )
-            .padding(.bottom, rawEditor.isActive ? rawControlsHeight + PBSpacing.m : 0)
+            .padding(.trailing, sideBySide ? trayWidth : 0)
+            .padding(.bottom, rawEditor.isActive && !sideBySide ? trayHeight + PBSpacing.m : 0)
             .padding(.top, rawEditor.isActive ? PBSize.control + PBSpacing.m : 0)
-            .ignoresSafeArea()
+            .ignoresSafeArea(edges: rawEditor.isActive ? [] : .all)
             .opacity(transitioning ? 0 : 1)
 
             if let flight {
@@ -200,7 +213,13 @@ struct LoupeScreen: View {
                     if !rawEditor.isActive { overlayControls }
                     Spacer()
                     if rawEditor.isActive {
-                        rawEditControls
+                        ScrollView { rawEditControls }
+                            .scrollBounceBehavior(.basedOnSize)
+                            .frame(width: sideBySide ? trayWidth : nil, height: sideBySide ? max(0, size.height - 80) : trayHeight, alignment: .top)
+                            .frame(maxWidth: 600)
+                            .background(Color(white: 0.09), in: RoundedRectangle(cornerRadius: 18))
+                            .padding(.horizontal, PBSpacing.s)
+                            .frame(maxWidth: .infinity, alignment: sideBySide ? .trailing : .center)
                     } else if !isZoomed {
                         filmstrip
                     }
@@ -227,10 +246,17 @@ struct LoupeScreen: View {
             developed.show(activeRecord)
             runEntrance()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .rawEditSynced)) { notification in
+            guard notification.object as? URL == api.baseURL, !rawEditor.isActive,
+                  let rawID = notification.userInfo?["rawID"] as? Int,
+                  rawID == LoupeRendition.developableRawID(for: activeRecord) else { return }
+            developed.show(activeRecord, force: true)
+        }
         .onChange(of: activeRecord?.thumbnailUpdatedAt) { _, _ in
             if !rawEditor.isActive { developed.show(activeRecord) }
         }
         .onChange(of: activeID) { _, _ in
+            showSavedNotice = false
             rawEditor.end()
             playback.show(item: activeItem)
             Task { await faceBoxes.load(activeRecord) }
@@ -315,11 +341,29 @@ struct LoupeScreen: View {
                 Button("Cancel", action: requestEndRawEdit)
                     .accessibilityIdentifier("raw-edit-close")
                 Spacer()
-                Text("Edit RAW").font(.headline).foregroundStyle(.white)
+                VStack(spacing: 1) {
+                    Text("Edit RAW").font(.headline)
+                    if let name = activeRecord?.isRaw == true ? activeRecord?.filename : rawFilename {
+                        Text(name).font(.caption).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                .task(id: rawEditor.isReady) {
+                    guard rawEditor.isReady, let photo = activeRecord, !photo.isRaw, let id = photo.pairedPhotoId else { return }
+                    let cache = SmartPreviewCache.shared
+                    if let name = await cache.entry(api.baseURL, id)?.rawFilename {
+                        if !Task.isCancelled { rawFilename = name }
+                    } else if let partner = try? await api.photo(id: id), !Task.isCancelled {
+                        rawFilename = partner.name
+                        try? await cache.rememberFilename(partner.name, origin: api.baseURL, rawID: id)
+                    }
+                }
+                .foregroundStyle(.white)
                 Spacer()
                 Button {
                     Task {
-                        if await rawEditor.save() {
+                        let result = await rawEditor.save()
+                        if result != .failed {
+                            showSavedNotice = result == .synced
                             rawEditor.end()
                             developed.setOn(true, photo: activeRecord)
                         }
@@ -464,29 +508,23 @@ struct LoupeScreen: View {
                     } label: {
                         Label("Find Similar", systemImage: "sparkle.magnifyingglass")
                     }
-                    if LoupeRendition.developableRawID(for: activeRecord) != nil {
+                    if LoupeRendition.editableRawID(for: activeRecord) != nil {
                         Button {
-                            if rawEditor.isActive {
-                                endRawEdit()
-                            } else {
-                                developed.release()
-                                rawControl = .exposure
-                                rawEditor.start(activeRecord)
-                                chromeVisible = true
-                                zoomControlsVisible = true
-                            }
+                            curation.update(activeRecord, patch: .toggledFlag(.reject, current: current))
                         } label: {
-                            Label(rawEditor.isActive ? "Close RAW Editor" : "Edit RAW", systemImage: "slider.horizontal.3")
+                            Label(current.flag == .reject ? "Clear rejection" : "Reject", systemImage: "xmark.bin")
                         }
+                    }
+                    if LoupeRendition.developableRawID(for: activeRecord) != nil {
                         Button {
                             developed.setOn(!developed.isOn, photo: activeRecord)
                         } label: {
                             Label(
-                                developed.isOn ? "Show Standard Preview" : "Show Larger Preview",
+                                developed.isOn ? "Show standard preview" : "Show larger preview",
                                 systemImage: "camera.aperture"
                             )
                         }
-                        .disabled(rawEditor.isActive)
+                        .disabled(rawEditor.isActive || developed.waitingToSync)
                     }
                     if !activeRecord.isVideo {
                         Button {
@@ -515,11 +553,11 @@ struct LoupeScreen: View {
     private var shareMenu: some View {
         Menu {
             if let activeRecord {
-                if let rawID = LoupeRendition.developableRawID(for: activeRecord) {
+                if let rawID = LoupeRendition.editableRawID(for: activeRecord) {
                     Button {
                         exports.start(.developed(id: rawID))
                     } label: {
-                        Label("Share Developed Photo", systemImage: "camera.aperture")
+                        Label("Full-resolution JPEG with saved edits", systemImage: "camera.aperture")
                     }
                 }
                 ForEach(PhotoShareOption.options(for: activeRecord)) { option in
@@ -533,6 +571,7 @@ struct LoupeScreen: View {
         } label: {
             GlassIconLabel(systemImage: "square.and.arrow.up", dark: true)
         }
+        .menuOrder(.fixed)
         .disabled(activeRecord == nil || exports.isBusy)
         .accessibilityLabel("Share")
     }
@@ -556,14 +595,33 @@ struct LoupeScreen: View {
             Spacer(minLength: 0)
             infoButton
             Spacer(minLength: 0)
-            Button {
-                curation.update(photo, patch: .toggledFlag(.reject, current: current))
-            } label: {
-                GlassIconLabel(systemImage: rejected ? "xmark.bin.fill" : "xmark.bin", dark: true, tint: rejected ? PBColor.reject : nil)
+            if LoupeRendition.editableRawID(for: photo) != nil {
+                Button {
+                    developed.release()
+                    showSavedNotice = false
+                    rawFilename = nil
+                    rawControl = .exposure
+                    rawEditor.start(photo)
+                    chromeVisible = true
+                    zoomControlsVisible = true
+                } label: {
+                    Label("Edit RAW", systemImage: "slider.horizontal.3")
+                        .foregroundStyle(.white)
+                        .font(.subheadline.weight(.semibold)).padding(.horizontal, 12)
+                        .frame(minHeight: PBSize.control)
+                        .pbGlass(in: Capsule(), interactive: true, dark: true)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    curation.update(photo, patch: .toggledFlag(.reject, current: current))
+                } label: {
+                    GlassIconLabel(systemImage: rejected ? "xmark.bin.fill" : "xmark.bin", dark: true, tint: rejected ? PBColor.reject : nil)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Reject")
+                .accessibilityAddTraits(rejected ? .isSelected : [])
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Reject")
-            .accessibilityAddTraits(rejected ? .isSelected : [])
         }
         .padding(.horizontal, PBSpacing.l)
     }
@@ -670,7 +728,17 @@ struct LoupeScreen: View {
                 if hasLive { liveButton }
                 if canShowFaces { facesButton }
                 Spacer()
-                if showsRendition { renditionBadge }
+                if developed.waitingToSync || showSavedNotice {
+                    Text(developed.waitingToSync ? LoupeRawEditStore.pendingMessage : "Saved to library")
+                        .font(.caption).padding(8).background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityIdentifier(developed.waitingToSync ? "raw-pending-sync" : "raw-saved")
+                        .task(id: showSavedNotice) {
+                            guard showSavedNotice else { return }
+                            do { try await Task.sleep(for: .seconds(3)) } catch { return }
+                            showSavedNotice = false
+                        }
+                }
+                if showsRendition && !developed.waitingToSync { renditionBadge }
             }
             .padding(.horizontal, PBSpacing.m)
         }
@@ -704,7 +772,7 @@ struct LoupeScreen: View {
         .disabled(rawEditor.isActive)
         .accessibilityIdentifier("loupe-rendition")
         .accessibilityLabel(label)
-        .accessibilityHint(developed.isOn ? "Shows the embedded preview" : "Develops the full RAW")
+        .accessibilityHint(developed.isOn ? "Show standard preview" : "Show larger preview")
     }
 
     private func endRawEdit() {
@@ -729,42 +797,29 @@ struct LoupeScreen: View {
                 }
                 .accessibilityIdentifier("raw-edit-loading")
             case .ready:
-                HStack {
-                    Button {
-                        rawEditor.toggleBefore()
-                    } label: {
-                        Label(rawEditor.showingBefore ? "Before" : "Before / After", systemImage: "square.lefthalf.filled")
-                    }
-                    .accessibilityIdentifier("raw-edit-compare")
-                    .accessibilityValue(rawEditor.showingBefore ? "Before adjustments" : "After adjustments")
-                    Spacer()
-                    if rawEditor.isRendering { ProgressView().controlSize(.small).tint(.white) }
-                    Button("Reset") { rawEditor.reset() }
-                        .disabled(rawEditor.settings == RawEditSettings())
-                        .accessibilityIdentifier("raw-edit-reset")
-                }
-                .font(.subheadline.weight(.medium))
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(rawEditor.controls) { control in
-                            Button {
-                                rawControl = control
-                            } label: {
-                                Label(control.title, systemImage: control.symbol)
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 12)
+                if rawEditor.controls.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        HStack(spacing: 6) {
+                            ForEach(rawEditor.controls) { control in
+                                let modified = control.value(in: rawEditor.settings) != 0
+                                Button { rawControl = control } label: {
+                                    HStack(spacing: 4) {
+                                        Text(control.title)
+                                        if modified { Circle().frame(width: 5, height: 5) }
+                                    }
+                                    .font(.subheadline.weight(.medium)).padding(.horizontal, 10)
                                     .frame(minHeight: PBSize.control)
-                                    .background(Capsule().fill(rawControl == control ? Color.white.opacity(0.22) : Color.clear))
+                                    .background(Capsule().fill(rawControl == control ? Color.white.opacity(0.18) : Color.clear))
+                                }
+                                .accessibilityValue(modified ? control.label(in: rawEditor.settings) : "Unadjusted")
+                                .accessibilityAddTraits(rawControl == control ? .isSelected : [])
                             }
-                            .accessibilityAddTraits(rawControl == control ? .isSelected : [])
                         }
                     }
                 }
-                HStack {
-                    Text(rawControl.title).font(.subheadline)
-                    Spacer()
-                    Text(rawControl.label(in: rawEditor.settings)).monospacedDigit()
-                        .accessibilityIdentifier("raw-edit-value")
+                ViewThatFits(in: .horizontal) {
+                    HStack { Text(rawControl.title); Spacer(); fineAdjustments }
+                    VStack(alignment: .leading) { Text(rawControl.title); fineAdjustments }
                 }
                 Slider(
                     value: Binding(get: { rawControl.value(in: rawEditor.settings) }, set: { rawEditor.set(rawControl, value: $0) }),
@@ -774,6 +829,16 @@ struct LoupeScreen: View {
                 .accessibilityLabel("RAW \(rawControl.rawValue)")
                 .accessibilityValue(rawControl.label(in: rawEditor.settings))
                 .accessibilityIdentifier("raw-edit-\(rawControl.rawValue)")
+                HStack {
+                    Button(rawEditor.displaysBefore ? "Show edit" : "Show before") { rawEditor.toggleBefore() }
+                        .accessibilityIdentifier("raw-edit-compare")
+                    Spacer()
+                    if rawEditor.isRendering { ProgressView().controlSize(.small).accessibilityLabel("Updating preview") }
+                    Button("Reset \(rawControl.rawValue)") { rawEditor.set(rawControl, value: 0) }
+                        .disabled(rawControl.value(in: rawEditor.settings) == 0)
+                        .accessibilityIdentifier("raw-edit-reset")
+                }
+                .font(.subheadline).frame(minHeight: PBSize.control)
                 if rawEditor.supportsDenoise && rawEditor.isLocal {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -801,8 +866,6 @@ struct LoupeScreen: View {
                             .font(.caption2).foregroundStyle(.white.opacity(0.7))
                     }
                 }
-                Text(rawEditor.supportsTone ? "Save adjustments · Original RAW is preserved" : "Exposure adjustments · Original RAW is preserved")
-                    .font(.caption).foregroundStyle(.white.opacity(0.7))
                 if let status = rawEditor.storageMessage {
                     Text(status).font(.caption).foregroundStyle(.white.opacity(0.7))
                         .accessibilityIdentifier("raw-edit-storage-status")
@@ -825,20 +888,34 @@ struct LoupeScreen: View {
             case .inactive: EmptyView()
             }
         }
-        .background {
-            GeometryReader { geometry in
-                Color.clear.preference(key: RawEditControlsHeight.self, value: geometry.size.height)
-            }
-        }
-        .onPreferenceChange(RawEditControlsHeight.self) { rawControlsHeight = $0 }
         .disabled(rawEditor.isSaving)
         .foregroundStyle(.white)
         .tint(.white)
         .padding(PBSpacing.m)
-        .frame(maxWidth: 600)
-        .pbGlass(in: RoundedRectangle(cornerRadius: 20), dark: true)
-        .padding(.horizontal, PBSpacing.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .environment(\.colorScheme, .dark)
+    }
+
+    private var fineAdjustments: some View {
+        let value = rawControl.value(in: rawEditor.settings)
+        return HStack(spacing: 4) {
+            stepButton(increase: false, value: value)
+            Text(rawControl.label(in: rawEditor.settings))
+                .font(.title3.weight(.semibold)).monospacedDigit()
+                .fixedSize().accessibilityIdentifier("raw-edit-value")
+            stepButton(increase: true, value: value)
+        }
+    }
+
+    private func stepButton(increase: Bool, value: Double) -> some View {
+        Button {
+            rawEditor.set(rawControl, value: value + (increase ? rawControl.step : -rawControl.step))
+        } label: {
+            Image(systemName: increase ? "plus" : "minus")
+                .frame(minWidth: PBSize.control, minHeight: PBSize.control)
+        }
+        .disabled(increase ? value >= rawControl.range.upperBound : value <= rawControl.range.lowerBound)
+        .accessibilityLabel("\(increase ? "Increase" : "Decrease") \(rawControl.rawValue)")
     }
 
     /// Outlines detected faces on the photo; they follow pinch-zoom and pan.
@@ -1444,9 +1521,4 @@ private struct ActivityView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
-}
-
-private struct RawEditControlsHeight: PreferenceKey {
-    static let defaultValue: CGFloat = 240
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

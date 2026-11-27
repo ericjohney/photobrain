@@ -404,7 +404,7 @@ final class VideoShareOptionTests: XCTestCase {
     func testStillsIncludingLivePhotosOfferJPEGAndOriginal() {
         for still in [makeRecord(id: 2), makeRecord(id: 3, motionVideoId: 30)] {
             let options = PhotoShareOption.options(for: still)
-            XCTAssertEqual(options.map(\.title), ["Share Photo", "Share Original"])
+            XCTAssertEqual(options.map(\.title), ["Preview JPEG (2048 px)", "Original file (\(still.filename))"])
             XCTAssertEqual(options.map(\.size), [.jpeg2048, .original])
         }
     }

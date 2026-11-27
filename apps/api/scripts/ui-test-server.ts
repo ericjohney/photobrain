@@ -202,14 +202,16 @@ Object.assign(process.env, {
 	RAW_DEVELOP_ENGINE:
 		process.env.UI_TEST_SMART_PREVIEWS === "1" ? "apple" : "adobe",
 	ADOBE_PROFILE_DIR: "/fixture-profiles",
-	DENOISE_MODEL_DIR: process.env.UI_TEST_DENOISE_PREVIEW
-		? "/fixture-models"
-		: undefined,
-	DENOISE_CACHE_DIR: process.env.UI_TEST_DENOISE_PREVIEW
-		? "/fixture-cache"
-		: undefined,
 	UPLOADS_ENABLED: "false",
 });
+
+if (process.env.UI_TEST_DENOISE_PREVIEW) {
+	process.env.DENOISE_MODEL_DIR = "/fixture-models";
+	process.env.DENOISE_CACHE_DIR = "/fixture-cache";
+} else {
+	delete process.env.DENOISE_MODEL_DIR;
+	delete process.env.DENOISE_CACHE_DIR;
+}
 
 const { sql } = await import("drizzle-orm");
 const { migrate } = await import("drizzle-orm/bun-sqlite/migrator");

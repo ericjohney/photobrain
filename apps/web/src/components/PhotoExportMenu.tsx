@@ -1,10 +1,12 @@
 import { ChevronDown, Download } from "lucide-react";
 import { useState } from "react";
-import { MenuLink, Popover } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { MenuLink, Popover } from "@/components/ui/popover";
+import { developableRawId } from "@/hooks/use-developed-raw";
 import { useDismiss } from "@/hooks/use-dismiss";
 import { EXPORT_SIZES, exportFileName } from "@/lib/export";
-import { exportPhotoUrl } from "@/lib/thumbnails";
+import { exportPhotoUrl, getDevelopedUrl } from "@/lib/thumbnails";
+import type { PhotoMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -15,12 +17,19 @@ export function PhotoExportMenu({
 	photo,
 	className,
 }: {
-	photo: { id: number; name: string; mediaType: "photo" | "video" };
+	photo: PhotoMetadata;
 	className?: string;
 }) {
 	const [open, setOpen] = useState(false);
 	const menuRef = useDismiss<HTMLDivElement>(open, () => setOpen(false));
 	const isVideo = photo.mediaType === "video";
+	const rawId = developableRawId(photo);
+	const rawFormat = photo.isRaw
+		? photo.name.split(".").pop()
+		: photo.pairedFormat;
+	const supportedFormat = ["RAF", "ARW", "DNG"].includes(
+		rawFormat?.toUpperCase() ?? "",
+	);
 	const sizes = isVideo ? (["original"] as const) : EXPORT_SIZES;
 
 	return (
@@ -43,11 +52,16 @@ export function PhotoExportMenu({
 				<ChevronDown className="h-3.5 w-3.5 opacity-60" />
 			</Button>
 			{open && (
-				<Popover
-					role="menu"
-					aria-label="Export"
-					className="w-full min-w-48"
-				>
+				<Popover role="menu" aria-label="Export" className="w-full min-w-48">
+					{supportedFormat && rawId !== null && (
+						<MenuLink
+							href={`${getDevelopedUrl(rawId)}?download=1`}
+							download
+							onClick={() => setOpen(false)}
+						>
+							Full-resolution JPEG with saved edits
+						</MenuLink>
+					)}
 					{sizes.map((size) => (
 						<MenuLink
 							key={size}
@@ -56,8 +70,8 @@ export function PhotoExportMenu({
 							onClick={() => setOpen(false)}
 						>
 							{size === "original"
-								? `Original (${photo.name})`
-								: `JPEG, ${size} px`}
+								? `Original file (${photo.name})`
+								: `Preview JPEG (${size} px)`}
 						</MenuLink>
 					))}
 				</Popover>

@@ -111,13 +111,14 @@ final class RawEditingTests: XCTestCase {
         store.set(.exposure, value: 0.7)
         store.set(.highlights, value: -50)
         let saved = await store.save()
-        XCTAssertTrue(saved)
+        XCTAssertEqual(saved, .synced)
         XCTAssertFalse(store.hasChanges)
         store.end()
         store.start(raw)
         await waitUntil { store.isReady && store.settings.exposure == 0.7 }
         XCTAssertEqual(store.settings.highlights, -50)
-        store.reset()
+        store.set(.exposure, value: 0)
+        XCTAssertEqual(store.settings.highlights, -50)
         XCTAssertTrue(store.hasChanges)
         store.end()
         let recipe = try? await api.rawEdit(photoId: 2)
@@ -132,7 +133,7 @@ final class RawEditingTests: XCTestCase {
         store.set(.exposure, value: 1)
         await api.setRawSaveFailure(.server(status: 409, code: "RAW_EDIT_CONFLICT", message: "Edited elsewhere"))
         let saved = await store.save()
-        XCTAssertFalse(saved)
+        XCTAssertEqual(saved, .failed)
         XCTAssertEqual(store.settings.exposure, 1)
         XCTAssertTrue(store.hasChanges)
         XCTAssertNotNil(store.errorMessage)
@@ -149,6 +150,10 @@ final class RawEditingTests: XCTestCase {
         store.set(.contrast, value: 50)
         XCTAssertEqual(store.settings.contrast, 0)
         store.set(.exposure, value: 1)
+        store.holdBefore(true)
+        XCTAssertTrue(store.displaysBefore)
+        store.holdBefore(false)
+        XCTAssertFalse(store.displaysBefore)
         store.toggleBefore()
         XCTAssertTrue(store.showingBefore)
         XCTAssertEqual(store.settings.exposure, 1)
@@ -230,11 +235,17 @@ final class RawEditingTests: XCTestCase {
         XCTAssertEqual(recovered.settings.exposure, 1.25)
         XCTAssertTrue(["Recovered unsaved adjustments", "Offline · Edits stay on this device"].contains(recovered.storageMessage ?? ""))
         let offlineSaved = await recovered.save()
-        XCTAssertFalse(offlineSaved)
-        XCTAssertEqual(recovered.storageMessage, "Saved on device · Will sync when online")
+        XCTAssertEqual(offlineSaved, .queued)
+        XCTAssertEqual(recovered.storageMessage, LoupeRawEditStore.pendingMessage)
         let pending = await reopenedCache.entry(api.baseURL, 2)
         XCTAssertEqual(pending?.pending?.exposure, 1.25)
         XCTAssertNil(pending?.draft)
+        let viewer = LoupeDevelopedStore(api: api, defaults: UserDefaults(suiteName: UUID().uuidString)!, cache: reopenedCache)
+        viewer.show(raw) // The queued image also wins over the default standard-preview preference.
+        await waitUntil { viewer.images[self.raw.id] != nil }
+        XCTAssertTrue(viewer.waitingToSync)
+        let reopenedPixels = try XCTUnwrap(viewer.images[raw.id]?.cgImage?.dataProvider?.data) as Data
+        XCTAssertEqual(reopenedPixels, edited)
         await api.setRawEditFailure(nil)
         _ = try await reopenedCache.sync(api: api, rawID: 2)
         let saved = try await api.rawEdit(photoId: 2)
@@ -355,7 +366,7 @@ final class RawEditingTests: XCTestCase {
         await waitUntil { store.isReady && store.isLocal }
         store.denoiseSelection = 50
         let unappliedSave = await store.save()
-        XCTAssertFalse(unappliedSave) // Unapplied selection cannot silently save another amount.
+        XCTAssertEqual(unappliedSave, .failed) // Unapplied selection cannot silently save another amount.
         store.applyDenoise()
         await waitUntil { !store.isDenoising }
         XCTAssertNil(store.errorMessage)
@@ -363,13 +374,13 @@ final class RawEditingTests: XCTestCase {
         XCTAssertEqual(store.settings.version, 2)
         let unsaved = try await api.rawEdit(photoId: 2)
         XCTAssertEqual(unsaved.revision, 0)
-        store.reset() // Reset Basic controls retains the explicitly applied preparation.
+        store.set(.exposure, value: 0) // Resetting one control preserves Denoise.
         XCTAssertEqual(store.settings.denoiseAmount, 50)
         store.end()
         store.start(raw)
         await waitUntil { store.isReady && store.settings.denoiseAmount == 50 }
         let saved = await store.save()
-        XCTAssertTrue(saved)
+        XCTAssertEqual(saved, .synced)
         let remote = try await api.rawEdit(photoId: 2)
         XCTAssertEqual(remote.settings.denoiseAmount, 50)
         XCTAssertEqual(remote.revision, 1)
@@ -450,7 +461,7 @@ final class RawEditingTests: XCTestCase {
         }
         store.set(.exposure, value: 1)
         let saved = await store.save()
-        XCTAssertTrue(saved)
+        XCTAssertEqual(saved, .synced)
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(store.settings.exposure, 1)
         let journal = await cache.entry(api.baseURL, 2)

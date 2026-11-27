@@ -14,8 +14,8 @@ struct PhotoShareOption: Equatable, Identifiable, Sendable {
             return [PhotoShareOption(title: "Share Video", systemImage: "video", size: .original)]
         }
         return [
-            PhotoShareOption(title: "Share Photo", systemImage: "photo", size: .jpeg2048),
-            PhotoShareOption(title: "Share Original", systemImage: "doc", size: .original),
+            PhotoShareOption(title: "Preview JPEG (2048 px)", systemImage: "photo", size: .jpeg2048),
+            PhotoShareOption(title: "Original file (\(photo.filename))", systemImage: "doc", size: .original),
         ]
     }
 }
@@ -81,7 +81,11 @@ final class ExportStore: ObservableObject {
         owned.task = Task { [api, rawCache, weak self] in
             do {
                 if case let .developed(id) = target {
-                    _ = try await rawCache.sync(api: api, rawID: id)
+                    do {
+                        _ = try await rawCache.sync(api: api, rawID: id)
+                    } catch let error as PhotoBrainAPIError where error.isRetryable {
+                        throw PhotoBrainAPIError.transport("Connect to sync the saved edits before sharing the full-resolution JPEG.")
+                    }
                     if await rawCache.entry(api.baseURL, id)?.pending != nil {
                         throw RawEditError(message: "Connect and sync your RAW adjustments before sharing.")
                     }

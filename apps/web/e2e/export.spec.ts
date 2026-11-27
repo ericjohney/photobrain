@@ -57,9 +57,9 @@ test("photo Export menu links each size with its download filename", async ({
 	const menu = await openExportMenu(page);
 	const items = menu.getByRole("menuitem");
 	await expect(items).toHaveText([
-		"Original (sunset.jpg)",
-		"JPEG, 2048 px",
-		"JPEG, 1024 px",
+		"Original file (sunset.jpg)",
+		"Preview JPEG (2048 px)",
+		"Preview JPEG (1024 px)",
 	]);
 	const expected = [
 		["original", "sunset.jpg"],
@@ -87,18 +87,32 @@ test("a RAW photo's original keeps its RAW name; JPEG renditions swap the extens
 	await page.locator('[data-photo-id="2"]').click();
 
 	const items = (await openExportMenu(page)).getByRole("menuitem");
-	await expect(items.first()).toHaveText("Original (portrait.arw)");
+	await expect(items.first()).toHaveText(
+		"Full-resolution JPEG with saved edits",
+	);
 	await expect(items.first()).toHaveAttribute(
 		"href",
-		`${api}/api/photos/2/export?size=original`,
+		`${api}/api/photos/2/developed?download=1`,
 	);
-	await expect(items.first()).toHaveAttribute("download", "portrait.arw");
-	await expect(items.nth(1)).toHaveAttribute("download", "portrait_2048.jpg");
-	await expect(items.nth(2)).toHaveAttribute(
+	await expect(items.nth(1)).toHaveAttribute("download", "portrait.arw");
+	await expect(items.nth(2)).toHaveAttribute("download", "portrait_2048.jpg");
+	await expect(items.nth(3)).toHaveAttribute("download", "portrait_1024.jpg");
+});
+
+test("a JPEG-fronted stack renders the RAW partner and exports the displayed original", async ({
+	page,
+}) => {
+	await openLibrary(page);
+	const api = await apiOrigin(page);
+	await page.locator('[data-photo-id="8"]').click();
+	const menu = await openExportMenu(page);
+	await expect(
+		menu.getByText("Full-resolution JPEG with saved edits"),
+	).toHaveAttribute("href", `${api}/api/photos/13/developed?download=1`);
+	await expect(menu.getByText("Original file (forest.jpg)")).toHaveAttribute(
 		"href",
-		`${api}/api/photos/2/export?size=1024`,
+		`${api}/api/photos/8/export?size=original`,
 	);
-	await expect(items.nth(2)).toHaveAttribute("download", "portrait_1024.jpg");
 });
 
 test("the Export menu is available in loupe view", async ({ page }) => {
@@ -108,7 +122,7 @@ test("the Export menu is available in loupe view", async ({ page }) => {
 	await expect(page.getByTestId("loupe-view")).toBeVisible();
 
 	const items = (await openExportMenu(page)).getByRole("menuitem");
-	await expect(items.first()).toHaveText("Original (landscape.jpg)");
+	await expect(items.first()).toHaveText("Original file (landscape.jpg)");
 	await expect(items.nth(1)).toHaveAttribute(
 		"href",
 		`${api}/api/photos/3/export?size=2048`,
@@ -123,7 +137,7 @@ test("clicking a menu item downloads the attachment", async ({ page }) => {
 
 	const menu = await openExportMenu(page);
 	const downloadPromise = page.waitForEvent("download");
-	await menu.getByRole("menuitem", { name: "JPEG, 1024 px" }).click();
+	await menu.getByRole("menuitem", { name: "Preview JPEG (1024 px)" }).click();
 	const download = await downloadPromise;
 
 	expect(download.url()).toBe(`${api}/api/photos/1/export?size=1024`);

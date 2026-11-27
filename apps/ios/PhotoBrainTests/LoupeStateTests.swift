@@ -37,6 +37,22 @@ final class LoupeStateTests: XCTestCase {
         XCTAssertEqual(changes, [true, false])
     }
 
+    func testBeforeAndEditedFramesPreserveZoomAndPan() {
+        let cell = ZoomPageCell(frame: CGRect(x: 0, y: 0, width: 400, height: 380))
+        cell.layoutIfNeeded()
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 400)).image { _ in }
+        cell.setDevelopedImage(image)
+        cell.zoomView.setZoomScale(2.5, animated: false)
+        cell.zoomView.contentOffset = CGPoint(x: 125, y: 70)
+        let offset = cell.zoomView.contentOffset
+        cell.showsBefore = true
+        cell.setDevelopedImage(UIGraphicsImageRenderer(size: image.size).image { _ in })
+        cell.showsBefore = false
+        cell.setDevelopedImage(image)
+        XCTAssertEqual(cell.zoomView.zoomScale, 2.5)
+        XCTAssertEqual(cell.zoomView.contentOffset, offset)
+    }
+
     func testMemoryWarningDuringSwipePreservesDestinationAndReloadsEvictedPageOnDisplay() {
         let records = RedactedFixture.make(count: 3).map(LibraryEntry.init(remote:))
         let loader = RedirectAwareImageLoader()

@@ -338,7 +338,7 @@ test("a video's Export menu offers only the original; Shift+D downloads it", asy
 	const items = panel
 		.getByRole("menu", { name: "Export" })
 		.getByRole("menuitem");
-	await expect(items).toHaveText(["Original (hour.mov)"]);
+	await expect(items).toHaveText(["Original file (hour.mov)"]);
 	await expect(items.first()).toHaveAttribute(
 		"href",
 		`${api}/api/photos/33/export?size=original`,
@@ -358,7 +358,11 @@ test("a video's Export menu offers only the original; Shift+D downloads it", asy
 	await panel.getByRole("button", { name: "Export" }).click();
 	await expect(
 		panel.getByRole("menu", { name: "Export" }).getByRole("menuitem"),
-	).toHaveText(["Original (live.heic)", "JPEG, 2048 px", "JPEG, 1024 px"]);
+	).toHaveText([
+		"Original file (live.heic)",
+		"Preview JPEG (2048 px)",
+		"Preview JPEG (1024 px)",
+	]);
 });
 
 test("the metadata panel shows a video's duration, codec, and dimensions", async ({

@@ -34,6 +34,12 @@ enum LoupeRendition: Equatable {
         return photo.pairedPhotoId
     }
 
+    static func editableRawID(for photo: PhotoRecord?) -> Int? {
+        guard let photo, let id = developableRawID(for: photo) else { return nil }
+        let format = photo.isRaw ? (photo.filename as NSString).pathExtension : photo.pairedFormat
+        return ["RAF", "ARW", "DNG"].contains(format?.uppercased() ?? "") ? id : nil
+    }
+
     /// The badge text for a failed develop.
     static func failureMessage(_ error: Error) -> String {
         if case let .server(_, code, message) = error as? PhotoBrainAPIError {
@@ -61,6 +67,8 @@ final class LoupeDevelopedStore: ObservableObject {
     @Published private(set) var images: [Int: UIImage] = [:]
     @Published private(set) var rendition: LoupeRendition = .embedded
 
+    @Published private(set) var waitingToSync = false
+    private let cache: SmartPreviewCache
     private let api: any PhotoBrainAPI
     private let defaults: UserDefaults
     private let busyDelay: Duration
@@ -68,7 +76,8 @@ final class LoupeDevelopedStore: ObservableObject {
     private var currentPhotoID: Int?
     private var currentThumbnailUpdatedAt: Date?
 
-    init(api: any PhotoBrainAPI, defaults: UserDefaults = .standard, busyDelay: Duration = .seconds(1)) {
+    init(api: any PhotoBrainAPI, defaults: UserDefaults = .standard, busyDelay: Duration = .seconds(1), cache: SmartPreviewCache = .shared) {
+        self.cache = cache
         self.api = api
         self.defaults = defaults
         self.busyDelay = busyDelay
@@ -83,20 +92,43 @@ final class LoupeDevelopedStore: ObservableObject {
     }
 
     /// Loads the stored preview (when enabled), refreshing after background publication.
-    func show(_ photo: PhotoRecord?) {
-        let rawID = isOn ? LoupeRendition.developableRawID(for: photo) : nil
-        guard photo?.id != currentPhotoID || photo?.thumbnailUpdatedAt != currentThumbnailUpdatedAt || rawID == nil else { return }
+    func show(_ photo: PhotoRecord?, force: Bool = false) {
+        let rawID = LoupeRendition.developableRawID(for: photo)
+        guard force || photo?.id != currentPhotoID || photo?.thumbnailUpdatedAt != currentThumbnailUpdatedAt || rawID == nil else { return }
         currentThumbnailUpdatedAt = photo?.thumbnailUpdatedAt
         currentPhotoID = photo?.id
         task?.cancel()
         task = nil
         images = [:]
+        waitingToSync = false
         guard let photo, let rawID else {
             rendition = .embedded
             return
         }
-        rendition = .developing
-        task = Task { [weak self, api, busyDelay] in
+        rendition = isOn ? .developing : .embedded
+        let larger = isOn
+        task = Task { [weak self, api, busyDelay, cache] in
+            let entry = await cache.entry(api.baseURL, rawID)
+            guard !Task.isCancelled else { return }
+            self?.waitingToSync = entry?.pending != nil
+            guard larger || entry?.pending != nil else { return }
+            if let entry, entry.generation == photo.thumbnailUpdatedAt, entry.pending != nil || entry.locallySaved == true {
+                do {
+                    let url = await cache.file(api.baseURL, rawID)
+                    let image = try await Self.savedPreview(entry, file: url)
+                    guard !Task.isCancelled, let self, self.currentPhotoID == photo.id else { return }
+                    self.images = [photo.id: image]
+                    self.rendition = .developed(width: Int(image.size.width), height: Int(image.size.height))
+                    return
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    if entry.pending != nil {
+                        self?.rendition = .failed("Local preview unavailable")
+                        return
+                    }
+                }
+            }
+            guard larger else { return }
             var attempt = 0
             while true {
                 do {
@@ -132,11 +164,28 @@ final class LoupeDevelopedStore: ObservableObject {
         }
     }
 
+    /// Recreate the saved image even after an offline relaunch. Unsaved drafts belong to the editor.
+    private static func savedPreview(_ entry: SmartPreviewCache.Entry, file: URL) async throws -> UIImage {
+        let settings = entry.pending ?? entry.recipe.settings
+        guard settings.denoiseAmount == (entry.previewDenoise ?? entry.recipe.settings.denoiseAmount) else {
+            throw RawEditError(message: "Local preview uses different Denoise settings")
+        }
+        let data = try await Task.detached { try Data(contentsOf: file, options: .mappedIfSafe) }.value
+        try Task.checkCancellation()
+        let renderer = SmartRawEditRenderer()
+        let token = RawEditCancellation()
+        return try await withTaskCancellationHandler {
+            try await renderer.open(data: data, cancellation: token)
+            return try await renderer.render(settings, refined: true, cancellation: token)
+        } onCancel: { token.cancel() }
+    }
+
     /// Cancels the render and releases its image (loupe dismissal).
     func release() {
         task?.cancel()
         task = nil
         currentPhotoID = nil
+        waitingToSync = false
         images = [:]
         rendition = .embedded
     }

@@ -17,6 +17,8 @@ struct PagedLoupe: UIViewControllerRepresentable {
     /// Developed RAW renders by photo id, shown in place of the embedded preview.
     var developedImages: [Int: UIImage] = [:]
     var rawEditingActive = false
+    var onCompareHold: ((Bool) -> Void)?
+    var beforePhotoID: Int?
     /// A vertical drag-to-dismiss started (`true`) or sprang back (`false`).
     var onDismissDragActive: ((Bool) -> Void)?
     /// Drag released past the dismiss threshold: the image's on-screen frame (window
@@ -67,6 +69,8 @@ struct PagedLoupe: UIViewControllerRepresentable {
         controller.onDismissRequest = onDismissRequest
         controller.onSwipeUp = onSwipeUp
         controller.placeholderProvider = placeholder
+        controller.beforePhotoID = beforePhotoID
+        controller.onCompareHold = onCompareHold
         controller.rawEditingActive = rawEditingActive
         controller.infoVisible = infoVisible
         controller.onSwipeDownToCloseInfo = onSwipeDownToCloseInfo
@@ -114,9 +118,28 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
     var onZoomChanged: ((Bool) -> Void)?
     private(set) var isZoomed = false
     var placeholderProvider: ((LibraryEntryID) -> UIImage?)?
+    var onCompareHold: ((Bool) -> Void)?
+    var beforePhotoID: Int? {
+        didSet {
+            guard beforePhotoID != oldValue else { return }
+            for cell in knownCells.allObjects {
+                cell.showsBefore = beforePhotoID != nil && cell.representedPhotoID == beforePhotoID
+            }
+        }
+    }
+    private lazy var compareHold = UILongPressGestureRecognizer(target: self, action: #selector(comparePressed(_:)))
+    @objc private func comparePressed(_ gesture: UILongPressGestureRecognizer) {
+        switch gesture.state {
+        case .began: onCompareHold?(true)
+        case .ended, .cancelled, .failed: onCompareHold?(false)
+        default: break
+        }
+    }
+
     var rawEditingActive = false {
         didSet {
             guard isViewLoaded else { return }
+            compareHold.isEnabled = rawEditingActive
             collectionView.isScrollEnabled = !rawEditingActive && !isZoomed
         }
     }
@@ -177,6 +200,8 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        compareHold.isEnabled = rawEditingActive
+        view.addGestureRecognizer(compareHold)
         verticalPan.delegate = self
         view.addGestureRecognizer(verticalPan)
         NotificationCenter.default.addObserver(
@@ -288,6 +313,7 @@ final class PagedLoupeViewController: UIViewController, UICollectionViewDataSour
             onZoomChanged: { [weak self] _ in self?.updatePagingAvailability() }
         )
         knownCells.add(cell)
+        cell.showsBefore = beforePhotoID != nil && cell.representedPhotoID == beforePhotoID
         cell.setFaceBoxes(photo.remote.flatMap { faceBoxes[$0.id] } ?? [])
         cell.setDevelopedImage(photo.remote.flatMap { developedImages[$0.id] })
         syncPlayerHost()
@@ -548,6 +574,21 @@ final class ZoomPageCell: UICollectionViewCell {
     static let reuseIdentifier = "ZoomPageCell"
 
     let zoomView = ZoomingImageScrollView()
+    private let beforeLabel = UILabel()
+    var showsBefore = false {
+        didSet {
+            beforeLabel.isHidden = !showsBefore
+            if showsBefore { layoutBeforeLabel() }
+        }
+    }
+
+    private func layoutBeforeLabel() {
+        guard showsBefore, let image = zoomView.image else { return }
+        let visible = zoomView.visibleImageRect(in: contentView, imageSize: image.size)
+        let text = beforeLabel.intrinsicContentSize
+        beforeLabel.frame = CGRect(x: visible.minX + 8, y: visible.minY + 8, width: text.width + 16, height: text.height + 8)
+    }
+
     /// Face boxes over the image; follows the zoom view's pinch-zoom and pan.
     private let faceOverlay = FaceBoxOverlayView()
     private var faceBoxes: [FaceBoxDTO] = []
@@ -584,8 +625,22 @@ final class ZoomPageCell: UICollectionViewCell {
         faceOverlay.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(zoomView)
         contentView.addSubview(faceOverlay)
+        beforeLabel.text = "Before"
+        beforeLabel.accessibilityIdentifier = "raw-before-indicator"
+        beforeLabel.font = .preferredFont(forTextStyle: .subheadline)
+        beforeLabel.adjustsFontForContentSizeCategory = true
+        beforeLabel.textAlignment = .center
+        beforeLabel.textColor = .white
+        beforeLabel.backgroundColor = UIColor.black.withAlphaComponent(0.85)
+        beforeLabel.layer.cornerRadius = 8
+        beforeLabel.clipsToBounds = true
+        beforeLabel.isHidden = true
+        contentView.addSubview(beforeLabel)
         contentView.addSubview(failureStack)
-        zoomView.onGeometryChanged = { [weak self] in self?.layoutFaceBoxes() }
+        zoomView.onGeometryChanged = { [weak self] in
+            self?.layoutFaceBoxes()
+            self?.layoutBeforeLabel()
+        }
         NSLayoutConstraint.activate([
             zoomView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             zoomView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
@@ -609,6 +664,7 @@ final class ZoomPageCell: UICollectionViewCell {
         loadTask?.cancel()
         loadTask = nil
         retry = nil
+        showsBefore = false
         representedID = nil
         representedPhotoID = nil
         decodedImageWasEvicted = false
@@ -899,6 +955,12 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func visibleImageRect(in view: UIView, imageSize: CGSize) -> CGRect {
+        let fitted = FaceGeometry.aspectFitRect(imageSize: imageSize, in: imageView.bounds.size)
+        let visible = imageView.convert(fitted, to: view).intersection(view.bounds)
+        return visible.isNull ? view.bounds : visible
     }
 
     func setImage(_ image: UIImage?, resetsZoom: Bool = true) {

@@ -1,3 +1,4 @@
+import Network
 import SwiftUI
 
 @main
@@ -91,7 +92,6 @@ final class AppBootstrap: ObservableObject {
             // `isRestoring` meanwhile.
             let savedActiveID = await preferences.activeScanID
             Task { await scans.restore(savedActiveID: savedActiveID) }
-            Task { await SmartPreviewCache.shared.syncAll(api: environment.api) }
         } catch {
             configurationError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -283,6 +283,15 @@ private struct RootTabView: View {
                 do { try await Task.sleep(for: .seconds(5)) } catch { return }
             }
         }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            let monitor = NWPathMonitor()
+            defer { monitor.cancel() }
+            for await path in monitor where path.status == .satisfied {
+                guard !Task.isCancelled else { return }
+                await SmartPreviewCache.shared.syncAll(api: environment.api)
+            }
+        }
         .preferredColorScheme(theme.preference.colorScheme)
         .onAppear {
             applyPendingLink()
@@ -295,7 +304,6 @@ private struct RootTabView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
-                Task { await SmartPreviewCache.shared.syncAll(api: environment.api) }
                 Task { await scans.applicationBecameActive() }
                 Task { await onThisDay.applicationBecameActive() }
                 BackupRuntime.shared.coordinator?.applicationBecameActive()

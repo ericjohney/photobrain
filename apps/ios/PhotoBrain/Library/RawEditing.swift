@@ -170,6 +170,8 @@ enum RawEditControl: String, CaseIterable, Identifiable {
 /// are coalesced; late frames from a closed/replaced session are always discarded.
 @MainActor
 final class LoupeRawEditStore: ObservableObject {
+    enum SaveResult: Equatable { case synced, queued, failed }
+    static let pendingMessage = "Saved on this iPhone · Waiting to sync"
     enum Phase: Equatable { case inactive, loading, ready, failed(String) }
     @Published private(set) var phase: Phase = .inactive
     @Published private(set) var images: [Int: UIImage] = [:]
@@ -192,9 +194,11 @@ final class LoupeRawEditStore: ObservableObject {
 
     var isActive: Bool { phase != .inactive }
     var isReady: Bool { phase == .ready }
+    @Published private var holdingBefore = false
+    var displaysBefore: Bool { showingBefore || holdingBefore }
     var hasChanges: Bool { settings != savedSettings }
     var label: String {
-        if showingBefore { return "Before adjustments" }
+        if displaysBefore { return "Before adjustments" }
         switch phase {
         case .inactive: return "Embedded preview"
         case .loading: return "Preparing RAW…"
@@ -227,7 +231,7 @@ final class LoupeRawEditStore: ObservableObject {
 
     func start(_ photo: PhotoRecord) {
         end()
-        guard let rawID = LoupeRendition.developableRawID(for: photo) else { return }
+        guard let rawID = LoupeRendition.editableRawID(for: photo) else { return }
         let id = UUID()
         self.id = id
         self.photoID = photo.id
@@ -311,7 +315,7 @@ final class LoupeRawEditStore: ObservableObject {
         settings = entry.draft ?? savedSettings
         denoiseSelection = settings.denoiseAmount
         beforeImage = baseline; currentImage = baseline
-        storageMessage = entry.pending != nil ? "Saved on device · Waiting to sync" : (entry.draft != nil ? "Recovered unsaved adjustments" : "Available offline")
+        storageMessage = entry.pending != nil ? Self.pendingMessage : (entry.draft != nil ? "Recovered unsaved adjustments" : "Available offline")
         showImage(); phase = .ready
         if settings != RawEditSettings() { requestRender() }
     }
@@ -368,11 +372,15 @@ final class LoupeRawEditStore: ObservableObject {
                     updated.previewDenoise = remote.settings.denoiseAmount
                     try await cache.store(data, entry: updated, origin: api.baseURL)
                 }
-                self.storageMessage = latest.pending == nil ? "Available offline" : "Saved on device · Waiting to sync"
+                self.storageMessage = latest.pending == nil ? "Available offline" : Self.pendingMessage
                 self.requestRender()
             } catch {
                 guard let self, self.id == id, !Task.isCancelled else { return }
-                if Self.canQueue(error) { self.storageMessage = "Offline · Edits stay on this device" }
+                if Self.canQueue(error) {
+                    let pending = await cache.entry(api.baseURL, entry.rawID)?.pending != nil
+                    guard self.id == id else { return }
+                    self.storageMessage = pending ? Self.pendingMessage : "Offline · Edits stay on this device"
+                }
                 else { self.errorMessage = error.localizedDescription }
             }
         }
@@ -464,17 +472,6 @@ final class LoupeRawEditStore: ObservableObject {
         requestRender()
     }
 
-    func reset() {
-        guard isReady, !isSaving, !isDenoising else { return }
-        let amount = settings.denoiseAmount, version = settings.version
-        settings = RawEditSettings()
-        if version == 2 { settings.version = 2; settings.denoise = amount }
-        persistDraft()
-        showingBefore = false
-        showImage()
-        requestRender()
-    }
-
     func setDragging(_ value: Bool) {
         guard isReady, !isSaving, !isDenoising else { return }
         dragging = value
@@ -487,37 +484,49 @@ final class LoupeRawEditStore: ObservableObject {
         showImage()
     }
 
-    func save() async -> Bool {
-        guard isReady, !isSaving, !isDenoising, denoiseSelection == settings.denoiseAmount, let id, let rawID else { return false }
+    func holdBefore(_ held: Bool) {
+        guard isReady, held != holdingBefore else { return }
+        holdingBefore = held
+        showImage()
+    }
+
+    func save() async -> SaveResult {
+        guard isReady, !isSaving, !isDenoising, denoiseSelection == settings.denoiseAmount, let id, let rawID else { return .failed }
         isSaving = true
         errorMessage = nil
         defer { if self.id == id { isSaving = false } }
+        var queued = false
         do {
             await journalTask?.value
             let saved: RawEditRecipe
             if isLocal {
                 try await cache.queue(origin: api.baseURL, rawID: rawID, settings: settings)
+                queued = true
                 savedSettings = settings
-                storageMessage = "Saved on device · Waiting to sync"
-                guard var synced = try await cache.sync(api: api, rawID: rawID) else { return false }
-                if await cache.entry(api.baseURL, rawID)?.pending != nil,
-                   let newest = try await cache.sync(api: api, rawID: rawID) { synced = newest }
-                guard await cache.entry(api.baseURL, rawID)?.pending == nil else { return false }
-                saved = synced
+                storageMessage = Self.pendingMessage
+                _ = try await cache.sync(api: api, rawID: rawID)
+                if await cache.entry(api.baseURL, rawID)?.pending != nil {
+                    _ = try await cache.sync(api: api, rawID: rawID)
+                }
+                guard let committed = await cache.entry(api.baseURL, rawID), committed.pending == nil else {
+                    throw RawEditError(message: "The saved adjustments are still waiting to sync.")
+                }
+                saved = committed.recipe
             } else {
                 saved = try await api.saveRawEdit(photoId: rawID, settings: settings, revision: savedRevision)
             }
-            guard self.id == id else { return false }
+            guard self.id == id else { return .failed }
             savedSettings = saved.settings
             savedRevision = saved.revision
-            return true
+            return .synced
         } catch {
-            guard self.id == id else { return false }
-            if isLocal && Self.canQueue(error) {
-                storageMessage = "Saved on device · Will sync when online"
+            guard self.id == id else { return .failed }
+            if queued && Self.canQueue(error) {
+                storageMessage = Self.pendingMessage
                 errorMessage = nil
+                return .queued
             } else { errorMessage = error.localizedDescription }
-            return false
+            return .failed
         }
     }
 
@@ -546,7 +555,7 @@ final class LoupeRawEditStore: ObservableObject {
     }
 
     private func showImage() {
-        guard let photoID, let image = showingBefore ? beforeImage : currentImage else { return }
+        guard let photoID, let image = displaysBefore ? beforeImage : currentImage else { return }
         images = [photoID: image]
     }
 
@@ -645,6 +654,7 @@ final class LoupeRawEditStore: ObservableObject {
         isRendering = false
         isSaving = false
         showingBefore = false
+        holdingBefore = false
         supportsTone = false
         engine = ""
         phase = .inactive
@@ -660,6 +670,10 @@ struct SmartPreviewDownload: Sendable {
     var denoiseAmount: Int? = nil
 }
 
+extension Notification.Name {
+    static let rawEditSynced = Notification.Name("PhotoBrain.rawEditSynced")
+}
+
 /// Application Support keeps previews and tiny draft journals together across restarts.
 /// Every origin has its own namespace. Eviction never removes a draft or queued save.
 actor SmartPreviewCache {
@@ -673,6 +687,9 @@ actor SmartPreviewCache {
         var pending: RawEditSettings?
         var accessed: Date
         var previewDenoise: Int? = nil
+        // Keep showing the locally saved recipe until a new thumbnail generation arrives.
+        var locallySaved: Bool? = nil
+        var rawFilename: String? = nil
         var generation: Date? { photo.thumbnailUpdatedAt }
     }
     private let root: URL
@@ -731,6 +748,12 @@ actor SmartPreviewCache {
             try fm.removeItem(at: path)
         }
     }
+    func rememberFilename(_ name: String, origin: URL, rawID: Int) throws {
+        guard var current = entry(origin, rawID), current.rawFilename != name else { return }
+        current.rawFilename = name
+        try persist(current, origin: origin)
+    }
+
     func updateDraft(origin: URL, rawID: Int, settings: RawEditSettings?) throws {
         guard var entry = entry(origin, rawID) else { return }
         entry.draft = settings
@@ -739,6 +762,7 @@ actor SmartPreviewCache {
     }
     func queue(origin: URL, rawID: Int, settings: RawEditSettings) throws {
         guard var entry = entry(origin, rawID) else { throw RawEditError(message: "Download a smart preview before saving offline") }
+        entry.locallySaved = true
         entry.pending = settings
         entry.draft = nil
         try persist(entry, origin: origin)
@@ -778,6 +802,9 @@ actor SmartPreviewCache {
                 current.recipe = saved
                 if current.pending == pending { current.pending = nil }
                 try self.persist(current, origin: origin)
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .rawEditSynced, object: origin, userInfo: ["rawID": rawID])
+                }
             }
             return saved
         }
