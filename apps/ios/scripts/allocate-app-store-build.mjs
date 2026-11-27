@@ -111,8 +111,20 @@ async function readPage(response) {
 		fail("App Store Connect returned an invalid HTTP response");
 	}
 	if (!response.ok) {
+		let appleError;
+		try {
+			const body = JSON.parse(await response.text());
+			appleError = body?.errors?.[0];
+		} catch {
+			// Some failures have an empty or non-JSON response.
+		}
+		const reason = [appleError?.code, appleError?.detail || appleError?.title]
+			.filter((field) => typeof field === "string" && field.trim())
+			.join(" — ")
+			.replace(/\s+/g, " ")
+			.slice(0, 500);
 		fail(
-			`App Store Connect builds request failed with HTTP ${response.status}`,
+			`App Store Connect builds request failed with HTTP ${response.status}${reason ? ` (${reason})` : ""}`,
 		);
 	}
 

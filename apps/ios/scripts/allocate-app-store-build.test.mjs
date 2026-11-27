@@ -91,6 +91,21 @@ test("creates a bounded, valid ES256 App Store Connect token", () => {
 	);
 });
 
+test("reports Apple's reason when build history is inaccessible", async () => {
+	await assert.rejects(
+		allocateAppStoreBuild({
+			appId: APP_ID,
+			token: "test",
+			fetchImpl: async () =>
+				response(
+					{ errors: [{ code: "FORBIDDEN_ERROR", detail: "Access denied." }] },
+					403,
+				),
+		}),
+		/HTTP 403 \(FORBIDDEN_ERROR — Access denied\.\)/,
+	);
+});
+
 test("paginates all build fixtures and allocates one above the maximum", async () => {
 	const calls = [];
 	const pages = [
