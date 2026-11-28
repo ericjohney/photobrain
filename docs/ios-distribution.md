@@ -26,7 +26,7 @@ gh workflow run native-ios-release.yml --ref main            # marketing version
 gh workflow run native-ios-release.yml --ref main -f marketing_version=1.1.0
 ```
 
-The workflow (on a GitHub-hosted `macos-26` runner with Xcode 26.6 and Rust 1.98.0 with iOS targets):
+The workflow (on a GitHub-hosted `xcode-27` runner with Xcode 27.2 and Rust 1.98.0 with iOS targets):
 
 1. Validates the inputs and secrets (bundle, scheme, iOS 17.0 minimum, non-local HTTPS API URL, ID formats).
 2. Allocates a build number above both App Store Connect history and `run_id * 100 + run_attempt` (`apps/ios/scripts/allocate-app-store-build.mjs`).

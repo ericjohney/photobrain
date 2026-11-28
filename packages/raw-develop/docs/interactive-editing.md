@@ -139,7 +139,7 @@ The old preview-only UI exposed exposure ±3 EV. The current saved server editor
 
 ### Build and package
 
-Install Rust through rustup in addition to Xcode 26.6:
+Install Rust through rustup in addition to Xcode 27.2:
 
 ```bash
 rustup toolchain install 1.98.0 --profile minimal
@@ -177,7 +177,7 @@ An opt-in simulator unit test also opens local real fixtures without committing 
 ```bash
 TEST_RUNNER_PHOTOBRAIN_RAW_FIXTURES="$HOME/raw-develop-fixtures" xcodebuild \
   -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' \
   CODE_SIGNING_ALLOWED=NO -only-testing:PhotoBrainTests/RawEditingTests test
 ```
 

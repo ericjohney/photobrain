@@ -11,7 +11,7 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/../../.." && pwd)"
-destination="${IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5}"
+destination="${IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2}"
 log="$(mktemp -t photobrain-ui-server)"
 
 bun "$repo/apps/api/scripts/ui-test-server.ts" >"$log" 2>&1 &

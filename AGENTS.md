@@ -162,14 +162,14 @@ There is no worker command. Configure an Inngest development/runtime service sep
 
 ### Native iOS simulator
 
-Native iOS requires Xcode 26.6 and rustup Rust 1.98.0 with the iOS device/simulator targets (see [local RAW editing](packages/raw-develop/docs/interactive-editing.md#build-and-package)). The app targets iOS 17+ and has separate Debug, Preview, and Production configurations. With Xcode 26.6 selected, run the same unsigned Preview simulator build/test used by CI:
+Native iOS requires Xcode 27.2 and rustup Rust 1.98.0 with the iOS device/simulator targets (see [local RAW editing](packages/raw-develop/docs/interactive-editing.md#build-and-package)). The app targets iOS 17+ and has separate Debug, Preview, and Production configurations. With Xcode 27.2 selected, run the same unsigned Preview simulator build/test used by CI:
 
 ```bash
 xcodebuild \
   -project apps/ios/PhotoBrain.xcodeproj \
   -scheme PhotoBrain-Preview \
   -configuration Preview \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' \
   CODE_SIGNING_ALLOWED=NO \
   test
 ```
@@ -188,7 +188,7 @@ cd apps/api && bun run bench:catalog # Library listing (tRPC/v1 photos) size and
 cd apps/api && bun run bench:exif /path/to/photo1.jpg /path/to/photo2.heic # Read-only EXIF comparison; requires exiftool
 cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui
-xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' CODE_SIGNING_ALLOWED=NO test # Xcode 26.6
+xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' CODE_SIGNING_ALLOWED=NO test # Xcode 27.2
 apps/ios/scripts/run-ui-tests.sh # XCUITest flows (Debug, PhotoBrain-UITests scheme) against the seeded fixture API; needs bun install + Homebrew sqlite
 cd packages/image-processing && cargo test
 cd packages/raw-develop && cargo test
@@ -430,7 +430,7 @@ There is no worker image.
 - After a successful push build for `main` or a `v*` tag, the release notification sends its run ID to the private GitOps repository. That workflow verifies the run and ref, builds the two images and publishes them to the internal registry. Main releases update both GitOps image tags together. GPU configuration, PVCs and photo mounts are managed in the GitOps repository.
 
 
-Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 26.6, runs the unsigned Preview configuration on an iOS 26.5 simulator, then runs the Debug XCUITest flows against the fixture API. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**`, with default inputs (or by manual dispatch with custom inputs); it validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight. Apple identities, GitHub secrets, tester setup, and certificate renewal are recorded in [iOS distribution](docs/ios-distribution.md).
+Native iOS has independent CI and release lanes. `.github/workflows/native-ios.yml` pins Xcode 27.2, runs the unsigned Preview configuration on an iOS 27.2 simulator, then runs the Debug XCUITest flows against the fixture API. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**`, with default inputs (or by manual dispatch with custom inputs); it validates Production inputs/signing assets, allocates a build number, archives and strictly inspects the signed native IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight. Apple identities, GitHub secrets, tester setup, and certificate renewal are recorded in [iOS distribution](docs/ios-distribution.md).
 
 `native-ios-release.yml` serializes on the `ios-production-release` concurrency group and uses `apps/ios/scripts/allocate-app-store-build.mjs`, which chooses a build number above both App Store Connect history and the run reservation floor; it enforces the production bundle/API contract and iOS 17.0 minimum.
 

@@ -56,7 +56,7 @@ Detailed implementation guidance is in:
 - The `exiftool` executable for EXIF and RAW preview extraction, and `ffmpeg`/`ffprobe` for video posters and metadata
 - Docker only if you want to run the documented runtime dependencies or build images
 - An Inngest development/runtime service for executing scan and embedding events
-- Xcode 26.6 when building/testing the native iOS app
+- Xcode 27.2 when building/testing the native iOS app
 
 On Debian/Ubuntu, the native build dependencies are typically:
 
@@ -131,17 +131,17 @@ cd apps/api && bun run typecheck
 cd apps/web && bun run test:e2e
 cd apps/web && bun run test:e2e:ui
 cd packages/image-processing && cargo test
-xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project apps/ios/PhotoBrain.xcodeproj -scheme PhotoBrain-Preview -configuration Preview -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' CODE_SIGNING_ALLOWED=NO test
 ```
 
-The native iOS command requires Xcode 26.6 and matches the unsigned Preview simulator build/test used by CI. The Xcode project also exposes separate Debug and Production schemes/configurations; iOS 17.0 is the minimum deployment target.
+The native iOS command requires Xcode 27.2 and matches the unsigned Preview simulator build/test used by CI. The Xcode project also exposes separate Debug and Production schemes/configurations; iOS 17.0 is the minimum deployment target.
 
 The app supports iPhone and iPad, including portrait, landscape, and resized iPad multitasking windows. iPhone keeps its existing bottom tabs and browsing controls. On iPad, navigation stays available while browsing, Years/Months/All controls remain visible, and ranked search grids scale with the window. iPadOS 18+ also offers the system tab/sidebar switcher; iPadOS 17 uses tabs.
 
 Run the fixture-backed UI flows on an iPad simulator with:
 
 ```bash
-IOS_DESTINATION='platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=26.5' \
+IOS_DESTINATION='platform=iOS Simulator,name=iPad Air 11-inch (M4),OS=27.2' \
   apps/ios/scripts/run-ui-tests.sh \
   -only-testing:PhotoBrainUITests/CollectionsSearchFlowTests \
   -only-testing:PhotoBrainUITests/LibraryFlowTests/testIPadKeepsNavigationAndGroupingAvailableWhileBrowsing \
@@ -222,7 +222,7 @@ The production Bun server reads `API_URL`, `HOST`, and `PORT`. It injects the AP
 
 ### Native iOS
 
-Building the app requires Xcode 26.6 and rustup Rust 1.98.0 with iOS device and simulator targets. The Xcode build phase compiles the local RAW engine automatically. See [RAW editing setup](packages/raw-develop/docs/interactive-editing.md#build-and-package). Tap **Edit RAW** in the loupe toolbar to adjust the named RAW file. Adobe RAWs offer six tone controls and ProRAW offers exposure. Hold the photo to compare, reset individual adjustments, or save the edit offline on a cached smart preview. Saved edits sync on reconnect and refresh library previews asynchronously. Choose **Full-resolution JPEG with saved edits** on iOS or web to export a full-resolution Display P3 JPEG. Original RAWs remain intact. Apply migration `0021_photo_raw_edits.sql` and rebuild the native addon before using the new editor.
+Building the app requires Xcode 27.2 and rustup Rust 1.98.0 with iOS device and simulator targets. The Xcode build phase compiles the local RAW engine automatically. See [RAW editing setup](packages/raw-develop/docs/interactive-editing.md#build-and-package). Tap **Edit RAW** in the loupe toolbar to adjust the named RAW file. Adobe RAWs offer six tone controls and ProRAW offers exposure. Hold the photo to compare, reset individual adjustments, or save the edit offline on a cached smart preview. Saved edits sync on reconnect and refresh library previews asynchronously. Choose **Full-resolution JPEG with saved edits** on iOS or web to export a full-resolution Display P3 JPEG. Original RAWs remain intact. Apply migration `0021_photo_raw_edits.sql` and rebuild the native addon before using the new editor.
 
 The native app's `PhotoBrainAPIURL` comes from the selected file under `apps/ios/Config`. Debug uses `http://localhost:3000`; Preview and Production use the configured non-local HTTPS origin and reject local/insecure origins.
 
@@ -305,7 +305,7 @@ The API image applies shared migrations on startup and runs on port 3000. The we
 
 GitHub-hosted runners execute API tests/typecheck and web Playwright tests. Pull requests build both container targets on hosted runners. Successful `main` and `v*` tag push builds notify the private GitOps repository, which verifies the run before publishing the Linux amd64 CUDA API and web images to the internal registry. Main releases update both production image tags together. The API uses its existing shared NVIDIA GPU slot and CUDA configuration.
 
-Native iOS has independent CI and Production release workflows. CI pins Xcode 26.6 and runs an unsigned Preview build/test on an iPhone 17 Pro / iOS 26.5 simulator, plus fixture-backed UI flows on iPhone and iPad Air simulators. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**` (or by manual dispatch with custom inputs); it validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
+Native iOS has independent CI and Production release workflows. CI pins Xcode 27.2 and runs an unsigned Preview build/test on an iPhone 18 Pro / iOS 27.2 simulator, plus fixture-backed UI flows on iPhone and iPad Air simulators. `.github/workflows/native-ios-release.yml` runs on every push to `main` that changes `apps/ios/**` or `packages/raw-develop/**` (or by manual dispatch with custom inputs); it validates release authority and signing assets, allocates an App Store build number, produces and strictly inspects the signed Production IPA, retains the archive/IPA/dSYMs, and uploads the inspected IPA to TestFlight.
 
 The release workflow serializes on `ios-production-release`, uses `apps/ios/scripts/allocate-app-store-build.mjs` against App Store Connect plus a run reservation floor, and enforces iOS 17.0 plus the production bundle/API contract. See [iOS distribution](docs/ios-distribution.md) for releasing, signing secrets, and renewal.
 
