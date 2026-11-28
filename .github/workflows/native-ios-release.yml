@@ -496,6 +496,15 @@ jobs:
             --apiKey "$ASC_KEY_ID" \
             --apiIssuer "$ASC_ISSUER_ID"
 
+      - name: Confirm availability in internal TestFlight
+        env:
+          BUILD_NUMBER: ${{ steps.allocate.outputs.build_number }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: node apps/ios/scripts/wait-for-internal-testflight.mjs
+
       - name: Remove temporary signing material
         if: always()
         env:
