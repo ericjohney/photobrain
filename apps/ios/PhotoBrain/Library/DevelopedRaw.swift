@@ -129,6 +129,14 @@ final class LoupeDevelopedStore: ObservableObject {
                 }
             }
             guard larger else { return }
+            // Server-rendered edits have no smart-preview file. Keep showing the saved
+            // frame until the background job publishes this photo’s new generation.
+            if case let .saved(image) = await cache.savedThumbnail(for: photo) {
+                guard !Task.isCancelled, let self, self.currentPhotoID == photo.id else { return }
+                self.images = [photo.id: image]
+                self.rendition = .developed(width: Int(image.size.width), height: Int(image.size.height))
+                return
+            }
             var attempt = 0
             while true {
                 do {

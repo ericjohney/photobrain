@@ -46,6 +46,19 @@ struct PhotoRecord: Identifiable, Hashable, Codable, Sendable {
         isRaw && rawStatus == "converted"
     }
 
+    /// Cache identity shared by both members of an editable stack, scoped to this server.
+    var savedRawThumbnailKey: URL? {
+        guard let rawID = LoupeRendition.editableRawID(for: self),
+              var components = URLComponents(url: thumbnailURL, resolvingAgainstBaseURL: false) else { return nil }
+        components.path = "/api/photos/\(rawID)/thumbnail/small"
+        components.query = nil
+        return components.url
+    }
+
+    var thumbnailGeneration: String {
+        thumbnailUpdatedAt.map { String(Int($0.timeIntervalSince1970 * 1_000)) } ?? "unversioned"
+    }
+
     var isVideo: Bool { mediaType == .video }
 
     /// Grid badge, e.g. `ARW`, `RAW`, or `ARW+JPG`; nil for an unpaired standard photo.

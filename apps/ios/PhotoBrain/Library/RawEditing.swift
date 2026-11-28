@@ -210,7 +210,8 @@ final class LoupeRawEditStore: ObservableObject {
 
     private let api: any PhotoBrainAPI
     private var id: UUID?
-    private var photoID: Int?
+    private var photo: PhotoRecord?
+    private(set) var partner: PhotoRecord?
     private var rawID: Int?
     private var savedSettings = RawEditSettings()
     private var savedRevision = 0
@@ -234,7 +235,7 @@ final class LoupeRawEditStore: ObservableObject {
         guard let rawID = LoupeRendition.editableRawID(for: photo) else { return }
         let id = UUID()
         self.id = id
-        self.photoID = photo.id
+        self.photo = photo
         self.rawID = rawID
         phase = .loading
         let previousJournal = journalTask
@@ -490,12 +491,21 @@ final class LoupeRawEditStore: ObservableObject {
         showImage()
     }
 
-    func save() async -> SaveResult {
+    func loadPartner(for photo: PhotoRecord) async {
+        guard let id, let partnerID = photo.pairedPhotoId,
+              let dto = try? await api.photo(id: partnerID),
+              self.id == id, !Task.isCancelled, dto.id == partnerID else { return }
+        partner = PhotoRecord(dto: dto, apiBaseURL: api.baseURL)
+        if !photo.isRaw { try? await cache.rememberFilename(dto.name, origin: api.baseURL, rawID: partnerID) }
+    }
+
+    func save(displayedPhoto: PhotoRecord? = nil) async -> SaveResult {
         guard isReady, !isSaving, !isDenoising, denoiseSelection == settings.denoiseAmount, let id, let rawID else { return .failed }
         isSaving = true
         errorMessage = nil
         defer { if self.id == id { isSaving = false } }
         var queued = false
+        let result: SaveResult
         do {
             await journalTask?.value
             let saved: RawEditRecipe
@@ -518,16 +528,27 @@ final class LoupeRawEditStore: ObservableObject {
             guard self.id == id else { return .failed }
             savedSettings = saved.settings
             savedRevision = saved.revision
-            return .synced
+            result = .synced
         } catch {
             guard self.id == id else { return .failed }
             if queued && Self.canQueue(error) {
                 storageMessage = Self.pendingMessage
                 errorMessage = nil
-                return .queued
-            } else { errorMessage = error.localizedDescription }
-            return .failed
+                result = .queued
+            } else {
+                errorMessage = error.localizedDescription
+                return .failed
+            }
         }
+        // A quick Save can beat the final slider render, or the Before frame can be on screen.
+        await renderTask?.value
+        guard self.id == id, let photo else { return .failed }
+        // An earlier edit may have finished developing while this editor was open.
+        let latest = displayedPhoto.flatMap { $0.id == photo.id ? $0 : nil } ?? photo
+        let knownPartner = latest.thumbnailUpdatedAt == photo.thumbnailUpdatedAt ? partner : nil
+        await cache.storeThumbnail(appliedSettings == savedSettings ? currentImage : nil, for: latest, partner: knownPartner)
+        NotificationCenter.default.post(name: .savedRawThumbnailChanged, object: latest.savedRawThumbnailKey)
+        return self.id == id ? result : .failed
     }
 
     func reloadSavedAdjustments() async {
@@ -555,7 +576,7 @@ final class LoupeRawEditStore: ObservableObject {
     }
 
     private func showImage() {
-        guard let photoID, let image = displaysBefore ? beforeImage : currentImage else { return }
+        guard let photoID = photo?.id, let image = displaysBefore ? beforeImage : currentImage else { return }
         images = [photoID: image]
     }
 
@@ -637,7 +658,8 @@ final class LoupeRawEditStore: ObservableObject {
         openTask?.cancel()
         renderTask?.cancel()
         id = nil
-        photoID = nil
+        photo = nil
+        partner = nil
         rawID = nil
         openTask = nil
         renderTask = nil
@@ -671,6 +693,7 @@ struct SmartPreviewDownload: Sendable {
 }
 
 extension Notification.Name {
+    static let savedRawThumbnailChanged = Notification.Name("PhotoBrain.savedRawThumbnailChanged")
     static let rawEditSynced = Notification.Name("PhotoBrain.rawEditSynced")
 }
 
@@ -694,6 +717,8 @@ actor SmartPreviewCache {
     }
     private let root: URL
     private let limit: Int
+    private lazy var thumbnails = URLCache(memoryCapacity: 4 * 1024 * 1024, diskCapacity: 64 * 1024 * 1024,
+                                           directory: root.appendingPathComponent("SavedThumbnails", isDirectory: true))
     private var syncs: [String: Task<RawEditRecipe, Error>] = [:]
 
     init(root: URL? = nil, limit: Int = 512 * 1024 * 1024) {
@@ -743,11 +768,56 @@ actor SmartPreviewCache {
     }
     func remove(origin: URL, rawID: Int) async throws {
         if let sync = syncs[origin.absoluteString + ":\(rawID)"] { _ = try? await sync.value }
+        let thumbnailKey = entry(origin, rawID)?.photo.savedRawThumbnailKey
         let fm = FileManager.default
         for path in [file(origin, rawID), metadata(origin, rawID)] where fm.fileExists(atPath: path.path) {
             try fm.removeItem(at: path)
         }
+        if let thumbnailKey {
+            thumbnails.removeCachedResponse(for: URLRequest(url: thumbnailKey))
+            await MainActor.run { NotificationCenter.default.post(name: .savedRawThumbnailChanged, object: thumbnailKey) }
+        }
     }
+    enum Thumbnail {
+        case absent, published, saved(UIImage)
+    }
+
+    /// The RAW and its JPEG share one saved frame, but their server generation dates can differ.
+    func storeThumbnail(_ image: UIImage?, for photo: PhotoRecord, partner: PhotoRecord?) {
+        guard let key = photo.savedRawThumbnailKey else { return }
+        let request = URLRequest(url: key)
+        guard let image else {
+            thumbnails.removeCachedResponse(for: request)
+            return
+        }
+        var headers = ["generation-\(photo.id)": photo.thumbnailGeneration]
+        if let partnerID = photo.pairedPhotoId {
+            let field = "generation-\(partnerID)"
+            let previous = thumbnails.cachedResponse(for: request)?.response as? HTTPURLResponse
+            if let partner, partner.id == partnerID {
+                headers[field] = partner.thumbnailGeneration
+            } else if previous?.value(forHTTPHeaderField: "generation-\(photo.id)") == photo.thumbnailGeneration {
+                headers[field] = previous?.value(forHTTPHeaderField: field) ?? photo.thumbnailGeneration
+            } else {
+                headers[field] = photo.thumbnailGeneration
+            }
+        }
+        let size = CGSize(width: 1024, height: 1024)
+        let thumbnail = max(image.size.width * image.scale, image.size.height * image.scale) > size.width
+            ? image.preparingThumbnail(of: size) : image
+        guard let bytes = thumbnail?.jpegData(compressionQuality: 0.9),
+              let response = HTTPURLResponse(url: key, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers) else { return }
+        thumbnails.storeCachedResponse(CachedURLResponse(response: response, data: bytes), for: request)
+    }
+
+    func savedThumbnail(for photo: PhotoRecord) -> Thumbnail {
+        guard let key = photo.savedRawThumbnailKey, let cached = thumbnails.cachedResponse(for: URLRequest(url: key)),
+              let response = cached.response as? HTTPURLResponse else { return .absent }
+        guard response.value(forHTTPHeaderField: "generation-\(photo.id)") == photo.thumbnailGeneration else { return .published }
+        guard let image = UIImage(data: cached.data) else { return .absent }
+        return .saved(image)
+    }
+
     func rememberFilename(_ name: String, origin: URL, rawID: Int) throws {
         guard var current = entry(origin, rawID), current.rawFilename != name else { return }
         current.rawFilename = name

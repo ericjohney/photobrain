@@ -348,20 +348,16 @@ struct LoupeScreen: View {
                     }
                 }
                 .task(id: rawEditor.isReady) {
-                    guard rawEditor.isReady, let photo = activeRecord, !photo.isRaw, let id = photo.pairedPhotoId else { return }
-                    let cache = SmartPreviewCache.shared
-                    if let name = await cache.entry(api.baseURL, id)?.rawFilename {
-                        if !Task.isCancelled { rawFilename = name }
-                    } else if let partner = try? await api.photo(id: id), !Task.isCancelled {
-                        rawFilename = partner.name
-                        try? await cache.rememberFilename(partner.name, origin: api.baseURL, rawID: id)
-                    }
+                    guard rawEditor.isReady, let photo = activeRecord, let id = photo.pairedPhotoId else { return }
+                    if !photo.isRaw { rawFilename = await SmartPreviewCache.shared.entry(api.baseURL, id)?.rawFilename }
+                    await rawEditor.loadPartner(for: photo)
+                    if !Task.isCancelled, !photo.isRaw, let partner = rawEditor.partner { rawFilename = partner.filename }
                 }
                 .foregroundStyle(.white)
                 Spacer()
                 Button {
                     Task {
-                        let result = await rawEditor.save()
+                        let result = await rawEditor.save(displayedPhoto: activeRecord)
                         if result != .failed {
                             showSavedNotice = result == .synced
                             rawEditor.end()

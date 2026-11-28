@@ -104,8 +104,10 @@ final class RawEditingTests: XCTestCase {
     }
 
     func testSaveReopensRecipeAndCancelLeavesSavedSettingsIntact() async {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
         let api = await editingAPI()
-        let store = LoupeRawEditStore(api: api)
+        let store = LoupeRawEditStore(api: api, cache: SmartPreviewCache(root: root))
         store.start(raw)
         await waitUntil { store.isReady }
         store.set(.exposure, value: 0.7)
@@ -234,8 +236,13 @@ final class RawEditingTests: XCTestCase {
         await waitUntil { recovered.isReady && recovered.appliedSettings.exposure == 1.25 }
         XCTAssertEqual(recovered.settings.exposure, 1.25)
         XCTAssertTrue(["Recovered unsaved adjustments", "Offline · Edits stay on this device"].contains(recovered.storageMessage ?? ""))
+        let expectedJPEG = try XCTUnwrap(recovered.images[raw.id]?.jpegData(compressionQuality: 0.9))
+        recovered.toggleBefore()
         let offlineSaved = await recovered.save()
         XCTAssertEqual(offlineSaved, .queued)
+        guard case let .saved(thumbnail) = await reopenedCache.savedThumbnail(for: raw) else { return XCTFail("Missing offline thumbnail") }
+        let expected = try XCTUnwrap(UIImage(data: expectedJPEG)?.cgImage?.dataProvider?.data) as Data
+        XCTAssertEqual(thumbnail.cgImage?.dataProvider?.data as Data?, expected)
         XCTAssertEqual(recovered.storageMessage, LoupeRawEditStore.pendingMessage)
         let pending = await reopenedCache.entry(api.baseURL, 2)
         XCTAssertEqual(pending?.pending?.exposure, 1.25)
@@ -255,6 +262,29 @@ final class RawEditingTests: XCTestCase {
         XCTAssertNil(synced?.pending)
         XCTAssertEqual(synced?.recipe, saved)
         recovered.end()
+    }
+
+    func testSavedThumbnailUsesBothStackGenerationsAndYieldsToPublishedThumbnails() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = SmartPreviewCache(root: root)
+        let origin = URL(string: "https://photos.example.invalid")!
+        let jpeg = TestModels.photo(id: 3, pairedPhotoId: 2, pairedFormat: "ARW")
+        let cover = PhotoRecord(dto: jpeg, apiBaseURL: origin)
+        let partner = PhotoRecord(dto: TestModels.photo(id: 2, name: "photo_2.ARW", isRaw: true, rawFormat: "ARW",
+            pairedPhotoId: 3, pairedFormat: "JPG"), apiBaseURL: origin)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 20)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
+        }
+        await cache.storeThumbnail(image, for: cover, partner: partner)
+        for record in [cover, partner] {
+            guard case .saved = await cache.savedThumbnail(for: record) else { return XCTFail("Missing saved frame for \(record.id)") }
+        }
+        let published = PhotoRecord(dto: TestModels.photo(id: 3, pairedPhotoId: 2, pairedFormat: "ARW", thumbnailUpdatedAt: Date()), apiBaseURL: origin)
+        guard case .published = await cache.savedThumbnail(for: published) else { return XCTFail("New server generation should win") }
+        let other = PhotoRecord(dto: jpeg, apiBaseURL: URL(string: "https://other.example.invalid")!)
+        guard case .absent = await cache.savedThumbnail(for: other) else { return XCTFail("Mixed library origins") }
     }
 
     func testSmartCacheEvictsOldCleanPreviewsAndKeepsDraftsAndOriginBoundaries() async throws {

@@ -79,6 +79,36 @@ final class RedirectAwareImageLoader {
         )
     }
 
+    /// Shared by grid and filmstrip. A saved RAW edit takes precedence over a PhotoKit original.
+    @MainActor
+    func thumbnail(for item: LibraryEntry, large: Bool = false, targetSize: CGSize,
+                   onDegraded: ((UIImage) -> Void)? = nil) async throws -> UIImage {
+        let remote = item.remote
+        var preferServer = false
+        if let remote, LoupeRendition.editableRawID(for: remote) != nil {
+            switch await SmartPreviewCache.shared.savedThumbnail(for: remote) {
+            case let .saved(image): return image
+            case .published: preferServer = true
+            case .absent: break
+            }
+        }
+        try Task.checkCancellation()
+        if let local = item.local, !preferServer {
+            if let image = try? await LocalImageLoader.shared.image(assetID: local.id, targetSize: targetSize,
+                    highQuality: false, networkAllowed: false, onDegraded: onDegraded) { return image }
+            try Task.checkCancellation()
+        }
+        guard let remote, remote.thumbnailURL.host != "photos.example.invalid" else { throw LoadError.invalidResponse }
+        do {
+            return try await image(for: remote, url: large ? remote.largeThumbnailURL : remote.thumbnailURL, targetSize: targetSize)
+        } catch {
+            try Task.checkCancellation()
+            guard preferServer, let local = item.local else { throw error }
+            return try await LocalImageLoader.shared.image(assetID: local.id, targetSize: targetSize,
+                    highQuality: false, networkAllowed: false, onDegraded: onDegraded)
+        }
+    }
+
     /// Loads a thumbnail known only by photo id and URL (e.g. a collection cover).
     @MainActor
     func image(

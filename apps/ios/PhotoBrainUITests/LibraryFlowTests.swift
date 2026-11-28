@@ -37,9 +37,11 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
     }
 
     @MainActor
-    func testRawEditorSavesReopensComparesAndDiscards() {
+    func testRawEditorSavesReopensComparesAndDiscards() throws {
         openLibrary()
-        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        let tile = gridCell("beach-sunset.jpg, ARW plus JPG pair")
+        let original = try centerRGB(of: waitFor(tile))
+        tile.tap()
         tap("Edit RAW")
         let slider = app.sliders["raw-edit-exposure"]
         waitFor(slider, timeout: 30)
@@ -56,9 +58,14 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         add(screenshot)
         tap("Show before")
         waitFor(element("Before"))
-        tap("Show edit")
         tap("Save")
         waitForAbsence(slider)
+        tap("Close photo")
+        let edited = try centerRGB(of: waitFor(tile))
+        // The server grid thumbnail is neutral gray; the fixture editor returns a blue-gray JPEG.
+        XCTAssertGreaterThan(Int(edited[2]) - Int(edited[0]), 20)
+        XCTAssertNotEqual(edited, original)
+        tile.tap()
         tap("Edit RAW")
         waitFor(slider, timeout: 30)
         XCTAssertEqual(value.label, savedValue)
@@ -73,7 +80,7 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         tap("Cancel")
         waitFor(element("Share"))
         tap("Close photo")
-        waitFor(gridCell("beach-sunset.jpg, ARW plus JPG pair"))
+        XCTAssertEqual(try centerRGB(of: waitFor(tile)), edited)
     }
 
     @MainActor
@@ -88,7 +95,9 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
             XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
         }
         openLibrary()
-        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        let tile = gridCell("beach-sunset.jpg, ARW plus JPG pair")
+        let original = try centerRGB(of: waitFor(tile))
+        tile.tap()
         tap("Edit RAW")
         let slider = app.sliders["raw-edit-exposure"]
         waitFor(slider, timeout: 30)
@@ -116,10 +125,14 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         tap("Save")
         waitForAbsence(slider)
         waitFor(app.staticTexts["raw-pending-sync"])
+        tap("Close photo")
+        let edited = try centerRGB(of: waitFor(tile))
+        XCTAssertNotEqual(edited, original)
         app.terminate()
         app.launch()
         openLibrary()
-        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        XCTAssertEqual(try centerRGB(of: waitFor(tile)), edited)
+        tile.tap()
         waitFor(app.staticTexts["raw-pending-sync"])
         try await offline(false)
         tap("Share")
@@ -142,6 +155,19 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         tap("Share")
         tap("Full-resolution JPEG with saved edits")
         waitFor(app.otherElements["ActivityListView"], timeout: 30)
+    }
+
+    @MainActor
+    private func centerRGB(of cell: XCUIElement) throws -> [UInt8] {
+        let image = try XCTUnwrap(cell.screenshot().image.cgImage)
+        let sample = try XCTUnwrap(image.cropping(to: CGRect(x: image.width / 2, y: image.height / 2, width: 1, height: 1)))
+        var rgba = [UInt8](repeating: 0, count: 4)
+        try rgba.withUnsafeMutableBytes { bytes in
+            let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                bytesPerRow: 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(sample, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        return Array(rgba.prefix(3))
     }
 
     @MainActor

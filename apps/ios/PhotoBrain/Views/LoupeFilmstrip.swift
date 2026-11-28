@@ -179,6 +179,16 @@ final class FilmstripView: UIView, UICollectionViewDataSource, UICollectionViewD
         collectionView.register(FilmstripCell.self, forCellWithReuseIdentifier: FilmstripCell.reuseIdentifier)
         collectionView.accessibilityIdentifier = "loupe-filmstrip"
         addSubview(collectionView)
+        NotificationCenter.default.addObserver(self, selector: #selector(savedThumbnailChanged),
+                                               name: .savedRawThumbnailChanged, object: nil)
+    }
+
+    @objc private func savedThumbnailChanged(_ notification: Notification) {
+        guard let key = notification.object as? URL else { return }
+        let paths = records.indices.compactMap { index in
+            records[index].remote?.savedRawThumbnailKey == key ? IndexPath(item: index, section: 0) : nil
+        }
+        if !paths.isEmpty { collectionView.reloadItems(at: paths) }
     }
 
     required init?(coder: NSCoder) {
@@ -375,12 +385,13 @@ final class FilmstripCell: UICollectionViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        displayedKey = nil
         loadTask?.cancel()
         loadTask = nil
     }
 
     func configure(item: LibraryEntry, active: Bool, loader: RedirectAwareImageLoader, targetSize: CGSize) {
-        let key = item.local.map { "asset:\($0.id)" } ?? item.remote?.thumbnailURL.absoluteString
+        let key = item.local.map { "asset:\($0.id)|\(item.remote?.thumbnailURL.absoluteString ?? "")" } ?? item.remote?.thumbnailURL.absoluteString
         let keepsImage = representedID == item.id && displayedKey == key && imageView.image != nil
         representedID = item.id
         imageView.alpha = item.isRejected ? 0.35 : 1
@@ -391,22 +402,8 @@ final class FilmstripCell: UICollectionViewCell {
         imageView.image = nil
         displayedKey = nil
         let itemID = item.id
-        if let local = item.local {
-            loadTask = Task { @MainActor [weak self] in
-                guard let image = try? await LocalImageLoader.shared.image(
-                    assetID: local.id,
-                    targetSize: targetSize,
-                    highQuality: false,
-                    networkAllowed: false
-                ), !Task.isCancelled, let self, self.representedID == itemID else { return }
-                self.imageView.image = image
-                self.displayedKey = key
-            }
-            return
-        }
-        guard let photo = item.remote, photo.thumbnailURL.host != "photos.example.invalid" else { return }
         loadTask = Task { @MainActor [weak self] in
-            guard let image = try? await loader.image(for: photo, url: photo.thumbnailURL, targetSize: targetSize),
+            guard let image = try? await loader.thumbnail(for: item, targetSize: targetSize),
                   !Task.isCancelled, let self, self.representedID == itemID else { return }
             self.imageView.image = image
             self.displayedKey = key

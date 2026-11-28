@@ -168,6 +168,8 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             topScrim.heightAnchor.constraint(equalToConstant: 170),
         ])
 
+        NotificationCenter.default.addObserver(self, selector: #selector(savedThumbnailChanged),
+                                               name: .savedRawThumbnailChanged, object: nil)
         dataSource = UICollectionViewDiffableDataSource<PhotoSection.ID, LibraryEntryID>(collectionView: collectionView) {
             [weak self] collectionView, indexPath, photoID in
             guard let self,
@@ -200,6 +202,15 @@ final class LibraryGridViewController: UIViewController, UICollectionViewDelegat
             header.setTitle(sectionTitles[sectionID] ?? "", detail: sectionDetails[sectionID], isMonthCard: timeGrouping == .months)
             return header
         }
+    }
+
+    @objc private func savedThumbnailChanged(_ notification: Notification) {
+        guard let key = notification.object as? URL else { return }
+        var snapshot = dataSource.snapshot()
+        let changed = snapshot.itemIdentifiers.filter { recordsByID[$0]?.remote?.savedRawThumbnailKey == key }
+        guard !changed.isEmpty else { return }
+        snapshot.reloadItems(changed)
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     deinit {
@@ -1088,7 +1099,7 @@ private final class PhotoGridCell: UICollectionViewCell {
 
     /// Image source currently displayed: the thumbnail URL or `asset:<id>`.
     private func imageKey(for item: LibraryEntry, usesLargeThumbnail: Bool) -> String {
-        if let local = item.local { return "asset:\(local.id)" }
+        if let local = item.local { return "asset:\(local.id)|\(item.remote?.thumbnailURL.absoluteString ?? "")" }
         return (usesLargeThumbnail ? item.remote?.largeThumbnailURL : item.remote?.thumbnailURL)?.absoluteString ?? ""
     }
 
@@ -1114,45 +1125,13 @@ private final class PhotoGridCell: UICollectionViewCell {
         displayedKey = nil
         imageView.image = nil
         let itemID = item.id
-        if let local = item.local {
-            // The device copy loads instantly and offline, even once the server has it.
-            loadTask = Task { @MainActor [weak self] in
-                let target = self?.bounds.size ?? CGSize(width: 160, height: 160)
-                let image = try? await LocalImageLoader.shared.image(
-                    assetID: local.id,
-                    targetSize: target,
-                    highQuality: false,
-                    networkAllowed: false
-                ) { degraded in
-                    guard self?.representedID == itemID, self?.displayedKey == nil else { return }
-                    self?.imageView.image = degraded
-                }
-                guard !Task.isCancelled, self?.representedID == itemID else { return }
-                if let image {
-                    self?.imageView.image = image
-                    self?.displayedKey = key
-                } else if let remote = item.remote {
-                    self?.loadRemote(remote, itemID: itemID, key: key, loader: loader, usesLargeThumbnail: usesLargeThumbnail)
-                }
-            }
-            return
-        }
-        guard let photo = item.remote, photo.thumbnailURL.host != "photos.example.invalid" else { return }
-        loadRemote(photo, itemID: itemID, key: key, loader: loader, usesLargeThumbnail: usesLargeThumbnail)
-    }
-
-    /// `key` is the cell's image key: a synced cell whose device copy is unavailable keeps its
-    /// asset key, so reconfigures keep this server image instead of reloading.
-    private func loadRemote(_ photo: PhotoRecord, itemID: LibraryEntryID, key: String, loader: RedirectAwareImageLoader, usesLargeThumbnail: Bool) {
+        let target = bounds.size == .zero ? CGSize(width: 160, height: 160) : bounds.size
         loadTask = Task { @MainActor [weak self] in
-            let target = self?.bounds.size ?? CGSize(width: 160, height: 160)
-            guard let image = try? await loader.image(
-                for: photo,
-                url: usesLargeThumbnail ? photo.largeThumbnailURL : photo.thumbnailURL,
-                targetSize: target
-            ),
-                  !Task.isCancelled,
-                  self?.representedID == itemID else { return }
+            let image = try? await loader.thumbnail(for: item, large: usesLargeThumbnail, targetSize: target) { degraded in
+                guard !Task.isCancelled, self?.representedID == itemID, self?.displayedKey == nil else { return }
+                self?.imageView.image = degraded
+            }
+            guard let image, !Task.isCancelled, self?.representedID == itemID else { return }
             self?.imageView.image = image
             self?.displayedKey = key
         }
