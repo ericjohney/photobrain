@@ -5,20 +5,17 @@ import XCTest
 @MainActor
 final class DevelopedRawTests: XCTestCase {
     private let base = URL(string: "https://photos.example.invalid")!
-    private var defaults: UserDefaults!
     private var suiteName: String!
     private var cache: SmartPreviewCache!
 
     override func setUp() {
         super.setUp()
         suiteName = "DevelopedRawTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
         cache = SmartPreviewCache(root: FileManager.default.temporaryDirectory.appendingPathComponent(suiteName))
     }
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: FileManager.default.temporaryDirectory.appendingPathComponent(suiteName))
-        defaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 
@@ -48,12 +45,6 @@ final class DevelopedRawTests: XCTestCase {
         XCTFail("Timed out; rendition is \(store.rendition)")
     }
 
-    func testLabelsSayWhichRenditionIsShown() {
-        XCTAssertEqual(LoupeRendition.embedded.label, "Preview · 1600 px")
-        XCTAssertEqual(LoupeRendition.developing.label, "Loading preview…")
-        XCTAssertEqual(LoupeRendition.developed(width: 9504, height: 6336).label, "Preview · 9504 × 6336")
-    }
-
     func testDevelopableRawIDCoversRawsAndPairsOnly() {
         XCTAssertEqual(LoupeRendition.developableRawID(for: raw), 2)
         let pairedJPEG = record(TestModels.photo(id: 8, name: "forest.jpg", pairedPhotoId: 13, pairedFormat: "ARW"))
@@ -68,8 +59,8 @@ final class DevelopedRawTests: XCTestCase {
             .success(DevelopedRawImage(data: Self.jpeg(), width: 1600, height: 1066)),
             .success(DevelopedRawImage(data: Self.jpeg(), width: 2048, height: 1365)),
         ])
-        let store = LoupeDevelopedStore(api: api, defaults: defaults, cache: cache)
-        store.setOn(true, photo: raw)
+        let store = LoupeDevelopedStore(api: api, cache: cache)
+        store.show(raw)
         await waitFor(store) { $0 == .developed(width: 1600, height: 1066) }
         let changed = record(TestModels.photo(id: 2, name: "DSC_0002.ARW", isRaw: true, rawFormat: "ARW", thumbnailUpdatedAt: Date(timeIntervalSince1970: 1_800_000_000)))
         store.show(changed)
@@ -78,23 +69,19 @@ final class DevelopedRawTests: XCTestCase {
         XCTAssertEqual(requests, [2, 2])
     }
 
-    func testOffByDefaultAndDevelopsOnDemand() async {
+    func testStackAutomaticallyLoadsItsRAWPartnerOncePerVisit() async {
         let api = TestAPI()
-        await api.setDevelopedResults([.success(DevelopedRawImage(data: Self.jpeg(), width: 9504, height: 6336))])
-        let store = LoupeDevelopedStore(api: api, defaults: defaults, busyDelay: .zero, cache: cache)
-        store.show(raw)
-        XCTAssertEqual(store.rendition, .embedded)
-        let requestsWhileOff = await api.developedRequests
-        XCTAssertEqual(requestsWhileOff, [])
-
-        store.setOn(true, photo: raw)
+        await api.setDevelopedResults([.success(DevelopedRawImage(data: Self.jpeg(), width: 2048, height: 1365))])
+        let store = LoupeDevelopedStore(api: api, cache: cache)
+        let stack = record(TestModels.photo(id: 8, name: "forest.jpg", pairedPhotoId: 13, pairedFormat: "ARW"))
+        store.show(stack)
         XCTAssertEqual(store.rendition, .developing)
-        await waitFor(store) { $0 == .developed(width: 9504, height: 6336) }
-        XCTAssertNotNil(store.images[2])
-        XCTAssertTrue(defaults.bool(forKey: LoupeDevelopedStore.preferenceKey))
-        XCTAssertTrue(LoupeDevelopedStore(api: api, defaults: defaults, cache: cache).isOn)
-
-        store.setOn(false, photo: raw)
+        await waitFor(store) { $0 == .developed(width: 2048, height: 1365) }
+        store.show(stack)
+        let requests = await api.developedRequests
+        XCTAssertEqual(requests, [13])
+        XCTAssertNotNil(store.images[8])
+        store.show(record(TestModels.photo(id: 1)))
         XCTAssertEqual(store.rendition, .embedded)
         XCTAssertTrue(store.images.isEmpty)
     }
@@ -102,8 +89,8 @@ final class DevelopedRawTests: XCTestCase {
     func testFallsBackToDecodedSizeWithoutHeaders() async {
         let api = TestAPI()
         await api.setDevelopedResults([.success(DevelopedRawImage(data: Self.jpeg(width: 5, height: 4), width: nil, height: nil))])
-        let store = LoupeDevelopedStore(api: api, defaults: defaults, busyDelay: .zero, cache: cache)
-        store.setOn(true, photo: raw)
+        let store = LoupeDevelopedStore(api: api, busyDelay: .zero, cache: cache)
+        store.show(raw)
         await waitFor(store) { $0 == .developed(width: 5, height: 4) }
     }
 
@@ -112,8 +99,8 @@ final class DevelopedRawTests: XCTestCase {
         await api.setDevelopedResults([
             .failure(.server(status: 422, code: "DEVELOP_UNSUPPORTED", message: "not a supported RAW file")),
         ])
-        let store = LoupeDevelopedStore(api: api, defaults: defaults, busyDelay: .zero, cache: cache)
-        store.setOn(true, photo: raw)
+        let store = LoupeDevelopedStore(api: api, busyDelay: .zero, cache: cache)
+        store.show(raw)
         await waitFor(store) { $0 == .failed("Not available for this camera") }
         XCTAssertTrue(store.images.isEmpty)
     }
@@ -126,8 +113,8 @@ final class DevelopedRawTests: XCTestCase {
             .failure(busy),
             .success(DevelopedRawImage(data: Self.jpeg(), width: 6000, height: 4000)),
         ])
-        let store = LoupeDevelopedStore(api: api, defaults: defaults, busyDelay: .zero, cache: cache)
-        store.setOn(true, photo: raw)
+        let store = LoupeDevelopedStore(api: api, busyDelay: .zero, cache: cache)
+        store.show(raw)
         await waitFor(store) { $0 == .developed(width: 6000, height: 4000) }
         let requests = await api.developedRequests
         XCTAssertEqual(requests, [2, 2, 2])
@@ -135,8 +122,8 @@ final class DevelopedRawTests: XCTestCase {
 
     func testNonRawPhotosStayEmbedded() async {
         let api = TestAPI()
-        let store = LoupeDevelopedStore(api: api, defaults: defaults, busyDelay: .zero, cache: cache)
-        store.setOn(true, photo: record(TestModels.photo(id: 1)))
+        let store = LoupeDevelopedStore(api: api, busyDelay: .zero, cache: cache)
+        store.show(record(TestModels.photo(id: 1)))
         XCTAssertEqual(store.rendition, .embedded)
         let requests = await api.developedRequests
         XCTAssertEqual(requests, [])

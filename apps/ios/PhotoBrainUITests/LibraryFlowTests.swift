@@ -4,6 +4,38 @@ import XCTest
 /// Library, loupe, review, and browse flows against the seeded fixture library.
 final class LibraryFlowTests: PhotoBrainUITestCase {
     @MainActor
+    func testToolbarTargetsStayPutWhenPagingBetweenJPEGAndRAW() {
+        openLibrary()
+        gridCell("beach-waves.jpg, 5 stars, Pick").tap()
+        let controls = ["Share", "Pick", "Photo info"].map { waitFor(app.buttons[$0]) }
+        let frames = controls.map(\.frame)
+        let edit = app.buttons["Edit RAW"]
+        XCTAssertFalse(edit.exists)
+
+        app.cells["Open beach-sunset.jpg"].firstMatch.tap()
+        waitFor(edit)
+        XCTAssertEqual(controls.map(\.frame), frames)
+        app.cells["Open beach-waves.jpg"].firstMatch.tap()
+        waitForAbsence(edit)
+        XCTAssertEqual(controls.map(\.frame), frames)
+    }
+
+    @MainActor
+    func testRAWLoupeShowsPreviewDetailsInPhotoInfo() {
+        openLibrary()
+        gridCell("beach-sunset.jpg, ARW plus JPG pair").tap()
+        waitFor(app.buttons["Edit RAW"])
+        XCTAssertFalse(app.buttons["loupe-rendition"].exists)
+        tap("Photo info")
+        waitFor(navigationTitle("Photo Info"))
+        let preview = element(startingWith: "Viewer preview")
+        for _ in 0..<4 where !preview.exists {
+            app.swipeUp()
+        }
+        waitFor(preview)
+    }
+
+    @MainActor
     func testDenoiseApplyCancelSaveAndReopen() async throws {
         guard ProcessInfo.processInfo.environment["PHOTOBRAIN_DENOISE_UI_TEST"] == "1" else {
             throw XCTSkip("Set UI_TEST_DENOISE_PREVIEW, UI_TEST_DENOISE_BEFORE and TEST_RUNNER_PHOTOBRAIN_DENOISE_UI_TEST=1")
@@ -245,6 +277,15 @@ final class LibraryFlowTests: PhotoBrainUITestCase {
         openLibrary()
         gridCell("dog-park-1.jpg").tap()
         waitFor(element("Close photo"))
+
+        XCTAssertFalse(app.buttons["Edit RAW"].exists)
+        XCTAssertFalse(app.buttons["Reject"].exists)
+        tap("More")
+        tap("Reject")
+        try await waitForPhoto(10) { $0["flag"] as? String == "reject" }
+        tap("More")
+        tap("Clear rejection")
+        try await waitForPhoto(10) { $0["flag"] is NSNull }
 
         tap("More")
         tap("Rating")

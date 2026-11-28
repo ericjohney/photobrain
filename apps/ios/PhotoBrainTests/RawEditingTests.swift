@@ -247,8 +247,8 @@ final class RawEditingTests: XCTestCase {
         let pending = await reopenedCache.entry(api.baseURL, 2)
         XCTAssertEqual(pending?.pending?.exposure, 1.25)
         XCTAssertNil(pending?.draft)
-        let viewer = LoupeDevelopedStore(api: api, defaults: UserDefaults(suiteName: UUID().uuidString)!, cache: reopenedCache)
-        viewer.show(raw) // The queued image also wins over the default standard-preview preference.
+        let viewer = LoupeDevelopedStore(api: api, cache: reopenedCache)
+        viewer.show(raw)
         await waitUntil { viewer.images[self.raw.id] != nil }
         XCTAssertTrue(viewer.waitingToSync)
         let reopenedPixels = try XCTUnwrap(viewer.images[raw.id]?.cgImage?.dataProvider?.data) as Data

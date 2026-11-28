@@ -25,7 +25,7 @@ struct LoupeScreen: View {
     @StateObject private var playback = LoupePlaybackController()
     /// Show Faces: boxes over the paged photos while on.
     @StateObject private var faceBoxes: LoupeFaceBoxesStore
-    /// Show Developed RAW: the open RAW fully developed instead of its embedded preview.
+    /// The open RAW’s stored viewer image or locally saved edit.
     @StateObject private var developed: LoupeDevelopedStore
     @StateObject private var rawEditor: LoupeRawEditStore
     @State private var rawControl: RawEditControl = .exposure
@@ -220,7 +220,7 @@ struct LoupeScreen: View {
                             .background(Color(white: 0.09), in: RoundedRectangle(cornerRadius: 18))
                             .padding(.horizontal, PBSpacing.s)
                             .frame(maxWidth: .infinity, alignment: sideBySide ? .trailing : .center)
-                    } else if !isZoomed {
+                    } else if !isZoomed, records.count > 1 {
                         filmstrip
                     }
                     if !rawEditor.isActive {
@@ -293,7 +293,7 @@ struct LoupeScreen: View {
         .exportPresentation(exports)
         .sheet(isPresented: $showingInfo) {
             if let activeRecord {
-                PhotoMetadataView(photo: activeRecord, api: api, onSelect: librarySelection, curation: review == nil ? curation : nil)
+                PhotoMetadataView(photo: activeRecord, developed: developed, api: api, onSelect: librarySelection, curation: review == nil ? curation : nil)
                     .id(activeRecord.id)
             } else if let activeItem, let local = activeItem.local {
                 DeviceAssetInfoView(item: activeItem, asset: local)
@@ -361,7 +361,7 @@ struct LoupeScreen: View {
                         if result != .failed {
                             showSavedNotice = result == .synced
                             rawEditor.end()
-                            developed.setOn(true, photo: activeRecord)
+                            developed.show(activeRecord, force: true)
                         }
                     }
                 } label: {
@@ -390,12 +390,23 @@ struct LoupeScreen: View {
                 Spacer(minLength: 0)
                 if review == nil, activeRecord != nil {
                     moreMenu
-                } else {
+                } else if review != nil {
                     infoButton
+                } else {
+                    Color.clear.frame(width: PBSize.control, height: PBSize.control)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, PBSpacing.m)
             .padding(.top, PBSpacing.xs)
+            .background {
+                LinearGradient(colors: [.black.opacity(0.65), .black.opacity(0.5), .clear],
+                               startPoint: .top, endPoint: .bottom)
+                    .padding(.bottom, -PBSpacing.xl)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
@@ -470,7 +481,7 @@ struct LoupeScreen: View {
         ((recordIndex.index(of: activeID, in: records) ?? 0) + 1, records.count)
     }
 
-    /// Share (export sizes) and everything else that acts on the open photo.
+    /// Secondary library and curation actions for the open photo.
     private var moreMenu: some View {
         Menu {
             if let activeRecord {
@@ -492,6 +503,11 @@ struct LoupeScreen: View {
                     } label: {
                         Label(current.rating > 0 ? "Rating: \(Self.ratingTitle(current.rating))" : "Rating", systemImage: "star")
                     }
+                    Button {
+                        curation.update(activeRecord, patch: .toggledFlag(.reject, current: current))
+                    } label: {
+                        Label(current.flag == .reject ? "Clear rejection" : "Reject", systemImage: "xmark.circle")
+                    }
                 }
                 Section {
                     Button {
@@ -503,24 +519,6 @@ struct LoupeScreen: View {
                         similarSource = activeRecord
                     } label: {
                         Label("Find Similar", systemImage: "sparkle.magnifyingglass")
-                    }
-                    if LoupeRendition.editableRawID(for: activeRecord) != nil {
-                        Button {
-                            curation.update(activeRecord, patch: .toggledFlag(.reject, current: current))
-                        } label: {
-                            Label(current.flag == .reject ? "Clear rejection" : "Reject", systemImage: "xmark.bin")
-                        }
-                    }
-                    if LoupeRendition.developableRawID(for: activeRecord) != nil {
-                        Button {
-                            developed.setOn(!developed.isOn, photo: activeRecord)
-                        } label: {
-                            Label(
-                                developed.isOn ? "Show standard preview" : "Show larger preview",
-                                systemImage: "camera.aperture"
-                            )
-                        }
-                        .disabled(rawEditor.isActive || developed.waitingToSync)
                     }
                     if !activeRecord.isVideo {
                         Button {
@@ -565,32 +563,57 @@ struct LoupeScreen: View {
                 }
             }
         } label: {
-            GlassIconLabel(systemImage: "square.and.arrow.up", dark: true)
+            toolbarSymbol("square.and.arrow.up")
         }
         .menuOrder(.fixed)
         .disabled(activeRecord == nil || exports.isBusy)
         .accessibilityLabel("Share")
     }
 
-    /// Photos-style bottom bar: Share, Favorite (Pick), Info, and Reject (in place of Delete).
-    private func curationBar(_ photo: PhotoRecord) -> some View {
-        let current = PhotoCuration(photo)
-        let picked = current.flag == .pick
-        let rejected = current.flag == .reject
-        return HStack {
-            shareMenu
-            Spacer(minLength: 0)
+    private func toolbarSymbol(_ name: String, tint: Color = .white) -> some View {
+        Image(systemName: name)
+            .font(.body.weight(.medium))
+            .foregroundStyle(tint)
+            .frame(width: PBSize.control, height: PBSize.control)
+            .contentShape(Rectangle())
+    }
+
+    private var toolbarInfoButton: some View {
+        Button {
+            showingInfo = true
+        } label: {
+            toolbarSymbol("info.circle")
+        }
+        .accessibilityLabel("Photo info")
+    }
+
+    private func libraryControls<Share: View>(photo: PhotoRecord?, @ViewBuilder share: () -> Share) -> some View {
+        let picked = photo?.flag == .pick
+        return HStack(spacing: PBSpacing.xs) {
+            share()
             Button {
-                curation.update(photo, patch: .toggledFlag(.pick, current: current))
+                guard let photo else { return }
+                curation.update(photo, patch: .toggledFlag(.pick, current: PhotoCuration(photo)))
             } label: {
-                GlassIconLabel(systemImage: picked ? "heart.fill" : "heart", dark: true, tint: picked ? .pink : nil)
+                toolbarSymbol(picked ? "heart.fill" : "heart", tint: picked ? .pink : .white)
             }
-            .buttonStyle(.plain)
+            .disabled(photo == nil)
+            .opacity(photo == nil ? 0.45 : 1)
             .accessibilityLabel("Pick")
+            .accessibilityHint(photo == nil ? "Available after import" : "")
             .accessibilityAddTraits(picked ? .isSelected : [])
-            Spacer(minLength: 0)
-            infoButton
-            Spacer(minLength: 0)
+            toolbarInfoButton
+        }
+        .fixedSize()
+        .padding(.horizontal, PBSpacing.xs)
+        .buttonStyle(.plain)
+        .pbGlass(in: Capsule(), dark: true)
+    }
+
+    private func curationBar(_ photo: PhotoRecord) -> some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            libraryControls(photo: photo) { shareMenu }
+            Spacer(minLength: PBSpacing.s)
             if LoupeRendition.editableRawID(for: photo) != nil {
                 Button {
                     developed.release()
@@ -601,22 +624,19 @@ struct LoupeScreen: View {
                     chromeVisible = true
                     zoomControlsVisible = true
                 } label: {
-                    Label("Edit RAW", systemImage: "slider.horizontal.3")
-                        .foregroundStyle(.white)
-                        .font(.subheadline.weight(.semibold)).padding(.horizontal, 12)
-                        .frame(minHeight: PBSize.control)
-                        .pbGlass(in: Capsule(), interactive: true, dark: true)
+                    ViewThatFits(in: .horizontal) {
+                        Label("Edit RAW", systemImage: "slider.horizontal.3")
+                            .fixedSize()
+                            .padding(.horizontal, PBSpacing.m)
+                        Image(systemName: "slider.horizontal.3")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(minWidth: PBSize.control, minHeight: PBSize.control)
+                    .pbGlass(in: Capsule(), interactive: true, dark: true)
                 }
+                .accessibilityLabel("Edit RAW")
                 .buttonStyle(.plain)
-            } else {
-                Button {
-                    curation.update(photo, patch: .toggledFlag(.reject, current: current))
-                } label: {
-                    GlassIconLabel(systemImage: rejected ? "xmark.bin.fill" : "xmark.bin", dark: true, tint: rejected ? PBColor.reject : nil)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Reject")
-                .accessibilityAddTraits(rejected ? .isSelected : [])
             }
         }
         .padding(.horizontal, PBSpacing.l)
@@ -627,15 +647,16 @@ struct LoupeScreen: View {
     /// is backed up and imported.
     private func deviceBar(_ item: LibraryEntry, asset: LocalAsset) -> some View {
         let state = item.backupState ?? .notBackedUp
-        return HStack {
-            Button {
-                deviceShare = DeviceShareItem(assetID: asset.id)
-            } label: {
-                GlassIconLabel(systemImage: "square.and.arrow.up", dark: true)
+        return HStack(alignment: .bottom, spacing: 0) {
+            libraryControls(photo: nil) {
+                Button {
+                    deviceShare = DeviceShareItem(assetID: asset.id)
+                } label: {
+                    toolbarSymbol("square.and.arrow.up")
+                }
+                .accessibilityLabel("Share")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Share")
-            Spacer(minLength: 0)
+            Spacer(minLength: PBSpacing.s)
             Menu {
                 Section(state.title) {
                     Button {
@@ -661,8 +682,6 @@ struct LoupeScreen: View {
             .accessibilityLabel("Backup")
             .accessibilityValue(state.accessibilityText)
             .accessibilityHint("Rating and organizing are available once this photo is backed up")
-            Spacer(minLength: 0)
-            infoButton
         }
         .padding(.horizontal, PBSpacing.l)
     }
@@ -712,14 +731,12 @@ struct LoupeScreen: View {
         }
     }
 
-    /// LIVE (for Live Photos), Show Faces (for stills), and the RAW rendition badge over the
-    /// top of the photo.
+    /// Show a second row only for active media controls or save feedback.
     @ViewBuilder
     private var overlayControls: some View {
         let hasLive = activeRecord?.motionVideoURL != nil
         let canShowFaces = faceBoxes.isShowing && (activeRecord.map { !$0.isVideo } ?? false)
-        let showsRendition = LoupeRendition.developableRawID(for: activeRecord) != nil
-        if hasLive || canShowFaces || showsRendition {
+        if hasLive || canShowFaces || developed.waitingToSync || showSavedNotice {
             HStack(spacing: 8) {
                 if hasLive { liveButton }
                 if canShowFaces { facesButton }
@@ -734,41 +751,9 @@ struct LoupeScreen: View {
                             showSavedNotice = false
                         }
                 }
-                if showsRendition && !developed.waitingToSync { renditionBadge }
             }
             .padding(.horizontal, PBSpacing.m)
         }
-    }
-
-    /// Which rendition of the RAW is on screen: tap to switch.
-    private var renditionBadge: some View {
-        let rendition = developed.isOn ? developed.rendition : .embedded
-        let label = rawEditor.isActive ? rawEditor.label : rendition.label
-        return Button {
-            developed.setOn(!developed.isOn, photo: activeRecord)
-        } label: {
-            HStack(spacing: 6) {
-                if rendition == .developing {
-                    ProgressView().controlSize(.mini).tint(.white)
-                }
-                Text(label)
-                    .monospacedDigit()
-                    .lineLimit(1)
-            }
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .foregroundStyle({
-                if case .developed = rendition { return Color.yellow }
-                return Color.white
-            }())
-            .pbGlass(in: Capsule(), interactive: true, dark: true)
-        }
-        .buttonStyle(.plain)
-        .disabled(rawEditor.isActive)
-        .accessibilityIdentifier("loupe-rendition")
-        .accessibilityLabel(label)
-        .accessibilityHint(developed.isOn ? "Show standard preview" : "Show larger preview")
     }
 
     private func endRawEdit() {
@@ -1014,6 +999,7 @@ struct LoupeReviewActions {
 }
 
 private struct PhotoMetadataView: View {
+    @ObservedObject var developed: LoupeDevelopedStore
     let photo: PhotoRecord
     /// Nil when no Library is reachable; chips and the place row then render without an action.
     let onSelect: ShowInLibraryAction?
@@ -1027,7 +1013,8 @@ private struct PhotoMetadataView: View {
     /// Rates the photo from the sheet; nil (Review) hides the rating row.
     let curation: PhotoCurationCenter?
 
-    init(photo: PhotoRecord, api: any PhotoBrainAPI, onSelect: ShowInLibraryAction?, curation: PhotoCurationCenter? = nil) {
+    init(photo: PhotoRecord, developed: LoupeDevelopedStore, api: any PhotoBrainAPI, onSelect: ShowInLibraryAction?, curation: PhotoCurationCenter? = nil) {
+        self.developed = developed
         self.photo = photo
         self.onSelect = onSelect
         self.curation = curation
@@ -1062,6 +1049,9 @@ private struct PhotoMetadataView: View {
                     row("Size", photo.fileSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) })
                     if photo.pixelWidth > 0, photo.pixelHeight > 0 {
                         row("Dimensions", "\(photo.pixelWidth) × \(photo.pixelHeight)")
+                    }
+                    if LoupeRendition.developableRawID(for: photo) != nil {
+                        row("Viewer preview", developed.rendition.infoValue)
                     }
                     row("Type", photo.mimeType)
                     if photo.isVideo {
@@ -1254,7 +1244,7 @@ private struct PhotoMetadataView: View {
     }
 }
 
-/// The loupe's centered glass title: the photo's city when it has one, else its date, with
+/// The loupe’s centered caption: the photo's city when it has one, else its date, with
 /// the date and time beneath. The place loads only for geotagged photos.
 private struct LoupeTitle: View {
     let photo: PhotoRecord
@@ -1269,25 +1259,32 @@ private struct LoupeTitle: View {
 
     var body: some View {
         let date = PhotoDateResolver.date(for: photo)
-        VStack(spacing: 0) {
+        VStack(spacing: PBSpacing.xxs) {
             if let city = place.place?.city {
                 Text(city)
                     .font(.subheadline.weight(.semibold))
                 Text(date, format: .dateTime.month(.abbreviated).day().year().hour().minute())
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.75))
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.85))
             } else {
                 Text(date, format: .dateTime.month(.abbreviated).day().year())
                     .font(.subheadline.weight(.semibold))
                 Text(date, format: .dateTime.hour().minute())
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.75))
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.85))
             }
-            if photo.rating > 0 {
-                Text(String(repeating: "★", count: photo.rating))
-                    .font(.caption2)
-                    .foregroundStyle(PBColor.rating)
-                    .accessibilityLabel(photo.rating == 1 ? "1 star" : "\(photo.rating) stars")
+            if photo.rating > 0 || photo.isRejected {
+                HStack(spacing: PBSpacing.s) {
+                    if photo.rating > 0 {
+                        Text(String(repeating: "★", count: photo.rating))
+                            .foregroundStyle(PBColor.rating)
+                            .accessibilityLabel(photo.rating == 1 ? "1 star" : "\(photo.rating) stars")
+                    }
+                    if photo.isRejected {
+                        Text("Rejected")
+                    }
+                }
+                .font(.caption2)
             }
         }
         .lineLimit(1)
@@ -1295,7 +1292,7 @@ private struct LoupeTitle: View {
         .foregroundStyle(.white)
         .padding(.horizontal, PBSpacing.l)
         .frame(minHeight: PBSize.control)
-        .pbGlass(in: Capsule(), dark: true)
+        .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
         .accessibilityElement(children: .combine)
         .accessibilityValue("Photo \(position.0) of \(position.1)")
         .task {
@@ -1400,19 +1397,19 @@ private struct DeviceLoupeTitle: View {
     var body: some View {
         let date = item.captureDate
         let zone = PhotoDateResolver.calendar.timeZone
-        VStack(spacing: 0) {
+        VStack(spacing: PBSpacing.xxs) {
             Text(date.formatted(Date.FormatStyle(timeZone: zone).month(.abbreviated).day().year()))
                 .font(.subheadline.weight(.semibold))
             Text(date.formatted(Date.FormatStyle(timeZone: zone).hour().minute()))
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.75))
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.85))
         }
         .lineLimit(1)
         .minimumScaleFactor(0.8)
         .foregroundStyle(.white)
         .padding(.horizontal, PBSpacing.l)
         .frame(minHeight: PBSize.control)
-        .pbGlass(in: Capsule(), dark: true)
+        .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
         .accessibilityElement(children: .combine)
         .accessibilityValue("Photo \(position.0) of \(position.1)")
     }

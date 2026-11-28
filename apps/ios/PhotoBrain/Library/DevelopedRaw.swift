@@ -8,7 +8,7 @@ struct DevelopedRawImage: Sendable {
     let height: Int?
 }
 
-/// What the loupe shows for a RAW: the stored embedded preview, or a full development.
+/// The current viewer preview, reported in Photo Info.
 enum LoupeRendition: Equatable {
     case embedded
     case developing
@@ -16,13 +16,12 @@ enum LoupeRendition: Equatable {
     /// The develop failed; the embedded preview stays on screen.
     case failed(String)
 
-    /// The loupe badge text, so the viewer always knows which rendition is shown.
-    var label: String {
+    var infoValue: String {
         switch self {
-        case .embedded: "Preview · 1600 px"
-        case .developing: "Loading preview…"
-        case let .developed(width, height): "Preview · \(width) × \(height)"
-        case let .failed(message): "Preview · \(message)"
+        case .embedded: "Standard preview"
+        case .developing: "Loading…"
+        case let .developed(width, height): "\(width) × \(height) px"
+        case let .failed(message): "Standard preview (\(message))"
         }
     }
 
@@ -40,7 +39,6 @@ enum LoupeRendition: Equatable {
         return ["RAF", "ARW", "DNG"].contains(format?.uppercased() ?? "") ? id : nil
     }
 
-    /// The badge text for a failed develop.
     static func failureMessage(_ error: Error) -> String {
         if case let .server(_, code, message) = error as? PhotoBrainAPIError {
             switch code {
@@ -54,15 +52,12 @@ enum LoupeRendition: Equatable {
     }
 }
 
-/// Loupe "Show Larger Preview": a persisted preference plus the open photo's image. Only the
-/// open photo downloads its stored import preview; paging away cancels the download.
+/// Loads the saved preview for the open photo. Paging away cancels the request.
 @MainActor
 final class LoupeDevelopedStore: ObservableObject {
-    static let preferenceKey = "com.photobrain.loupeShowsDeveloped"
     /// 503 `DEVELOP_BUSY` retries before giving up.
     static let maxBusyRetries = 5
 
-    @Published private(set) var isOn: Bool
     /// The decoded render by photo id (at most one: the open photo's).
     @Published private(set) var images: [Int: UIImage] = [:]
     @Published private(set) var rendition: LoupeRendition = .embedded
@@ -70,28 +65,17 @@ final class LoupeDevelopedStore: ObservableObject {
     @Published private(set) var waitingToSync = false
     private let cache: SmartPreviewCache
     private let api: any PhotoBrainAPI
-    private let defaults: UserDefaults
     private let busyDelay: Duration
     private var task: Task<Void, Never>?
     private var currentPhotoID: Int?
     private var currentThumbnailUpdatedAt: Date?
 
-    init(api: any PhotoBrainAPI, defaults: UserDefaults = .standard, busyDelay: Duration = .seconds(1), cache: SmartPreviewCache = .shared) {
+    init(api: any PhotoBrainAPI, busyDelay: Duration = .seconds(1), cache: SmartPreviewCache = .shared) {
         self.cache = cache
         self.api = api
-        self.defaults = defaults
         self.busyDelay = busyDelay
-        isOn = defaults.bool(forKey: Self.preferenceKey)
     }
 
-    func setOn(_ on: Bool, photo: PhotoRecord?) {
-        isOn = on
-        defaults.set(on, forKey: Self.preferenceKey)
-        currentPhotoID = nil
-        show(photo)
-    }
-
-    /// Loads the stored preview (when enabled), refreshing after background publication.
     func show(_ photo: PhotoRecord?, force: Bool = false) {
         let rawID = LoupeRendition.developableRawID(for: photo)
         guard force || photo?.id != currentPhotoID || photo?.thumbnailUpdatedAt != currentThumbnailUpdatedAt || rawID == nil else { return }
@@ -105,13 +89,11 @@ final class LoupeDevelopedStore: ObservableObject {
             rendition = .embedded
             return
         }
-        rendition = isOn ? .developing : .embedded
-        let larger = isOn
+        rendition = .developing
         task = Task { [weak self, api, busyDelay, cache] in
             let entry = await cache.entry(api.baseURL, rawID)
             guard !Task.isCancelled else { return }
             self?.waitingToSync = entry?.pending != nil
-            guard larger || entry?.pending != nil else { return }
             if let entry, entry.generation == photo.thumbnailUpdatedAt, entry.pending != nil || entry.locallySaved == true {
                 do {
                     let url = await cache.file(api.baseURL, rawID)
@@ -128,7 +110,7 @@ final class LoupeDevelopedStore: ObservableObject {
                     }
                 }
             }
-            guard larger else { return }
+            guard !Task.isCancelled else { return }
             // Server-rendered edits have no smart-preview file. Keep showing the saved
             // frame until the background job publishes this photo’s new generation.
             if case let .saved(image) = await cache.savedThumbnail(for: photo) {
@@ -137,6 +119,7 @@ final class LoupeDevelopedStore: ObservableObject {
                 self.rendition = .developed(width: Int(image.size.width), height: Int(image.size.height))
                 return
             }
+            guard !Task.isCancelled else { return }
             var attempt = 0
             while true {
                 do {
