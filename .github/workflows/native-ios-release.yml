@@ -8,6 +8,10 @@ on:
       - 'packages/raw-develop/**'
   workflow_dispatch:
     inputs:
+      verify_build:
+        description: Check an existing TestFlight build without uploading another build
+        required: false
+        type: string
       bundle_id:
         description: Production bundle identifier
         required: true
@@ -33,11 +37,27 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-production-release
+  group: ${{ inputs.verify_build && format('ios-testflight-verification-{0}', inputs.verify_build) || 'ios-production-release' }}
   cancel-in-progress: false
 
 jobs:
+  verify-existing:
+    if: ${{ inputs.verify_build != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm internal TestFlight availability
+        env:
+          BUILD_NUMBER: ${{ inputs.verify_build }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: node apps/ios/scripts/wait-for-internal-testflight.mjs
+
   archive-and-upload:
+    if: ${{ inputs.verify_build == '' }}
     name: Archive, inspect, and upload Production
     runs-on: macos-26
     timeout-minutes: 90

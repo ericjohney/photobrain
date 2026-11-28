@@ -25,14 +25,13 @@ while (Date.now() < deadline) {
 		const builds = await get("/v1/builds", {
 			"filter[app]": ASC_APP_ID,
 			"filter[version]": BUILD_NUMBER,
-			include: "buildBetaDetail",
+			include: "buildBetaDetail,betaGroups",
 		});
 		const build = builds.data[0];
 		state = build?.attributes.processingState;
 		internal = builds.included?.find(x => x.type === "buildBetaDetails")?.attributes.internalBuildState;
 		if (state === "VALID" && internal === "IN_BETA_TESTING") {
-			const assigned = await get(`/v1/builds/${build.id}/betaGroups`, { limit: "200" });
-			groups = assigned.data.filter(group => group.attributes.isInternalGroup);
+			groups = builds.included.filter(group => group.type === "betaGroups" && group.attributes.isInternalGroup);
 			if (!groups.length) {
 				const available = await get(`/v1/apps/${ASC_APP_ID}/betaGroups`, { limit: "200" });
 				groups = available.data.filter(group => group.attributes.isInternalGroup && group.attributes.hasAccessToAllBuilds);
